@@ -1,0 +1,26 @@
+name: build
+on: [push, pull_request]
+
+jobs:
+  build:
+    name: agda2forth
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up GHC
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: '9.10.3'
+          cabal-version: 'latest'
+          cabal-update: true
+
+      - name: Build
+        run: cabal build all
+
+      - name: Run tests
+        run: cabal test all
+
+      - name: Compile first-order triples fixture
+        run: cabal run agda2forth -- test/TriplesFO.agda
