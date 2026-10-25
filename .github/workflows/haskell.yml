@@ -77,6 +77,8 @@ jobs:
 
       - name: Type-check linear/modal ABI specification interface
         run: fstar.exe proof/LinearModalABI.fsti
+      - name: Verify linear-modal ledger model
+        run: fstar.exe proof/LinearModalLedger.fst
 
       - name: Set up GHC
         uses: haskell-actions/setup@v2
