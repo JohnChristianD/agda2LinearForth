@@ -74,16 +74,16 @@ variable RESULT 1 cells allot 2 thunk !
 ;
 : makeTHUNK ( xt -- [THUNK xt] )
     dup isThunk
-    1 pick isResult +
+    over isResult +
     0 = if
-    thunk here 2 fillArray
+    thunk align here 2 fillArray
     here 
     2 cells allot 
     then
 ;
 :noname ." T: " ; THUNK 1 cells + !
 : makeRESULT ( val -- [RESULT val] )
-    result here 2 fillArray
+    result align here 2 fillArray
     here 
     2 cells allot 
 ;
@@ -124,24 +124,22 @@ variable target
 : dethunk ( o1 -- o11 )
     BEGIN
     dup MAXNUM @ < if   ( o1 )
-        EXIT            ( -- o1 )
+        EXIT
     then
-    dup isThunk 0 =   ( o1 0/-1 )
-    1 pick isResult 0 = ( o1 0/-1 0/-1)
-    * if    ( o1 )
-        EXIT                ( -- o1 )
-    then
-    dup @ THUNK = if          ( o1 )
-        dup 1 cells + @         ( o1 [addr o11] )
-        ENDFLAG swap
-        execute                 ( o1 o11 )
+    dup @
+    dup THUNK = if      ( o1 THUNK )
+        drop
+        \ Invoke the XT stored in the second cell without a separate @/execute.
+        ENDFLAG over cell+ perform
         passMany
-        swap dup                    ( o11 o1 )
-        RESULT swap !               ( o11 o1 )
-        1 pick swap                 ( o11 o11 o1 )
-        1 cells + !                 ( o11 )
+        \ Never memoize into the original handle: aliases may represent !A.
+        nip
     else
-        1 cells + @
+        RESULT = if
+            cell+ @
+        else
+            EXIT
+        then
     then
     AGAIN
 ;
@@ -151,13 +149,13 @@ variable target
     dup MAXNUM @ < 0 =          ( o1 0/-1 )
     if
         dup @ THUNK = 0 =   ( o1 0/-1 )
-        1 pick @ RESULT = 0 = ( o1 0/-1 0/-1)
+        over @ RESULT = 0 = ( o1 0/-1 0/-1)
         * if            ( o1 )
             dup @ @ 1 >                 ( o1 0/-1 )
             if                          ( o1 )
                 dup @ @ 1 do                ( o1 )
                     dup i cells + @ recurse     ( o1 o1[i] )
-                    1 pick i cells + !          ( o1 )
+                    over i cells + !          ( o1 )
                 loop
             then
             EXIT
@@ -191,11 +189,13 @@ variable target
     repeat
 ;
 
-: pass ( x [THUNK xt1] -- [THUNK xt2] ) 
-    dup @               ( x [THUNK xt] [T:] )
-    THUNK = if          ( x [THUNK xt] )
-        tuck tuck 1 cells + @ curry
-        swap 1 cells + !
+: pass ( x [THUNK xt1] -- [THUNK xt2] )
+    dup @ THUNK = if
+        \ Build a new handle; never mutate an aliased thunk's XT.
+        tuck cell+ @ curry
+        swap drop
+        THUNK align here 2 fillArray
+        here 2 cells allot
     else
         swap drop
     then
