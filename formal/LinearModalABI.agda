@@ -509,7 +509,7 @@ Hoare :
   (normalPostcondition : S → Set) →
   (exceptionalPostcondition : S → RuntimeError → Set) →
   Set
-Hoare {S} precondition command normalPostcondition exceptionalPostcondition =
+Hoare {S = S} precondition command normalPostcondition exceptionalPostcondition =
   (s : S) → precondition s →
   executionPost normalPostcondition exceptionalPostcondition (command s)
 
