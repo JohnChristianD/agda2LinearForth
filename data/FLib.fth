@@ -13,6 +13,7 @@ s" cannot unwrap a consumed or malformed result payload" exception constant ABI-
 s" expected a scalar handle" exception constant ABI-ERR-EXPECTED-SCALAR
 s" arithmetic result exceeds the checked cell range" exception constant ABI-ERR-NAT-OVERFLOW
 s" linear scalar operand aliases another operand" exception constant ABI-ERR-ALIASED-LINEAR-OPERANDS
+s" cannot mix checked handles with legacy raw values" exception constant ABI-ERR-MIXED-ABI-VALUES
 s" scalar payload is outside the checked natural range" exception constant ABI-ERR-NAT-NEGATIVE
 s" natural division or remainder by zero" exception constant ABI-ERR-ARITHMETIC-DOMAIN
 s" closure has no metadata" exception constant ABI-ERR-CLOSURE-METADATA
@@ -492,6 +493,48 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
     ['] ABI-LT-RAW ABI-BINARY
 ;
 
+\\ Dual-entry arithmetic preserves the legacy raw-cell stack effect while routing
+\\ fully managed scalar operands through the checked handle ABI. Mixed calls fail closed.
+: ABI-DISPATCH-BINARY { left right checked legacy -- result }
+    left metadata@ { leftMeta }
+    right metadata@ { rightMeta }
+    leftMeta 0<> rightMeta 0<> AND IF
+        left isScalar 0= IF ABI-ERR-EXPECTED-SCALAR THROW THEN
+        right isScalar 0= IF ABI-ERR-EXPECTED-SCALAR THROW THEN
+        left right checked EXECUTE EXIT
+    THEN
+    leftMeta 0<> rightMeta 0<> OR IF ABI-ERR-MIXED-ABI-VALUES THROW THEN
+    left right legacy EXECUTE
+;
+
+: ABI-ADD-OR-LEGACY ( left right -- result )
+    ['] ABI-NAT-ADD ['] + ABI-DISPATCH-BINARY
+;
+: ABI-SUB-OR-LEGACY ( left right -- result )
+    ['] ABI-NAT-SUB ['] - ABI-DISPATCH-BINARY
+;
+: ABI-MONUS-OR-LEGACY ( left right -- result )
+    ['] ABI-NAT-MONUS ['] - ABI-DISPATCH-BINARY
+;
+: ABI-MUL-OR-LEGACY ( left right -- result )
+    ['] ABI-NAT-MUL ['] * ABI-DISPATCH-BINARY
+;
+: ABI-QUOT-OR-LEGACY ( left right -- result )
+    ['] ABI-NAT-QUOT ['] / ABI-DISPATCH-BINARY
+;
+: ABI-REM-OR-LEGACY ( left right -- result )
+    ['] ABI-NAT-REM ['] mod ABI-DISPATCH-BINARY
+;
+: ABI-EQ-OR-LEGACY ( left right -- result )
+    ['] ABI-NAT-EQ ['] = ABI-DISPATCH-BINARY
+;
+: ABI-GEQ-OR-LEGACY ( left right -- result )
+    ['] ABI-NAT-GEQ ['] >= ABI-DISPATCH-BINARY
+;
+: ABI-LT-OR-LEGACY ( left right -- result )
+    ['] ABI-NAT-LT ['] < ABI-DISPATCH-BINARY
+;
+
 : assertModalValue { handle -- handle }
     handle requireLiveMeta { meta }
     handle isResult 0= IF ABI-ERR-ASSERT-MODAL-KIND THROW THEN
@@ -741,6 +784,7 @@ variable target
 : deepDethunk ( [THUNK o1] -- o1 )
     BEGIN
     dethunk                     ( o1 )
+    dup isScalar IF EXIT THEN
     dup MAXNUM @ < 0 =          ( o1 0/-1 )
     if
         dup @ THUNK = 0 =   ( o1 0/-1 )

@@ -243,16 +243,16 @@ fthPreamble = do
   force <- makeForce
   return
     -- [ RSAtom "s\" ../lib/loader.fth\" included"
-    [ fthSimpleWord "add"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "+"]
-    , fthSimpleWord "sub"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "-"]
-    , fthSimpleWord "mul"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "*"]
-    , fthSimpleWord "quot" $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "/"]
-    , fthSimpleWord "rem"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "mod"]
+    [ fthSimpleWord "add"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "ABI-ADD-OR-LEGACY"]
+    , fthSimpleWord "sub"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "ABI-SUB-OR-LEGACY"]
+    , fthSimpleWord "mul"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "ABI-MUL-OR-LEGACY"]
+    , fthSimpleWord "quot" $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "ABI-QUOT-OR-LEGACY"]
+    , fthSimpleWord "rem"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "ABI-REM-OR-LEGACY"]
     , fthSimpleWord "iff"  $ fthLocals ["b","x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "b"), RSAtom "if", force (RSAtom "x"), RSAtom "else", force (RSAtom "y"), RSAtom "then"]
-    , fthSimpleWord "eq"   $ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "x"), force (RSAtom "y"), RSAtom "="]
-    , fthSimpleWord "geq"  $ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "x"), force (RSAtom "y"), RSAtom ">="]
-    , fthSimpleWord "lt"   $ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "x"), force (RSAtom "y"), RSAtom "<"]
-    , fthSimpleWord "monus"$ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "y x sub pass pass"),  RSAtom "dup 0 < if drop 0 then"]
+    , fthSimpleWord "eq"   $ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "x"), force (RSAtom "y"), RSAtom "ABI-EQ-OR-LEGACY"]
+    , fthSimpleWord "geq"  $ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "x"), force (RSAtom "y"), RSAtom "ABI-GEQ-OR-LEGACY"]
+    , fthSimpleWord "lt"   $ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "x"), force (RSAtom "y"), RSAtom "ABI-LT-OR-LEGACY"]
+    , fthSimpleWord "monus"$ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "y"), force (RSAtom "x"), RSAtom "ABI-MONUS-OR-LEGACY"]
     ]
 
 getFLib :: String

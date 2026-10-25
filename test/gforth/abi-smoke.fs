@@ -124,6 +124,26 @@ throw-capture @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 ;
 checked-add-test
 
+\\ The compiler's arithmetic adapters dispatch handles through the same ABI.
+: checked-add-adapter-test ( -- )
+  8 MODE-LINEAR ABI-MAKE-SCALAR
+  9 MODE-MODAL ABI-MAKE-SCALAR
+  ABI-ADD-OR-LEGACY ABI-SCALAR-INFO { value mode meta }
+  value 17 = abi-assert
+  mode MODE-LINEAR = abi-assert
+;
+checked-add-adapter-test
+
+: legacy-add-adapter-test ( -- )
+  8 9 ABI-ADD-OR-LEGACY 17 = abi-assert
+;
+legacy-add-adapter-test
+
+: mixed-add-adapter-test ( -- )
+  8 MODE-MODAL ABI-MAKE-SCALAR 9 ABI-ADD-OR-LEGACY DROP
+;
+' mixed-add-adapter-test CATCH ABI-ERR-MIXED-ABI-VALUES = abi-assert
+
 : checked-modal-reuse-test ( -- )
   10 MODE-MODAL ABI-MAKE-SCALAR DUP ABI-NAT-ADD ABI-SCALAR-INFO { value mode meta }
   value 20 = abi-assert
