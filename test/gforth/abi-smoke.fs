@@ -151,12 +151,12 @@ legacy-add-adapter-test
 ;
 checked-modal-reuse-test
 
-\ The checked ABI encodes booleans as natural scalars: true=1, false=0.
+\ Agda booleans have a distinct checked representation: true=-1, false=0.
 : checked-eq-true-test ( -- )
   4 MODE-MODAL ABI-MAKE-SCALAR
   4 MODE-MODAL ABI-MAKE-SCALAR
-  ABI-NAT-EQ ABI-SCALAR-INFO { value mode meta }
-  value 1 = abi-assert
+  ABI-NAT-EQ ABI-BOOL-INFO { value mode meta }
+  value -1 = abi-assert
   mode MODE-MODAL = abi-assert
 ;
 checked-eq-true-test
@@ -164,7 +164,7 @@ checked-eq-true-test
 : checked-eq-false-test ( -- )
   4 MODE-MODAL ABI-MAKE-SCALAR
   5 MODE-MODAL ABI-MAKE-SCALAR
-  ABI-NAT-EQ ABI-SCALAR-INFO { value mode meta }
+  ABI-NAT-EQ ABI-BOOL-INFO { value mode meta }
   value 0 = abi-assert
   mode MODE-MODAL = abi-assert
 ;
@@ -173,18 +173,36 @@ checked-eq-false-test
 : checked-geq-test ( -- )
   5 MODE-MODAL ABI-MAKE-SCALAR
   4 MODE-MODAL ABI-MAKE-SCALAR
-  ABI-NAT-GEQ ABI-SCALAR-INFO { value mode meta }
-  value 1 = abi-assert
+  ABI-NAT-GEQ ABI-BOOL-INFO { value mode meta }
+  value -1 = abi-assert
 ;
 checked-geq-test
 
 : checked-lt-test ( -- )
   4 MODE-MODAL ABI-MAKE-SCALAR
   5 MODE-MODAL ABI-MAKE-SCALAR
-  ABI-NAT-LT ABI-SCALAR-INFO { value mode meta }
-  value 1 = abi-assert
+  ABI-NAT-LT ABI-BOOL-INFO { value mode meta }
+  value -1 = abi-assert
 ;
 checked-lt-test
+
+\ A checked linear boolean can be moved into a result wrapper and unwrapped once.
+: checked-linear-boolean-result-test ( -- )
+  6 MODE-LINEAR ABI-MAKE-SCALAR
+  6 MODE-MODAL ABI-MAKE-SCALAR
+  ABI-NAT-EQ DUP isBoolean abi-assert
+  DUP ABI-BOOL-INFO { boolValue boolMode boolMeta }
+  boolValue -1 = abi-assert
+  boolMode MODE-LINEAR = abi-assert
+  ABI-MAKE-RESULT { wrapper }
+  wrapper metadata@ META-MODE cells + @ MODE-LINEAR = abi-assert
+  wrapper ABI-UNWRAP-RESULT { movedBool }
+  movedBool isBoolean abi-assert
+  movedBool ABI-BOOL-INFO { movedValue movedMode movedMeta }
+  movedValue -1 = abi-assert
+  movedMode MODE-LINEAR = abi-assert
+;
+checked-linear-boolean-result-test
 
 : checked-linear-alias-test ( -- )
   9 MODE-LINEAR ABI-MAKE-SCALAR DUP ABI-NAT-ADD DROP
