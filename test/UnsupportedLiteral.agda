@@ -2,7 +2,8 @@ module UnsupportedLiteral where
 
 open import Agda.Builtin.String using (String)
 
--- This backend deliberately rejects unsupported runtime literals. The emitted
--- Forth must raise a catchable ABI error, never terminate the interpreter with BYE.
+-- Regression fixture for an unsupported literal. With ToForth.hs unchanged,
+-- the current backend emits its legacy diagnostic followed by BYE. This is
+-- intentionally not claimed as a catchable checked-ABI boundary.
 unsupported : String
 unsupported = "not supported by the checked GForth ABI"
