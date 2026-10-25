@@ -100,7 +100,8 @@ variable SCALAR 1 cells allot
 6 constant META-MODE
 7 constant META-STATE
 8 constant META-PAYLOAD
-9 constant META-CELLS
+9 constant META-ID
+10 constant META-CELLS
 
 0 constant KIND-THUNK
 1 constant KIND-RESULT
@@ -119,9 +120,21 @@ variable SCALAR 1 cells allot
 variable HANDLE-META-HEAD
 variable MODAL-SAFE-HEAD
 variable LINEAR-SAFE-HEAD
+variable NEXT-HANDLE-ID
+0 NEXT-HANDLE-ID !
 
-: newMeta { handle kind code env count mode state -- meta }
-    align here META-CELLS cells allot { meta }
+s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
+
+: requireIdentityRoom { count -- }
+    NEXT-HANDLE-ID @ ABI-MAX-NAT count - > IF ABI-ERR-ID-OVERFLOW THROW THEN
+;
+
+: reserveMeta ( -- meta )
+    align here META-CELLS cells allot
+;
+
+: initializeMeta { handle kind code env count mode state meta -- meta }
+    1 requireIdentityRoom
     HANDLE-META-HEAD @ meta META-NEXT cells + !
     handle meta META-HANDLE cells + !
     kind meta META-KIND cells + !
@@ -131,8 +144,15 @@ variable LINEAR-SAFE-HEAD
     mode meta META-MODE cells + !
     state meta META-STATE cells + !
     0 meta META-PAYLOAD cells + !
+    NEXT-HANDLE-ID @ meta META-ID cells + !
+    NEXT-HANDLE-ID @ 1+ NEXT-HANDLE-ID !
     meta HANDLE-META-HEAD !
     meta
+;
+
+: newMeta { handle kind code env count mode state -- meta }
+    reserveMeta { meta }
+    handle kind code env count mode state meta initializeMeta
 ;
 
 \ Return metadata for a runtime-managed handle, or zero.
@@ -276,6 +296,8 @@ variable LINEAR-SAFE-HEAD
 ;
 
 : moveLinearHandle { handle meta -- moved }
+    meta META-MODE cells + @ MODE-LINEAR <> IF ABI-ERR-UNKNOWN-REPRESENTATION THROW THEN
+    meta META-STATE cells + @ OWN-LIVE <> IF ABI-ERR-CONSUMED-HANDLE THROW THEN
     0 { moved }
     handle @ THUNK = IF
         align here 2 cells allot TO moved
@@ -286,17 +308,20 @@ variable LINEAR-SAFE-HEAD
             meta META-ENV cells + @
             meta META-ENVCOUNT cells + @
             MODE-LINEAR OWN-LIVE newMeta DROP
+    ELSE handle @ RESULT = IF
+        align here 2 cells allot TO moved
+        RESULT moved !
+        handle cell+ @ moved cell+ !
+        moved KIND-RESULT 0 0 0 MODE-LINEAR OWN-LIVE newMeta { movedMeta }
+        handle cell+ @ movedMeta META-PAYLOAD cells + !
+    ELSE handle @ SCALAR = IF
+        align here 2 cells allot TO moved
+        SCALAR moved !
+        handle cell+ @ moved cell+ !
+        moved KIND-SCALAR 0 0 0 MODE-LINEAR OWN-LIVE newMeta DROP
     ELSE
-        handle @ RESULT = IF
-            align here 2 cells allot TO moved
-            RESULT moved !
-            handle cell+ @ moved cell+ !
-            moved KIND-RESULT 0 0 0 MODE-LINEAR OWN-LIVE newMeta { movedMeta }
-            handle cell+ @ movedMeta META-PAYLOAD cells + !
-        ELSE
-            ABI-ERR-UNKNOWN-REPRESENTATION THROW
-        THEN
-    THEN
+        ABI-ERR-UNKNOWN-REPRESENTATION THROW
+    THEN THEN
     OWN-CONSUMED meta META-STATE cells + !
     moved
 ;
@@ -337,7 +362,9 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
         -1 EXIT
     THEN
     meta META-KIND cells + @ KIND-RESULT = IF
-        handle cell+ @ RECURSE EXIT
+        handle cell+ @ { payload }
+        meta META-PAYLOAD cells + @ payload <> IF 0 EXIT THEN
+        payload RECURSE EXIT
     THEN
     0
 ;
@@ -460,74 +487,64 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
     meta META-MODE cells + @ MODE-LINEAR = IF ABI-ERR-MODAL-PAYLOAD THROW THEN
     handle cell+ @ { payload }
     payload metadata@ 0= IF ABI-ERR-UNREGISTERED-MODAL-PAYLOAD THROW THEN
+    meta META-PAYLOAD cells + @ payload <> IF ABI-ERR-MODAL-PAYLOAD THROW THEN
     payload modalPayload? 0= IF ABI-ERR-MODAL-PAYLOAD THROW THEN
     MODE-MODAL meta META-MODE cells + !
     handle
 ;
 
-\ Checked result constructor. Legacy makeRESULT remains unchanged.
-\ Linear payload ownership moves into the wrapper; modal payloads may remain
-\ live because sharing is permitted only after modal safety has been checked.
+\ Checked result constructor. A linear payload is moved to a fresh live handle
+\ before the wrapper becomes live; the wrapper then owns that handle by identity.
+\ Modal payloads remain shared only after the full modal-payload predicate passes.
 : ABI-MAKE-RESULT { payload -- wrapper }
     payload requireLiveMeta { pm }
     pm META-MODE cells + @ { mode }
     mode MODE-UNANNOTATED = IF ABI-ERR-RESULT-UNKNOWN-MODE THROW THEN
     mode MODE-MODAL = IF
         payload modalPayload? 0= IF ABI-ERR-MODAL-PAYLOAD THROW THEN
+        1 requireIdentityRoom
+    ELSE
+        2 requireIdentityRoom
     THEN
     align here 2 cells allot { wrapper }
     RESULT wrapper !
-    payload wrapper cell+ !
-    wrapper KIND-RESULT 0 0 0 mode OWN-LIVE newMeta { wrapperMeta }
-    payload wrapperMeta META-PAYLOAD cells + !
-    mode MODE-LINEAR = IF OWN-CONSUMED pm META-STATE cells + ! THEN
+    0 wrapper cell+ !
+    reserveMeta { wrapperMeta }
+
+    payload { storedPayload }
+    mode MODE-LINEAR = IF
+        payload pm moveLinearHandle TO storedPayload
+    THEN
+
+    storedPayload wrapper cell+ !
+    wrapper KIND-RESULT 0 0 0 MODE-UNANNOTATED OWN-CONSUMED wrapperMeta initializeMeta DROP
+    storedPayload wrapperMeta META-PAYLOAD cells + !
+    mode wrapperMeta META-MODE cells + !
+    OWN-LIVE wrapperMeta META-STATE cells + !
     wrapper
 ;
 
-\ Unwrap is the only checked operation that recovers a contained linear token.
-\ It consumes the wrapper and creates a fresh token so the old payload handle
-\ cannot be reused. Modal payloads can be returned as shared live handles.
+\ A linear wrapper transfers its contained live token out and is consumed.
+\ A modal wrapper is reusable and may yield the same modal payload repeatedly.
 : ABI-UNWRAP-RESULT { wrapper -- payload }
     wrapper requireLiveMeta { wm }
     wrapper isResult 0= IF ABI-ERR-RESULT-KIND THROW THEN
     wm META-MODE cells + @ { mode }
     mode MODE-UNANNOTATED = IF ABI-ERR-RESULT-UNKNOWN-MODE THROW THEN
-    wrapper cell+ @ { oldPayload }
-    oldPayload metadata@ dup 0= IF drop ABI-ERR-RESULT-PAYLOAD THROW THEN
+    wrapper cell+ @ { payload }
+    payload metadata@ dup 0= IF drop ABI-ERR-RESULT-PAYLOAD THROW THEN
     { pm }
+    wm META-PAYLOAD cells + @ payload <> IF ABI-ERR-RESULT-PAYLOAD THROW THEN
     mode MODE-MODAL = IF
-        oldPayload modalPayload? 0= IF ABI-ERR-MODAL-PAYLOAD THROW THEN
-        oldPayload EXIT
+        pm META-MODE cells + @ MODE-MODAL <> IF ABI-ERR-MODAL-PAYLOAD THROW THEN
+        payload modalPayload? 0= IF ABI-ERR-MODAL-PAYLOAD THROW THEN
+        payload EXIT
     THEN
-    pm META-STATE cells + @ OWN-CONSUMED <> IF ABI-ERR-RESULT-PAYLOAD THROW THEN
-    pm META-KIND cells + @ { kind }
-    kind KIND-SCALAR = IF
-        oldPayload cell+ @ MODE-LINEAR ABI-MAKE-SCALAR { fresh }
-        OWN-CONSUMED wm META-STATE cells + !
-        fresh EXIT
-    THEN
-    kind KIND-THUNK = IF
-        align here 2 cells allot { fresh }
-        THUNK fresh !
-        ['] invokeClosure fresh cell+ !
-        fresh KIND-THUNK
-            pm META-CODE cells + @
-            pm META-ENV cells + @
-            pm META-ENVCOUNT cells + @
-            MODE-LINEAR OWN-LIVE newMeta DROP
-        OWN-CONSUMED wm META-STATE cells + !
-        fresh EXIT
-    THEN
-    kind KIND-RESULT = IF
-        align here 2 cells allot { fresh }
-        RESULT fresh !
-        oldPayload cell+ @ fresh cell+ !
-        fresh KIND-RESULT 0 0 0 MODE-LINEAR OWN-LIVE newMeta { freshMeta }
-        oldPayload cell+ @ freshMeta META-PAYLOAD cells + !
-        OWN-CONSUMED wm META-STATE cells + !
-        fresh EXIT
-    THEN
-    ABI-ERR-RESULT-PAYLOAD THROW
+    mode MODE-LINEAR <> IF ABI-ERR-RESULT-UNKNOWN-MODE THROW THEN
+    pm META-MODE cells + @ MODE-LINEAR <> IF ABI-ERR-RESULT-PAYLOAD THROW THEN
+    pm META-STATE cells + @ OWN-LIVE <> IF ABI-ERR-RESULT-PAYLOAD THROW THEN
+    OWN-CONSUMED wm META-STATE cells + !
+    payload
 ;
 
 : promoteModal { handle -- handle }

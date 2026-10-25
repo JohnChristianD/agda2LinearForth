@@ -19,6 +19,26 @@ modal-result-handle @ metadata@ META-PAYLOAD cells + @
 modal-payload-handle @ = abi-assert
 modal-result-handle @ assertModalValue DROP
 
+\ A linear result owns a fresh live payload handle. The source handle is consumed;
+\ unwrapping transfers the moved handle out and consumes the wrapper.
+VARIABLE original-linear-payload
+VARIABLE linear-result-wrapper
+VARIABLE moved-linear-payload
+: linear-result-move-test ( -- )
+  77 MODE-LINEAR ABI-MAKE-SCALAR DUP original-linear-payload !
+  ABI-MAKE-RESULT DUP linear-result-wrapper !
+  original-linear-payload @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+  linear-result-wrapper @ cell+ @ DUP moved-linear-payload !
+  original-linear-payload @ <> abi-assert
+  moved-linear-payload @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
+  linear-result-wrapper @ ABI-UNWRAP-RESULT moved-linear-payload @ = abi-assert
+  linear-result-wrapper @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+  moved-linear-payload @ ABI-SCALAR-INFO { payloadValue payloadMode payloadMeta }
+  payloadValue 77 = abi-assert
+  payloadMode MODE-LINEAR = abi-assert
+;
+linear-result-move-test
+
 \ Result mode derives from the payload, not from the producing closure.
 : linear-returns-modal ( -- handle ) 456 MODE-MODAL ABI-MAKE-SCALAR ;
 ' linear-returns-modal declareLinearSafeXT

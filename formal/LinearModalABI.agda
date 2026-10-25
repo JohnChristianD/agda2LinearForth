@@ -221,6 +221,32 @@ activeCaptures (d :: ds) with kind d | life d
 ... | thunk | live = captures d ++ activeCaptures ds
 ... | _ | _ = activeCaptures ds
 
+-- A live result wrapper is an active owner/reference to its contained payload.
+-- This matters when the payload is a live linear thunk with captures.
+activePayloads : Heap → List Nat
+activePayloads [] = []
+activePayloads (d :: ds) with kind d | life d | payloadRef d
+... | result | live | hasPayload n = n :: activePayloads ds
+... | _ | _ | _ = activePayloads ds
+
+LivePayloads : Heap → Heap → Set
+LivePayloads full [] = ⊤
+LivePayloads full (d :: ds) with kind d | life d | payloadRef d
+... | result | live | hasPayload n = HasLive n full × LivePayloads full ds
+... | result | live | noPayload = ⊥ × LivePayloads full ds
+... | _ | _ | _ = LivePayloads full ds
+
+LiveResultPayloadModes : Heap → Heap → Set
+LiveResultPayloadModes full [] = ⊤
+LiveResultPayloadModes full (d :: ds) with kind d | life d | mode d | payloadRef d
+... | result | live | linearMode | hasPayload n =
+  HasLiveLinear n full × LiveResultPayloadModes full ds
+... | result | live | modalMode | hasPayload n =
+  HasLiveModal n full × LiveResultPayloadModes full ds
+... | result | live | _ | noPayload =
+  ⊥ × LiveResultPayloadModes full ds
+... | _ | _ | _ | _ = LiveResultPayloadModes full ds
+
 NoDupOn : (Nat → Set) → List Nat → Set
 NoDupOn P [] = ⊤
 NoDupOn P (n :: ns) = (P n → (n ∈ₙ ns) → ⊥) × NoDupOn P ns
@@ -252,7 +278,7 @@ record Machine : Set where
 open Machine public
 
 activeReferences : Machine → List Nat
-activeReferences s = roots s ++ activeCaptures (heap s)
+activeReferences s = roots s ++ activeCaptures (heap s) ++ activePayloads (heap s)
 
 record WellFormed (s : Machine) : Set where
   constructor wellFormed
@@ -263,6 +289,8 @@ record WellFormed (s : Machine) : Set where
     allReferencesRegistered : RegisteredRefs (heap s) (heap s)
     referencesDescendByIdentity : ReferencesOlder (heap s)
     activeCapturesLive : LiveCaptures (heap s) (heap s)
+    liveResultPayloads : LivePayloads (heap s) (heap s)
+    resultPayloadModes : LiveResultPayloadModes (heap s) (heap s)
     everyLinearResourceOwned : LiveLinearOwned (heap s) (activeReferences s)
     noLinearAliasing : NoDupOn (λ n → HasLiveLinear n (heap s)) (activeReferences s)
     noLiveUnannotated : AllAnnotated (heap s)

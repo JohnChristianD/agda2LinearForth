@@ -39,7 +39,7 @@ The Agda model defines these well-formedness conditions:
 7. No live descriptor is unannotated.
 8. All registered identities are strictly below the next allocation identity, and `nextIsFresh` constructively proves that the next identity cannot already occur.
 
-A result wrapper is the owner of a linear payload after packing: the payload descriptor is consumed, while the live wrapper is the active token. A modal wrapper may reference a live modal payload. These cases must not be conflated.
+A linear result wrapper owns a fresh moved payload handle. Packing transfers the resource to a fresh live descriptor and consumes the old handle; the wrapper metadata points to the fresh descriptor. Unwrapping consumes the wrapper and transfers that live payload handle back out. A modal wrapper may share a live modal payload. The heap model counts live result payload references as active references and requires the payload to remain live with a mode matching the wrapper.
 
 ## Closed code and promotion
 
