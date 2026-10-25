@@ -39,6 +39,29 @@ VARIABLE moved-linear-payload
 ;
 linear-result-move-test
 
+\ Moving a linear closure must preserve its live captured resources through the wrapper.
+VARIABLE original-linear-capture
+VARIABLE source-linear-closure
+VARIABLE linear-closure-result
+VARIABLE moved-linear-closure
+: identity-body ( x -- x ) ;
+' identity-body declareLinearSafeXT
+: linear-closure-result-move-test ( -- )
+  55 MODE-LINEAR ABI-MAKE-SCALAR
+  ' identity-body makeTHUNK assertLinear pass DUP source-linear-closure !
+  source-linear-closure @ metadata@ META-ENV cells + @ @ DUP original-linear-capture !
+  original-linear-capture @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
+  ABI-MAKE-RESULT DUP linear-closure-result !
+  source-linear-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+  linear-closure-result @ cell+ @ DUP moved-linear-closure !
+  moved-linear-closure @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
+  original-linear-capture @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
+  linear-closure-result @ ABI-UNWRAP-RESULT moved-linear-closure @ = abi-assert
+  linear-closure-result @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+  original-linear-capture @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
+;
+linear-closure-result-move-test
+
 \ Result mode derives from the payload, not from the producing closure.
 : linear-returns-modal ( -- handle ) 456 MODE-MODAL ABI-MAKE-SCALAR ;
 ' linear-returns-modal declareLinearSafeXT

@@ -168,6 +168,12 @@ s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
 : requireLiveMeta { handle -- meta }
     handle metadata@ dup 0= IF drop ABI-ERR-UNKNOWN-HANDLE THROW THEN
     dup META-STATE cells + @ OWN-CONSUMED = IF ABI-ERR-CONSUMED-HANDLE THROW THEN
+    dup META-KIND cells + @ CASE
+        KIND-THUNK OF handle @ THUNK <> IF ABI-ERR-UNKNOWN-REPRESENTATION THROW THEN ENDOF
+        KIND-RESULT OF handle @ RESULT <> IF ABI-ERR-UNKNOWN-REPRESENTATION THROW THEN ENDOF
+        KIND-SCALAR OF handle @ SCALAR <> IF ABI-ERR-UNKNOWN-REPRESENTATION THROW THEN ENDOF
+        drop ABI-ERR-UNKNOWN-REPRESENTATION THROW
+    ENDCASE
 ;
 
 : isThunk { handle -- flag }
@@ -296,8 +302,9 @@ s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
 ;
 
 : moveLinearHandle { handle meta -- moved }
+    handle metadata@ meta <> IF ABI-ERR-UNKNOWN-REPRESENTATION THROW THEN
+    handle requireLiveMeta DROP
     meta META-MODE cells + @ MODE-LINEAR <> IF ABI-ERR-UNKNOWN-REPRESENTATION THROW THEN
-    meta META-STATE cells + @ OWN-LIVE <> IF ABI-ERR-CONSUMED-HANDLE THROW THEN
     0 { moved }
     handle @ THUNK = IF
         align here 2 cells allot TO moved
@@ -309,11 +316,15 @@ s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
             meta META-ENVCOUNT cells + @
             MODE-LINEAR OWN-LIVE newMeta DROP
     ELSE handle @ RESULT = IF
+        handle cell+ @ { contained }
+        meta META-PAYLOAD cells + @ contained <> IF ABI-ERR-RESULT-PAYLOAD THROW THEN
+        contained requireLiveMeta { containedMeta }
+        containedMeta META-MODE cells + @ MODE-LINEAR <> IF ABI-ERR-RESULT-PAYLOAD THROW THEN
         align here 2 cells allot TO moved
         RESULT moved !
-        handle cell+ @ moved cell+ !
+        contained moved cell+ !
         moved KIND-RESULT 0 0 0 MODE-LINEAR OWN-LIVE newMeta { movedMeta }
-        handle cell+ @ movedMeta META-PAYLOAD cells + !
+        contained movedMeta META-PAYLOAD cells + !
     ELSE handle @ SCALAR = IF
         align here 2 cells allot TO moved
         SCALAR moved !

@@ -26,7 +26,7 @@ The source has two relevant modalities:
 
 The runtime's `unannotated` mode is a boundary/error state, not a third source-language type. A live unannotated value is forbidden inside a fully checked machine state. Unrestricted legacy words can still handle their historical representations outside that state.
 
-Each checked descriptor records a unique handle identity, kind (scalar/thunk/result), runtime mode, lifecycle (live/consumed), code address, closed-code classification, capture identities and optional payload identity. Numeric payloads are not handle identities. The checked ABI must never decide “number versus pointer” using `MAXNUM` or any other magnitude heuristic.
+Each checked descriptor records a monotone logical identity (META-ID) distinct from its address, kind (scalar/thunk/result), runtime mode, lifecycle (live/consumed), code address, closed-code classification, capture identities and optional payload identity. Numeric payloads are not handle identities. The checked ABI must never decide “number versus pointer” using `MAXNUM` or any other magnitude heuristic.
 
 The Agda model defines these well-formedness conditions:
 
@@ -35,7 +35,7 @@ The Agda model defines these well-formedness conditions:
 3. Every descriptor reference names a registered descriptor.
 4. Captures of a live closure refer to live descriptors.
 5. Every live linear descriptor has an active owner reference.
-6. No live linear descriptor is referenced more than once by roots and active captures. Conditions 5 and 6 together mean exactly one active reference.
+6. No live linear descriptor is referenced more than once by roots, active closure captures, and live result payloads. Conditions 5 and 6 together mean exactly one active reference.
 7. No live descriptor is unannotated.
 8. All registered identities are strictly below the next allocation identity, and `nextIsFresh` constructively proves that the next identity cannot already occur.
 
@@ -60,7 +60,7 @@ The checked ABI is intended to admit only the following families. The preconditi
 | Apply / `pass` | Function is a live checked thunk; argument is checked; mode combination is defined | New closure owns transferred linear inputs; consumed aliases fail later; resulting mode follows the derivation | No alias becomes live twice; failed transfer leaves a well-formed state |
 | Force / `dethunk` | Live checked thunk; code contract and capture environment valid | Linear thunk consumed; every linear capture consumed, returned, or moved exactly once; modal thunk reused only if modal-safe | Either restore the pre-state or commit a well-formed consumed/returned state; never leave orphaned live linear captures |
 | Pack result | Payload is registered/live and annotated | Linear payload ownership moves to a fresh linear wrapper; modal payload remains shareable only if modal-safe | Wrapper and payload ownership remain consistent |
-| Unwrap result | Wrapper is live, well-formed and annotated | Linear wrapper consumed and a fresh payload token returned; modal wrapper may return the shareable modal payload | State remains well formed and no stale alias is revived |
+| Unwrap result | Wrapper is live, well-formed and annotated | Linear wrapper consumed and its contained live payload handle is transferred out; modal wrapper may return the shareable modal payload | State remains well formed and no stale alias is revived |
 | Promote modal | Live closure; derivable modal-safe code witness; every capture live and modal | Closure mode becomes modal | No mode change if validation fails |
 | Arithmetic / comparisons | Checked scalar operands; valid operation domain | Linear operands are accounted for once; modal operands may be reused; result mode is derived, never guessed | Division/remainder domain errors are catchable and leave a well-formed state |
 | Conditional | Checked boolean condition; both branches belong to the closed ABI | Exactly the selected branch executes; unselected branch resources are not spuriously consumed | State remains well formed |

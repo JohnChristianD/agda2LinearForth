@@ -26,6 +26,7 @@ executable agda2forth
     main-is:          Main.hs
     other-modules:    Agda.Compiler.ToForth
                       Agda.Compiler.Erase
+    autogen-modules:  Paths_agda2forth
     build-depends:    base >=4.15.0.0
                       , Agda >= 2.8
                       , containers >= 0.5.7.1
