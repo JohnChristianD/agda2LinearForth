@@ -55,42 +55,264 @@ defer passMany
     :noname r> postpone literal r> compile, postpone ; 
 ;
 variable THUNK 1 cells allot 2 thunk !
-variable RESULT 1 cells allot 2 thunk !
-: isThunk ( o1 -- 0/-1 )
-    dup MAXNUM @ < 0 =
-    if
-        @ THUNK =
-    else
-        drop 0
-    then
+variable RESULT 1 cells allot 2 RESULT !
+
+0 constant META-NEXT
+1 constant META-HANDLE
+2 constant META-KIND
+3 constant META-CODE
+4 constant META-ENV
+5 constant META-ENVCOUNT
+6 constant META-MODE
+7 constant META-STATE
+8 constant META-CELLS
+
+0 constant KIND-THUNK
+1 constant KIND-RESULT
+0 constant MODE-UNKNOWN
+1 constant MODE-LINEAR
+2 constant MODE-MODAL
+0 constant OWN-LIVE
+1 constant OWN-CONSUMED
+
+variable HANDLE-META-HEAD
+variable MODAL-SAFE-HEAD
+variable LINEAR-SAFE-HEAD
+
+: newMeta { handle kind code env count mode state -- meta }
+    align here META-CELLS cells allot { meta }
+    HANDLE-META-HEAD @ meta META-NEXT cells + !
+    handle meta META-HANDLE cells + !
+    kind meta META-KIND cells + !
+    code meta META-CODE cells + !
+    env meta META-ENV cells + !
+    count meta META-ENVCOUNT cells + !
+    mode meta META-MODE cells + !
+    state meta META-STATE cells + !
+    meta HANDLE-META-HEAD !
+    meta
 ;
-: isResult
-    dup MAXNUM @ < 0 =
-    if
-        @ RESULT =
-    else
-        drop 0
-    then
+
+\ Return metadata for a runtime-managed handle, or zero.
+\ Do not dereference arbitrary cells to guess whether they are object pointers.
+: metadata@ { handle -- meta }
+    HANDLE-META-HEAD @
+    BEGIN dup WHILE
+        dup META-HANDLE cells + @ handle = IF EXIT THEN
+        META-NEXT cells + @
+    REPEAT
 ;
-: makeTHUNK ( xt -- [THUNK xt] )
-    dup isThunk
-    over isResult +
-    0 = if
-    thunk align here 2 fillArray
-    here 
-    2 cells allot 
-    then
+
+: requireLiveMeta { handle -- meta }
+    handle metadata@ dup 0= abort" unregistered value handle"
+    dup META-STATE cells + @ OWN-CONSUMED = abort" use after linear handle consumption"
 ;
+
+: isThunk { handle -- flag }
+    handle metadata@ dup 0= IF drop 0 EXIT THEN
+    drop
+    handle @ THUNK =
+;
+
+: isResult { handle -- flag }
+    handle metadata@ dup 0= IF drop 0 EXIT THEN
+    drop
+    handle @ RESULT =
+;
+
+: xtInList? { xt headAddr -- flag }
+    headAddr @
+    BEGIN dup WHILE
+        dup @ xt = IF drop -1 EXIT THEN
+        cell+ @
+    REPEAT
+    0
+;
+
+: declareXT { xt headAddr -- }
+    xt headAddr xtInList? IF EXIT THEN
+    align here 2 cells allot { node }
+    xt node !
+    headAddr @ node cell+ !
+    node headAddr !
+;
+
+\ Trusted code-contract declarations. These are assertions by the integrator,
+\ not proofs inferred from an arbitrary Forth execution token.
+: declareModalSafeXT ( xt -- )
+    MODAL-SAFE-HEAD declareXT
+;
+
+: declareLinearSafeXT ( xt -- )
+    LINEAR-SAFE-HEAD declareXT
+;
+
+: modalSafeXT? { xt -- flag }
+    xt MODAL-SAFE-HEAD xtInList?
+;
+
+: linearSafeXT? { xt -- flag }
+    xt LINEAR-SAFE-HEAD xtInList?
+;
+
+: trackedEnv? { meta -- flag }
+    meta META-ENVCOUNT cells + @ { count }
+    meta META-ENV cells + @ { env }
+    0 { i }
+    -1 { good }
+    BEGIN i count < WHILE
+        env i cells + @ metadata@ { child }
+        child 0= IF
+            0 TO good
+        ELSE
+            child META-STATE cells + @ OWN-CONSUMED = IF 0 TO good THEN
+            child META-MODE cells + @ MODE-UNKNOWN = IF 0 TO good THEN
+        THEN
+        i 1+ TO i
+    REPEAT
+    good
+;
+
+: modalEnv? { meta -- flag }
+    meta META-ENVCOUNT cells + @ { count }
+    meta META-ENV cells + @ { env }
+    0 { i }
+    -1 { good }
+    BEGIN i count < WHILE
+        env i cells + @ metadata@ { child }
+        child 0= IF
+            0 TO good
+        ELSE
+            child META-STATE cells + @ OWN-CONSUMED = IF 0 TO good THEN
+            child META-MODE cells + @ MODE-MODAL <> IF 0 TO good THEN
+        THEN
+        i 1+ TO i
+    REPEAT
+    good
+;
+
+: checkLinearEnvConsumed { meta result -- }
+    meta META-ENVCOUNT cells + @ { count }
+    meta META-ENV cells + @ { env }
+    0 { i }
+    BEGIN i count < WHILE
+        env i cells + @ { childHandle }
+        childHandle metadata@ { child }
+        child 0<> IF
+            child META-MODE cells + @ MODE-LINEAR = IF
+                child META-STATE cells + @ OWN-LIVE = IF
+                    childHandle result <> abort" linear capture neither consumed, moved, nor returned"
+                THEN
+            THEN
+        THEN
+        i 1+ TO i
+    REPEAT
+;
+
+: combineModes { left right -- mode }
+    left MODE-UNKNOWN = right MODE-UNKNOWN = OR IF MODE-UNKNOWN EXIT THEN
+    left MODE-LINEAR = right MODE-LINEAR = OR IF MODE-LINEAR EXIT THEN
+    MODE-MODAL
+;
+
+: invokeClosure { handle -- }
+    handle metadata@ dup 0= abort" closure has no metadata"
+    { meta }
+    meta META-ENV cells + @
+    meta META-ENVCOUNT cells + @
+    pushArrayN
+    meta META-CODE cells + @ execute
+;
+
+: moveLinearHandle { handle meta -- moved }
+    handle @ THUNK = IF
+        THUNK align here 2 cells allot { moved }
+        THUNK moved !
+        ['] invokeClosure moved cell+ !
+        moved KIND-THUNK
+            meta META-CODE cells + @
+            meta META-ENV cells + @
+            meta META-ENVCOUNT cells + @
+            MODE-LINEAR OWN-LIVE newMeta DROP
+    ELSE
+        handle @ RESULT = IF
+            RESULT align here 2 cells allot { moved }
+            RESULT moved !
+            handle cell+ @ moved cell+ !
+            moved KIND-RESULT 0 0 0 MODE-LINEAR OWN-LIVE newMeta DROP
+        ELSE
+            abort" cannot move unknown linear handle representation"
+        THEN
+    THEN
+    OWN-CONSUMED meta META-STATE cells + !
+    moved
+;
+
+: captureValue { handle -- captured }
+    handle metadata@ { meta }
+    meta 0= IF handle EXIT THEN
+    handle requireLiveMeta DROP
+    meta META-MODE cells + @ MODE-LINEAR = IF
+        handle meta moveLinearHandle
+    ELSE
+        handle
+    THEN
+;
+
+: assertLinear ( handle -- handle )
+    DUP requireLiveMeta { meta }
+    meta trackedEnv? 0= abort" cannot assert linearity with unknown or consumed captures"
+    MODE-LINEAR meta META-MODE cells + !
+;
+
+: assertModalValue ( handle -- handle )
+    DUP requireLiveMeta { meta }
+    handle isResult 0= abort" assertModalValue requires a RESULT wrapper"
+    MODE-MODAL meta META-MODE cells + !
+    handle
+;
+
+: promoteModal ( handle -- handle )
+    DUP requireLiveMeta { meta }
+    handle isThunk 0= abort" promoteModal requires a THUNK closure"
+    meta META-CODE cells + @ modalSafeXT? 0= abort" closure XT lacks a modal-safe contract"
+    meta modalEnv? 0= abort" promotion rejected: environment is not entirely registered and modal"
+    MODE-MODAL meta META-MODE cells + !
+    handle
+;
+
+: makeTHUNK { xt -- handle }
+    xt isThunk xt isResult OR IF xt EXIT THEN
+    THUNK align here 2 cells allot { handle }
+    THUNK handle !
+    ['] invokeClosure handle cell+ !
+    handle KIND-THUNK xt 0 0 MODE-UNKNOWN OWN-LIVE newMeta DROP
+    handle
+;
+
 :noname ." T: " ; THUNK 1 cells + !
-: makeRESULT ( val -- [RESULT val] )
-    result align here 2 fillArray
-    here 
-    2 cells allot 
+
+: makeRESULT { value -- handle }
+    RESULT align here 2 cells allot { handle }
+    RESULT handle !
+    value handle cell+ !
+    handle KIND-RESULT 0 0 0 MODE-UNKNOWN OWN-LIVE newMeta DROP
+    handle
 ;
+
 :noname ." R: " ; RESULT 1 cells + !
+
 : toResult ( [THUNK val] -- [RESULT val] )
-    dup result swap !
+    DUP RESULT SWAP !
+    DUP metadata@ { meta }
+    meta 0<> IF
+        KIND-RESULT meta META-KIND cells + !
+        0 meta META-CODE cells + !
+        0 meta META-ENV cells + !
+        0 meta META-ENVCOUNT cells + !
+    THEN
 ;
+
 : shallowPrint { o1 }
     ." ("
     o1 MAXNUM @ <
@@ -121,28 +343,33 @@ variable RESULT 1 cells allot 2 thunk !
         ." )"
 ;
 variable target
-: dethunk ( o1 -- o11 )
+: dethunk { value -- result }
     BEGIN
-    dup MAXNUM @ < if   ( o1 )
-        EXIT
-    then
-    dup @
-    dup THUNK = if      ( o1 THUNK )
-        drop
-        \ Invoke the XT stored in the second cell without a separate @/execute.
-        ENDFLAG over cell+ perform
-        passMany
-        \ Never memoize into the original handle: aliases may represent !A.
-        nip
-    else
-        RESULT = if
-            cell+ @
-        else
-            EXIT
-        then
-    then
+        value metadata@ { meta }
+        meta 0= IF value EXIT THEN
+        meta META-STATE cells + @ OWN-CONSUMED = abort" use after linear handle consumption"
+        value @ THUNK = IF
+            meta META-MODE cells + @ MODE-LINEAR = IF
+                OWN-CONSUMED meta META-STATE cells + !
+            THEN
+            value ENDFLAG value DUP cell+ PERFORM
+            passMany NIP TO value
+            meta META-MODE cells + @ MODE-LINEAR = IF
+                meta value checkLinearEnvConsumed
+            THEN
+        ELSE
+            value @ RESULT = IF
+                meta META-MODE cells + @ MODE-LINEAR = IF
+                    OWN-CONSUMED meta META-STATE cells + !
+                THEN
+                value cell+ @ TO value
+            ELSE
+                value EXIT
+            THEN
+        THEN
     AGAIN
 ;
+
 : deepDethunk ( [THUNK o1] -- o1 )
     BEGIN
     dethunk                     ( o1 )
@@ -189,16 +416,55 @@ variable target
     repeat
 ;
 
-: pass ( x [THUNK xt1] -- [THUNK xt2] )
-    dup @ THUNK = if
-        \ Build a new handle; never mutate an aliased thunk's XT.
-        tuck cell+ @ curry
-        swap drop
-        THUNK align here 2 fillArray
-        here 2 cells allot
-    else
-        swap drop
-    then
+: pass { x h -- result }
+    h metadata@ 0<> IF h requireLiveMeta DROP THEN
+    h isThunk IF
+        h requireLiveMeta { hm }
+        hm META-MODE cells + @ { functionMode }
+        x metadata@ { xm }
+        xm 0<> IF x requireLiveMeta DROP THEN
+        MODE-UNKNOWN { argumentMode }
+        xm 0<> IF xm META-MODE cells + @ TO argumentMode THEN
+
+        functionMode MODE-LINEAR = argumentMode MODE-UNKNOWN = AND
+            abort" checked linear closure cannot capture an untracked value"
+        functionMode MODE-MODAL = argumentMode MODE-UNKNOWN = AND
+            abort" checked modal closure cannot capture an untracked value"
+        argumentMode MODE-LINEAR = IF
+            functionMode MODE-UNKNOWN = abort" linear value cannot enter an unknown closure"
+            hm META-CODE cells + @ linearSafeXT? 0=
+                abort" closure XT lacks a linear-capture contract"
+        THEN
+        x h = argumentMode MODE-LINEAR = AND
+            abort" linear closure cannot capture itself"
+
+        x captureValue { captured }
+        hm META-ENVCOUNT cells + @ { oldCount }
+        hm META-ENV cells + @ { oldEnv }
+        oldCount 1+ { newCount }
+        align here newCount cells allot { newEnv }
+        captured newEnv !
+        0 { i }
+        BEGIN i oldCount < WHILE
+            oldEnv i cells + @
+            newEnv i 1+ cells + !
+            i 1+ TO i
+        REPEAT
+
+        THUNK align here 2 cells allot { newHandle }
+        THUNK newHandle !
+        ['] invokeClosure newHandle cell+ !
+        functionMode argumentMode combineModes { newMode }
+        newHandle KIND-THUNK
+            hm META-CODE cells + @
+            newEnv newCount newMode OWN-LIVE newMeta DROP
+        functionMode MODE-LINEAR = IF
+            OWN-CONSUMED hm META-STATE cells + !
+        THEN
+        newHandle
+    ELSE
+        h
+    THEN
 ;
 
 :noname ( ENDFLAG xn .. x2 x1 [THUNK xt1] -- [THUNK xt2])
