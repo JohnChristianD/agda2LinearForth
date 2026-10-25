@@ -1,5 +1,8 @@
 variable MAXNUM 100000000000000 MAXNUM !
 variable ENDFLAG 1234 ENDFLAG !
+s" unreachable Agda branch" exception constant ABI-ERR-UNREACHABLE
+: ABI-ERROR-UNREACHABLE ( -- ) ABI-ERR-UNREACHABLE THROW ;
+
 : -= 1 - ;
 : += 1 + ;
 : dropN ( x1 x2 .. xn n -- )
