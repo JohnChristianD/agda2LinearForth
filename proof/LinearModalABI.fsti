@@ -56,6 +56,8 @@ val same_state : state -> state -> Tot prop
 val all_resources_accounted : state -> Tot prop
 val promotable : state -> handle -> Tot prop
 val valid_import : state -> nat -> value_kind -> mode -> Tot prop
+val mode_evidence : state -> nat -> mode -> Tot prop
+val payload_of : state -> handle -> Tot (option handle)
 val abi_checked : state -> Tot prop
 val primitive_contract : state -> handle -> Tot prop
 val force_failure_valid : state -> state -> handle -> Tot prop
@@ -74,6 +76,21 @@ val abi_import :
           invariant s' /\ all_resources_accounted s' &&
           live s' h /\ fresh_handle s' h &&
           has_kind s' h k /\ has_mode s' h m &&
+          payload_mode_valid s' h m
+      | Failure s' _ -> invariant s' /\ same_state s s'))
+
+(* The mode must be backed by compiler/loader evidence. This operation
+   makes a tracked scalar handle; it does not infer a mode from the raw cell. *)
+val abi_make_scalar :
+  s:state -> raw_value:nat -> m:mode ->
+  Tot (outcome handle)
+    (requires (invariant s /\ abi_checked s /\ mode_evidence s raw_value m))
+    (ensures (fun out ->
+      match out with
+      | Success s' h ->
+          invariant s' /\ all_resources_accounted s' /\
+          live s' h /\ fresh_handle s' h /\
+          has_kind s' h Scalar /\ has_mode s' h m /\
           payload_mode_valid s' h m
       | Failure s' _ -> invariant s' /\ same_state s s'))
 
@@ -186,6 +203,24 @@ val abi_make_result :
           live s' r /\ fresh_handle s' r /\ has_kind s' r Result &&
           has_mode s' r m /\ payload_mode_valid s' r m &&
           result_transition_valid s s' payload r m
+      | Failure s' _ -> invariant s' /\ same_state s s'))
+
+(* This contract specifically rules out tagging a RESULT as Modal when its
+   contained payload is linear, unknown, or otherwise not modal-safe. *)
+val abi_assert_modal_value :
+  s:state -> wrapper:handle ->
+  Tot (outcome handle)
+    (requires (invariant s /\ abi_checked s /\ live s wrapper /\
+      has_kind s wrapper Result /\
+      (match payload_of s wrapper with
+       | Some payload -> live s payload /\ has_mode s payload Modal /\
+           payload_mode_valid s payload Modal
+       | None -> False)))
+    (ensures (fun out ->
+      match out with
+      | Success s' h ->
+          invariant s' /\ all_resources_accounted s' /\
+          live s' h /\ has_mode s' h Modal /\ modal_safe s' h
       | Failure s' _ -> invariant s' /\ same_state s s'))
 
 (* Only primitives with complete reviewed contracts are callable by checked
