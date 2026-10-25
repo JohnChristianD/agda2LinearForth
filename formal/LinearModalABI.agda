@@ -149,6 +149,20 @@ AllIn : List Nat → List Nat → Set
 AllIn [] known = ⊤
 AllIn (n :: ns) known = (n ∈ₙ known) × AllIn ns known
 
+-- Checked descriptors point only to older identities. Since allocation identities
+-- strictly increase, this rules out direct cycles and supports finite recursive
+-- retirement of captured linear subtrees on exceptional exit.
+ReferencesOlder : Heap → Set
+ReferencesOlder [] = ⊤
+ReferencesOlder (d :: ds) =
+  AllBelow (key d) (references d) × ReferencesOlder ds
+
+noDirectSelfReference :
+  (d : Descriptor) →
+  AllBelow (key d) (references d) →
+  (key d ∈ₙ references d) → ⊥
+noDirectSelfReference d = freshNotPresent
+
 data HasDescriptor (needle : Descriptor) : Heap → Set where
   descriptorHere : {ds : Heap} → HasDescriptor needle (needle :: ds)
   descriptorThere :
@@ -247,6 +261,7 @@ record WellFormed (s : Machine) : Set where
     rootsRegistered : AllIn (roots s) (keys (heap s))
     rootsLive : AllLive (roots s) (heap s)
     allReferencesRegistered : RegisteredRefs (heap s) (heap s)
+    referencesDescendByIdentity : ReferencesOlder (heap s)
     activeCapturesLive : LiveCaptures (heap s) (heap s)
     everyLinearResourceOwned : LiveLinearOwned (heap s) (activeReferences s)
     noLinearAliasing : NoDupOn (λ n → HasLiveLinear n (heap s)) (activeReferences s)
