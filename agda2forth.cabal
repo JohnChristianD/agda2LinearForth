@@ -17,7 +17,6 @@ data-files:
 data-dir:   data
 extra-source-files:
     test/TriplesFO.agda
-    test/UnsupportedString.agda
 
 executable agda2forth
     main-is:          Main.hs
