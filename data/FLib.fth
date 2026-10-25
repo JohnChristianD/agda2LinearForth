@@ -224,8 +224,9 @@ variable LINEAR-SAFE-HEAD
 ;
 
 : moveLinearHandle { handle meta -- moved }
+    0 { moved }
     handle @ THUNK = IF
-        THUNK align here 2 cells allot { moved }
+        THUNK align here 2 cells allot TO moved
         THUNK moved !
         ['] invokeClosure moved cell+ !
         moved KIND-THUNK
@@ -235,7 +236,7 @@ variable LINEAR-SAFE-HEAD
             MODE-LINEAR OWN-LIVE newMeta DROP
     ELSE
         handle @ RESULT = IF
-            RESULT align here 2 cells allot { moved }
+            RESULT align here 2 cells allot TO moved
             RESULT moved !
             handle cell+ @ moved cell+ !
             moved KIND-RESULT 0 0 0 MODE-LINEAR OWN-LIVE newMeta DROP
