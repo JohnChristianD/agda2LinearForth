@@ -91,6 +91,7 @@ defer passMany
 variable THUNK 1 cells allot 2 thunk !
 variable RESULT 1 cells allot 2 RESULT !
 variable SCALAR 1 cells allot
+variable ABI-BOOL-TAG 1 cells allot
 
 0 constant META-NEXT
 1 constant META-HANDLE
@@ -107,6 +108,7 @@ variable SCALAR 1 cells allot
 0 constant KIND-THUNK
 1 constant KIND-RESULT
 2 constant KIND-SCALAR
+3 constant KIND-BOOLEAN
 
 \ Gforth cell arithmetic is signed. Restrict checked naturals to its nonnegative range.
 0 invert 1 rshift constant ABI-MAX-NAT
@@ -173,6 +175,7 @@ s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
         KIND-THUNK OF handle @ THUNK <> IF ABI-ERR-UNKNOWN-REPRESENTATION THROW THEN ENDOF
         KIND-RESULT OF handle @ RESULT <> IF ABI-ERR-UNKNOWN-REPRESENTATION THROW THEN ENDOF
         KIND-SCALAR OF handle @ SCALAR <> IF ABI-ERR-UNKNOWN-REPRESENTATION THROW THEN ENDOF
+        KIND-BOOLEAN OF handle @ ABI-BOOL-TAG <> IF ABI-ERR-UNKNOWN-REPRESENTATION THROW THEN ENDOF
         drop ABI-ERR-UNKNOWN-REPRESENTATION THROW
     ENDCASE
 ;
@@ -193,6 +196,12 @@ s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
     handle metadata@ dup 0= IF drop 0 EXIT THEN
     drop
     handle @ SCALAR =
+;
+
+: isBoolean { handle -- flag }
+    handle metadata@ dup 0= IF drop 0 EXIT THEN
+    drop
+    handle @ ABI-BOOL-TAG =
 ;
 
 : xtInList? { xt headAddr -- flag }
@@ -331,9 +340,14 @@ s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
         SCALAR moved !
         handle cell+ @ moved cell+ !
         moved KIND-SCALAR 0 0 0 MODE-LINEAR OWN-LIVE newMeta DROP
+    ELSE handle @ ABI-BOOL-TAG = IF
+        align here 2 cells allot TO moved
+        ABI-BOOL-TAG moved !
+        handle cell+ @ moved cell+ !
+        moved KIND-BOOLEAN 0 0 0 MODE-LINEAR OWN-LIVE newMeta DROP
     ELSE
         ABI-ERR-UNKNOWN-REPRESENTATION THROW
-    THEN THEN THEN
+    THEN THEN THEN THEN
     OWN-CONSUMED meta META-STATE cells + !
     moved
 ;
@@ -368,6 +382,7 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
     meta META-STATE cells + @ OWN-LIVE <> IF 0 EXIT THEN
     meta META-MODE cells + @ MODE-MODAL <> IF 0 EXIT THEN
     meta META-KIND cells + @ KIND-SCALAR = IF -1 EXIT THEN
+    meta META-KIND cells + @ KIND-BOOLEAN = IF -1 EXIT THEN
     meta META-KIND cells + @ KIND-THUNK = IF
         meta META-CODE cells + @ modalSafeXT? 0= IF 0 EXIT THEN
         meta modalEnv? 0= IF 0 EXIT THEN
@@ -390,6 +405,29 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
     value handle cell+ !
     handle KIND-SCALAR 0 0 0 mode OWN-LIVE newMeta DROP
     handle
+;
+
+s" expected a checked boolean handle" exception constant ABI-ERR-EXPECTED-BOOLEAN
+s" invalid Agda boolean payload" exception constant ABI-ERR-INVALID-BOOLEAN
+
+: ABI-MAKE-BOOL { value mode -- handle }
+    mode MODE-LINEAR = mode MODE-MODAL = OR 0= IF ABI-ERR-INVALID-MODE THROW THEN
+    value 0= value -1 = OR 0= IF ABI-ERR-INVALID-BOOLEAN THROW THEN
+    align here 2 cells allot { handle }
+    ABI-BOOL-TAG handle !
+    value handle cell+ !
+    handle KIND-BOOLEAN 0 0 0 mode OWN-LIVE newMeta DROP
+    handle
+;
+
+: ABI-BOOL-INFO { handle -- value mode meta }
+    handle requireLiveMeta { meta }
+    meta META-KIND cells + @ KIND-BOOLEAN <> IF ABI-ERR-EXPECTED-BOOLEAN THROW THEN
+    meta META-MODE cells + @ { mode }
+    mode MODE-LINEAR = mode MODE-MODAL = OR 0= IF ABI-ERR-INVALID-MODE THROW THEN
+    handle cell+ @ { value }
+    value 0= value -1 = OR 0= IF ABI-ERR-INVALID-BOOLEAN THROW THEN
+    value mode meta
 ;
 
 \ Validate a checked numeric scalar without consuming or changing it.
@@ -431,19 +469,19 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
 ;
 
 : ABI-EQ-RAW { left right -- value }
-    left right = IF 1 ELSE 0 THEN
+    left right = IF -1 ELSE 0 THEN
 ;
 
 : ABI-GEQ-RAW { left right -- value }
-    left right >= IF 1 ELSE 0 THEN
+    left right >= IF -1 ELSE 0 THEN
 ;
 
 : ABI-LT-RAW { left right -- value }
-    left right < IF 1 ELSE 0 THEN
+    left right < IF -1 ELSE 0 THEN
 ;
 
 \ Consume linear operands only after validation, computation and result allocation succeed.
-: ABI-BINARY { leftHandle rightHandle operation -- resultHandle }
+: ABI-BINARY { leftHandle rightHandle operation makeResult -- resultHandle }
     leftHandle ABI-SCALAR-INFO { leftValue leftMode leftMeta }
     rightHandle ABI-SCALAR-INFO { rightValue rightMode rightMeta }
     leftHandle rightHandle = IF
@@ -451,46 +489,46 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
     THEN
     leftValue rightValue operation EXECUTE { resultValue }
     leftMode rightMode combineModes { resultMode }
-    resultValue resultMode ABI-MAKE-SCALAR { resultHandle }
+    resultValue resultMode makeResult EXECUTE { resultHandle }
     leftMode MODE-LINEAR = IF OWN-CONSUMED leftMeta META-STATE cells + ! THEN
     rightMode MODE-LINEAR = IF OWN-CONSUMED rightMeta META-STATE cells + ! THEN
     resultHandle
 ;
 
 : ABI-NAT-ADD ( leftHandle rightHandle -- resultHandle )
-    ['] ABI-ADD-RAW ABI-BINARY
+    ['] ABI-ADD-RAW ['] ABI-MAKE-SCALAR ABI-BINARY
 ;
 
 : ABI-NAT-SUB ( leftHandle rightHandle -- resultHandle )
-    ['] ABI-SUB-RAW ABI-BINARY
+    ['] ABI-SUB-RAW ['] ABI-MAKE-SCALAR ABI-BINARY
 ;
 
 : ABI-NAT-MONUS ( leftHandle rightHandle -- resultHandle )
-    ['] ABI-SUB-RAW ABI-BINARY
+    ['] ABI-SUB-RAW ['] ABI-MAKE-SCALAR ABI-BINARY
 ;
 
 : ABI-NAT-MUL ( leftHandle rightHandle -- resultHandle )
-    ['] ABI-MUL-RAW ABI-BINARY
+    ['] ABI-MUL-RAW ['] ABI-MAKE-SCALAR ABI-BINARY
 ;
 
 : ABI-NAT-QUOT ( leftHandle rightHandle -- resultHandle )
-    ['] ABI-QUOT-RAW ABI-BINARY
+    ['] ABI-QUOT-RAW ['] ABI-MAKE-SCALAR ABI-BINARY
 ;
 
 : ABI-NAT-REM ( leftHandle rightHandle -- resultHandle )
-    ['] ABI-REM-RAW ABI-BINARY
+    ['] ABI-REM-RAW ['] ABI-MAKE-SCALAR ABI-BINARY
 ;
 
 : ABI-NAT-EQ ( leftHandle rightHandle -- resultHandle )
-    ['] ABI-EQ-RAW ABI-BINARY
+    ['] ABI-EQ-RAW ['] ABI-MAKE-BOOL ABI-BINARY
 ;
 
 : ABI-NAT-GEQ ( leftHandle rightHandle -- resultHandle )
-    ['] ABI-GEQ-RAW ABI-BINARY
+    ['] ABI-GEQ-RAW ['] ABI-MAKE-BOOL ABI-BINARY
 ;
 
 : ABI-NAT-LT ( leftHandle rightHandle -- resultHandle )
-    ['] ABI-LT-RAW ABI-BINARY
+    ['] ABI-LT-RAW ['] ABI-MAKE-BOOL ABI-BINARY
 ;
 
 \ Dual-entry arithmetic preserves the legacy raw-cell stack effect while routing
@@ -632,6 +670,7 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
 
 
 :noname ." S: " ; SCALAR 1 cells + !
+:noname ." B: " ; ABI-BOOL-TAG 1 cells + !
 :noname ." R: " ; RESULT 1 cells + !
 
 
@@ -785,6 +824,7 @@ variable target
     BEGIN
     dethunk                     ( o1 )
     dup isScalar IF EXIT THEN
+    dup isBoolean IF EXIT THEN
     dup MAXNUM @ < 0 =          ( o1 0/-1 )
     if
         dup @ THUNK = 0 =   ( o1 0/-1 )
