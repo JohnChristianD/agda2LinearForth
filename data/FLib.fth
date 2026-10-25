@@ -226,7 +226,7 @@ variable LINEAR-SAFE-HEAD
 : moveLinearHandle { handle meta -- moved }
     0 { moved }
     handle @ THUNK = IF
-        THUNK align here 2 cells allot TO moved
+        align here 2 cells allot TO moved
         THUNK moved !
         ['] invokeClosure moved cell+ !
         moved KIND-THUNK
@@ -236,7 +236,7 @@ variable LINEAR-SAFE-HEAD
             MODE-LINEAR OWN-LIVE newMeta DROP
     ELSE
         handle @ RESULT = IF
-            RESULT align here 2 cells allot TO moved
+            align here 2 cells allot TO moved
             RESULT moved !
             handle cell+ @ moved cell+ !
             moved KIND-RESULT 0 0 0 MODE-LINEAR OWN-LIVE newMeta DROP
@@ -287,7 +287,7 @@ variable LINEAR-SAFE-HEAD
 
 : makeTHUNK { xt -- handle }
     xt isThunk xt isResult OR IF xt EXIT THEN
-    THUNK align here 2 cells allot { handle }
+    align here 2 cells allot { handle }
     THUNK handle !
     ['] invokeClosure handle cell+ !
     handle KIND-THUNK xt 0 0 MODE-UNKNOWN OWN-LIVE newMeta DROP
@@ -297,7 +297,7 @@ variable LINEAR-SAFE-HEAD
 :noname ." T: " ; THUNK 1 cells + !
 
 : makeRESULT { value -- handle }
-    RESULT align here 2 cells allot { handle }
+    align here 2 cells allot { handle }
     RESULT handle !
     value handle cell+ !
     handle KIND-RESULT 0 0 0 MODE-UNKNOWN OWN-LIVE newMeta DROP
@@ -465,7 +465,7 @@ variable target
             i 1+ TO i
         REPEAT
 
-        THUNK align here 2 cells allot { newHandle }
+        align here 2 cells allot { newHandle }
         THUNK newHandle !
         ['] invokeClosure newHandle cell+ !
         functionMode argumentMode combineModes { newMode }
