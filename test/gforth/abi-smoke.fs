@@ -151,12 +151,12 @@ legacy-add-adapter-test
 ;
 checked-modal-reuse-test
 
-\ The source backend encodes Agda true as -1 and false as 0.
+\ The checked ABI encodes booleans as natural scalars: true=1, false=0.
 : checked-eq-true-test ( -- )
   4 MODE-MODAL ABI-MAKE-SCALAR
   4 MODE-MODAL ABI-MAKE-SCALAR
   ABI-NAT-EQ ABI-SCALAR-INFO { value mode meta }
-  value -1 = abi-assert
+  value 1 = abi-assert
   mode MODE-MODAL = abi-assert
 ;
 checked-eq-true-test
@@ -174,7 +174,7 @@ checked-eq-false-test
   5 MODE-MODAL ABI-MAKE-SCALAR
   4 MODE-MODAL ABI-MAKE-SCALAR
   ABI-NAT-GEQ ABI-SCALAR-INFO { value mode meta }
-  value -1 = abi-assert
+  value 1 = abi-assert
 ;
 checked-geq-test
 
@@ -182,7 +182,7 @@ checked-geq-test
   4 MODE-MODAL ABI-MAKE-SCALAR
   5 MODE-MODAL ABI-MAKE-SCALAR
   ABI-NAT-LT ABI-SCALAR-INFO { value mode meta }
-  value -1 = abi-assert
+  value 1 = abi-assert
 ;
 checked-lt-test
 
