@@ -2,7 +2,7 @@
 
 ## Goal and scope
 
-The target is a dynamically enforced ABI for the subset of Agda programs this backend emits. Arbitrary Forth is outside the safety claim. The generated program must still be valid for GNU Gforth, and the legacy Forth words remain available with their existing stack effects; legacy callers do not automatically receive the checked-ABI guarantee.
+The target is a dynamically enforced ABI for the subset of Agda programs this backend emits. Arbitrary Forth is outside the safety claim. The generated program must still be valid for GNU Gforth, and the legacy Forth words remain available with their existing stack effects; legacy callers do not automatically receive the checked-ABI guarantee. Make sure the upstream jespercockx/agda2scheme is always entirely syncable and backwards-compatible strictly and for only those non-Forth non-Scheme and non-formalization files.
 
 “End-to-end” means all values and all operations reachable from a generated program use the checked representation. It does not mean trying to make arbitrary interactive GForth safe.
 
