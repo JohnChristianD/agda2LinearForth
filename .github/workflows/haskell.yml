@@ -61,6 +61,10 @@ jobs:
           fi
           printf '%s\n' "$output" | grep -F "linear payload cannot be modal"
 
+      - name: Preserve state when modal assertion is rejected
+        run: |
+          gforth data/FLib.fth -e ": verify-modal-rejection { h -- } h ['] assertModalValue CATCH { err } DROP err ABI-ERR-MODAL-PAYLOAD <> abort\\" unexpected modal error code\\" h metadata@ META-MODE cells + @ MODE-UNANNOTATED <> abort\\" failed assertion changed wrapper mode\\" ; 5 MODE-LINEAR ABI-MAKE-SCALAR makeRESULT verify-modal-rejection bye"
+
       - name: Set up GHC
         uses: haskell-actions/setup@v2
         with:
