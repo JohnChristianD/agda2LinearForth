@@ -1,4 +1,6 @@
 variable MAXNUM 100000000000000 MAXNUM !
+s" unsupported or invalid operation emitted by agda2forth" exception constant ABI-ERR-COMPILED-UNSUPPORTED
+: ABI-ERROR-COMPILED-UNSUPPORTED ( -- ) ABI-ERR-COMPILED-UNSUPPORTED THROW ;
 variable ENDFLAG 1234 ENDFLAG !
 s" unknown or unmanaged value handle" exception constant ABI-ERR-UNKNOWN-HANDLE
 s" use after linear handle consumption" exception constant ABI-ERR-CONSUMED-HANDLE
