@@ -101,6 +101,7 @@ open MatcherSignature public
 
 data StackItem : Set where
   rawNatItem : StackItem
+  rawBoolItem : StackItem
   modeTokenItem : SourceMode → StackItem
   valueItem : CoreTy → StackItem
   thunkItem : SourceMode → CodeClass → List CoreTy → CoreTy → StackItem
@@ -179,6 +180,11 @@ data StackEffect : Primitive → StackShape → StackShape → Set where
     StackEffect pMakeScalar
       (modeTokenItem m :: rawNatItem :: tail)
       (valueItem (naturalTypeFor m) :: tail)
+
+  makeBooleanEffect : {m : SourceMode} {tail : StackShape} →
+    StackEffect pMakeBool
+      (modeTokenItem m :: rawBoolItem :: tail)
+      (valueItem (booleanTypeFor m) :: tail)
 
   makeLinearThunkEffect : {c : CodeClass} {tail : StackShape} →
     LinearCode c →
