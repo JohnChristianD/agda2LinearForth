@@ -6,7 +6,7 @@ The target is a dynamically enforced ABI for the subset of Agda programs this ba
 
 “End-to-end” means all values and all operations reachable from a generated program use the checked representation. It does not mean trying to make arbitrary interactive GForth safe.
 
-This document deliberately distinguishes a specification, an implementation, and a refinement proof. The Agda models in `formal/LinearModalABI.agda` and `formal/LinearModalStackEffects.agda` are constructive and import only Agda's bundled `Agda.Builtin.Nat` and `Agda.Builtin.Equality` modules. They use no Agda standard library, no postulates and no F*. The stack-effects module gives typed normal stack-shape rules for the closed primitive subset, including numeric operations, scalar/thunk/result operations, application/force, conditional, constructor/matcher schemas and linear/modal printing. Exception transitions are specified separately from normal-return stack effects. These models are not yet proofs that the current Forth words implement the model.
+This document deliberately distinguishes a specification, an implementation, and a refinement proof. The Agda models in `formal/LinearModalABI.agda`, `formal/LinearModalStackEffects.agda`, and `formal/LinearModalExamples.agda` are constructive and import only Agda's bundled `Agda.Builtin.Nat` and `Agda.Builtin.Equality` modules. They use no Agda standard library, no postulates and no F*. The stack-effects module gives typed normal stack-shape rules for the enumerated closed primitive subset, including numeric operations, scalar/thunk/result operations, application/force, conditional, constructor/matcher schemas and linear/modal printing. The examples provide concrete witnesses for linear, modal and mixed-mode arithmetic plus checked thunk construction and promotion. Exception transitions are specified separately from normal-return stack effects. These are specifications and proof ingredients, not yet proofs that the current Forth words implement them.
 
 ## Source modes and runtime values
 
@@ -84,7 +84,7 @@ The target is GNU Gforth specifically. The ABI may use Gforth-supported locals, 
 5. The checked guarantee covers only code emitted/loaded through the defined boundary. It does not claim to secure arbitrary interactive Forth.
 6. Any emitted unsupported/invalid operation raises a documented error instead of emitting a silent no-op or exiting the entire interpreter with `BYE`.
 
-The runtime currently uses Gforth's `exception` to name errors and `THROW` to report them. `CATCH` is useful for composition, but the implementation must explicitly uphold the exceptional postcondition because metadata and dictionary mutations are not automatically transactional.
+The runtime currently uses Gforth's `exception` to name errors and `THROW` to report them. Unsupported compiler output is emitted as a diagnostic followed by the catchable `ABI-ERROR-COMPILED-UNSUPPORTED` word, rather than using `BYE`. In `dethunk`, execution now goes through `CATCH`; on a linear closure failure, the code retires live linear descendants of its captured environment before rethrowing the original error. The Gforth smoke test checks this failure path. This cleanup relies on the closed ABI's acyclic new-descriptor/reference-order discipline, which remains a runtime invariant to enforce and prove. `CATCH` does not automatically roll back arbitrary dictionary or metadata mutations.
 
 ## Hoare and separation-logic interpretation
 
@@ -101,11 +101,11 @@ These are reusable proof ingredients, not the completed implementation theorem. 
 
 ## Verification stages and status
 
-- [x] Define a stdlib-free Agda state/invariant model and constructive copy/drop rules.
+- [x] Define a stdlib-free Agda state/invariant model, copy/drop rules, and a strict identity-decrease condition for references.
 - [x] Define separating conjunction and normal/exceptional Hoare contracts.
 - [x] Define structured runtime-error outcomes and a catch-composition preservation lemma.
-- [x] Define typed stack-shape effects for the enumerated closed primitive subset.
-- [ ] Confirm both Agda models type-check in CI using Agda itself with `--no-libraries`.
+- [x] Define typed stack-shape effects and example witnesses for the enumerated closed primitive subset.
+- [ ] Confirm all three Agda modules type-check in CI using Agda itself with `--no-libraries`.
 - [ ] Give each emitted primitive a complete stack/mode/resource signature and derive permitted compositions.
 - [ ] Route every supported generated literal, constructor, application, force, conditional and primitive through the checked ABI.
 - [ ] Replace caller-asserted XT safety with compiler/loader-generated code-class derivations tied to the closed core IR.
