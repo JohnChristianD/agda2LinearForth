@@ -260,11 +260,10 @@ variable LINEAR-SAFE-HEAD
 
 : assertLinear { handle -- handle }
     handle requireLiveMeta { meta }
+    handle isThunk 0= abort" assertLinear requires a closure thunk; results inherit mode from checked closures"
     meta trackedEnv? 0= abort" cannot assert linearity with unknown or consumed captures"
-    handle isThunk IF
-        meta META-CODE cells + @ linearSafeXT?
-            0= abort" closure XT lacks a linear-safe contract"
-    THEN
+    meta META-CODE cells + @ linearSafeXT?
+        0= abort" closure XT lacks a linear-safe contract"
     MODE-LINEAR meta META-MODE cells + !
     handle
 ;
