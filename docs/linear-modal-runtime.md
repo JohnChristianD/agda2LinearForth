@@ -6,7 +6,7 @@ The target is a dynamically enforced ABI for the subset of Agda programs this ba
 
 “End-to-end” means all values and all operations reachable from a generated program use the checked representation. It does not mean trying to make arbitrary interactive GForth safe.
 
-This document deliberately distinguishes a specification, an implementation, and a refinement proof. The Agda model in `formal/LinearModalABI.agda` is constructive and imports only Agda's bundled `Agda.Builtin.Nat` and `Agda.Builtin.Equality` modules. It uses no Agda standard library, no postulates and no F*. It is not yet a proof that the current Forth words implement the model.
+This document deliberately distinguishes a specification, an implementation, and a refinement proof. The Agda models in `formal/LinearModalABI.agda` and `formal/LinearModalStackEffects.agda` are constructive and import only Agda's bundled `Agda.Builtin.Nat` and `Agda.Builtin.Equality` modules. They use no Agda standard library, no postulates and no F*. The stack-effects module gives typed normal stack-shape rules for the closed primitive subset, including numeric operations, scalar/thunk/result operations, application/force, conditional, constructor/matcher schemas and linear/modal printing. Exception transitions are specified separately from normal-return stack effects. These models are not yet proofs that the current Forth words implement the model.
 
 ## Source modes and runtime values
 
@@ -88,7 +88,7 @@ The runtime currently uses Gforth's `exception` to name errors and `THROW` to re
 
 ## Hoare and separation-logic interpretation
 
-The Agda model defines:
+The Agda state model defines:
 
 - A disjoint-identity heap split (`Sep`) for separating conjunction.
 - Total Hoare triples with distinct normal and exceptional postconditions.
@@ -104,7 +104,8 @@ These are reusable proof ingredients, not the completed implementation theorem. 
 - [x] Define a stdlib-free Agda state/invariant model and constructive copy/drop rules.
 - [x] Define separating conjunction and normal/exceptional Hoare contracts.
 - [x] Define structured runtime-error outcomes and a catch-composition preservation lemma.
-- [ ] Type-check this model in CI using Agda itself with `--no-libraries`.
+- [x] Define typed stack-shape effects for the enumerated closed primitive subset.
+- [ ] Confirm both Agda models type-check in CI using Agda itself with `--no-libraries`.
 - [ ] Give each emitted primitive a complete stack/mode/resource signature and derive permitted compositions.
 - [ ] Route every supported generated literal, constructor, application, force, conditional and primitive through the checked ABI.
 - [ ] Replace caller-asserted XT safety with compiler/loader-generated code-class derivations tied to the closed core IR.
