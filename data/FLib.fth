@@ -479,6 +479,56 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
         ." )"
 ;
 variable target
+
+\ On exceptional exit from a checked linear closure, its uniquely-owned linear
+\ captures cannot remain live under a consumed parent. Retire the linear subtree.
+\ This traversal relies on the checked ABI's acyclic, allocate-new descriptors.
+: consumeLinearTree { handle -- }
+    handle metadata@ { childMeta }
+    childMeta 0= IF ABI-ERR-UNKNOWN-HANDLE THROW THEN
+    childMeta META-MODE cells + @ MODE-LINEAR <> IF EXIT THEN
+    childMeta META-STATE cells + @ OWN-CONSUMED = IF EXIT THEN
+    childMeta META-KIND cells + @ KIND-THUNK = IF
+        childMeta META-ENVCOUNT cells + @ { count }
+        childMeta META-ENV cells + @ { env }
+        0 { i }
+        BEGIN i count < WHILE
+            env i cells + @ { nestedHandle }
+            nestedHandle metadata@ { nestedMeta }
+            nestedMeta 0= IF ABI-ERR-LINEAR-CAPTURE THROW THEN
+            nestedMeta META-MODE cells + @ MODE-LINEAR = IF
+                nestedHandle consumeLinearTree
+            THEN
+            i 1+ TO i
+        REPEAT
+    ELSE
+        childMeta META-KIND cells + @ KIND-RESULT = IF
+            handle cell+ @ { payload }
+            payload metadata@ { payloadMeta }
+            payloadMeta 0= IF ABI-ERR-LINEAR-CAPTURE THROW THEN
+            payloadMeta META-MODE cells + @ MODE-LINEAR = IF
+                payload consumeLinearTree
+            THEN
+        THEN
+    THEN
+    OWN-CONSUMED childMeta META-STATE cells + !
+;
+
+: consumeLinearCapturesOnThrow { closureMeta -- }
+    closureMeta META-ENVCOUNT cells + @ { count }
+    closureMeta META-ENV cells + @ { env }
+    0 { i }
+    BEGIN i count < WHILE
+        env i cells + @ { child }
+        child metadata@ { childMeta }
+        childMeta 0= IF ABI-ERR-LINEAR-CAPTURE THROW THEN
+        childMeta META-MODE cells + @ MODE-LINEAR = IF
+            child consumeLinearTree
+        THEN
+        i 1+ TO i
+    REPEAT
+;
+
 : dethunk { value -- result }
     BEGIN
         value metadata@ { meta }
@@ -488,7 +538,18 @@ variable target
             meta META-MODE cells + @ MODE-LINEAR = IF
                 OWN-CONSUMED meta META-STATE cells + !
             THEN
-            value ENDFLAG value cell+ PERFORM
+            \ CATCH preserves the pre-call stack on failure, but does not roll
+            \ back metadata writes. Explicitly retire the linear capture tree,
+            \ then rethrow the original code to the caller.
+            value ENDFLAG value cell+ @ CATCH
+            DUP 0<> IF
+                { thrownCode }
+                meta META-MODE cells + @ MODE-LINEAR = IF
+                    meta consumeLinearCapturesOnThrow
+                THEN
+                thrownCode THROW
+            THEN
+            DROP
             passMany NIP TO value
             meta META-MODE cells + @ MODE-LINEAR = IF
                 meta value checkLinearEnvConsumed
