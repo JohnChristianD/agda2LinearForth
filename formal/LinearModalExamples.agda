@@ -29,6 +29,33 @@ mixedNatAddition :
     (valueItem naturalTy :: tail)
 mixedNatAddition = natAddEffect naturalIsNatural boxedNaturalIsNatural
 
+linearNatEquality :
+  {tail : StackShape} →
+  StackEffect pNatEq
+    (valueItem naturalTy :: valueItem naturalTy :: tail)
+    (valueItem booleanTy :: tail)
+linearNatEquality = natEqEffect naturalIsNatural naturalIsNatural
+
+modalNatEquality :
+  {tail : StackShape} →
+  StackEffect pNatEq
+    (valueItem (!Ty naturalTy) :: valueItem (!Ty naturalTy) :: tail)
+    (valueItem (!Ty booleanTy) :: tail)
+modalNatEquality = natEqEffect boxedNaturalIsNatural boxedNaturalIsNatural
+
+mixedNatEquality :
+  {tail : StackShape} →
+  StackEffect pNatEq
+    (valueItem (!Ty naturalTy) :: valueItem naturalTy :: tail)
+    (valueItem booleanTy :: tail)
+mixedNatEquality = natEqEffect naturalIsNatural boxedNaturalIsNatural
+
+checkedModalBooleanConstruction :
+  StackEffect pMakeBool
+    (modeTokenItem modal :: rawBoolItem :: [])
+    (valueItem (!Ty booleanTy) :: [])
+checkedModalBooleanConstruction = makeBooleanEffect
+
 checkedModalAddClosure :
   StackEffect pMakeThunk
     (modeTokenItem modal :: codeItem codeNatAdd :: [])
