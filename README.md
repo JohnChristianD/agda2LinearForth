@@ -91,9 +91,9 @@ The target is GNU Gforth specifically. The ABI may use Gforth-supported locals, 
 3. New checked output uses namespaced ABI entry points and does not silently route an invalid checked value into a legacy representation.
 4. Raw memory operations, arbitrary `EXECUTE`, dictionary mutation/compilation, and caller-created XT-safety assertions are excluded from the checked subset.
 5. The checked guarantee covers only code emitted/loaded through the defined boundary. It does not claim to secure arbitrary interactive Forth.
-6. Any emitted unsupported/invalid operation raises a documented error instead of emitting a silent no-op or exiting the entire interpreter with `BYE`.
+6. Checked runtime ABI operations raise documented, catchable errors. The unchanged compiler still emits legacy `BYE` for unsupported literals/primitives and some invalid backend cases; those compiler-emitted paths are not yet covered by the catchable-error guarantee.
 
-The runtime currently uses Gforth's `exception` to name errors and `THROW` to report them. Unsupported compiler output is emitted as a diagnostic followed by the catchable `ABI-ERROR-COMPILED-UNSUPPORTED` word, rather than using `BYE`. In `dethunk`, execution now goes through `CATCH`; on a linear closure failure, the code retires live linear descendants of its captured environment before rethrowing the original error. The Gforth smoke test checks this failure path. This cleanup relies on the closed ABI's acyclic new-descriptor/reference-order discipline, which remains a runtime invariant to enforce and prove. `CATCH` does not automatically roll back arbitrary dictionary or metadata mutations.
+The runtime defines named Gforth exception codes and uses `THROW` for checked-ABI rejection. With the Haskell sources held unchanged, `fthError` still emits a diagnostic followed by `BYE`; the runtime's `ABI-ERROR-COMPILED-UNSUPPORTED` word is available to checked Forth callers but is not emitted by the compiler. In `dethunk`, execution goes through `CATCH`; on a linear closure failure, live linear descendants of its captured environment are retired before the original error is rethrown. The smoke test exercises this failure path. This cleanup relies on the closed ABI's acyclic descriptor/reference-order discipline, which remains an invariant to enforce and prove. `CATCH` does not automatically roll back arbitrary dictionary or metadata mutations.
 
 ## Hoare and separation-logic interpretation
 
@@ -120,7 +120,8 @@ These are reusable proof ingredients, not the completed implementation theorem. 
 - [ ] Replace caller-asserted XT safety with compiler/loader-generated code-class derivations tied to the closed core IR.
 - [ ] Prove actual Forth word implementations preserve `WellFormed`, including every exceptional path.
 - [ ] Prove compiler-to-core and core-to-Gforth correspondence for the supported subset.
-- [x] Add a compiler-output regression fixture requiring unsupported literals to emit a catchable ABI error instead of BYE.
+- [x] Add a compiler-output regression fixture recording the unchanged unsupported-literal diagnostic and legacy `BYE` output.
+- [ ] Route unsupported compiler cases through a catchable boundary without modifying the Haskell backend; this requires a verified, compatibility-preserving checked loader or runtime interception.
 - [ ] Run positive and negative Gforth tests, plus compatibility regression tests for legacy words.
 
 Until those last obligations pass, the only justified claim is runtime hardening for explicitly managed handles—not complete end-to-end linear/modal safety.
