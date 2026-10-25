@@ -216,7 +216,11 @@ variable LINEAR-SAFE-HEAD
     MODE-MODAL
 ;
 
-: invokeClosure { handle -- }
+: invokeClosure ( handle ENDFLAG -- handle ENDFLAG args... )
+    \ dethunk calls this through PERFORM with the original handle and sentinel
+    \ already on the data stack. Duplicate the handle for lookup but preserve
+    \ the force protocol's stack prefix.
+    1 pick { handle }
     handle metadata@ dup 0= abort" closure has no metadata"
     { meta }
     meta META-ENV cells + @
