@@ -30,7 +30,7 @@ type abi_error =
   | UnsupportedPrimitive
   | AbiVersionMismatch
 
-type outcome (a:Type) =
+noeq type outcome (a:Type) =
   | Success : state -> a -> outcome a
   | Failure : state -> abi_error -> outcome a
 
