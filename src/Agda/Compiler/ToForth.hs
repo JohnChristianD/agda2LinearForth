@@ -91,7 +91,7 @@ fthConstructor f args = formToAtom $ fthSimpleWord f (RSAtom $ T.pack
     ++ show (args + 1) ++ " fillArray here " ++ show (args + 1) ++ " cells allot"))
 
 fthError :: Text -> FthForm
-fthError msg = RSAtom $ T.pack ("cr .\" " ++ T.unpack msg ++ " \" bye")
+fthError msg = RSAtom $ T.pack ("cr .\" " ++ T.unpack msg ++ " \" ABI-ERROR-COMPILED-UNSUPPORTED")
 
 fthAxiom :: FthAtom -> FthForm
 fthAxiom f = fthWord f $ fthError $ "encountered axiom: " <> f
@@ -543,7 +543,7 @@ instance ToForth TTerm FthForm where
                     | c1 == conName falseC = (v2',v1')
                     | otherwise            = __IMPOSSIBLE__
               applyToArgs $ RSList [x, RSAtom "if", thenBranch, RSAtom "else", elseBranch, RSAtom "then"]
-            _ -> return $ RSAtom "ERRONEOUS BOOLCASE DURING CASE MATCHING"
+            _ -> return $ fthError "invalid boolean case in generated backend code"
 
       TUnit -> do
         unless (null args) __IMPOSSIBLE__
