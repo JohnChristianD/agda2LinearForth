@@ -39,13 +39,13 @@ Files: docs/linear-modal-runtime-abi.md, proof/LinearModalABI.fsti.
 
 Files: a dedicated GForth test script under test/, invoked by .github/workflows/haskell.yml.
 
-- [ ] Linear handle cannot be reused through any ABI word after transfer/consumption.
-- [ ] Linear captured values cannot be silently dropped or duplicated.
-- [ ] Modal promotion rejects a closure with a linear, unregistered, or mode-unknown capture.
-- [ ] Modal result wrapping rejects linear payloads.
+- [ ] Linear handle cannot be reused through every ABI word after transfer/consumption.
+- [ ] Linear captured values cannot be silently dropped or duplicated in all closure/constructor cases.
+- [ ] Modal promotion rejects every closure with a linear, unregistered, or mode-unknown capture.
+- [x] Regression steps added for modal result wrappers around linear closures/scalars, valid modal scalar payloads, invalid scalar mode, and preserving wrapper metadata after a caught modal assertion failure (CI has not been observed on this latest API-written head).
 - [ ] Failure injected during force/capture leaves resource accounting valid.
-- [ ] Unknown/legacy raw cells are rejected by checked entry points.
-- [ ] Existing supported FLib/GForth stack effects still pass compatibility tests.
+- [ ] Unknown/legacy raw cells are rejected at every checked entry point.
+- [ ] Full compatibility suite verifies documented legacy FLib/GForth stack effects.
 
 Every negative test must be observed failing against the current implementation before its fix.
 
@@ -55,7 +55,8 @@ Files: data/FLib.fth and checked runtime tests.
 
 - [ ] Introduce explicit constructors for every checked scalar, constructor, result, and closure.
 - [ ] Remove MODE-UNANNOTATED from checked execution; reserve unknown only for the legacy import boundary.
-- [ ] Give each checked word a stable error code and preserve invariants on error.
+- [x] Add named THROW codes to currently touched managed-runtime error paths.
+- [ ] Extend stable errors and invariant-preserving transitions to the complete checked ABI.
 - [ ] Use a single authoritative handle/resource registry and explicit state transitions.
 
 ### 4. Establish compiler boundaries
@@ -70,9 +71,10 @@ Files: src/Agda/Compiler/ToForth.hs, src/Main.hs, compiler tests.
 
 ### 5. Specify every builtin and primitive
 
-Files: docs/linear-modal-runtime-abi.md, primitive-contract table and compiler tests.
+Files: docs/linear-modal-runtime-abi.md, docs/linear-modal-primitive-contracts.md, and compiler tests.
 
-- [ ] Define stack/data effects, mode requirements, resource effects, memory footprint, and exception behavior.
+- [x] Inventory current lowering and specify an admission policy in the primitive-contract document.
+- [ ] Derive exact, proof-backed stack/data, mode, resource, memory-footprint, numeric-domain, and exception contracts for every admitted primitive.
 - [ ] Route arithmetic and booleans through checked wrappers.
 - [ ] Route constructors and closures through ownership-aware constructors.
 - [ ] Reject unknown words from checked generated modules.
@@ -87,4 +89,4 @@ Files: docs/linear-modal-runtime-abi.md, primitive-contract table and compiler t
 
 ## Current truthful status
 
-The written design and contract interface are initial specification artifacts, not completed implementation or proof. Runtime negative tests, total ABI coverage, compiler instrumentation, F* checking/proofs, and refinement evidence remain open. Existing PR #6 smoke tests do not establish full linear/modal correctness.
+The design/specification artifacts are committed. Incremental runtime changes add tracked scalars, named THROW codes for touched checks, modal-payload validation, and compile-time failure for several unsupported backend constructs. The checked ABI is not total or emitted by the compiler; primitive wrappers and exact numeric semantics remain incomplete. The F* interface has not been typechecked and its predicates have no concrete model/proofs. Latest API-written changes still require a completed CI run, tests have not been observed failing before the fixes in this environment, and compiler/runtime refinement evidence remains open. Existing smoke tests do not establish full linear/modal correctness.
