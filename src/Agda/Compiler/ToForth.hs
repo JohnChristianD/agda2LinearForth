@@ -91,7 +91,17 @@ fthConstructor f args = formToAtom $ fthSimpleWord f (RSAtom $ T.pack
     ++ show (args + 1) ++ " fillArray here " ++ show (args + 1) ++ " cells allot"))
 
 fthError :: Text -> FthForm
-fthError msg = RSAtom $ T.pack ("cr .\" " ++ T.unpack msg ++ " \" bye")
+fthError msg = RSAtom $ T.pack
+  ("cr .\\" " ++ T.unpack (sanitizeDiagnostic msg) ++ " \\" ABI-ERROR-COMPILED-UNSUPPORTED")
+  where
+    -- Keep diagnostic text inside a single Gforth .\" string. The sanitization
+    -- affects display only; the stable THROW code carries the error boundary.
+    sanitizeDiagnostic = T.map sanitizeChar
+    sanitizeChar '"' = '\\''
+    sanitizeChar '\\\\' = '/'
+    sanitizeChar '\\n' = ' '
+    sanitizeChar '\\r' = ' '
+    sanitizeChar c = c
 
 fthAxiom :: FthAtom -> FthForm
 fthAxiom f = fthWord f $ fthError $ "encountered axiom: " <> f
