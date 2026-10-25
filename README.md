@@ -1,5 +1,7 @@
 # agda2LinearForth — linear/modal runtime ABI specification and verification status
 
+`agda2forth` compiles Agda code for GNU Gforth. This document defines the intended checked subset, its error boundary, and the current proof/implementation gaps.
+
 
 > **PR #6 guarantee status: NOT COMPLETE.** The Agda modules are specifications and proof ingredients, not a refinement proof for the generated Forth runtime. Generated literals and multiple execution paths still bypass the checked descriptors; caller-supplied execution-token declarations remain trusted assertions. A green CI run would validate only enumerated tests, not establish universal linear/modal memory safety.
 
@@ -9,7 +11,7 @@ This repository ports the compiler backend from `jespercockx/agda2scheme` to GNU
 
 ## Goal and scope
 
-The target is a dynamically enforced ABI for the subset of Agda programs this backend emits. Arbitrary Forth is outside the safety claim. The generated program must still be valid for GNU Gforth, and the legacy Forth words remain available with their existing stack effects; legacy callers do not automatically receive the checked-ABI guarantee. Make sure the upstream jespercockx/agda2scheme is always entirely end-to-end syncable, consistent, and backwards-compatible strictly and for only those non-Forth non-Scheme non-MD and non-formalization files.
+The target is a dynamically enforced ABI for the subset of Agda programs this backend emits. Arbitrary Forth is outside the safety claim. The generated program must still be valid for GNU Gforth, and the legacy Forth words remain available with their existing stack effects; legacy callers do not automatically receive the checked-ABI guarantee. The compatibility target is the shared Agda frontend and erasure pipeline; the Forth runtime, Scheme backend, and formal proof artifacts are necessarily target-specific.
 
 “End-to-end” means all values and all operations reachable from a generated program use the checked representation. It does not mean trying to make arbitrary interactive GForth safe.
 
