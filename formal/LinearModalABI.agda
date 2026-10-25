@@ -53,10 +53,11 @@ data Life : Set where
   live consumed : Life
 
 data Kind : Set where
-  scalar thunk result : Kind
+  thunk result scalar boolean : Kind
 
 data RuntimeError : Set where
   unknownHandle consumedHandle invalidMode wrongKind : RuntimeError
+  expectedScalar expectedBoolean invalidBoolean : RuntimeError
   linearCaptureNotAccounted modalPromotionRejected : RuntimeError
   unknownPrimitive badStackEffect : RuntimeError
   badResultPayload abiEscapeHatch : RuntimeError
@@ -362,7 +363,7 @@ open PromotionPrecondition public
 data Primitive : Set where
   pNatAdd pNatSub pNatMul pNatQuot pNatRem : Primitive
   pNatEq pNatGeq pNatLt pNatMonus pIf : Primitive
-  pMakeScalar pMakeThunk pApply pForce pMakeResult pUnwrapResult : Primitive
+  pMakeScalar pMakeBool pMakeThunk pApply pForce pMakeResult pUnwrapResult : Primitive
   pPromoteModal pAssertLinear pConstruct pMatch pPrint pThrow pCatch : Primitive
 
 
@@ -376,7 +377,7 @@ data Arity : Set where
 data OperandRule : Set where
   twoCheckedScalars : OperandRule
   threeCheckedBranches : OperandRule
-  modeAndScalar : OperandRule
+  modeAndScalar modeAndBoolean : OperandRule
   checkedCode : OperandRule
   checkedClosureAndValue : OperandRule
   checkedClosure : OperandRule
@@ -389,7 +390,7 @@ data OperandRule : Set where
 
 data OwnershipEffect : Set where
   consumeLinearOperands : OwnershipEffect
-  makeFreshScalar : OwnershipEffect
+  makeFreshScalar makeFreshBoolean : OwnershipEffect
   makeFreshClosure : OwnershipEffect
   moveCaptures : OwnershipEffect
   forceByMode : OwnershipEffect
@@ -430,7 +431,10 @@ record PrimitiveSpec (p : Primitive) : Set where
 open PrimitiveSpec public
 
 numericErrors : List RuntimeError
-numericErrors = unknownHandle :: consumedHandle :: wrongKind :: invalidMode :: []
+numericErrors = unknownHandle :: consumedHandle :: wrongKind :: expectedScalar :: invalidMode :: []
+
+booleanErrors : List RuntimeError
+booleanErrors = unknownHandle :: consumedHandle :: wrongKind :: expectedBoolean :: invalidMode :: invalidBoolean :: []
 
 divisionErrors : List RuntimeError
 divisionErrors = unknownHandle :: consumedHandle :: wrongKind ::
@@ -457,12 +461,13 @@ primitiveSpecFor pNatSub = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars cons
 primitiveSpecFor pNatMul = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
 primitiveSpecFor pNatQuot = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation divisionErrors
 primitiveSpecFor pNatRem = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation divisionErrors
-primitiveSpecFor pNatEq = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
-primitiveSpecFor pNatGeq = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
-primitiveSpecFor pNatLt = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
+primitiveSpecFor pNatEq = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation (numericErrors ++ (invalidBoolean :: []))
+primitiveSpecFor pNatGeq = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation (numericErrors ++ (invalidBoolean :: []))
+primitiveSpecFor pNatLt = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation (numericErrors ++ (invalidBoolean :: []))
 primitiveSpecFor pNatMonus = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
 primitiveSpecFor pIf = mkPrimitiveSpec (fixedArity 3) threeCheckedBranches selectBranchAndAccountResources selectedBranchMode runtimeValueValidation closureErrors
 primitiveSpecFor pMakeScalar = mkPrimitiveSpec (fixedArity 2) modeAndScalar makeFreshScalar inputMode noCodeEvidence (invalidMode :: numericErrors)
+primitiveSpecFor pMakeBool = mkPrimitiveSpec (fixedArity 2) modeAndBoolean makeFreshBoolean inputMode runtimeValueValidation booleanErrors
 primitiveSpecFor pMakeThunk = mkPrimitiveSpec (fixedArity 2) checkedCode makeFreshClosure codeResultMode compilerDerivedCodeProof closureErrors
 primitiveSpecFor pApply = mkPrimitiveSpec (fixedArity 2) checkedClosureAndValue moveCaptures codeResultMode compilerDerivedCodeProof closureErrors
 primitiveSpecFor pForce = mkPrimitiveSpec (fixedArity 1) checkedClosure forceByMode codeResultMode compilerDerivedCodeProof closureErrors
