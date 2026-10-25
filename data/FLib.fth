@@ -497,7 +497,7 @@ variable target
             nestedHandle metadata@ { nestedMeta }
             nestedMeta 0= IF ABI-ERR-LINEAR-CAPTURE THROW THEN
             nestedMeta META-MODE cells + @ MODE-LINEAR = IF
-                nestedHandle consumeLinearTree
+                nestedHandle RECURSE
             THEN
             i 1+ TO i
         REPEAT
@@ -507,7 +507,7 @@ variable target
             payload metadata@ { payloadMeta }
             payloadMeta 0= IF ABI-ERR-LINEAR-CAPTURE THROW THEN
             payloadMeta META-MODE cells + @ MODE-LINEAR = IF
-                payload consumeLinearTree
+                payload RECURSE
             THEN
         THEN
     THEN
