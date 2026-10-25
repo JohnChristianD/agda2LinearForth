@@ -9,6 +9,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up GForth
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gforth
+
+      - name: Check runtime ABI boundaries
+        run: gforth test/gforth/abi-smoke.fs
+
       - name: Set up GHC
         uses: haskell-actions/setup@v2
         with:
@@ -21,6 +29,9 @@ jobs:
 
       - name: Run tests
         run: cabal test all
+
+      - name: Type-check constructive ABI model without standard library
+        run: cabal run agda-spec-check -- --no-libraries -i formal formal/LinearModalABI.agda
 
       - name: Compile first-order triples fixture
         run: cabal run agda2forth -- -i test test/TriplesFO.agda
