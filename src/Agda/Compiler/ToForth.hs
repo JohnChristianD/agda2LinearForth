@@ -91,7 +91,7 @@ fthConstructor f args = formToAtom $ fthSimpleWord f (RSAtom $ T.pack
     ++ show (args + 1) ++ " fillArray here " ++ show (args + 1) ++ " cells allot"))
 
 fthError :: Text -> FthForm
-fthError msg = RSAtom $ T.pack ("cr .\" " ++ T.unpack msg ++ " \" ABI-ERROR-COMPILED-UNSUPPORTED")
+fthError msg = RSAtom $ T.pack ("cr .\" " ++ T.unpack msg ++ " \" bye")
 
 fthAxiom :: FthAtom -> FthForm
 fthAxiom f = fthWord f $ fthError $ "encountered axiom: " <> f
@@ -243,16 +243,16 @@ fthPreamble = do
   force <- makeForce
   return
     -- [ RSAtom "s\" ../lib/loader.fth\" included"
-    [ fthSimpleWord "add"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "ABI-ADD-OR-LEGACY"]
-    , fthSimpleWord "sub"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "ABI-SUB-OR-LEGACY"]
-    , fthSimpleWord "mul"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "ABI-MUL-OR-LEGACY"]
-    , fthSimpleWord "quot" $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "ABI-QUOT-OR-LEGACY"]
-    , fthSimpleWord "rem"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "ABI-REM-OR-LEGACY"]
+    [ fthSimpleWord "add"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "+"]
+    , fthSimpleWord "sub"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "-"]
+    , fthSimpleWord "mul"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "*"]
+    , fthSimpleWord "quot" $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "/"]
+    , fthSimpleWord "rem"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "mod"]
     , fthSimpleWord "iff"  $ fthLocals ["b","x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "b"), RSAtom "if", force (RSAtom "x"), RSAtom "else", force (RSAtom "y"), RSAtom "then"]
-    , fthSimpleWord "eq"   $ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "x"), force (RSAtom "y"), RSAtom "ABI-EQ-OR-LEGACY"]
-    , fthSimpleWord "geq"  $ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "x"), force (RSAtom "y"), RSAtom "ABI-GEQ-OR-LEGACY"]
-    , fthSimpleWord "lt"   $ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "x"), force (RSAtom "y"), RSAtom "ABI-LT-OR-LEGACY"]
-    , fthSimpleWord "monus"$ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "y"), force (RSAtom "x"), RSAtom "ABI-MONUS-OR-LEGACY"]
+    , fthSimpleWord "eq"   $ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "x"), force (RSAtom "y"), RSAtom "="]
+    , fthSimpleWord "geq"  $ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "x"), force (RSAtom "y"), RSAtom ">="]
+    , fthSimpleWord "lt"   $ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "x"), force (RSAtom "y"), RSAtom "<"]
+    , fthSimpleWord "monus"$ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "y x sub pass pass"),  RSAtom "dup 0 < if drop 0 then"]
     ]
 
 getFLib :: String
@@ -543,7 +543,7 @@ instance ToForth TTerm FthForm where
                     | c1 == conName falseC = (v2',v1')
                     | otherwise            = __IMPOSSIBLE__
               applyToArgs $ RSList [x, RSAtom "if", thenBranch, RSAtom "else", elseBranch, RSAtom "then"]
-            _ -> return $ fthError "invalid boolean case in generated backend code"
+            _ -> return $ RSAtom "ERRONEOUS BOOLCASE DURING CASE MATCHING"
 
       TUnit -> do
         unless (null args) __IMPOSSIBLE__
