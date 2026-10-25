@@ -3,6 +3,9 @@ variable ENDFLAG 1234 ENDFLAG !
 s" unknown or unmanaged value handle" exception constant ABI-ERR-UNKNOWN-HANDLE
 s" use after linear handle consumption" exception constant ABI-ERR-CONSUMED-HANDLE
 s" linear capture was not accounted for" exception constant ABI-ERR-LINEAR-CAPTURE
+s" invalid ABI scalar mode" exception constant ABI-ERR-INVALID-MODE
+s" expected a scalar handle" exception constant ABI-ERR-EXPECTED-SCALAR
+s" arithmetic result exceeds the checked cell range" exception constant ABI-ERR-NAT-OVERFLOW
 s" closure has no metadata" exception constant ABI-ERR-CLOSURE-METADATA
 s" cannot move unknown linear representation" exception constant ABI-ERR-UNKNOWN-REPRESENTATION
 s" assertLinear requires a closure thunk" exception constant ABI-ERR-ASSERT-LINEAR-KIND
@@ -77,6 +80,7 @@ defer passMany
 ;
 variable THUNK 1 cells allot 2 thunk !
 variable RESULT 1 cells allot 2 RESULT !
+variable SCALAR 1 cells allot
 
 0 constant META-NEXT
 1 constant META-HANDLE
@@ -90,6 +94,7 @@ variable RESULT 1 cells allot 2 RESULT !
 
 0 constant KIND-THUNK
 1 constant KIND-RESULT
+2 constant KIND-SCALAR
 \ Internal boundary state only; this is not a third Agda/source-language type.
 \ Checked generated code must establish MODE-LINEAR or MODE-MODAL explicitly.
 0 constant MODE-UNANNOTATED
@@ -141,6 +146,12 @@ variable LINEAR-SAFE-HEAD
     handle metadata@ dup 0= IF drop 0 EXIT THEN
     drop
     handle @ RESULT =
+;
+
+: isScalar { handle -- flag }
+    handle metadata@ dup 0= IF drop 0 EXIT THEN
+    drop
+    handle @ SCALAR =
 ;
 
 : xtInList? { xt headAddr -- flag }
@@ -304,6 +315,7 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
     meta 0= IF 0 EXIT THEN
     meta META-STATE cells + @ OWN-LIVE <> IF 0 EXIT THEN
     meta META-MODE cells + @ MODE-MODAL <> IF 0 EXIT THEN
+    meta META-KIND cells + @ KIND-SCALAR = IF -1 EXIT THEN
     meta META-KIND cells + @ KIND-THUNK = IF
         meta META-CODE cells + @ modalSafeXT? 0= IF 0 EXIT THEN
         meta modalEnv? 0= IF 0 EXIT THEN
@@ -353,6 +365,16 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
     handle
 ;
 
+: ABI-MAKE-SCALAR { value mode -- handle }
+    mode MODE-LINEAR = mode MODE-MODAL = OR 0= IF ABI-ERR-INVALID-MODE THROW THEN
+    align here 2 cells allot { handle }
+    SCALAR handle !
+    value handle cell+ !
+    handle KIND-SCALAR 0 0 0 mode OWN-LIVE newMeta DROP
+    handle
+;
+
+:noname ." S: " ; SCALAR 1 cells + !
 :noname ." R: " ; RESULT 1 cells + !
 
 
