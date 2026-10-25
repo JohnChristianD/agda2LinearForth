@@ -448,6 +448,9 @@ constructErrors : List RuntimeError
 constructErrors = unknownHandle :: consumedHandle :: wrongKind ::
   badStackEffect :: abiEscapeHatch :: []
 
+throwErrors : List RuntimeError
+throwErrors = abiEscapeHatch :: []
+
 primitiveSpecFor : (p : Primitive) → PrimitiveSpec p
 primitiveSpecFor pNatAdd = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
 primitiveSpecFor pNatSub = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
@@ -470,9 +473,6 @@ primitiveSpecFor pAssertLinear = mkPrimitiveSpec (fixedArity 1) checkedThunk mar
 primitiveSpecFor pConstruct = mkPrimitiveSpec constructorDefinedArity checkedConstructorFields moveConstructorFields codeResultMode compilerDerivedCodeProof constructErrors
 primitiveSpecFor pMatch = mkPrimitiveSpec matcherDefinedArity checkedMatchInputs accountPatternFields selectedBranchMode compilerDerivedCodeProof constructErrors
 primitiveSpecFor pPrint = mkPrimitiveSpec (fixedArity 1) checkedObservableValue observeWithoutHiddenForce noValue runtimeValueValidation numericErrors
-throwErrors : List RuntimeError
-throwErrors = abiEscapeHatch :: []
-
 primitiveSpecFor pThrow = mkPrimitiveSpec (fixedArity 1) checkedErrorAndHandler raiseCheckedError noValue noCodeEvidence throwErrors
 primitiveSpecFor pCatch = mkPrimitiveSpec (fixedArity 2) checkedErrorAndHandler catchAndPreserveState inputMode noCodeEvidence (unknownHandle :: badStackEffect :: [])
 
