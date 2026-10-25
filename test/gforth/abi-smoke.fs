@@ -18,6 +18,20 @@ ABI-MAKE-RESULT DUP modal-result-handle !
 modal-result-handle @ metadata@ META-PAYLOAD cells + @
 modal-payload-handle @ = abi-assert
 modal-result-handle @ assertModalValue DROP
+
+\ Result mode derives from the payload, not from the producing closure.
+: linear-returns-modal ( -- handle ) 456 MODE-MODAL ABI-MAKE-SCALAR ;
+' linear-returns-modal declareLinearSafeXT
+' linear-returns-modal makeTHUNK assertLinear toResult assertModalValue DROP
+
+\ Checked result conversion rejects raw, untracked payloads.
+: linear-returns-raw ( -- n ) 456 ;
+' linear-returns-raw declareLinearSafeXT
+VARIABLE raw-linear-thunk
+' linear-returns-raw makeTHUNK assertLinear raw-linear-thunk !
+: raw-linear-result-test ( -- ) raw-linear-thunk @ toResult DROP ;
+' raw-linear-result-test CATCH ABI-ERR-RESULT-PAYLOAD = abi-assert
+
 ' modal-body makeTHUNK promoteModal DROP
 
 : linear-body ( x -- ) drop ;
