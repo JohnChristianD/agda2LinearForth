@@ -1,5 +1,23 @@
 variable MAXNUM 100000000000000 MAXNUM !
 variable ENDFLAG 1234 ENDFLAG !
+s" unknown or unmanaged value handle" exception constant ABI-ERR-UNKNOWN-HANDLE
+s" use after linear handle consumption" exception constant ABI-ERR-CONSUMED-HANDLE
+s" linear capture was not accounted for" exception constant ABI-ERR-LINEAR-CAPTURE
+s" closure has no metadata" exception constant ABI-ERR-CLOSURE-METADATA
+s" cannot move unknown linear representation" exception constant ABI-ERR-UNKNOWN-REPRESENTATION
+s" assertLinear requires a closure thunk" exception constant ABI-ERR-ASSERT-LINEAR-KIND
+s" assertLinear requires registered safe captures" exception constant ABI-ERR-ASSERT-LINEAR-ENV
+s" closure XT lacks a linear-safe contract" exception constant ABI-ERR-LINEAR-UNSAFE-XT
+s" assertModalValue requires a RESULT wrapper" exception constant ABI-ERR-ASSERT-MODAL-KIND
+s" promoteModal requires a THUNK closure" exception constant ABI-ERR-PROMOTE-KIND
+s" closure XT lacks a modal-safe contract" exception constant ABI-ERR-MODAL-UNSAFE-XT
+s" modal promotion requires an entirely modal environment" exception constant ABI-ERR-MODAL-ENV
+s" checked linear closure cannot capture an untracked value" exception constant ABI-ERR-LINEAR-UNTRACKED-CAPTURE
+s" checked modal closure cannot capture an untracked value" exception constant ABI-ERR-MODAL-UNTRACKED-CAPTURE
+s" linear value cannot enter an unknown closure" exception constant ABI-ERR-LINEAR-UNKNOWN-CLOSURE
+s" closure XT lacks a linear-capture contract" exception constant ABI-ERR-LINEAR-CAPTURE-UNSAFE-XT
+s" linear closure cannot capture itself" exception constant ABI-ERR-LINEAR-SELF-CAPTURE
+
 s" unreachable Agda branch" exception constant ABI-ERR-UNREACHABLE
 : ABI-ERROR-UNREACHABLE ( -- ) ABI-ERR-UNREACHABLE THROW ;
 
@@ -109,8 +127,8 @@ variable LINEAR-SAFE-HEAD
 ;
 
 : requireLiveMeta { handle -- meta }
-    handle metadata@ dup 0= abort" unregistered value handle"
-    dup META-STATE cells + @ OWN-CONSUMED = abort" use after linear handle consumption"
+    handle metadata@ dup 0= IF drop ABI-ERR-UNKNOWN-HANDLE THROW THEN
+    dup META-STATE cells + @ OWN-CONSUMED = IF ABI-ERR-CONSUMED-HANDLE THROW THEN
 ;
 
 : isThunk { handle -- flag }
@@ -205,7 +223,7 @@ variable LINEAR-SAFE-HEAD
         child 0<> IF
             child META-MODE cells + @ MODE-LINEAR = IF
                 child META-STATE cells + @ OWN-LIVE = IF
-                    childHandle result <> abort" linear capture neither consumed, moved, nor returned"
+                    childHandle result <> IF ABI-ERR-LINEAR-CAPTURE THROW THEN
                 THEN
             THEN
         THEN
@@ -224,7 +242,7 @@ variable LINEAR-SAFE-HEAD
     \ already on the data stack. Duplicate the handle for lookup but preserve
     \ the force protocol's stack prefix.
     1 pick { handle }
-    handle metadata@ dup 0= abort" closure has no metadata"
+    handle metadata@ dup 0= IF drop ABI-ERR-CLOSURE-METADATA THROW THEN
     { meta }
     meta META-ENV cells + @
     meta META-ENVCOUNT cells + @
@@ -250,7 +268,7 @@ variable LINEAR-SAFE-HEAD
             handle cell+ @ moved cell+ !
             moved KIND-RESULT 0 0 0 MODE-LINEAR OWN-LIVE newMeta DROP
         ELSE
-            abort" cannot move unknown linear handle representation"
+            ABI-ERR-UNKNOWN-REPRESENTATION THROW
         THEN
     THEN
     OWN-CONSUMED meta META-STATE cells + !
@@ -270,10 +288,10 @@ variable LINEAR-SAFE-HEAD
 
 : assertLinear { handle -- handle }
     handle requireLiveMeta { meta }
-    handle isThunk 0= abort" assertLinear requires a closure thunk; results inherit mode from checked closures"
-    meta trackedEnv? 0= abort" cannot assert linearity with unknown or consumed captures"
+    handle isThunk 0= IF ABI-ERR-ASSERT-LINEAR-KIND THROW THEN
+    meta trackedEnv? 0= IF ABI-ERR-ASSERT-LINEAR-ENV THROW THEN
     meta META-CODE cells + @ linearSafeXT?
-        0= abort" closure XT lacks a linear-safe contract"
+        0= IF ABI-ERR-LINEAR-UNSAFE-XT THROW THEN
     MODE-LINEAR meta META-MODE cells + !
     handle
 ;
@@ -299,7 +317,7 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
 
 : assertModalValue { handle -- handle }
     handle requireLiveMeta { meta }
-    handle isResult 0= abort" assertModalValue requires a RESULT wrapper"
+    handle isResult 0= IF ABI-ERR-ASSERT-MODAL-KIND THROW THEN
     handle cell+ @ { payload }
     payload metadata@ 0= IF ABI-ERR-UNREGISTERED-MODAL-PAYLOAD THROW THEN
     payload modalPayload? 0= IF ABI-ERR-MODAL-PAYLOAD THROW THEN
@@ -309,9 +327,9 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
 
 : promoteModal { handle -- handle }
     handle requireLiveMeta { meta }
-    handle isThunk 0= abort" promoteModal requires a THUNK closure"
-    meta META-CODE cells + @ modalSafeXT? 0= abort" closure XT lacks a modal-safe contract"
-    meta modalEnv? 0= abort" promotion rejected: environment is not entirely registered and modal"
+    handle isThunk 0= IF ABI-ERR-PROMOTE-KIND THROW THEN
+    meta META-CODE cells + @ modalSafeXT? 0= IF ABI-ERR-MODAL-UNSAFE-XT THROW THEN
+    meta modalEnv? 0= IF ABI-ERR-MODAL-ENV THROW THEN
     MODE-MODAL meta META-MODE cells + !
     handle
 ;
@@ -373,7 +391,7 @@ variable target
     BEGIN
         value metadata@ { meta }
         meta 0= IF value EXIT THEN
-        meta META-STATE cells + @ OWN-CONSUMED = abort" use after linear handle consumption"
+        meta META-STATE cells + @ OWN-CONSUMED = IF ABI-ERR-CONSUMED-HANDLE THROW THEN
         value @ THUNK = IF
             meta META-MODE cells + @ MODE-LINEAR = IF
                 OWN-CONSUMED meta META-STATE cells + !
@@ -472,16 +490,16 @@ variable target
         xm 0<> IF xm META-MODE cells + @ TO argumentMode THEN
 
         functionMode MODE-LINEAR = argumentMode MODE-UNANNOTATED = AND
-            abort" checked linear closure cannot capture an untracked value"
+            ABI-ERR-LINEAR-UNTRACKED-CAPTURE THROW
         functionMode MODE-MODAL = argumentMode MODE-UNANNOTATED = AND
-            abort" checked modal closure cannot capture an untracked value"
+            ABI-ERR-MODAL-UNTRACKED-CAPTURE THROW
         argumentMode MODE-LINEAR = IF
-            functionMode MODE-UNANNOTATED = abort" linear value cannot enter an unknown closure"
+            functionMode MODE-UNANNOTATED = IF ABI-ERR-LINEAR-UNKNOWN-CLOSURE THROW THEN
             hm META-CODE cells + @ linearSafeXT? 0=
-                abort" closure XT lacks a linear-capture contract"
+                ABI-ERR-LINEAR-CAPTURE-UNSAFE-XT THROW
         THEN
         x h = argumentMode MODE-LINEAR = AND
-            abort" linear closure cannot capture itself"
+            ABI-ERR-LINEAR-SELF-CAPTURE THROW
 
         x captureValue { captured }
         hm META-ENVCOUNT cells + @ { oldCount }
