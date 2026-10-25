@@ -275,9 +275,31 @@ variable LINEAR-SAFE-HEAD
     handle
 ;
 
+s" linear payload cannot be modal" exception constant ABI-ERR-MODAL-PAYLOAD
+s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAYLOAD
+
+: modalPayload? { handle -- flag }
+    handle metadata@ { meta }
+    meta 0= IF 0 EXIT THEN
+    meta META-STATE cells + @ OWN-LIVE <> IF 0 EXIT THEN
+    meta META-MODE cells + @ MODE-MODAL <> IF 0 EXIT THEN
+    meta META-KIND cells + @ KIND-THUNK = IF
+        meta META-CODE cells + @ modalSafeXT? 0= IF 0 EXIT THEN
+        meta modalEnv? 0= IF 0 EXIT THEN
+        -1 EXIT
+    THEN
+    meta META-KIND cells + @ KIND-RESULT = IF
+        handle cell+ @ RECURSE EXIT
+    THEN
+    0
+;
+
 : assertModalValue { handle -- handle }
     handle requireLiveMeta { meta }
     handle isResult 0= abort" assertModalValue requires a RESULT wrapper"
+    handle cell+ @ { payload }
+    payload metadata@ 0= IF ABI-ERR-UNREGISTERED-MODAL-PAYLOAD THROW THEN
+    payload modalPayload? 0= IF ABI-ERR-MODAL-PAYLOAD THROW THEN
     MODE-MODAL meta META-MODE cells + !
     handle
 ;
