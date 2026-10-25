@@ -9,18 +9,86 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Enforce no Haskell-source drift in this PR
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$PR_BASE_SHA"
+          git diff --exit-code "$PR_BASE_SHA" HEAD -- '*.hs'
+
       - name: Set up GHC
         uses: haskell-actions/setup@v2
+        id: setup
         with:
           ghc-version: '9.10.3'
+          # Keep the upstream agda2scheme setup/cache/build sequence.
           cabal-version: 'latest'
           cabal-update: true
+
+      - name: Configure the build
+        run: |
+          cabal configure --enable-tests --enable-benchmarks --disable-documentation
+          cabal build --dry-run
+
+      - name: Restore cached dependencies
+        uses: actions/cache/restore@v3
+        id: cache
+        env:
+          key: ${{ runner.os }}-ghc-${{ steps.setup.outputs.ghc-version }}-cabal-${{ steps.setup.outputs.cabal-version }}
+        with:
+          path: ${{ steps.setup.outputs.cabal-store }}
+          key: ${{ env.key }}-plan-${{ hashFiles('**/plan.json') }}
+          restore-keys: ${{ env.key }}-
+
+      - name: Install dependencies
+        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+        run: cabal build all --only-dependencies
+
+      - name: Save cached dependencies
+        uses: actions/cache/save@v3
+        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+        with:
+          path: ${{ steps.setup.outputs.cabal-store }}
+          key: ${{ steps.cache.outputs.cache-primary-key }}
 
       - name: Build
         run: cabal build all
 
       - name: Run tests
         run: cabal test all
+
+      - name: Set up GForth
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gforth
+
+      - name: Check runtime ABI boundaries
+        run: gforth -e 'include data/FLib.fth' -e 'include test/gforth/abi-smoke.fs'
+
+      - name: Install Agda CLI for formal checks
+        run: |
+          cabal install Agda-2.8.0.2 --installdir="$HOME/.local/bin" --overwrite-policy=always
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/agda" --version
+
+      - name: Type-check constructive ABI state, Hoare, and separation model
+        run: |
+          "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalABI.agda
+
+      - name: Type-check constructive ABI stack-effect derivations
+        run: |
+          "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalStackEffects.agda
+
+      - name: Type-check concrete ABI signature witnesses
+        run: |
+          "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalExamples.agda
+
+      - name: Verify unsupported-literal output preserves the unchanged compiler boundary
+        run: |
+          cabal run agda2forth -- -i test test/UnsupportedLiteral.agda
+          grep -Fq 'not yet supported: String literals' UnsupportedLiteral.fth
+          grep -Eq '(^|[[:space:]])bye([[:space:]]|$)' UnsupportedLiteral.fth
 
       - name: Compile first-order triples fixture
         run: cabal run agda2forth -- -i test test/TriplesFO.agda
