@@ -126,7 +126,6 @@ variable LINEAR-SAFE-HEAD
         dup @ xt = IF drop -1 EXIT THEN
         cell+ @
     REPEAT
-    0
 ;
 
 : declareXT { xt headAddr -- }
@@ -259,21 +258,22 @@ variable LINEAR-SAFE-HEAD
     THEN
 ;
 
-: assertLinear ( handle -- handle )
-    DUP requireLiveMeta { meta }
+: assertLinear { handle -- handle }
+    handle requireLiveMeta { meta }
     meta trackedEnv? 0= abort" cannot assert linearity with unknown or consumed captures"
     MODE-LINEAR meta META-MODE cells + !
+    handle
 ;
 
-: assertModalValue ( handle -- handle )
-    DUP requireLiveMeta { meta }
+: assertModalValue { handle -- handle }
+    handle requireLiveMeta { meta }
     handle isResult 0= abort" assertModalValue requires a RESULT wrapper"
     MODE-MODAL meta META-MODE cells + !
     handle
 ;
 
-: promoteModal ( handle -- handle )
-    DUP requireLiveMeta { meta }
+: promoteModal { handle -- handle }
+    handle requireLiveMeta { meta }
     handle isThunk 0= abort" promoteModal requires a THUNK closure"
     meta META-CODE cells + @ modalSafeXT? 0= abort" closure XT lacks a modal-safe contract"
     meta modalEnv? 0= abort" promotion rejected: environment is not entirely registered and modal"
