@@ -67,7 +67,7 @@ jobs:
 
       - name: Transfer and recover a linear result payload
         run: |
-          gforth data/FLib.fth -e ": verify-linear-result-transfer { -- } 5 MODE-LINEAR ABI-MAKE-SCALAR { payload } payload ABI-MAKE-RESULT { wrapper } payload metadata@ META-STATE cells + @ OWN-CONSUMED <> abort\\" payload was not transferred\\" wrapper ABI-UNWRAP-RESULT { fresh } wrapper metadata@ META-STATE cells + @ OWN-CONSUMED <> abort\\" wrapper was not consumed\\" fresh isScalar 0= abort\\" unwrap did not return scalar\\" fresh cell+ @ 5 <> abort\\" unwrapped scalar payload changed\\" fresh metadata@ META-MODE cells + @ MODE-LINEAR <> abort\\" unwrapped scalar mode changed\\" ; verify-linear-result-transfer bye"
+          gforth data/FLib.fth -e ": verify-linear-result-transfer { -- } 5 MODE-LINEAR ABI-MAKE-SCALAR { payload } payload ABI-MAKE-RESULT { wrapper } payload metadata@ META-STATE cells + @ OWN-CONSUMED <> abort\" payload was not transferred\" wrapper ABI-UNWRAP-RESULT { fresh } wrapper metadata@ META-STATE cells + @ OWN-CONSUMED <> abort\" wrapper was not consumed\" fresh isScalar 0= abort\" unwrap did not return scalar\" fresh cell+ @ 5 <> abort\" unwrapped scalar payload changed\" fresh metadata@ META-MODE cells + @ MODE-LINEAR <> abort\" unwrapped scalar mode changed\" ; verify-linear-result-transfer bye"
 
       - name: Set up F* (pinned verifier)
         run: |
