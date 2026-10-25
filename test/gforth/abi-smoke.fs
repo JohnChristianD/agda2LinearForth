@@ -70,13 +70,49 @@ throw-capture @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 : add2 ( x y -- z ) + ;
 ' add2 makeTHUNK 10 swap pass 20 swap pass dethunk assert30
 
-\ Arithmetic domain errors are named and catchable; valid natural arithmetic is unchanged.
-10 2 ABI-NAT-QUOT 5 = abi-assert
-10 3 ABI-NAT-REM 1 = abi-assert
-: checked-quot-zero-test ( -- ) 10 0 ABI-NAT-QUOT DROP ;
+\ Checked arithmetic takes handles and returns a handle; result mode is the join of operand modes.
+: checked-add-test ( -- )
+  10 MODE-LINEAR ABI-MAKE-SCALAR
+  20 MODE-MODAL ABI-MAKE-SCALAR
+  ABI-NAT-ADD ABI-SCALAR-INFO { value mode meta }
+  value 30 = abi-assert
+  mode MODE-LINEAR = abi-assert
+;
+checked-add-test
+
+: checked-modal-reuse-test ( -- )
+  10 MODE-MODAL ABI-MAKE-SCALAR DUP ABI-NAT-ADD ABI-SCALAR-INFO { value mode meta }
+  value 20 = abi-assert
+  mode MODE-MODAL = abi-assert
+;
+checked-modal-reuse-test
+
+: checked-linear-alias-test ( -- )
+  9 MODE-LINEAR ABI-MAKE-SCALAR DUP ABI-NAT-ADD DROP
+;
+' checked-linear-alias-test CATCH ABI-ERR-ALIASED-LINEAR-OPERANDS = abi-assert
+
+\ Arithmetic domain errors are named and catchable; failed operations retain live operands.
+: checked-quot-zero-test ( -- )
+  10 MODE-LINEAR ABI-MAKE-SCALAR
+  0 MODE-MODAL ABI-MAKE-SCALAR
+  ABI-NAT-QUOT DROP
+;
 ' checked-quot-zero-test CATCH ABI-ERR-ARITHMETIC-DOMAIN = abi-assert
-: checked-rem-zero-test ( -- ) 10 0 ABI-NAT-REM DROP ;
+
+: checked-rem-zero-test ( -- )
+  10 MODE-LINEAR ABI-MAKE-SCALAR
+  0 MODE-MODAL ABI-MAKE-SCALAR
+  ABI-NAT-REM DROP
+;
 ' checked-rem-zero-test CATCH ABI-ERR-ARITHMETIC-DOMAIN = abi-assert
+
+: checked-overflow-test ( -- )
+  ABI-MAX-NAT MODE-LINEAR ABI-MAKE-SCALAR
+  1 MODE-MODAL ABI-MAKE-SCALAR
+  ABI-NAT-ADD DROP
+;
+' checked-overflow-test CATCH ABI-ERR-NAT-OVERFLOW = abi-assert
 
 : unknown-handle-test ( -- )
   123 assertLinear DROP

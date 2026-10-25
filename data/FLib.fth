@@ -2,15 +2,6 @@ variable MAXNUM 100000000000000 MAXNUM !
 s" unsupported or invalid operation emitted by agda2forth" exception constant ABI-ERR-COMPILED-UNSUPPORTED
 : ABI-ERROR-COMPILED-UNSUPPORTED ( -- ) ABI-ERR-COMPILED-UNSUPPORTED THROW ;
 
-\ Explicit checked-subset domain boundary for natural quotient/remainder.
-: ABI-NAT-QUOT { numerator denominator -- quotient }
-    denominator 0= IF ABI-ERR-ARITHMETIC-DOMAIN THROW THEN
-    numerator denominator /
-;
-: ABI-NAT-REM { numerator denominator -- remainder }
-    denominator 0= IF ABI-ERR-ARITHMETIC-DOMAIN THROW THEN
-    numerator denominator mod
-;
 variable ENDFLAG 1234 ENDFLAG !
 s" unknown or unmanaged value handle" exception constant ABI-ERR-UNKNOWN-HANDLE
 s" use after linear handle consumption" exception constant ABI-ERR-CONSUMED-HANDLE
@@ -21,6 +12,8 @@ s" expected a checked result wrapper" exception constant ABI-ERR-RESULT-KIND
 s" cannot unwrap a consumed or malformed result payload" exception constant ABI-ERR-RESULT-PAYLOAD
 s" expected a scalar handle" exception constant ABI-ERR-EXPECTED-SCALAR
 s" arithmetic result exceeds the checked cell range" exception constant ABI-ERR-NAT-OVERFLOW
+s" linear scalar operand aliases another operand" exception constant ABI-ERR-ALIASED-LINEAR-OPERANDS
+s" scalar payload is outside the checked natural range" exception constant ABI-ERR-NAT-NEGATIVE
 s" natural division or remainder by zero" exception constant ABI-ERR-ARITHMETIC-DOMAIN
 s" closure has no metadata" exception constant ABI-ERR-CLOSURE-METADATA
 s" cannot move unknown linear representation" exception constant ABI-ERR-UNKNOWN-REPRESENTATION
@@ -112,6 +105,9 @@ variable SCALAR 1 cells allot
 0 constant KIND-THUNK
 1 constant KIND-RESULT
 2 constant KIND-SCALAR
+
+\ Gforth cell arithmetic is signed. Restrict checked naturals to its nonnegative range.
+0 invert 1 rshift constant ABI-MAX-NAT
 \ Internal boundary state only; this is not a third Agda/source-language type.
 \ Checked generated code must establish MODE-LINEAR or MODE-MODAL explicitly.
 0 constant MODE-UNANNOTATED
@@ -348,11 +344,114 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
 
 : ABI-MAKE-SCALAR { value mode -- handle }
     mode MODE-LINEAR = mode MODE-MODAL = OR 0= IF ABI-ERR-INVALID-MODE THROW THEN
+    value 0< IF ABI-ERR-NAT-NEGATIVE THROW THEN
+    value ABI-MAX-NAT > IF ABI-ERR-NAT-OVERFLOW THROW THEN
     align here 2 cells allot { handle }
     SCALAR handle !
     value handle cell+ !
     handle KIND-SCALAR 0 0 0 mode OWN-LIVE newMeta DROP
     handle
+;
+
+\ Validate a checked numeric scalar without consuming or changing it.
+: ABI-SCALAR-INFO { handle -- value mode meta }
+    handle requireLiveMeta { meta }
+    meta META-KIND cells + @ KIND-SCALAR <> IF ABI-ERR-EXPECTED-SCALAR THROW THEN
+    meta META-MODE cells + @ { mode }
+    mode MODE-LINEAR = mode MODE-MODAL = OR 0= IF ABI-ERR-INVALID-MODE THROW THEN
+    handle cell+ @ { value }
+    value 0< IF ABI-ERR-NAT-NEGATIVE THROW THEN
+    value ABI-MAX-NAT > IF ABI-ERR-NAT-OVERFLOW THROW THEN
+    value mode meta
+;
+
+: ABI-ADD-RAW { left right -- value }
+    left ABI-MAX-NAT right - > IF ABI-ERR-NAT-OVERFLOW THROW THEN
+    left right +
+;
+
+: ABI-SUB-RAW { left right -- value }
+    left right < IF 0 ELSE left right - THEN
+;
+
+: ABI-MUL-RAW { left right -- value }
+    right 0<> IF
+        left ABI-MAX-NAT right / > IF ABI-ERR-NAT-OVERFLOW THROW THEN
+    THEN
+    left right *
+;
+
+: ABI-QUOT-RAW { left right -- value }
+    right 0= IF ABI-ERR-ARITHMETIC-DOMAIN THROW THEN
+    left right /
+;
+
+: ABI-REM-RAW { left right -- value }
+    right 0= IF ABI-ERR-ARITHMETIC-DOMAIN THROW THEN
+    left right mod
+;
+
+: ABI-EQ-RAW { left right -- value }
+    left right = IF 1 ELSE 0 THEN
+;
+
+: ABI-GEQ-RAW { left right -- value }
+    left right >= IF 1 ELSE 0 THEN
+;
+
+: ABI-LT-RAW { left right -- value }
+    left right < IF 1 ELSE 0 THEN
+;
+
+\ Consume linear operands only after validation, computation and result allocation succeed.
+: ABI-BINARY { leftHandle rightHandle operation -- resultHandle }
+    leftHandle ABI-SCALAR-INFO { leftValue leftMode leftMeta }
+    rightHandle ABI-SCALAR-INFO { rightValue rightMode rightMeta }
+    leftHandle rightHandle = IF
+        leftMode MODE-LINEAR = IF ABI-ERR-ALIASED-LINEAR-OPERANDS THROW THEN
+    THEN
+    leftValue rightValue operation EXECUTE { resultValue }
+    leftMode rightMode combineModes { resultMode }
+    resultValue resultMode ABI-MAKE-SCALAR { resultHandle }
+    leftMode MODE-LINEAR = IF OWN-CONSUMED leftMeta META-STATE cells + ! THEN
+    rightMode MODE-LINEAR = IF OWN-CONSUMED rightMeta META-STATE cells + ! THEN
+    resultHandle
+;
+
+: ABI-NAT-ADD ( leftHandle rightHandle -- resultHandle )
+    ['] ABI-ADD-RAW ABI-BINARY
+;
+
+: ABI-NAT-SUB ( leftHandle rightHandle -- resultHandle )
+    ['] ABI-SUB-RAW ABI-BINARY
+;
+
+: ABI-NAT-MONUS ( leftHandle rightHandle -- resultHandle )
+    ['] ABI-SUB-RAW ABI-BINARY
+;
+
+: ABI-NAT-MUL ( leftHandle rightHandle -- resultHandle )
+    ['] ABI-MUL-RAW ABI-BINARY
+;
+
+: ABI-NAT-QUOT ( leftHandle rightHandle -- resultHandle )
+    ['] ABI-QUOT-RAW ABI-BINARY
+;
+
+: ABI-NAT-REM ( leftHandle rightHandle -- resultHandle )
+    ['] ABI-REM-RAW ABI-BINARY
+;
+
+: ABI-NAT-EQ ( leftHandle rightHandle -- resultHandle )
+    ['] ABI-EQ-RAW ABI-BINARY
+;
+
+: ABI-NAT-GEQ ( leftHandle rightHandle -- resultHandle )
+    ['] ABI-GEQ-RAW ABI-BINARY
+;
+
+: ABI-NAT-LT ( leftHandle rightHandle -- resultHandle )
+    ['] ABI-LT-RAW ABI-BINARY
 ;
 
 : assertModalValue { handle -- handle }
