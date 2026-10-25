@@ -16,7 +16,7 @@ jobs:
 
       - name: Load runtime and exercise checked handle paths
         run: |
-          gforth data/FLib.fth -e ": modal-body drop ; ' modal-body declareModalSafeXT 123 makeRESULT assertModalValue ' modal-body makeTHUNK promoteModal pass promoteModal drop bye"
+          gforth data/FLib.fth -e ": modal-body drop ; ' modal-body declareModalSafeXT ' modal-body makeTHUNK promoteModal makeRESULT assertModalValue ' modal-body makeTHUNK promoteModal pass promoteModal drop bye"
           gforth data/FLib.fth -e ": linear-body drop ; : linear-function drop ; ' linear-body declareLinearSafeXT ' linear-function declareLinearSafeXT ' linear-body makeTHUNK assertLinear ' linear-function makeTHUNK assertLinear pass drop bye"
           gforth data/FLib.fth -e ": linear-body drop ; : linear-function drop ; : check-linear-move { child fn -- } child fn pass drop child metadata@ META-STATE cells + @ OWN-CONSUMED <> abort\" linear capture was not consumed\" ; ' linear-body declareLinearSafeXT ' linear-function declareLinearSafeXT ' linear-body makeTHUNK assertLinear ' linear-function makeTHUNK assertLinear check-linear-move bye"
           gforth data/FLib.fth -e ": assert30 30 <> IF abort THEN ; : add2 + ; ' add2 makeTHUNK 10 swap pass 20 swap pass dethunk assert30 bye"
