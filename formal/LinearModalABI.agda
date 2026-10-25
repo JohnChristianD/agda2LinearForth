@@ -41,13 +41,13 @@ data MaybeNat : Set where
 data SourceMode : Set where
   linear modal : SourceMode
 
-sourceMode : SourceMode → RuntimeMode
-sourceMode linear = linearMode
-sourceMode modal = modalMode
-
 -- Unannotated is a runtime boundary/error state, not a third source type.
 data RuntimeMode : Set where
   unannotated linearMode modalMode : RuntimeMode
+
+sourceMode : SourceMode → RuntimeMode
+sourceMode linear = linearMode
+sourceMode modal = modalMode
 
 data Life : Set where
   live consumed : Life
@@ -308,7 +308,7 @@ moveLinear :
   oldIdentity ≢ freshIdentity →
   Token oldIdentity linearMode live →
   Token oldIdentity linearMode consumed × Token freshIdentity linearMode live
-moveLinear apart token = token , token
+moveLinear (apart distinct) token = token , token
 
 duplicateModal :
   {identity : Nat} →
