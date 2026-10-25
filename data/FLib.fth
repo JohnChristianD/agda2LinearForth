@@ -4,6 +4,9 @@ s" unknown or unmanaged value handle" exception constant ABI-ERR-UNKNOWN-HANDLE
 s" use after linear handle consumption" exception constant ABI-ERR-CONSUMED-HANDLE
 s" linear capture was not accounted for" exception constant ABI-ERR-LINEAR-CAPTURE
 s" invalid ABI scalar mode" exception constant ABI-ERR-INVALID-MODE
+s" result payload has no checked mode" exception constant ABI-ERR-RESULT-UNKNOWN-MODE
+s" expected a checked result wrapper" exception constant ABI-ERR-RESULT-KIND
+s" cannot unwrap a consumed or malformed result payload" exception constant ABI-ERR-RESULT-PAYLOAD
 s" expected a scalar handle" exception constant ABI-ERR-EXPECTED-SCALAR
 s" arithmetic result exceeds the checked cell range" exception constant ABI-ERR-NAT-OVERFLOW
 s" closure has no metadata" exception constant ABI-ERR-CLOSURE-METADATA
@@ -330,11 +333,75 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
 : assertModalValue { handle -- handle }
     handle requireLiveMeta { meta }
     handle isResult 0= IF ABI-ERR-ASSERT-MODAL-KIND THROW THEN
+    meta META-MODE cells + @ MODE-LINEAR = IF ABI-ERR-MODAL-PAYLOAD THROW THEN
     handle cell+ @ { payload }
     payload metadata@ 0= IF ABI-ERR-UNREGISTERED-MODAL-PAYLOAD THROW THEN
     payload modalPayload? 0= IF ABI-ERR-MODAL-PAYLOAD THROW THEN
     MODE-MODAL meta META-MODE cells + !
     handle
+;
+
+\ Checked result constructor. Legacy makeRESULT remains unchanged.
+\ Linear payload ownership moves into the wrapper; modal payloads may remain
+\ live because sharing is permitted only after modal safety has been checked.
+: ABI-MAKE-RESULT { payload -- wrapper }
+    payload requireLiveMeta { pm }
+    pm META-MODE cells + @ { mode }
+    mode MODE-UNANNOTATED = IF ABI-ERR-RESULT-UNKNOWN-MODE THROW THEN
+    mode MODE-MODAL = IF
+        payload modalPayload? 0= IF ABI-ERR-MODAL-PAYLOAD THROW THEN
+    THEN
+    align here 2 cells allot { wrapper }
+    RESULT wrapper !
+    payload wrapper cell+ !
+    wrapper KIND-RESULT 0 0 0 mode OWN-LIVE newMeta DROP
+    mode MODE-LINEAR = IF OWN-CONSUMED pm META-STATE cells + ! THEN
+    wrapper
+;
+
+\ Unwrap is the only checked operation that recovers a contained linear token.
+\ It consumes the wrapper and creates a fresh token so the old payload handle
+\ cannot be reused. Modal payloads can be returned as shared live handles.
+: ABI-UNWRAP-RESULT { wrapper -- payload }
+    wrapper requireLiveMeta { wm }
+    wrapper isResult 0= IF ABI-ERR-RESULT-KIND THROW THEN
+    wm META-MODE cells + @ { mode }
+    mode MODE-UNANNOTATED = IF ABI-ERR-RESULT-UNKNOWN-MODE THROW THEN
+    wrapper cell+ @ { oldPayload }
+    oldPayload metadata@ dup 0= IF drop ABI-ERR-RESULT-PAYLOAD THROW THEN
+    { pm }
+    mode MODE-MODAL = IF
+        oldPayload modalPayload? 0= IF ABI-ERR-MODAL-PAYLOAD THROW THEN
+        oldPayload EXIT
+    THEN
+    pm META-STATE cells + @ OWN-CONSUMED <> IF ABI-ERR-RESULT-PAYLOAD THROW THEN
+    pm META-KIND cells + @ { kind }
+    kind KIND-SCALAR = IF
+        oldPayload cell+ @ MODE-LINEAR ABI-MAKE-SCALAR { fresh }
+        OWN-CONSUMED wm META-STATE cells + !
+        fresh EXIT
+    THEN
+    kind KIND-THUNK = IF
+        align here 2 cells allot { fresh }
+        THUNK fresh !
+        ['] invokeClosure fresh cell+ !
+        fresh KIND-THUNK
+            pm META-CODE cells + @
+            pm META-ENV cells + @
+            pm META-ENVCOUNT cells + @
+            MODE-LINEAR OWN-LIVE newMeta DROP
+        OWN-CONSUMED wm META-STATE cells + !
+        fresh EXIT
+    THEN
+    kind KIND-RESULT = IF
+        align here 2 cells allot { fresh }
+        RESULT fresh !
+        oldPayload cell+ @ fresh cell+ !
+        fresh KIND-RESULT 0 0 0 MODE-LINEAR OWN-LIVE newMeta DROP
+        OWN-CONSUMED wm META-STATE cells + !
+        fresh EXIT
+    THEN
+    ABI-ERR-RESULT-PAYLOAD THROW
 ;
 
 : promoteModal { handle -- handle }
