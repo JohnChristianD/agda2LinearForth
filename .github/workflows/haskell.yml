@@ -35,7 +35,7 @@ jobs:
 
       - name: Accept a tracked modal scalar payload
         run: |
-          gforth data/FLib.fth -e ": assert-modal-mode { h -- } h metadata@ META-MODE cells + @ MODE-MODAL <> abort\\" result wrapper lost modal mode\\" ; 123 MODE-MODAL ABI-MAKE-SCALAR makeRESULT assertModalValue assert-modal-mode bye"
+          gforth data/FLib.fth -e ": assert-modal-mode { h -- } h metadata@ META-MODE cells + @ MODE-MODAL <> abort\" result wrapper lost modal mode\" ; 123 MODE-MODAL ABI-MAKE-SCALAR makeRESULT assertModalValue assert-modal-mode bye"
 
       - name: Reject a tracked linear scalar as modal
         run: |
