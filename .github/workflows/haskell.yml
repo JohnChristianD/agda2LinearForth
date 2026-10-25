@@ -36,5 +36,8 @@ jobs:
       - name: Type-check constructive ABI stack-effect derivations
         run: cabal run agda-spec-check -- --no-libraries -i formal formal/LinearModalStackEffects.agda
 
+      - name: Type-check concrete ABI signature witnesses
+        run: cabal run agda-spec-check -- --no-libraries -i formal formal/LinearModalExamples.agda
+
       - name: Compile first-order triples fixture
         run: cabal run agda2forth -- -i test test/TriplesFO.agda
