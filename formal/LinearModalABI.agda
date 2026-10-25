@@ -1,8 +1,8 @@
 {-# OPTIONS --safe #-}
 
 -- Constructive, standard-library-free contract model for the checked GForth ABI.
--- This module imports only Agda's bundled primitive Nat and equality definitions.
--- It is a specification, not yet a proof that FLib.fth refines the model.
+-- Imports only Agda's bundled primitive Nat and equality definitions.
+-- This file specifies invariants; it is not by itself a refinement proof for FLib.fth.
 module LinearModalABI where
 
 open import Agda.Builtin.Nat using (Nat; zero; suc)
@@ -41,6 +41,10 @@ data MaybeNat : Set where
 data SourceMode : Set where
   linear modal : SourceMode
 
+sourceMode : SourceMode → RuntimeMode
+sourceMode linear = linearMode
+sourceMode modal = modalMode
+
 -- Unannotated is a runtime boundary/error state, not a third source type.
 data RuntimeMode : Set where
   unannotated linearMode modalMode : RuntimeMode
@@ -58,6 +62,29 @@ data RuntimeError : Set where
   badResultPayload abiEscapeHatch : RuntimeError
   arithmeticDomainError : RuntimeError
 
+-- CodeClass is a compiler/loader classification, not an execution-token address.
+-- codeOpaque is deliberately not eligible for modal promotion.
+data CodeClass : Set where
+  codeOpaque : CodeClass
+  codeNatAdd codeNatSub codeNatMul codeNatQuot codeNatRem : CodeClass
+  codeNatEq codeNatGeq codeNatLt codeNatMonus : CodeClass
+
+-- Witnesses exist only for explicitly audited closed primitive classes.
+-- There is deliberately no constructor for opaque user Forth code.
+data ModalCode : CodeClass → Set where
+  modalNatAdd : ModalCode codeNatAdd
+  modalNatSub : ModalCode codeNatSub
+  modalNatMul : ModalCode codeNatMul
+  modalNatQuot : ModalCode codeNatQuot
+  modalNatRem : ModalCode codeNatRem
+  modalNatEq : ModalCode codeNatEq
+  modalNatGeq : ModalCode codeNatGeq
+  modalNatLt : ModalCode codeNatLt
+  modalNatMonus : ModalCode codeNatMonus
+
+data _≢_ {A : Set} (x y : A) : Set where
+  apart : (x ≡ y → ⊥) → x ≢ y
+
 data _∈ₙ_ (n : Nat) : List Nat → Set where
   here : {m : Nat} {xs : List Nat} → n ≡ m → n ∈ₙ (m :: xs)
   there : {m : Nat} {xs : List Nat} → n ∈ₙ xs → n ∈ₙ (m :: xs)
@@ -66,6 +93,31 @@ NoDup : List Nat → Set
 NoDup [] = ⊤
 NoDup (x :: xs) = ((x ∈ₙ xs) → ⊥) × NoDup xs
 
+data _<_ : Nat → Nat → Set where
+  zeroLtSuc : {n : Nat} → zero < suc n
+  sucLtSuc : {n m : Nat} → n < m → suc n < suc m
+
+AllBelow : Nat → List Nat → Set
+AllBelow bound [] = ⊤
+AllBelow bound (n :: ns) = (n < bound) × AllBelow bound ns
+
+notSelfLess : {n : Nat} → n < n → ⊥
+notSelfLess {zero} ()
+notSelfLess {suc n} (sucLtSuc p) = notSelfLess p
+
+subst : {A : Set} {P : A → Set} {x y : A} → x ≡ y → P x → P y
+subst refl px = px
+
+-- If each registered identity is below nextIdentity, the next identity is fresh.
+freshNotPresent :
+  {next : Nat} {xs : List Nat} →
+  AllBelow next xs → (next ∈ₙ xs) → ⊥
+freshNotPresent {xs = []} bounded ()
+freshNotPresent {next} {n :: ns} (nBelow , restBelow) (here nextEqN) =
+  notSelfLess (subst (λ k → n < k) nextEqN nBelow)
+freshNotPresent {next} {n :: ns} (nBelow , restBelow) (there occursLater) =
+  freshNotPresent restBelow occursLater
+
 record Descriptor : Set where
   constructor descriptor
   field
@@ -73,7 +125,8 @@ record Descriptor : Set where
     kind : Kind
     mode : RuntimeMode
     life : Life
-    code : Nat
+    codeAddress : Nat
+    codeClass : CodeClass
     captures : List Nat
     payloadRef : MaybeNat
 open Descriptor public
@@ -96,30 +149,11 @@ AllIn : List Nat → List Nat → Set
 AllIn [] known = ⊤
 AllIn (n :: ns) known = (n ∈ₙ known) × AllIn ns known
 
-AllBelow : Nat → List Nat → Set
-AllBelow bound [] = ⊤
-AllBelow bound (n :: ns) = (n < bound) × AllBelow bound ns
-
-data _<_ : Nat → Nat → Set where
-  zeroLtSuc : {n : Nat} → zero < suc n
-  sucLtSuc : {n m : Nat} → n < m → suc n < suc m
-
-notSelfLess : {n : Nat} → n < n → ⊥
-notSelfLess {zero} ()
-notSelfLess {suc n} (sucLtSuc p) = notSelfLess p
-
-subst : {A : Set} {P : A → Set} {x y : A} → x ≡ y → P x → P y
-subst refl px = px
-
--- If every registered identity is below nextIdentity, the next identity is fresh.
-freshNotPresent :
-  {next : Nat} {xs : List Nat} →
-  AllBelow next xs → (next ∈ₙ xs) → ⊥
-freshNotPresent {xs = []} bounded ()
-freshNotPresent {next} {n :: ns} (nBelow , restBelow) (here nextEqN) =
-  notSelfLess (subst (λ k → n < k) nextEqN nBelow)
-freshNotPresent {next} {n :: ns} (nBelow , restBelow) (there occursLater) =
-  freshNotPresent restBelow occursLater
+data HasDescriptor (needle : Descriptor) : Heap → Set where
+  descriptorHere : {ds : Heap} → HasDescriptor needle (needle :: ds)
+  descriptorThere :
+    {d : Descriptor} {ds : Heap} →
+    HasDescriptor needle ds → HasDescriptor needle (d :: ds)
 
 data HasLive (n : Nat) : Heap → Set where
   liveHere :
@@ -177,8 +211,8 @@ NoDupOn : (Nat → Set) → List Nat → Set
 NoDupOn P [] = ⊤
 NoDupOn P (n :: ns) = (P n → (n ∈ₙ ns) → ⊥) × NoDupOn P ns
 
--- Every live linear descriptor must have exactly one active owner reference:
--- presence is LiveLinearOwned; at-most-once is NoDupOn below.
+-- Each live linear descriptor must occur in active references; NoDupOn enforces
+-- at-most-once. Together these express exactly-one active owner reference.
 LiveLinearOwned : Heap → List Nat → Set
 LiveLinearOwned [] refs = ⊤
 LiveLinearOwned (d :: ds) refs with mode d | life d
@@ -186,14 +220,14 @@ LiveLinearOwned (d :: ds) refs with mode d | life d
   (key d ∈ₙ refs) × LiveLinearOwned ds refs
 ... | _ | _ = LiveLinearOwned ds refs
 
+AnnotatedLive : Descriptor → Set
+AnnotatedLive d with mode d | life d
+... | unannotated | live = ⊥
+... | _ | _ = ⊤
+
 AllAnnotated : Heap → Set
 AllAnnotated [] = ⊤
 AllAnnotated (d :: ds) = AnnotatedLive d × AllAnnotated ds
-  where
-  AnnotatedLive : Descriptor → Set
-  AnnotatedLive d with mode d | life d
-  ... | unannotated | live = ⊥
-  ... | _ | _ = ⊤
 
 record Machine : Set where
   constructor machine
@@ -241,7 +275,8 @@ record Sep (P Q : Heap → Set) (whole : Heap) : Set where
     disjointIdentities : Disjoint (keys leftHeap) (keys rightHeap)
 open Sep public
 
--- The permitted copy/drop evidence follows Girard's modality, not handle tags.
+-- The copy/drop rules are evidence-gated. No evidence constructor exists for
+-- linear or unannotated handles.
 data CanDuplicate : RuntimeMode → Set where
   modalCanDuplicate : CanDuplicate modalMode
 
@@ -260,57 +295,49 @@ noUnannotatedDuplication ()
 noUnannotatedDiscard : CanDiscard unannotated → ⊥
 noUnannotatedDiscard ()
 
-data Token (m : RuntimeMode) (l : Life) : Set where
-  token : Nat → Token m l
+data Token (identity : Nat) (m : RuntimeMode) (l : Life) : Set where
+  token : Token identity m l
 
-consumeLinear : Token linearMode live → Token linearMode consumed
-consumeLinear (token n) = token n
+consumeLinear :
+  {identity : Nat} →
+  Token identity linearMode live → Token identity linearMode consumed
+consumeLinear token = token
 
 moveLinear :
-  Token linearMode live →
-  (freshIdentity : Nat) →
-  (freshProof : (oldIdentity : Nat) → oldIdentity ≡ freshIdentity → ⊥) →
-  Token linearMode consumed × Token linearMode live
-moveLinear (token old) fresh distinct = token old , token fresh
+  {oldIdentity freshIdentity : Nat} →
+  oldIdentity ≢ freshIdentity →
+  Token oldIdentity linearMode live →
+  Token oldIdentity linearMode consumed × Token freshIdentity linearMode live
+moveLinear apart token = token , token
 
 duplicateModal :
-  Token modalMode live → Token modalMode live × Token modalMode live
-duplicateModal (token n) = token n , token n
+  {identity : Nat} →
+  Token identity modalMode live →
+  Token identity modalMode live × Token identity modalMode live
+duplicateModal token = token , token
 
-discardModal : Token modalMode live → ⊤
-discardModal (token n) = tt
+discardModal : {identity : Nat} → Token identity modalMode live → ⊤
+discardModal token = tt
 
 record PromotionPrecondition (s : Machine) (d : Descriptor) : Set where
   constructor promotionPrecondition
   field
-    registered : key d ∈ₙ keys (heap s)
+    descriptorRegistered : HasDescriptor d (heap s)
     closureKind : kind d ≡ thunk
     closureLive : life d ≡ live
     capturedValuesModal : AllModal (captures d) (heap s)
-    -- This is a constructive witness supplied by derivation of closed code.
-    -- A caller-provided XT flag is not such a witness.
-    modalCodeWitness : ModalCode (code d)
+    -- The code class must be derived from the closed compiler IR; caller-supplied
+    -- XT flags are not proof witnesses.
+    modalCodeWitness : ModalCode (codeClass d)
 open PromotionPrecondition public
 
-data ModalCode : Nat → Set where
-  auditedPurePrimitive : (codeId : Nat) → ModalCode codeId
-  composedModalCode :
-    {outer inner : Nat} → ModalCode outer → ModalCode inner →
-    ModalCode (outer + inner)
-
--- These predicates describe the preconditions a runtime implementation must check.
--- They do not imply that the current Forth words already check them.
-CanPromote :
-  (s : Machine) → (d : Descriptor) → PromotionPrecondition s d → Set
-CanPromote s d p = ⊤
-
+-- The core-language model covers these operations; escape hatches are excluded.
 data Primitive : Set where
   pNatAdd pNatSub pNatMul pNatQuot pNatRem : Primitive
   pNatEq pNatGeq pNatLt pNatMonus pIf : Primitive
   pMakeScalar pMakeThunk pApply pForce pMakeResult pUnwrapResult : Primitive
   pPromoteModal pAssertLinear pConstruct pMatch pPrint pThrow pCatch : Primitive
 
--- The checked ABI deliberately does not admit these as ordinary value operations.
 data EscapeHatch : Set where
   rawMemoryAccess arbitraryExecute dictionaryCompilation : EscapeHatch
 
@@ -331,7 +358,7 @@ executionPost :
 executionPost normal exceptional (returned s) = normal s
 executionPost normal exceptional (thrown s e) = exceptional s e
 
--- Total, constructive Hoare triple with a separate exceptional postcondition.
+-- Total, constructive Hoare triple with distinct normal/exceptional postconditions.
 Hoare :
   {S : Set} →
   (precondition : S → Set) →
@@ -363,16 +390,3 @@ catchPreserves command handler commandSafe handlerSafe s proof
   with command s | commandSafe s proof
 ... | returned s' | normalProof = normalProof
 ... | thrown s' e | exceptionalProof = handlerSafe e s' exceptionalProof
-
--- Source-level boundary classifications. Every unsupported construct must become
--- a type-checking diagnostic or an explicit runtime error, never a silent no-op.
-data BoundaryDecision : Set where
-  sourceRejected runtimeChecked legacyCompatible : BoundaryDecision
-
-record PrimitiveBoundary (p : Primitive) : Set where
-  constructor primitiveBoundary
-  field
-    preconditionChecked : BoundaryDecision
-    effectAccountedFor : BoundaryDecision
-    exceptionalPathSpecified : BoundaryDecision
-open PrimitiveBoundary public
