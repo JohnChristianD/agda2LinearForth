@@ -180,7 +180,7 @@ data StackEffect : Primitive → StackShape → StackShape → Set where
       (modeTokenItem m :: rawNatItem :: tail)
       (valueItem (naturalTypeFor m) :: tail)
 
-  makeLinearThunkEffect : {c : CodeClass} {A : CoreTy} {tail : StackShape} →
+  makeLinearThunkEffect : {c : CodeClass} {tail : StackShape} →
     LinearCode c →
     StackEffect pMakeThunk
       (modeTokenItem linear :: codeItem c :: tail)

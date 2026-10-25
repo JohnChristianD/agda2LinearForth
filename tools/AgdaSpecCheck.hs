@@ -1,4 +1,4 @@
-module AgdaSpecCheck where
+module Main where
 
 import Agda.Main (runAgda)
 
