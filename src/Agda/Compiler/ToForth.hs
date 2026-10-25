@@ -222,7 +222,7 @@ fthPatternMatch x cases maybeFallback  = RSList
         , " then "
         ]
       makeForthy arg (other:xs) fallback = T.append
-        (T.pack "ENCOUNTERED UNEXPECTED PATTERN WHEN COMPILING PATTERN MATCHING")
+        (formToAtom $ fthError "unexpected pattern while compiling pattern matching")
         (makeForthy arg xs fallback)
       makeForthy arg [] fallback = T.concat (map formToAtom (maybeToList fallback))
 
