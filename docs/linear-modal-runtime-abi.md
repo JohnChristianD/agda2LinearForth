@@ -3,6 +3,16 @@
 Status: normative design target; not yet an implementation or proof of PR #6.
 This document deliberately distinguishes the intended guarantee from behavior currently implemented and tested.
 
+## Implementation snapshot
+
+The current PR branch has the following incremental changes, but no end-to-end checked-code guarantee yet:
+
+- Managed metadata now includes a scalar kind and `ABI-MAKE-SCALAR ( value mode -- handle )`; its mode parameter is a trusted compiler/loader input, not an inferred or proof-carrying mode.
+- `assertModalValue` now rejects unregistered payloads and registered linear/unsafe payloads instead of unconditionally setting the result wrapper to modal. This validation covers scalar handles and the currently represented thunk/result cases; it is not a general recursive ADT/payload verifier.
+- Managed ABI violations use named Gforth `exception` / `THROW` codes instead of `ABORT"` at the touched checked paths. The compiler maps unsupported target constructs to compilation failures, and unreachable Treeless code uses `ABI-ERROR-UNREACHABLE`.
+- Regression steps were added for modal/linear scalar assertions, rejection codes and preservation of the wrapper mode on a caught failure, and unsupported literal compilation. The latest branch state has not been confirmed by a completed CI run; these tests were added through repository API commits and were not observed running in this session.
+- The compiler still emits raw natural literals and legacy preamble/application/constructor forms for normal generated code. It does not emit ABI-versioned mode evidence and does not route all generated value operations through the checked API. Therefore this branch is still a runtime-hardening prototype, not the closed ABI specified below.
+
 ## 1. Goal and compatibility contract
 
 The target is a dynamically enforced ABI for the Agda-to-Gforth compiler. It must account for the identity and usage of every value crossing the checked ABI, distinguish linear A from modal !A, reject invalid operations deterministically, and preserve its invariants on both success and failure.
