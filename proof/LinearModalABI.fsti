@@ -36,30 +36,30 @@ type outcome (a:Type) =
 
 (* Model predicates. The forthcoming concrete model must define these and
    prove invariant preservation rather than assume them as axioms. *)
-val invariant : state -> Tot prop
-val live : state -> handle -> Tot prop
-val consumed : state -> handle -> Tot prop
-val has_mode : state -> handle -> mode -> Tot prop
+val invariant : state -> Tot bool
+val live : state -> handle -> Tot bool
+val consumed : state -> handle -> Tot bool
+val has_mode : state -> handle -> mode -> Tot bool
 val mode_of : state -> handle -> Tot (option mode)
-val has_kind : state -> handle -> value_kind -> Tot prop
+val has_kind : state -> handle -> value_kind -> Tot bool
 val resource_of : state -> handle -> Tot (option resource_id)
-val owns_resource : state -> handle -> resource_id -> Tot prop
-val contained_by : state -> resource_id -> handle -> Tot prop
-val fresh_handle : state -> handle -> Tot prop
-val linear_safe : state -> handle -> Tot prop
-val modal_safe : state -> handle -> Tot prop
-val all_captures_modal : state -> handle -> Tot prop
-val payload_mode_valid : state -> handle -> mode -> Tot prop
-val accepts_argument : state -> handle -> mode -> Tot prop
-val transfer_complete : state -> state -> handle -> handle -> Tot prop
-val same_state : state -> state -> Tot prop
-val all_resources_accounted : state -> Tot prop
-val promotable : state -> handle -> Tot prop
-val valid_import : state -> nat -> value_kind -> mode -> Tot prop
-val abi_checked : state -> Tot prop
-val primitive_contract : state -> handle -> Tot prop
-val force_failure_valid : state -> state -> handle -> Tot prop
-val result_transition_valid : state -> state -> handle -> handle -> mode -> Tot prop
+val owns_resource : state -> handle -> resource_id -> Tot bool
+val contained_by : state -> resource_id -> handle -> Tot bool
+val fresh_handle : state -> handle -> Tot bool
+val linear_safe : state -> handle -> Tot bool
+val modal_safe : state -> handle -> Tot bool
+val all_captures_modal : state -> handle -> Tot bool
+val payload_mode_valid : state -> handle -> mode -> Tot bool
+val accepts_argument : state -> handle -> mode -> Tot bool
+val transfer_complete : state -> state -> handle -> handle -> Tot bool
+val same_state : state -> state -> Tot bool
+val all_resources_accounted : state -> Tot bool
+val promotable : state -> handle -> Tot bool
+val valid_import : state -> nat -> value_kind -> mode -> Tot bool
+val abi_checked : state -> Tot bool
+val primitive_contract : state -> handle -> Tot bool
+val force_failure_valid : state -> state -> handle -> Tot bool
+val result_transition_valid : state -> state -> handle -> handle -> mode -> Tot bool
 
 (* Import is the only admission path for legacy/unmanaged representations.
    valid_import must validate the representation and justify the supplied
