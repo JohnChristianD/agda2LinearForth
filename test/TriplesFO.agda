@@ -1,3 +1,4 @@
+module TriplesFO where
 
 open import Agda.Builtin.Bool
 open import Agda.Builtin.Nat

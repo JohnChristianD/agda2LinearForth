@@ -23,4 +23,4 @@ jobs:
         run: cabal test all
 
       - name: Compile first-order triples fixture
-        run: cabal run agda2forth -- test/TriplesFO.agda
+        run: cabal run agda2forth -- -i test test/TriplesFO.agda
