@@ -90,11 +90,18 @@ fthConstructor f args = formToAtom $ fthSimpleWord f (RSAtom $ T.pack
     (" type" ++ T.unpack f ++  " here "
     ++ show (args + 1) ++ " fillArray here " ++ show (args + 1) ++ " cells allot"))
 
-fthError :: Text -> FthForm
-fthError msg = RSAtom $ T.pack ("cr .\" " ++ T.unpack msg ++ " \" bye")
+fthCompileError :: Text -> ToForthM a
+fthCompileError msg = fail (T.unpack msg)
 
-fthAxiom :: FthAtom -> FthForm
-fthAxiom f = fthWord f $ fthError $ "encountered axiom: " <> f
+-- Treeless unreachable branches remain a run-time boundary; unsupported
+-- backend constructs stop code generation instead of emitting a word that
+-- prints a message and executes BYE.
+fthUnreachable :: FthForm
+fthUnreachable = RSAtom "ABI-ERROR-UNREACHABLE"
+
+fthAxiom :: FthAtom -> ToForthM (Maybe FthForm)
+fthAxiom f = fthCompileError $ "unsupported primitive: " <> f
+
 
 
 fthLocal :: [FthAtom] -> FthForm -> FthForm
@@ -181,39 +188,38 @@ fthLet binds body = RSAtom $ T.pack $
 fthConName :: QName -> FthAtom
 fthConName x = T.pack $ prettyShow $ qnameName x
 
-fthPatternMatch :: FthForm -> [FthForm] -> Maybe FthForm -> FthForm
-fthPatternMatch x cases maybeFallback  = RSList
-  [RSAtom (makeForthy x cases maybeFallback)]
-  -- ++
-  -- [ RSList [ RSAtom "FALLBACK(?)" , fallback ] | fallback <- maybeToList maybeFallback
-  -- ]
-    where
-      makeForthy :: FthForm -> [FthForm] -> Maybe FthForm -> FthAtom
-      makeForthy arg (RSList [pat, RSList wildcards, expr]:xs) fallback = T.concat [
+fthPatternMatch :: FthForm -> [FthForm] -> Maybe FthForm -> ToForthM FthForm
+fthPatternMatch x cases maybeFallback = do
+  code <- makeForthy x cases maybeFallback
+  return $ RSList [RSAtom code]
+  where
+    makeForthy :: FthForm -> [FthForm] -> Maybe FthForm -> ToForthM FthAtom
+    makeForthy arg (RSList [pat, RSList wildcards, expr]:xs) fallback = do
+      rest <- makeForthy arg xs fallback
+      return $ T.concat [
         T.concat [
           formToAtom arg,
-          T.concat (map (\x -> T.pack "makeWILDCARD ") wildcards ++ [T.pack (init (T.unpack (formToAtom pat)) ++ " ")] ++ map (\x -> T.pack "pass ") wildcards),
-          -- T.concat (map (\x -> T.pack "makeWILDCARD ") wildcards ++ [T.pack ( fixName (init $ T.unpack (formToAtom pat)) ++ " ")] ++ map (\x -> T.pack "pass ") wildcards),
+          T.concat (map (\\_ -> T.pack "makeWILDCARD ") wildcards ++ [T.pack (init (T.unpack (formToAtom pat)) ++ " ")] ++ map (\\_ -> T.pack "pass ") wildcards),
           T.pack "0 pointer !",
           T.concat (T.pack (" obj= if wildcards " ++ show (length wildcards) ++ " pushArrayN { ") : map formToAtom wildcards ++ [T.pack "} "] ++ [T.pack newLine]),
           formToAtom expr
         ],
         T.pack " else ",
-        makeForthy arg xs fallback,
+        rest,
         T.pack " then "
         ]
-      makeForthy arg (RSList [guard, body]:xs) fallback = T.concat
+    makeForthy arg (RSList [guard, body]:xs) fallback = do
+      rest <- makeForthy arg xs fallback
+      return $ T.concat
         [ formToAtom guard
         , " if "
         , formToAtom body
         , " else "
-        , makeForthy arg xs fallback
+        , rest
         , " then "
         ]
-      makeForthy arg (other:xs) fallback = T.append
-        (T.pack "ENCOUNTERED UNEXPECTED PATTERN WHEN COMPILING PATTERN MATCHING")
-        (makeForthy arg xs fallback)
-      makeForthy arg [] fallback = T.concat (map formToAtom (maybeToList fallback))
+    makeForthy _ (_:_) _ = fail "unsupported Treeless pattern emitted by agda2forth"
+    makeForthy _ [] fallback = return $ T.concat (map formToAtom (maybeToList fallback))
 
 fthUnit :: FthForm
 fthUnit = RSList [RSAtom "0"]
@@ -455,7 +461,7 @@ instance ToForth Definition (Maybe FthForm) where
           Nothing   -> return Nothing
       Primitive{} -> do
         f' <- toForth f
-        return $ Just $ fthAxiom f' -- TODO!
+        fthAxiom f'
       PrimitiveSort{} -> return Nothing
       Datatype{} -> return Nothing
       Record{} -> return Nothing
@@ -527,7 +533,8 @@ instance ToForth TTerm FthForm where
             fallback <- if isUnreachable v
                         then return Nothing
                         else Just <$> toForth v
-            applyToArgs $ fthPatternMatch x cases fallback
+            compiledCases <- fthPatternMatch x cases fallback
+            applyToArgs compiledCases
           Just BoolCase -> case bs of
             [] -> __IMPOSSIBLE__
             (TACon c1 _ v1 : bs') -> do
@@ -543,7 +550,7 @@ instance ToForth TTerm FthForm where
                     | c1 == conName falseC = (v2',v1')
                     | otherwise            = __IMPOSSIBLE__
               applyToArgs $ RSList [x, RSAtom "if", thenBranch, RSAtom "else", elseBranch, RSAtom "then"]
-            _ -> return $ RSAtom "ERRONEOUS BOOLCASE DURING CASE MATCHING"
+            _ -> fthCompileError "invalid boolean case in Treeless output"
 
       TUnit -> do
         unless (null args) __IMPOSSIBLE__
@@ -570,17 +577,17 @@ instance ToForth TPrim FthForm where
     PEqI  -> return fthEq
     PGeq  -> return fthGeq
     PLt   -> return fthLt
-    _     -> return $ fthError $ T.pack $ "not yet supported: primitive " ++ show p
+    _     -> fthCompileError $ T.pack $ "not yet supported: primitive " ++ show p
 
 instance ToForth Literal FthForm where
   toForth lit = case lit of
     LitNat    x -> return $ RSAtom (T.pack (show x))
-    LitWord64 x -> return $ fthError "not yet supported: Word64 literals"
-    LitFloat  x -> return $ fthError "not yet supported: Float literals"
-    LitString x -> return $ fthError "not yet supported: String literals"
-    LitChar   x -> return $ fthError "not yet supported: Char literals"
-    LitQName  x -> return $ fthError "not yet supported: QName literals"
-    LitMeta p x -> return $ fthError "not yet supported: Meta literals"
+    LitWord64 x -> fthCompileError "not yet supported: Word64 literals"
+    LitFloat  x -> fthCompileError "not yet supported: Float literals"
+    LitString x -> fthCompileError "not yet supported: String literals"
+    LitChar   x -> fthCompileError "not yet supported: Char literals"
+    LitQName  x -> fthCompileError "not yet supported: QName literals"
+    LitMeta p x -> fthCompileError "not yet supported: Meta literals"
 
 
 -- TODO: allow literal branches and guard branches
@@ -602,8 +609,8 @@ instance ToForth TAlt FthForm where
 
 instance ToForth TError FthForm where
   toForth err = case err of
-    TUnreachable -> return $ fthError "Panic!"
-    TMeta s      -> return $ fthError $ "encountered unsolved meta: " <> T.pack s
+    TUnreachable -> return fthUnreachable
+    TMeta s      -> fthCompileError $ "encountered unsolved meta: " <> T.pack s
 
 isSpecialConstructor :: QName -> ToForthM (Maybe FthForm)
 isSpecialConstructor c = do
