@@ -16,12 +16,12 @@ data-files:
     FLib.fth
 data-dir:   data
 extra-source-files:
+    README.md
     test/TriplesFO.agda
     test/gforth/abi-smoke.fs
     formal/LinearModalABI.agda
     formal/LinearModalStackEffects.agda
     formal/LinearModalExamples.agda
-    docs/linear-modal-runtime.md
 
 executable agda2forth
     main-is:          Main.hs
