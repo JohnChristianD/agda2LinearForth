@@ -1,8 +1,9 @@
 module Main where
 
 import Agda.Main (runAgda)
+import System.Environment (getArgs)
 
--- Run Agda's normal type checker, without loading any user standard library.
--- Agda.Builtin modules remain available from the Agda installation.
+-- Forward CLI options to Agda's normal checker. The CI passes --no-libraries
+-- and explicit module paths so Agda.Builtin remains available without a user library.
 main :: IO ()
-main = runAgda []
+main = getArgs >>= runAgda
