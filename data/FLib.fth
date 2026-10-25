@@ -493,8 +493,8 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
     ['] ABI-LT-RAW ABI-BINARY
 ;
 
-\\ Dual-entry arithmetic preserves the legacy raw-cell stack effect while routing
-\\ fully managed scalar operands through the checked handle ABI. Mixed calls fail closed.
+\ Dual-entry arithmetic preserves the legacy raw-cell stack effect while routing
+\ fully managed scalar operands through the checked handle ABI. Mixed calls fail closed.
 : ABI-DISPATCH-BINARY { left right checked legacy -- result }
     left metadata@ { leftMeta }
     right metadata@ { rightMeta }
