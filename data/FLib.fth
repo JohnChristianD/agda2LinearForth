@@ -430,15 +430,15 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
 ;
 
 : ABI-EQ-RAW { left right -- value }
-    left right = IF 1 ELSE 0 THEN
+    left right = IF -1 ELSE 0 THEN
 ;
 
 : ABI-GEQ-RAW { left right -- value }
-    left right >= IF 1 ELSE 0 THEN
+    left right >= IF -1 ELSE 0 THEN
 ;
 
 : ABI-LT-RAW { left right -- value }
-    left right < IF 1 ELSE 0 THEN
+    left right < IF -1 ELSE 0 THEN
 ;
 
 \ Consume linear operands only after validation, computation and result allocation succeed.
