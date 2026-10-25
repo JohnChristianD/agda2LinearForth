@@ -19,6 +19,7 @@ extra-source-files:
     test/TriplesFO.agda
     test/gforth/abi-smoke.fs
     formal/LinearModalABI.agda
+    formal/LinearModalStackEffects.agda
     docs/linear-modal-runtime.md
 
 executable agda2forth
