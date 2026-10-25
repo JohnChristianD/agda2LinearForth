@@ -347,27 +347,50 @@ data Arity : Set where
   constructorDefinedArity matcherDefinedArity : Arity
 
 data OperandRule : Set where
-  twoCheckedScalars threeCheckedBranches modeAndScalar checkedCode
-    checkedClosureAndValue checkedClosure checkedResult checkedThunk
-    checkedConstructorFields checkedMatchInputs checkedObservableValue
-    checkedErrorAndHandler : OperandRule
+  twoCheckedScalars : OperandRule
+  threeCheckedBranches : OperandRule
+  modeAndScalar : OperandRule
+  checkedCode : OperandRule
+  checkedClosureAndValue : OperandRule
+  checkedClosure : OperandRule
+  checkedResult : OperandRule
+  checkedThunk : OperandRule
+  checkedConstructorFields : OperandRule
+  checkedMatchInputs : OperandRule
+  checkedObservableValue : OperandRule
+  checkedErrorAndHandler : OperandRule
 
 data OwnershipEffect : Set where
-  consumeLinearOperands makeFreshScalar moveCaptures forceByMode
-    moveIntoResult moveOutOfResult promoteOnlyWithProof
-    markLinearOnlyWithProof moveConstructorFields accountPatternFields
-    observeWithoutHiddenForce raiseCheckedError catchAndPreserveState : OwnershipEffect
+  consumeLinearOperands : OwnershipEffect
+  makeFreshScalar : OwnershipEffect
+  moveCaptures : OwnershipEffect
+  forceByMode : OwnershipEffect
+  moveIntoResult : OwnershipEffect
+  moveOutOfResult : OwnershipEffect
+  promoteOnlyWithProof : OwnershipEffect
+  markLinearOnlyWithProof : OwnershipEffect
+  moveConstructorFields : OwnershipEffect
+  accountPatternFields : OwnershipEffect
+  observeWithoutHiddenForce : OwnershipEffect
+  raiseCheckedError : OwnershipEffect
+  catchAndPreserveState : OwnershipEffect
 
 data ResultModeRule : Set where
-  joinOperandModes selectedBranchMode inputMode codeResultMode
-    freshAnnotatedMode noValue : ResultModeRule
+  joinOperandModes : ResultModeRule
+  selectedBranchMode : ResultModeRule
+  inputMode : ResultModeRule
+  codeResultMode : ResultModeRule
+  freshAnnotatedMode : ResultModeRule
+  noValue : ResultModeRule
 
 data EvidenceRequirement : Set where
-  noCodeEvidence runtimeValueValidation compilerDerivedCodeProof
-    explicitlyTrustedLegacyCode : EvidenceRequirement
+  noCodeEvidence : EvidenceRequirement
+  runtimeValueValidation : EvidenceRequirement
+  compilerDerivedCodeProof : EvidenceRequirement
+  explicitlyTrustedLegacyCode : EvidenceRequirement
 
 record PrimitiveSpec (p : Primitive) : Set where
-  constructor primitiveSpec
+  constructor mkPrimitiveSpec
   field
     stackArity : Arity
     operandRule : OperandRule
@@ -396,39 +419,38 @@ constructErrors : List RuntimeError
 constructErrors = unknownHandle :: consumedHandle :: wrongKind ::
   badStackEffect :: abiEscapeHatch :: []
 
-primitiveSpec : (p : Primitive) → PrimitiveSpec p
-primitiveSpec pNatAdd = primitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
-primitiveSpec pNatSub = primitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
-primitiveSpec pNatMul = primitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
-primitiveSpec pNatQuot = primitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation divisionErrors
-primitiveSpec pNatRem = primitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation divisionErrors
-primitiveSpec pNatEq = primitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
-primitiveSpec pNatGeq = primitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
-primitiveSpec pNatLt = primitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
-primitiveSpec pNatMonus = primitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
-primitiveSpec pIf = primitiveSpec (fixedArity 3) threeCheckedBranches consumeLinearOperands selectedBranchMode runtimeValueValidation closureErrors
-primitiveSpec pMakeScalar = primitiveSpec (fixedArity 2) modeAndScalar makeFreshScalar inputMode noCodeEvidence (invalidMode :: numericErrors)
-primitiveSpec pMakeThunk = primitiveSpec (fixedArity 1) checkedCode makeFreshScalar codeResultMode compilerDerivedCodeProof closureErrors
-primitiveSpec pApply = primitiveSpec (fixedArity 2) checkedClosureAndValue moveCaptures codeResultMode compilerDerivedCodeProof closureErrors
-primitiveSpec pForce = primitiveSpec (fixedArity 1) checkedClosure forceByMode codeResultMode compilerDerivedCodeProof closureErrors
-primitiveSpec pMakeResult = primitiveSpec (fixedArity 1) checkedObservableValue moveIntoResult inputMode runtimeValueValidation closureErrors
-primitiveSpec pUnwrapResult = primitiveSpec (fixedArity 1) checkedResult moveOutOfResult inputMode runtimeValueValidation closureErrors
-primitiveSpec pPromoteModal = primitiveSpec (fixedArity 1) checkedThunk promoteOnlyWithProof inputMode compilerDerivedCodeProof modalErrors
-primitiveSpec pAssertLinear = primitiveSpec (fixedArity 1) checkedThunk markLinearOnlyWithProof inputMode compilerDerivedCodeProof modalErrors
-primitiveSpec pConstruct = primitiveSpec constructorDefinedArity checkedConstructorFields moveConstructorFields codeResultMode compilerDerivedCodeProof constructErrors
-primitiveSpec pMatch = primitiveSpec matcherDefinedArity checkedMatchInputs accountPatternFields selectedBranchMode compilerDerivedCodeProof constructErrors
-primitiveSpec pPrint = primitiveSpec (fixedArity 1) checkedObservableValue observeWithoutHiddenForce noValue runtimeValueValidation numericErrors
-primitiveSpec pThrow = primitiveSpec (fixedArity 1) checkedErrorAndHandler raiseCheckedError noValue noCodeEvidence (badPayloadError)
-  where
-  badPayloadError : List RuntimeError
-  badPayloadError = abiEscapeHatch :: []
+primitiveSpecFor : (p : Primitive) → PrimitiveSpec p
+primitiveSpecFor pNatAdd = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
+primitiveSpecFor pNatSub = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
+primitiveSpecFor pNatMul = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
+primitiveSpecFor pNatQuot = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation divisionErrors
+primitiveSpecFor pNatRem = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation divisionErrors
+primitiveSpecFor pNatEq = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
+primitiveSpecFor pNatGeq = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
+primitiveSpecFor pNatLt = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
+primitiveSpecFor pNatMonus = mkPrimitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
+primitiveSpecFor pIf = mkPrimitiveSpec (fixedArity 3) threeCheckedBranches consumeLinearOperands selectedBranchMode runtimeValueValidation closureErrors
+primitiveSpecFor pMakeScalar = mkPrimitiveSpec (fixedArity 2) modeAndScalar makeFreshScalar inputMode noCodeEvidence (invalidMode :: numericErrors)
+primitiveSpecFor pMakeThunk = mkPrimitiveSpec (fixedArity 1) checkedCode makeFreshScalar codeResultMode compilerDerivedCodeProof closureErrors
+primitiveSpecFor pApply = mkPrimitiveSpec (fixedArity 2) checkedClosureAndValue moveCaptures codeResultMode compilerDerivedCodeProof closureErrors
+primitiveSpecFor pForce = mkPrimitiveSpec (fixedArity 1) checkedClosure forceByMode codeResultMode compilerDerivedCodeProof closureErrors
+primitiveSpecFor pMakeResult = mkPrimitiveSpec (fixedArity 1) checkedObservableValue moveIntoResult inputMode runtimeValueValidation closureErrors
+primitiveSpecFor pUnwrapResult = mkPrimitiveSpec (fixedArity 1) checkedResult moveOutOfResult inputMode runtimeValueValidation closureErrors
+primitiveSpecFor pPromoteModal = mkPrimitiveSpec (fixedArity 1) checkedThunk promoteOnlyWithProof inputMode compilerDerivedCodeProof modalErrors
+primitiveSpecFor pAssertLinear = mkPrimitiveSpec (fixedArity 1) checkedThunk markLinearOnlyWithProof inputMode compilerDerivedCodeProof modalErrors
+primitiveSpecFor pConstruct = mkPrimitiveSpec constructorDefinedArity checkedConstructorFields moveConstructorFields codeResultMode compilerDerivedCodeProof constructErrors
+primitiveSpecFor pMatch = mkPrimitiveSpec matcherDefinedArity checkedMatchInputs accountPatternFields selectedBranchMode compilerDerivedCodeProof constructErrors
+primitiveSpecFor pPrint = mkPrimitiveSpec (fixedArity 1) checkedObservableValue observeWithoutHiddenForce noValue runtimeValueValidation numericErrors
+throwErrors : List RuntimeError
+throwErrors = abiEscapeHatch :: []
 
-primitiveSpec pCatch = primitiveSpec (fixedArity 2) checkedErrorAndHandler catchAndPreserveState inputMode noCodeEvidence (unknownHandle :: badStackEffect :: [])
+primitiveSpecFor pThrow = mkPrimitiveSpec (fixedArity 1) checkedErrorAndHandler raiseCheckedError noValue noCodeEvidence throwErrors
+primitiveSpecFor pCatch = mkPrimitiveSpec (fixedArity 2) checkedErrorAndHandler catchAndPreserveState inputMode noCodeEvidence (unknownHandle :: badStackEffect :: [])
 
 -- This exhaustive function is accepted by Agda only if every Primitive constructor
 -- has a profile. It does not claim that each Gforth implementation satisfies it.
 specifiesEveryPrimitive : (p : Primitive) → PrimitiveSpec p
-specifiesEveryPrimitive = primitiveSpec
+specifiesEveryPrimitive = primitiveSpecFor
 
 data EscapeHatch : Set where
   rawMemoryAccess arbitraryExecute dictionaryCompilation : EscapeHatch
