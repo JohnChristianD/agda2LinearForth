@@ -60,7 +60,7 @@ jobs:
 
       - name: Install Agda CLI for formal checks
         run: |
-          cabal install Agda --installdir="$HOME/.local/bin" --overwrite-policy=always
+          cabal install Agda-2.8.0.2 --installdir="$HOME/.local/bin" --overwrite-policy=always
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/agda" --version
 
