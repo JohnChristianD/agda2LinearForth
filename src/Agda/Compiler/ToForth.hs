@@ -92,16 +92,17 @@ fthConstructor f args = formToAtom $ fthSimpleWord f (RSAtom $ T.pack
 
 fthError :: Text -> FthForm
 fthError msg = RSAtom $ T.pack
-  ("cr .\\" " ++ T.unpack (sanitizeDiagnostic msg) ++ " \\" ABI-ERROR-COMPILED-UNSUPPORTED")
+  ("cr .\" " ++ T.unpack (sanitizeDiagnostic msg) ++ " \" ABI-ERROR-COMPILED-UNSUPPORTED")
   where
-    -- Keep diagnostic text inside a single Gforth .\" string. The sanitization
-    -- affects display only; the stable THROW code carries the error boundary.
+    -- Keep diagnostics inside one Gforth .\" string. The stable THROW code
+    -- identifies this compiler-generated error boundary.
     sanitizeDiagnostic = T.map sanitizeChar
-    sanitizeChar '"' = '\\''
-    sanitizeChar '\\\\' = '/'
-    sanitizeChar '\\n' = ' '
-    sanitizeChar '\\r' = ' '
-    sanitizeChar c = c
+    sanitizeChar c
+      | c == '"' = chr 39
+      | c == chr 92 = '/'
+      | c == chr 10 = ' '
+      | c == chr 13 = ' '
+      | otherwise = c
 
 fthAxiom :: FthAtom -> FthForm
 fthAxiom f = fthWord f $ fthError $ "encountered axiom: " <> f
