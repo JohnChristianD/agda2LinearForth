@@ -48,7 +48,7 @@ VARIABLE moved-linear-closure
 ' identity-body declareLinearSafeXT
 : linear-closure-result-move-test ( -- )
   55 MODE-LINEAR ABI-MAKE-SCALAR
-  ' identity-body makeTHUNK assertLinear pass DUP source-linear-closure !
+  ['] identity-body makeTHUNK assertLinear pass DUP source-linear-closure !
   source-linear-closure @ metadata@ META-ENV cells + @ @ DUP original-linear-capture ! DROP
   original-linear-capture @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
   ABI-MAKE-RESULT DUP linear-closure-result !
