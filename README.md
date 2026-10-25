@@ -120,6 +120,7 @@ These are reusable proof ingredients, not the completed implementation theorem. 
 - [ ] Replace caller-asserted XT safety with compiler/loader-generated code-class derivations tied to the closed core IR.
 - [ ] Prove actual Forth word implementations preserve `WellFormed`, including every exceptional path.
 - [ ] Prove compiler-to-core and core-to-Gforth correspondence for the supported subset.
+- [x] Add a compiler-output regression fixture requiring unsupported literals to emit a catchable ABI error instead of BYE.
 - [ ] Run positive and negative Gforth tests, plus compatibility regression tests for legacy words.
 
 Until those last obligations pass, the only justified claim is runtime hardening for explicitly managed handles—not complete end-to-end linear/modal safety.

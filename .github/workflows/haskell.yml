@@ -67,5 +67,14 @@ jobs:
       - name: Type-check concrete ABI signature witnesses
         run: cabal run agda-spec-check -- --no-libraries -i formal formal/LinearModalExamples.agda
 
+      - name: Compile unsupported literal to catchable ABI boundary
+        run: |
+          cabal run agda2forth -- -i test test/UnsupportedLiteral.agda
+          grep -Fq 'ABI-ERROR-COMPILED-UNSUPPORTED' UnsupportedLiteral.fth
+          if grep -Eq '(^|[[:space:]])bye([[:space:]]|$)' UnsupportedLiteral.fth; then
+            echo 'unsupported output must not terminate GForth with BYE' >&2
+            exit 1
+          fi
+
       - name: Compile first-order triples fixture
         run: cabal run agda2forth -- -i test test/TriplesFO.agda

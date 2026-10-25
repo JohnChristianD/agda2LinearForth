@@ -16,6 +16,7 @@ data-dir:   data
 extra-source-files:
     README.md
     test/TriplesFO.agda
+    test/UnsupportedLiteral.agda
     test/gforth/abi-smoke.fs
     formal/LinearModalABI.agda
     formal/LinearModalStackEffects.agda

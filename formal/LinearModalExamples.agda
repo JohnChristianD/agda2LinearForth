@@ -31,18 +31,18 @@ mixedNatAddition = natAddEffect naturalIsNatural boxedNaturalIsNatural
 
 checkedModalAddClosure :
   StackEffect pMakeThunk
-    (modeTokenItem modal :: codeItem codeNatAdd naturalTy :: [])
-    (thunkItem modal codeNatAdd naturalTy :: [])
+    (modeTokenItem modal :: codeItem codeNatAdd :: [])
+    (thunkItem modal codeNatAdd [] (codeSignature codeNatAdd) :: [])
 checkedModalAddClosure = makeModalThunkEffect modalNatAdd
 
 checkedLinearAddClosure :
   StackEffect pMakeThunk
-    (modeTokenItem linear :: codeItem codeNatAdd naturalTy :: [])
-    (thunkItem linear codeNatAdd naturalTy :: [])
+    (modeTokenItem linear :: codeItem codeNatAdd :: [])
+    (thunkItem linear codeNatAdd [] (codeSignature codeNatAdd) :: [])
 checkedLinearAddClosure = makeLinearThunkEffect linearNatAdd
 
 modalPromotionEffect :
   StackEffect pPromoteModal
-    (thunkItem linear codeNatAdd naturalTy :: [])
-    (thunkItem modal codeNatAdd naturalTy :: [])
-modalPromotionEffect = promoteModalEffect modalNatAdd
+    (thunkItem linear codeNatAdd [] (codeSignature codeNatAdd) :: [])
+    (thunkItem modal codeNatAdd [] (codeSignature codeNatAdd) :: [])
+modalPromotionEffect = promoteModalEffect modalNatAdd modalCapturesNil

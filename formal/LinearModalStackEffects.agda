@@ -18,6 +18,28 @@ modeOfTy : CoreTy → SourceMode
 modeOfTy (!Ty A) = modal
 modeOfTy _ = linear
 
+data ModalCoreTy : CoreTy → Set where
+  modalCoreTy : {A : CoreTy} → ModalCoreTy (!Ty A)
+
+data ModalCaptures : List CoreTy → Set where
+  modalCapturesNil : ModalCaptures []
+  modalCapturesCons : {A : CoreTy} {As : List CoreTy} →
+    ModalCoreTy A → ModalCaptures As → ModalCaptures (A :: As)
+
+-- Code signatures belong to the closed, audited vocabulary; they cannot be
+-- invented by asserting an arbitrary GForth execution token is safe.
+codeSignature : CodeClass → CoreTy
+codeSignature codeOpaque = unitTy
+codeSignature codeNatAdd = naturalTy ⇒ naturalTy ⇒ naturalTy
+codeSignature codeNatSub = naturalTy ⇒ naturalTy ⇒ naturalTy
+codeSignature codeNatMul = naturalTy ⇒ naturalTy ⇒ naturalTy
+codeSignature codeNatQuot = naturalTy ⇒ naturalTy ⇒ naturalTy
+codeSignature codeNatRem = naturalTy ⇒ naturalTy ⇒ naturalTy
+codeSignature codeNatEq = naturalTy ⇒ naturalTy ⇒ booleanTy
+codeSignature codeNatGeq = naturalTy ⇒ naturalTy ⇒ booleanTy
+codeSignature codeNatLt = naturalTy ⇒ naturalTy ⇒ booleanTy
+codeSignature codeNatMonus = naturalTy ⇒ naturalTy ⇒ naturalTy
+
 joinSourceMode : SourceMode → SourceMode → SourceMode
 joinSourceMode linear _ = linear
 joinSourceMode _ linear = linear
@@ -81,9 +103,9 @@ data StackItem : Set where
   rawNatItem : StackItem
   modeTokenItem : SourceMode → StackItem
   valueItem : CoreTy → StackItem
-  thunkItem : SourceMode → CodeClass → CoreTy → StackItem
+  thunkItem : SourceMode → CodeClass → List CoreTy → CoreTy → StackItem
   resultItem : CoreTy → StackItem
-  codeItem : CodeClass → CoreTy → StackItem
+  codeItem : CodeClass → StackItem
   constructorTokenItem : Nat → StackItem
   matcherTokenItem : MatcherSignature → StackItem
   errorTokenItem : RuntimeError → StackItem
@@ -161,32 +183,36 @@ data StackEffect : Primitive → StackShape → StackShape → Set where
   makeLinearThunkEffect : {c : CodeClass} {A : CoreTy} {tail : StackShape} →
     LinearCode c →
     StackEffect pMakeThunk
-      (modeTokenItem linear :: codeItem c A :: tail)
-      (thunkItem linear c A :: tail)
+      (modeTokenItem linear :: codeItem c :: tail)
+      (thunkItem linear c [] (codeSignature c) :: tail)
 
-  makeModalThunkEffect : {c : CodeClass} {A : CoreTy} {tail : StackShape} →
+  makeModalThunkEffect : {c : CodeClass} {tail : StackShape} →
     ModalCode c →
     StackEffect pMakeThunk
-      (modeTokenItem modal :: codeItem c A :: tail)
-      (thunkItem modal c A :: tail)
+      (modeTokenItem modal :: codeItem c :: tail)
+      (thunkItem modal c [] (codeSignature c) :: tail)
 
   applyLinearEffect : {m : SourceMode} {c : CodeClass}
-    {A B : CoreTy} {tail : StackShape} →
+    {captures : List CoreTy} {A B : CoreTy} {tail : StackShape} →
     CodeSafe (joinSourceMode m (modeOfTy A)) c →
     StackEffect pApply
-      (thunkItem m c (A ⇒ B) :: valueItem A :: tail)
-      (thunkItem (joinSourceMode m (modeOfTy A)) c B :: tail)
+      (thunkItem m c captures (A ⇒ B) :: valueItem A :: tail)
+      (thunkItem (joinSourceMode m (modeOfTy A)) c
+        (captures ++ (A :: [])) B :: tail)
 
-  forceLinearEffect : {c : CodeClass} {A : CoreTy} {tail : StackShape} →
+  forceLinearEffect : {c : CodeClass} {captures : List CoreTy}
+    {A : CoreTy} {tail : StackShape} →
     LinearCode c →
     StackEffect pForce
-      (thunkItem linear c A :: tail)
+      (thunkItem linear c captures A :: tail)
       (valueItem A :: tail)
 
-  forceModalEffect : {c : CodeClass} {A : CoreTy} {tail : StackShape} →
+  forceModalEffect : {c : CodeClass} {captures : List CoreTy}
+    {A : CoreTy} {tail : StackShape} →
     ModalCode c →
+    ModalCaptures captures →
     StackEffect pForce
-      (thunkItem modal c A :: tail)
+      (thunkItem modal c captures A :: tail)
       (valueItem A :: tail)
 
   makeResultEffect : {A : CoreTy} {tail : StackShape} →
@@ -199,24 +225,29 @@ data StackEffect : Primitive → StackShape → StackShape → Set where
       (resultItem A :: tail)
       (valueItem A :: tail)
 
-  promoteModalEffect : {c : CodeClass} {A : CoreTy} {tail : StackShape} →
+  promoteModalEffect : {c : CodeClass} {captures : List CoreTy}
+    {A : CoreTy} {tail : StackShape} →
     ModalCode c →
+    ModalCaptures captures →
     StackEffect pPromoteModal
-      (thunkItem linear c A :: tail)
-      (thunkItem modal c A :: tail)
+      (thunkItem linear c captures A :: tail)
+      (thunkItem modal c captures A :: tail)
 
-  assertLinearEffect : {c : CodeClass} {A : CoreTy}
-    {tail : StackShape} {m : SourceMode} →
+  assertLinearEffect : {c : CodeClass} {captures : List CoreTy}
+    {A : CoreTy} {tail : StackShape} {m : SourceMode} →
     LinearCode c →
     StackEffect pAssertLinear
-      (thunkItem m c A :: tail)
-      (thunkItem linear c A :: tail)
+      (thunkItem m c captures A :: tail)
+      (thunkItem linear c captures A :: tail)
 
-  ifModalBranchesEffect : {C A : CoreTy} {c1 c2 : CodeClass}
+  ifModalBranchesEffect : {C A : CoreTy}
+    {c1 c2 : CodeClass} {captures1 captures2 : List CoreTy}
     {tail : StackShape} →
     BoolLike C → ModalCode c1 → ModalCode c2 →
+    ModalCaptures captures1 → ModalCaptures captures2 →
     StackEffect pIf
-      (thunkItem modal c2 A :: thunkItem modal c1 A :: valueItem C :: tail)
+      (thunkItem modal c2 captures2 A ::
+       thunkItem modal c1 captures1 A :: valueItem C :: tail)
       (valueItem A :: tail)
 
   constructEffect : (sig : ConstructorSignature) {tail : StackShape} →
