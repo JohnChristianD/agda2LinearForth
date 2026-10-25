@@ -75,7 +75,7 @@ val abi_import :
           live s' h && fresh_handle s' h &&
           has_kind s' h k && has_mode s' h m &&
           payload_mode_valid s' h m
-      | Failure s' _ -> invariant s' && same_state s s''))
+      | Failure s' _ -> invariant s' && same_state s s'))
 
 (* PASS partially applies a closure and returns a fresh closure. It consumes
    the function token only if that function is linear. It moves a linear
