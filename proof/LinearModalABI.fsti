@@ -82,9 +82,9 @@ val abi_import :
 (* The mode must be backed by compiler/loader evidence. This operation
    makes a tracked scalar handle; it does not infer a mode from the raw cell. *)
 val abi_make_scalar :
-  s:state -> raw_value:nat -> m:mode ->
+  s:state -> raw_value:nat -> evidence:nat -> m:mode ->
   Tot (outcome handle)
-    (requires (invariant s /\ abi_checked s /\ mode_evidence s raw_value m))
+    (requires (invariant s /\ abi_checked s /\ mode_evidence s evidence m))
     (ensures (fun out ->
       match out with
       | Success s' h ->
@@ -202,7 +202,9 @@ val abi_make_result :
           invariant s' /\ all_resources_accounted s' /\
           live s' r /\ fresh_handle s' r /\ has_kind s' r Result /\
           has_mode s' r m /\ payload_mode_valid s' r m /\
-          result_transition_valid s s' payload r m
+          result_transition_valid s s' payload r m /\
+          ((m = Linear) ==> (consumed s' payload /\ transfer_complete s s' payload r)) /\
+          ((m = Modal) ==> live s' payload)
       | Failure s' _ -> invariant s' /\ same_state s s'))
 
 (* This contract specifically rules out tagging a RESULT as Modal when its
