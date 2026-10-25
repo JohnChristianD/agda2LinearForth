@@ -199,7 +199,7 @@ fthPatternMatch x cases maybeFallback = do
       return $ T.concat [
         T.concat [
           formToAtom arg,
-          T.concat (map (\\_ -> T.pack "makeWILDCARD ") wildcards ++ [T.pack (init (T.unpack (formToAtom pat)) ++ " ")] ++ map (\\_ -> T.pack "pass ") wildcards),
+          T.concat (map (\_ -> T.pack "makeWILDCARD ") wildcards ++ [T.pack (init (T.unpack (formToAtom pat)) ++ " ")] ++ map (\_ -> T.pack "pass ") wildcards),
           T.pack "0 pointer !",
           T.concat (T.pack (" obj= if wildcards " ++ show (length wildcards) ++ " pushArrayN { ") : map formToAtom wildcards ++ [T.pack "} "] ++ [T.pack newLine]),
           formToAtom expr
