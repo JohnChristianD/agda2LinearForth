@@ -1,20 +1,18 @@
 cabal-version:      2.4
 name:               agda2forth
 version:            0.1.0.0
-synopsis:           Agda backend for Gforth
+synopsis:           Agda backend for GNU Gforth
 description:        -
 
--- A URL where users can report bugs.
--- bug-reports:
-
--- The license under which the package is released.
--- license:
+-- Package layout follows upstream jespercockx/agda2scheme; the Forth backend
+-- and its ABI checker are target-specific additions.
 author:             Louis Milliken
 maintainer:         L.m.Milliken@student.tudelft.nl
 
 data-files:
     FLib.fth
 data-dir:   data
+
 extra-source-files:
     README.md
     test/TriplesFO.agda
@@ -25,15 +23,8 @@ extra-source-files:
 
 executable agda2forth
     main-is:          Main.hs
-
-    -- Modules included in this executable, other than Main.
-    other-modules:    
-        Agda.Compiler.ToForth
-        Agda.Compiler.Erase
-        Paths_agda2forth
-
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
+    other-modules:    Agda.Compiler.ToForth
+                      Agda.Compiler.Erase
     build-depends:    base >=4.15.0.0
                       , Agda >= 2.8
                       , containers >= 0.5.7.1
@@ -71,9 +62,7 @@ executable agda2forth
                        , TupleSections
                        , TypeSynonymInstances
 
-
--- Use Agda's own type checker for proof artifacts. The project Forth backend
--- is not used to compile the proof model into Forth.
+-- Run Agda's own checker on the spec; never compile the spec into Forth.
 executable agda-spec-check
     main-is:          AgdaSpecCheck.hs
     hs-source-dirs:   tools
