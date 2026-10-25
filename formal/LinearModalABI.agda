@@ -338,6 +338,98 @@ data Primitive : Set where
   pMakeScalar pMakeThunk pApply pForce pMakeResult pUnwrapResult : Primitive
   pPromoteModal pAssertLinear pConstruct pMatch pPrint pThrow pCatch : Primitive
 
+
+-- Complete profile table for every primitive admitted by the proposed checked
+-- core ABI. This table is a specification; implementation correspondence is a
+-- separate theorem and is currently an open obligation.
+data Arity : Set where
+  fixedArity : Nat → Arity
+  constructorDefinedArity matcherDefinedArity : Arity
+
+data OperandRule : Set where
+  twoCheckedScalars threeCheckedBranches modeAndScalar checkedCode
+    checkedClosureAndValue checkedClosure checkedResult checkedThunk
+    checkedConstructorFields checkedMatchInputs checkedObservableValue
+    checkedErrorAndHandler : OperandRule
+
+data OwnershipEffect : Set where
+  consumeLinearOperands makeFreshScalar moveCaptures forceByMode
+    moveIntoResult moveOutOfResult promoteOnlyWithProof
+    markLinearOnlyWithProof moveConstructorFields accountPatternFields
+    observeWithoutHiddenForce raiseCheckedError catchAndPreserveState : OwnershipEffect
+
+data ResultModeRule : Set where
+  joinOperandModes selectedBranchMode inputMode codeResultMode
+    freshAnnotatedMode noValue : ResultModeRule
+
+data EvidenceRequirement : Set where
+  noCodeEvidence runtimeValueValidation compilerDerivedCodeProof
+    explicitlyTrustedLegacyCode : EvidenceRequirement
+
+record PrimitiveSpec (p : Primitive) : Set where
+  constructor primitiveSpec
+  field
+    stackArity : Arity
+    operandRule : OperandRule
+    ownershipRule : OwnershipEffect
+    resultModeRule : ResultModeRule
+    evidenceRequirement : EvidenceRequirement
+    possibleErrors : List RuntimeError
+open PrimitiveSpec public
+
+numericErrors : List RuntimeError
+numericErrors = unknownHandle :: consumedHandle :: wrongKind :: invalidMode :: []
+
+divisionErrors : List RuntimeError
+divisionErrors = unknownHandle :: consumedHandle :: wrongKind ::
+  invalidMode :: arithmeticDomainError :: []
+
+closureErrors : List RuntimeError
+closureErrors = unknownHandle :: consumedHandle :: wrongKind ::
+  invalidMode :: badStackEffect :: []
+
+modalErrors : List RuntimeError
+modalErrors = unknownHandle :: consumedHandle :: wrongKind ::
+  modalPromotionRejected :: badResultPayload :: []
+
+constructErrors : List RuntimeError
+constructErrors = unknownHandle :: consumedHandle :: wrongKind ::
+  badStackEffect :: abiEscapeHatch :: []
+
+primitiveSpec : (p : Primitive) → PrimitiveSpec p
+primitiveSpec pNatAdd = primitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
+primitiveSpec pNatSub = primitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
+primitiveSpec pNatMul = primitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
+primitiveSpec pNatQuot = primitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation divisionErrors
+primitiveSpec pNatRem = primitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation divisionErrors
+primitiveSpec pNatEq = primitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
+primitiveSpec pNatGeq = primitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
+primitiveSpec pNatLt = primitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
+primitiveSpec pNatMonus = primitiveSpec (fixedArity 2) twoCheckedScalars consumeLinearOperands joinOperandModes runtimeValueValidation numericErrors
+primitiveSpec pIf = primitiveSpec (fixedArity 3) threeCheckedBranches consumeLinearOperands selectedBranchMode runtimeValueValidation closureErrors
+primitiveSpec pMakeScalar = primitiveSpec (fixedArity 2) modeAndScalar makeFreshScalar inputMode noCodeEvidence (invalidMode :: numericErrors)
+primitiveSpec pMakeThunk = primitiveSpec (fixedArity 1) checkedCode makeFreshScalar codeResultMode compilerDerivedCodeProof closureErrors
+primitiveSpec pApply = primitiveSpec (fixedArity 2) checkedClosureAndValue moveCaptures codeResultMode compilerDerivedCodeProof closureErrors
+primitiveSpec pForce = primitiveSpec (fixedArity 1) checkedClosure forceByMode codeResultMode compilerDerivedCodeProof closureErrors
+primitiveSpec pMakeResult = primitiveSpec (fixedArity 1) checkedObservableValue moveIntoResult inputMode runtimeValueValidation closureErrors
+primitiveSpec pUnwrapResult = primitiveSpec (fixedArity 1) checkedResult moveOutOfResult inputMode runtimeValueValidation closureErrors
+primitiveSpec pPromoteModal = primitiveSpec (fixedArity 1) checkedThunk promoteOnlyWithProof inputMode compilerDerivedCodeProof modalErrors
+primitiveSpec pAssertLinear = primitiveSpec (fixedArity 1) checkedThunk markLinearOnlyWithProof inputMode compilerDerivedCodeProof modalErrors
+primitiveSpec pConstruct = primitiveSpec constructorDefinedArity checkedConstructorFields moveConstructorFields codeResultMode compilerDerivedCodeProof constructErrors
+primitiveSpec pMatch = primitiveSpec matcherDefinedArity checkedMatchInputs accountPatternFields selectedBranchMode compilerDerivedCodeProof constructErrors
+primitiveSpec pPrint = primitiveSpec (fixedArity 1) checkedObservableValue observeWithoutHiddenForce noValue runtimeValueValidation numericErrors
+primitiveSpec pThrow = primitiveSpec (fixedArity 1) checkedErrorAndHandler raiseCheckedError noValue noCodeEvidence (badPayloadError)
+  where
+  badPayloadError : List RuntimeError
+  badPayloadError = abiEscapeHatch :: []
+
+primitiveSpec pCatch = primitiveSpec (fixedArity 2) checkedErrorAndHandler catchAndPreserveState inputMode noCodeEvidence (unknownHandle :: badStackEffect :: [])
+
+-- This exhaustive function is accepted by Agda only if every Primitive constructor
+-- has a profile. It does not claim that each Gforth implementation satisfies it.
+specifiesEveryPrimitive : (p : Primitive) → PrimitiveSpec p
+specifiesEveryPrimitive = primitiveSpec
+
 data EscapeHatch : Set where
   rawMemoryAccess arbitraryExecute dictionaryCompilation : EscapeHatch
 
