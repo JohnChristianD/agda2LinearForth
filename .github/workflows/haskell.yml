@@ -65,6 +65,15 @@ jobs:
         run: |
           gforth data/FLib.fth -e ": verify-modal-rejection { h -- } h ['] assertModalValue CATCH { err } DROP err ABI-ERR-MODAL-PAYLOAD <> abort\" unexpected modal error code\" h metadata@ META-MODE cells + @ MODE-UNANNOTATED <> abort\" failed assertion changed wrapper mode\" ; 5 MODE-LINEAR ABI-MAKE-SCALAR makeRESULT verify-modal-rejection bye"
 
+      - name: Set up F* (pinned verifier)
+        run: |
+          curl -fsSL https://aka.ms/install-fstar | bash -s -- --release --version v2026.10.11 --dest "$HOME/.local/fstar" --link-dir "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Type-check linear/modal ABI specification interface
+        run: fstar.exe proof/LinearModalABI.fsti
+
       - name: Set up GHC
         uses: haskell-actions/setup@v2
         with:
