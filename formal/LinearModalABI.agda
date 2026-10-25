@@ -310,29 +310,13 @@ noUnannotatedDuplication ()
 noUnannotatedDiscard : CanDiscard unannotated → ⊥
 noUnannotatedDiscard ()
 
-data Token (identity : Nat) (m : RuntimeMode) (l : Life) : Set where
-  token : Token identity m l
-
-consumeLinear :
-  {identity : Nat} →
-  Token identity linearMode live → Token identity linearMode consumed
-consumeLinear token = token
-
-moveLinear :
-  {oldIdentity freshIdentity : Nat} →
-  oldIdentity ≢ freshIdentity →
-  Token oldIdentity linearMode live →
-  Token oldIdentity linearMode consumed × Token freshIdentity linearMode live
-moveLinear (apart distinct) token = token , token
-
-duplicateModal :
-  {identity : Nat} →
-  Token identity modalMode live →
-  Token identity modalMode live × Token identity modalMode live
-duplicateModal token = token , token
-
-discardModal : {identity : Nat} → Token identity modalMode live → ⊤
-discardModal token = tt
+-- Do not model ownership with a bare indexed token. A constructor of the form
+-- `token : Token identity mode life` for arbitrary indices makes each such
+-- proposition trivially inhabited and proves no real consume/move transition.
+-- Linear ownership is therefore expressed by the heap/root/capture invariant in
+-- `WellFormed`: every live linear descriptor has exactly one active reference,
+-- while `CanDuplicate` and `CanDiscard` permit those structural rules only for
+-- modal values. Runtime refinement remains a separate obligation.
 
 record PromotionPrecondition (s : Machine) (d : Descriptor) : Set where
   constructor promotionPrecondition
