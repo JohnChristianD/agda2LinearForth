@@ -363,6 +363,7 @@ data OperandRule : Set where
 data OwnershipEffect : Set where
   consumeLinearOperands : OwnershipEffect
   makeFreshScalar : OwnershipEffect
+  makeFreshClosure : OwnershipEffect
   moveCaptures : OwnershipEffect
   forceByMode : OwnershipEffect
   moveIntoResult : OwnershipEffect
@@ -371,6 +372,7 @@ data OwnershipEffect : Set where
   markLinearOnlyWithProof : OwnershipEffect
   moveConstructorFields : OwnershipEffect
   accountPatternFields : OwnershipEffect
+  selectBranchAndAccountResources : OwnershipEffect
   observeWithoutHiddenForce : OwnershipEffect
   raiseCheckedError : OwnershipEffect
   catchAndPreserveState : OwnershipEffect
