@@ -586,10 +586,18 @@ variable target
     \ Force it and allocate a fresh RESULT instead of rewriting an aliased
     \ closure handle in place.
     handle dethunk { payload }
-    payload makeRESULT { resultHandle }
-    originalMeta META-MODE cells + @
-    resultHandle metadata@ META-MODE cells + !
-    resultHandle
+
+    \ Result mode belongs to the returned payload, not to the closure that
+    \ produced it. Keep the historical unchecked route only for legacy values.
+    originalMeta META-MODE cells + @ MODE-UNANNOTATED = IF
+        payload makeRESULT EXIT
+    THEN
+
+    payload metadata@ dup 0= IF
+        drop ABI-ERR-RESULT-PAYLOAD THROW
+    THEN
+    drop
+    payload ABI-MAKE-RESULT
 ;
 
 : deepDethunk ( [THUNK o1] -- o1 )
