@@ -330,6 +330,15 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
     0
 ;
 
+: ABI-MAKE-SCALAR { value mode -- handle }
+    mode MODE-LINEAR = mode MODE-MODAL = OR 0= IF ABI-ERR-INVALID-MODE THROW THEN
+    align here 2 cells allot { handle }
+    SCALAR handle !
+    value handle cell+ !
+    handle KIND-SCALAR 0 0 0 mode OWN-LIVE newMeta DROP
+    handle
+;
+
 : assertModalValue { handle -- handle }
     handle requireLiveMeta { meta }
     handle isResult 0= IF ABI-ERR-ASSERT-MODAL-KIND THROW THEN
@@ -432,14 +441,6 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
     handle
 ;
 
-: ABI-MAKE-SCALAR { value mode -- handle }
-    mode MODE-LINEAR = mode MODE-MODAL = OR 0= IF ABI-ERR-INVALID-MODE THROW THEN
-    align here 2 cells allot { handle }
-    SCALAR handle !
-    value handle cell+ !
-    handle KIND-SCALAR 0 0 0 mode OWN-LIVE newMeta DROP
-    handle
-;
 
 :noname ." S: " ; SCALAR 1 cells + !
 :noname ." R: " ; RESULT 1 cells + !
