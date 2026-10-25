@@ -69,7 +69,9 @@ variable RESULT 1 cells allot 2 RESULT !
 
 0 constant KIND-THUNK
 1 constant KIND-RESULT
-0 constant MODE-UNKNOWN
+\ Internal boundary state only; this is not a third Agda/source-language type.
+\ Checked generated code must establish MODE-LINEAR or MODE-MODAL explicitly.
+0 constant MODE-UNANNOTATED
 1 constant MODE-LINEAR
 2 constant MODE-MODAL
 0 constant OWN-LIVE
@@ -165,7 +167,7 @@ variable LINEAR-SAFE-HEAD
             0 TO good
         ELSE
             child META-STATE cells + @ OWN-CONSUMED = IF 0 TO good THEN
-            child META-MODE cells + @ MODE-UNKNOWN = IF 0 TO good THEN
+            child META-MODE cells + @ MODE-UNANNOTATED = IF 0 TO good THEN
         THEN
         i 1+ TO i
     REPEAT
@@ -209,7 +211,7 @@ variable LINEAR-SAFE-HEAD
 ;
 
 : combineModes { left right -- mode }
-    left MODE-UNKNOWN = right MODE-UNKNOWN = OR IF MODE-UNKNOWN EXIT THEN
+    left MODE-UNANNOTATED = right MODE-UNANNOTATED = OR IF MODE-UNANNOTATED EXIT THEN
     left MODE-LINEAR = right MODE-LINEAR = OR IF MODE-LINEAR EXIT THEN
     MODE-MODAL
 ;
@@ -290,7 +292,7 @@ variable LINEAR-SAFE-HEAD
     align here 2 cells allot { handle }
     THUNK handle !
     ['] invokeClosure handle cell+ !
-    handle KIND-THUNK xt 0 0 MODE-UNKNOWN OWN-LIVE newMeta DROP
+    handle KIND-THUNK xt 0 0 MODE-UNANNOTATED OWN-LIVE newMeta DROP
     handle
 ;
 
@@ -300,7 +302,7 @@ variable LINEAR-SAFE-HEAD
     align here 2 cells allot { handle }
     RESULT handle !
     value handle cell+ !
-    handle KIND-RESULT 0 0 0 MODE-UNKNOWN OWN-LIVE newMeta DROP
+    handle KIND-RESULT 0 0 0 MODE-UNANNOTATED OWN-LIVE newMeta DROP
     handle
 ;
 
@@ -347,7 +349,7 @@ variable target
             meta META-MODE cells + @ MODE-LINEAR = IF
                 OWN-CONSUMED meta META-STATE cells + !
             THEN
-            value ENDFLAG value DUP cell+ PERFORM
+            value ENDFLAG value cell+ PERFORM
             passMany NIP TO value
             meta META-MODE cells + @ MODE-LINEAR = IF
                 meta value checkLinearEnvConsumed
@@ -437,15 +439,15 @@ variable target
         hm META-MODE cells + @ { functionMode }
         x metadata@ { xm }
         xm 0<> IF x requireLiveMeta DROP THEN
-        MODE-UNKNOWN { argumentMode }
+        MODE-UNANNOTATED { argumentMode }
         xm 0<> IF xm META-MODE cells + @ TO argumentMode THEN
 
-        functionMode MODE-LINEAR = argumentMode MODE-UNKNOWN = AND
+        functionMode MODE-LINEAR = argumentMode MODE-UNANNOTATED = AND
             abort" checked linear closure cannot capture an untracked value"
-        functionMode MODE-MODAL = argumentMode MODE-UNKNOWN = AND
+        functionMode MODE-MODAL = argumentMode MODE-UNANNOTATED = AND
             abort" checked modal closure cannot capture an untracked value"
         argumentMode MODE-LINEAR = IF
-            functionMode MODE-UNKNOWN = abort" linear value cannot enter an unknown closure"
+            functionMode MODE-UNANNOTATED = abort" linear value cannot enter an unknown closure"
             hm META-CODE cells + @ linearSafeXT? 0=
                 abort" closure XT lacks a linear-capture contract"
         THEN
@@ -457,13 +459,13 @@ variable target
         hm META-ENV cells + @ { oldEnv }
         oldCount 1+ { newCount }
         align here newCount cells allot { newEnv }
-        captured newEnv !
         0 { i }
         BEGIN i oldCount < WHILE
             oldEnv i cells + @
-            newEnv i 1+ cells + !
+            newEnv i cells + !
             i 1+ TO i
         REPEAT
+        captured newEnv oldCount cells + !
 
         align here 2 cells allot { newHandle }
         THUNK newHandle !
