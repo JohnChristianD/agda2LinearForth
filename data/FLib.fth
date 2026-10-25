@@ -512,16 +512,16 @@ variable target
         xm 0<> IF xm META-MODE cells + @ TO argumentMode THEN
 
         functionMode MODE-LINEAR = argumentMode MODE-UNANNOTATED = AND
-            ABI-ERR-LINEAR-UNTRACKED-CAPTURE THROW
+            IF ABI-ERR-LINEAR-UNTRACKED-CAPTURE THROW THEN
         functionMode MODE-MODAL = argumentMode MODE-UNANNOTATED = AND
-            ABI-ERR-MODAL-UNTRACKED-CAPTURE THROW
+            IF ABI-ERR-MODAL-UNTRACKED-CAPTURE THROW THEN
         argumentMode MODE-LINEAR = IF
             functionMode MODE-UNANNOTATED = IF ABI-ERR-LINEAR-UNKNOWN-CLOSURE THROW THEN
             hm META-CODE cells + @ linearSafeXT? 0=
-                ABI-ERR-LINEAR-CAPTURE-UNSAFE-XT THROW
+                IF ABI-ERR-LINEAR-CAPTURE-UNSAFE-XT THROW THEN
         THEN
         x h = argumentMode MODE-LINEAR = AND
-            ABI-ERR-LINEAR-SELF-CAPTURE THROW
+            IF ABI-ERR-LINEAR-SELF-CAPTURE THROW THEN
 
         x captureValue { captured }
         hm META-ENVCOUNT cells + @ { oldCount }
