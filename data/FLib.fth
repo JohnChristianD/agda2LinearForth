@@ -1,6 +1,16 @@
 variable MAXNUM 100000000000000 MAXNUM !
 s" unsupported or invalid operation emitted by agda2forth" exception constant ABI-ERR-COMPILED-UNSUPPORTED
 : ABI-ERROR-COMPILED-UNSUPPORTED ( -- ) ABI-ERR-COMPILED-UNSUPPORTED THROW ;
+
+\ Explicit checked-subset domain boundary for natural quotient/remainder.
+: ABI-NAT-QUOT { numerator denominator -- quotient }
+    denominator 0= IF ABI-ERR-ARITHMETIC-DOMAIN THROW THEN
+    numerator denominator /
+;
+: ABI-NAT-REM { numerator denominator -- remainder }
+    denominator 0= IF ABI-ERR-ARITHMETIC-DOMAIN THROW THEN
+    numerator denominator mod
+;
 variable ENDFLAG 1234 ENDFLAG !
 s" unknown or unmanaged value handle" exception constant ABI-ERR-UNKNOWN-HANDLE
 s" use after linear handle consumption" exception constant ABI-ERR-CONSUMED-HANDLE
@@ -11,6 +21,7 @@ s" expected a checked result wrapper" exception constant ABI-ERR-RESULT-KIND
 s" cannot unwrap a consumed or malformed result payload" exception constant ABI-ERR-RESULT-PAYLOAD
 s" expected a scalar handle" exception constant ABI-ERR-EXPECTED-SCALAR
 s" arithmetic result exceeds the checked cell range" exception constant ABI-ERR-NAT-OVERFLOW
+s" natural division or remainder by zero" exception constant ABI-ERR-ARITHMETIC-DOMAIN
 s" closure has no metadata" exception constant ABI-ERR-CLOSURE-METADATA
 s" cannot move unknown linear representation" exception constant ABI-ERR-UNKNOWN-REPRESENTATION
 s" assertLinear requires a closure thunk" exception constant ABI-ERR-ASSERT-LINEAR-KIND

@@ -70,6 +70,14 @@ throw-capture @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 : add2 ( x y -- z ) + ;
 ' add2 makeTHUNK 10 swap pass 20 swap pass dethunk assert30
 
+\ Arithmetic domain errors are named and catchable; valid natural arithmetic is unchanged.
+10 2 ABI-NAT-QUOT 5 = abi-assert
+10 3 ABI-NAT-REM 1 = abi-assert
+: checked-quot-zero-test ( -- ) 10 0 ABI-NAT-QUOT DROP ;
+' checked-quot-zero-test CATCH ABI-ERR-ARITHMETIC-DOMAIN = abi-assert
+: checked-rem-zero-test ( -- ) 10 0 ABI-NAT-REM DROP ;
+' checked-rem-zero-test CATCH ABI-ERR-ARITHMETIC-DOMAIN = abi-assert
+
 : unknown-handle-test ( -- )
   123 assertLinear DROP
 ;
