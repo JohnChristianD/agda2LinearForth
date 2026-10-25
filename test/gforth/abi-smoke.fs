@@ -1,5 +1,3 @@
-include data/FLib.fth
-
 \ Checked ABI smoke and negative-boundary tests for GNU Gforth.
 \ Run after loading data/FLib.fth. Arbitrary Forth is outside the safety claim.
 
