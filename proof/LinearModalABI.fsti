@@ -211,16 +211,16 @@ val abi_assert_modal_value :
   s:state -> wrapper:handle ->
   Tot (outcome handle)
     (requires (invariant s /\ abi_checked s /\ live s wrapper /\
-      has_kind s wrapper Result /\
-      (match payload_of s wrapper with
-       | Some payload -> live s payload /\ has_mode s payload Modal /\
-           payload_mode_valid s payload Modal
-       | None -> False)))
+      has_kind s wrapper Result))
     (ensures (fun out ->
       match out with
       | Success s' h ->
           invariant s' /\ all_resources_accounted s' /\
-          live s' h /\ has_mode s' h Modal /\ modal_safe s' h
+          live s' h /\ has_mode s' h Modal /\ modal_safe s' h /\
+          (match payload_of s' h with
+           | Some payload -> live s' payload /\ has_mode s' payload Modal /\
+               payload_mode_valid s' payload Modal
+           | None -> False)
       | Failure s' _ -> invariant s' /\ same_state s s'))
 
 (* Only primitives with complete reviewed contracts are callable by checked
