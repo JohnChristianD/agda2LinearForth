@@ -302,15 +302,23 @@ variable LINEAR-SAFE-HEAD
 
 :noname ." R: " ; RESULT 1 cells + !
 
-: toResult ( [THUNK val] -- [RESULT val] )
-    DUP RESULT SWAP !
-    DUP metadata@ { meta }
-    meta 0<> IF
-        KIND-RESULT meta META-KIND cells + !
-        0 meta META-CODE cells + !
-        0 meta META-ENV cells + !
-        0 meta META-ENVCOUNT cells + !
+: toResult { handle -- resultHandle }
+    handle metadata@ { originalMeta }
+    originalMeta 0= IF
+        \ Preserve the legacy conversion for unmanaged records.
+        RESULT handle !
+        handle EXIT
     THEN
+    handle isResult IF handle EXIT THEN
+
+    \ A managed thunk stores an invocation XT, not its computed payload.
+    \ Force it and allocate a fresh RESULT instead of rewriting an aliased
+    \ closure handle in place.
+    handle dethunk { payload }
+    payload makeRESULT { resultHandle }
+    originalMeta META-MODE cells + @
+    resultHandle metadata@ META-MODE cells + !
+    resultHandle
 ;
 
 : shallowPrint { o1 }
