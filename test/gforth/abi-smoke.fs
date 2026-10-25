@@ -124,7 +124,7 @@ throw-capture @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 ;
 checked-add-test
 
-\\ The compiler's arithmetic adapters dispatch handles through the same ABI.
+\ The compiler's arithmetic adapters dispatch handles through the same ABI.
 : checked-add-adapter-test ( -- )
   8 MODE-LINEAR ABI-MAKE-SCALAR
   9 MODE-MODAL ABI-MAKE-SCALAR
