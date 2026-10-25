@@ -37,6 +37,18 @@ jobs:
         run: |
           gforth data/FLib.fth -e ": assert-modal-mode { h -- } h metadata@ META-MODE cells + @ MODE-MODAL <> abort\" result wrapper lost modal mode\" ; 123 MODE-MODAL ABI-MAKE-SCALAR makeRESULT assertModalValue assert-modal-mode bye"
 
+      - name: Reject invalid scalar mode at ABI entry
+        run: |
+          set +e
+          output=$(gforth data/FLib.fth -e "123 MODE-UNANNOTATED ABI-MAKE-SCALAR bye" 2>&1)
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "::error::ABI-MAKE-SCALAR accepted MODE-UNANNOTATED"
+            exit 1
+          fi
+          printf '%s\n' "$output" | grep -F "invalid ABI scalar mode"
+
       - name: Reject a tracked linear scalar as modal
         run: |
           set +e
