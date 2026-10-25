@@ -115,7 +115,7 @@ freshNotPresent :
   AllBelow next xs → (next ∈ₙ xs) → ⊥
 freshNotPresent {xs = []} bounded ()
 freshNotPresent {next} {n :: ns} (nBelow , restBelow) (here nextEqN) =
-  notSelfLess (subst (λ k → n < k) nextEqN nBelow)
+  notSelfLess (subst {P = λ k → n < k} nextEqN nBelow)
 freshNotPresent {next} {n :: ns} (nBelow , restBelow) (there occursLater) =
   freshNotPresent restBelow occursLater
 
