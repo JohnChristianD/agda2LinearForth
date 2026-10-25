@@ -45,6 +45,7 @@ throw-closure @ metadata@ META-ENV cells + @ @ throw-capture !
   throw-closure @ dethunk DROP
 ;
 ' force-failing-linear-closure CATCH -4321 = abi-assert
+throw-child @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 throw-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 throw-capture @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 
