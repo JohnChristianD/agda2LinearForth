@@ -35,7 +35,7 @@ jobs:
 
       - name: Accept a tracked modal scalar payload
         run: |
-          gforth data/FLib.fth -e ": assert-modal-mode { h -- } h metadata@ META-MODE cells + @ MODE-MODAL <> abort\" result wrapper lost modal mode\" ; 123 MODE-MODAL ABI-MAKE-SCALAR makeRESULT assertModalValue assert-modal-mode bye"
+          gforth data/FLib.fth -e ": assert-modal-mode { h -- } h metadata@ META-MODE cells + @ MODE-MODAL <> abort\" result wrapper lost modal mode\" ; 123 MODE-MODAL ABI-MAKE-SCALAR ABI-MAKE-RESULT assertModalValue assert-modal-mode bye"
 
       - name: Reject invalid scalar mode at ABI entry
         run: |
@@ -52,7 +52,7 @@ jobs:
       - name: Reject a tracked linear scalar as modal
         run: |
           set +e
-          output=$(gforth data/FLib.fth -e "123 MODE-LINEAR ABI-MAKE-SCALAR makeRESULT assertModalValue bye" 2>&1)
+          output=$(gforth data/FLib.fth -e "123 MODE-LINEAR ABI-MAKE-SCALAR ABI-MAKE-RESULT assertModalValue bye" 2>&1)
           status=$?
           set -e
           if [ "$status" -eq 0 ]; then
@@ -63,7 +63,11 @@ jobs:
 
       - name: Preserve state when modal assertion is rejected
         run: |
-          gforth data/FLib.fth -e ": verify-modal-rejection { h -- } h ['] assertModalValue CATCH { err } DROP err ABI-ERR-MODAL-PAYLOAD <> abort\" unexpected modal error code\" h metadata@ META-MODE cells + @ MODE-UNANNOTATED <> abort\" failed assertion changed wrapper mode\" ; 5 MODE-LINEAR ABI-MAKE-SCALAR makeRESULT verify-modal-rejection bye"
+          gforth data/FLib.fth -e ": verify-modal-rejection { h -- } h ['] assertModalValue CATCH { err } DROP err ABI-ERR-MODAL-PAYLOAD <> abort\" unexpected modal error code\" h metadata@ META-MODE cells + @ MODE-LINEAR <> abort\" failed assertion changed wrapper mode\" ; 5 MODE-LINEAR ABI-MAKE-SCALAR ABI-MAKE-RESULT verify-modal-rejection bye"
+
+      - name: Transfer and recover a linear result payload
+        run: |
+          gforth data/FLib.fth -e ": verify-linear-result-transfer { -- } 5 MODE-LINEAR ABI-MAKE-SCALAR { payload } payload ABI-MAKE-RESULT { wrapper } payload metadata@ META-STATE cells + @ OWN-CONSUMED <> abort\\" payload was not transferred\\" wrapper ABI-UNWRAP-RESULT { fresh } wrapper metadata@ META-STATE cells + @ OWN-CONSUMED <> abort\\" wrapper was not consumed\\" fresh isScalar 0= abort\\" unwrap did not return scalar\\" fresh cell+ @ 5 <> abort\\" unwrapped scalar payload changed\\" fresh metadata@ META-MODE cells + @ MODE-LINEAR <> abort\\" unwrapped scalar mode changed\\" ; verify-linear-result-transfer bye"
 
       - name: Set up F* (pinned verifier)
         run: |
