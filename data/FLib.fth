@@ -333,7 +333,7 @@ s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
         moved KIND-SCALAR 0 0 0 MODE-LINEAR OWN-LIVE newMeta DROP
     ELSE
         ABI-ERR-UNKNOWN-REPRESENTATION THROW
-    THEN THEN
+    THEN THEN THEN
     OWN-CONSUMED meta META-STATE cells + !
     moved
 ;
