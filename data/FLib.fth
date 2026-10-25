@@ -95,7 +95,8 @@ variable SCALAR 1 cells allot
 5 constant META-ENVCOUNT
 6 constant META-MODE
 7 constant META-STATE
-8 constant META-CELLS
+8 constant META-PAYLOAD
+9 constant META-CELLS
 
 0 constant KIND-THUNK
 1 constant KIND-RESULT
@@ -122,6 +123,7 @@ variable LINEAR-SAFE-HEAD
     count meta META-ENVCOUNT cells + !
     mode meta META-MODE cells + !
     state meta META-STATE cells + !
+    0 meta META-PAYLOAD cells + !
     meta HANDLE-META-HEAD !
     meta
 ;
@@ -282,7 +284,8 @@ variable LINEAR-SAFE-HEAD
             align here 2 cells allot TO moved
             RESULT moved !
             handle cell+ @ moved cell+ !
-            moved KIND-RESULT 0 0 0 MODE-LINEAR OWN-LIVE newMeta DROP
+            moved KIND-RESULT 0 0 0 MODE-LINEAR OWN-LIVE newMeta { movedMeta }
+            handle cell+ @ movedMeta META-PAYLOAD cells + !
         ELSE
             ABI-ERR-UNKNOWN-REPRESENTATION THROW
         THEN
@@ -365,7 +368,8 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
     align here 2 cells allot { wrapper }
     RESULT wrapper !
     payload wrapper cell+ !
-    wrapper KIND-RESULT 0 0 0 mode OWN-LIVE newMeta DROP
+    wrapper KIND-RESULT 0 0 0 mode OWN-LIVE newMeta { wrapperMeta }
+    payload wrapperMeta META-PAYLOAD cells + !
     mode MODE-LINEAR = IF OWN-CONSUMED pm META-STATE cells + ! THEN
     wrapper
 ;
@@ -408,7 +412,8 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
         align here 2 cells allot { fresh }
         RESULT fresh !
         oldPayload cell+ @ fresh cell+ !
-        fresh KIND-RESULT 0 0 0 MODE-LINEAR OWN-LIVE newMeta DROP
+        fresh KIND-RESULT 0 0 0 MODE-LINEAR OWN-LIVE newMeta { freshMeta }
+        oldPayload cell+ @ freshMeta META-PAYLOAD cells + !
         OWN-CONSUMED wm META-STATE cells + !
         fresh EXIT
     THEN
@@ -439,7 +444,8 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
     align here 2 cells allot { handle }
     RESULT handle !
     value handle cell+ !
-    handle KIND-RESULT 0 0 0 MODE-UNANNOTATED OWN-LIVE newMeta DROP
+    handle KIND-RESULT 0 0 0 MODE-UNANNOTATED OWN-LIVE newMeta { resultMeta }
+    value metadata@ 0<> IF value resultMeta META-PAYLOAD cells + ! THEN
     handle
 ;
 

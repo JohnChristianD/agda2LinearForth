@@ -11,7 +11,13 @@
 
 : modal-body ( x -- ) drop ;
 ' modal-body declareModalSafeXT
-123 MODE-MODAL ABI-MAKE-SCALAR ABI-MAKE-RESULT assertModalValue DROP
+VARIABLE modal-payload-handle
+VARIABLE modal-result-handle
+123 MODE-MODAL ABI-MAKE-SCALAR DUP modal-payload-handle !
+ABI-MAKE-RESULT DUP modal-result-handle !
+modal-result-handle @ metadata@ META-PAYLOAD cells + @
+modal-payload-handle @ = abi-assert
+modal-result-handle @ assertModalValue DROP
 ' modal-body makeTHUNK promoteModal DROP
 
 : linear-body ( x -- ) drop ;
