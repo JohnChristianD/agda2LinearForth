@@ -73,9 +73,9 @@ val abi_import :
     (ensures (fun out ->
       match out with
       | Success s' h ->
-          invariant s' /\ all_resources_accounted s' &&
-          live s' h /\ fresh_handle s' h &&
-          has_kind s' h k /\ has_mode s' h m &&
+          invariant s' /\ all_resources_accounted s' /\
+          live s' h /\ fresh_handle s' h /\
+          has_kind s' h k /\ has_mode s' h m /\
           payload_mode_valid s' h m
       | Failure s' _ -> invariant s' /\ same_state s s'))
 
@@ -103,27 +103,27 @@ val abi_make_scalar :
 val abi_pass :
   s:state -> fn:handle -> arg:handle ->
   Tot (outcome handle)
-    (requires (invariant s /\ abi_checked s &&
-      live s fn /\ has_kind s fn Closure &&
-      (mode_of s fn = Some Linear \/ mode_of s fn = Some Modal) &&
-      live s arg &&
-      (mode_of s arg = Some Linear \/ mode_of s arg = Some Modal) &&
+    (requires (invariant s /\ abi_checked s /\
+      live s fn /\ has_kind s fn Closure /\
+      (mode_of s fn = Some Linear \/ mode_of s fn = Some Modal) /\
+      live s arg /\
+      (mode_of s arg = Some Linear \/ mode_of s arg = Some Modal) /\
       accepts_argument s fn (match mode_of s arg with
         | Some m -> m
         | None -> Linear)))
     (ensures (fun out ->
       match out with
       | Success s' result ->
-          invariant s' /\ all_resources_accounted s' &&
-          fresh_handle s' result /\ live s' result &&
-          has_kind s' result Closure &&
-          ((mode_of s fn = Some Linear) ==> consumed s' fn) &&
-          ((mode_of s fn = Some Modal) ==> live s' fn) &&
+          invariant s' /\ all_resources_accounted s' /\
+          fresh_handle s' result /\ live s' result /\
+          has_kind s' result Closure /\
+          ((mode_of s fn = Some Linear) ==> consumed s' fn) /\
+          ((mode_of s fn = Some Modal) ==> live s' fn) /\
           ((mode_of s arg = Some Linear) ==>
-            (consumed s' arg /\ transfer_complete s s' arg result)) &&
-          ((mode_of s arg = Some Modal) ==> live s' arg) &&
+            (consumed s' arg /\ transfer_complete s s' arg result)) /\
+          ((mode_of s arg = Some Modal) ==> live s' arg) /\
           ((mode_of s fn = Some Linear \/ mode_of s arg = Some Linear) ==>
-            has_mode s' result Linear) &&
+            has_mode s' result Linear) /\
           ((mode_of s fn = Some Modal /\ mode_of s arg = Some Modal) ==>
             (has_mode s' result Modal /\ modal_safe s' result))
       | Failure s' _ -> invariant s' /\ same_state s s'))
@@ -134,36 +134,36 @@ val abi_pass :
 val abi_promote_modal :
   s:state -> h:handle ->
   Tot (outcome handle)
-    (requires (invariant s /\ abi_checked s /\ live s h &&
+    (requires (invariant s /\ abi_checked s /\ live s h /\
       has_kind s h Closure /\ promotable s h /\ all_captures_modal s h))
     (ensures (fun out ->
       match out with
       | Success s' h' ->
-          invariant s' /\ all_resources_accounted s' &&
-          live s' h' /\ has_mode s' h' Modal &&
+          invariant s' /\ all_resources_accounted s' /\
+          live s' h' /\ has_mode s' h' Modal /\
           modal_safe s' h' /\ all_captures_modal s' h'
       | Failure s' _ -> invariant s' /\ same_state s s'))
 
 val abi_dup_modal :
   s:state -> h:handle ->
   Tot (outcome (handle & handle))
-    (requires (invariant s /\ abi_checked s /\ live s h &&
-      has_mode s h Modal /\ modal_safe s h &&
+    (requires (invariant s /\ abi_checked s /\ live s h /\
+      has_mode s h Modal /\ modal_safe s h /\
       payload_mode_valid s h Modal))
     (ensures (fun out ->
       match out with
       | Success s' pair ->
           let (h1, h2) = pair in
-          invariant s' /\ all_resources_accounted s' &&
-          live s' h1 /\ live s' h2 &&
-          has_mode s' h1 Modal /\ has_mode s' h2 Modal &&
+          invariant s' /\ all_resources_accounted s' /\
+          live s' h1 /\ live s' h2 /\
+          has_mode s' h1 Modal /\ has_mode s' h2 Modal /\
           modal_safe s' h1 /\ modal_safe s' h2
       | Failure s' _ -> invariant s' /\ same_state s s'))
 
 val abi_drop_modal :
   s:state -> h:handle ->
   Tot (outcome unit)
-    (requires (invariant s /\ abi_checked s /\ live s h &&
+    (requires (invariant s /\ abi_checked s /\ live s h /\
       has_mode s h Modal /\ modal_safe s h))
     (ensures (fun out ->
       match out with
@@ -177,15 +177,15 @@ val abi_drop_modal :
 val abi_force :
   s:state -> h:handle ->
   Tot (outcome handle)
-    (requires (invariant s /\ abi_checked s /\ live s h &&
+    (requires (invariant s /\ abi_checked s /\ live s h /\
       has_kind s h Closure /\ all_resources_accounted s))
     (ensures (fun out ->
       match out with
       | Success s' result ->
-          invariant s' /\ all_resources_accounted s' &&
+          invariant s' /\ all_resources_accounted s' /\
           live s' result /\ all_resources_accounted s'
       | Failure s' _ ->
-          invariant s' /\ all_resources_accounted s' &&
+          invariant s' /\ all_resources_accounted s' /\
           force_failure_valid s s' h))
 
 (* Wrapping transfers a linear payload into a fresh result token; it must not
@@ -194,14 +194,14 @@ val abi_force :
 val abi_make_result :
   s:state -> payload:handle -> m:mode ->
   Tot (outcome handle)
-    (requires (invariant s /\ abi_checked s /\ live s payload &&
+    (requires (invariant s /\ abi_checked s /\ live s payload /\
       has_mode s payload m /\ payload_mode_valid s payload m))
     (ensures (fun out ->
       match out with
       | Success s' r ->
-          invariant s' /\ all_resources_accounted s' &&
-          live s' r /\ fresh_handle s' r /\ has_kind s' r Result &&
-          has_mode s' r m /\ payload_mode_valid s' r m &&
+          invariant s' /\ all_resources_accounted s' /\
+          live s' r /\ fresh_handle s' r /\ has_kind s' r Result /\
+          has_mode s' r m /\ payload_mode_valid s' r m /\
           result_transition_valid s s' payload r m
       | Failure s' _ -> invariant s' /\ same_state s s'))
 
@@ -228,7 +228,7 @@ val abi_assert_modal_value :
 val abi_call_primitive :
   s:state -> primitive:handle -> args:list handle ->
   Tot (outcome handle)
-    (requires (invariant s /\ abi_checked s /\ primitive_contract s primitive &&
+    (requires (invariant s /\ abi_checked s /\ primitive_contract s primitive /\
       all_resources_accounted s))
     (ensures (fun out ->
       match out with
