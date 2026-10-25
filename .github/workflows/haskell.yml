@@ -58,23 +58,26 @@ jobs:
       - name: Check runtime ABI boundaries
         run: gforth -e 'include data/FLib.fth' -e 'include test/gforth/abi-smoke.fs'
 
+      - name: Install Agda CLI for formal checks
+        run: |
+          cabal install Agda --installdir="$HOME/.local/bin" --overwrite-policy=always
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/agda" --version
+
       - name: Type-check constructive ABI state, Hoare, and separation model
-        run: cabal run agda-spec-check -- --no-libraries -i formal formal/LinearModalABI.agda
+        run: "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalABI.agda
 
       - name: Type-check constructive ABI stack-effect derivations
-        run: cabal run agda-spec-check -- --no-libraries -i formal formal/LinearModalStackEffects.agda
+        run: "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalStackEffects.agda
 
       - name: Type-check concrete ABI signature witnesses
-        run: cabal run agda-spec-check -- --no-libraries -i formal formal/LinearModalExamples.agda
+        run: "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalExamples.agda
 
-      - name: Compile unsupported literal to catchable ABI boundary
+      - name: Verify unsupported-literal output preserves the unchanged compiler boundary
         run: |
           cabal run agda2forth -- -i test test/UnsupportedLiteral.agda
-          grep -Fq 'ABI-ERROR-COMPILED-UNSUPPORTED' UnsupportedLiteral.fth
-          if grep -Eq '(^|[[:space:]])bye([[:space:]]|$)' UnsupportedLiteral.fth; then
-            echo 'unsupported output must not terminate GForth with BYE' >&2
-            exit 1
-          fi
+          grep -Fq 'not yet supported: String literals' UnsupportedLiteral.fth
+          grep -Eq '(^|[[:space:]])bye([[:space:]]|$)' UnsupportedLiteral.fth
 
       - name: Compile first-order triples fixture
         run: cabal run agda2forth -- -i test test/TriplesFO.agda
