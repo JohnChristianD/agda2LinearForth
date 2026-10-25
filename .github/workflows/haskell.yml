@@ -30,8 +30,11 @@ jobs:
       - name: Run tests
         run: cabal test all
 
-      - name: Type-check constructive ABI model without standard library
+      - name: Type-check constructive ABI state, Hoare, and separation model
         run: cabal run agda-spec-check -- --no-libraries -i formal formal/LinearModalABI.agda
+
+      - name: Type-check constructive ABI stack-effect derivations
+        run: cabal run agda-spec-check -- --no-libraries -i formal formal/LinearModalStackEffects.agda
 
       - name: Compile first-order triples fixture
         run: cabal run agda2forth -- -i test test/TriplesFO.agda
