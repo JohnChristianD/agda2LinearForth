@@ -17,6 +17,7 @@ data-files:
 data-dir:   data
 extra-source-files:
     test/TriplesFO.agda
+    test/gforth/abi-smoke.fs
     formal/LinearModalABI.agda
     docs/linear-modal-runtime.md
 
