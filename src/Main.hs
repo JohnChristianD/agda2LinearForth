@@ -8,9 +8,10 @@ import Agda.Compiler.Common
 import Agda.Main ( runAgda )
 
 import Agda.Compiler.ToForth
--- import Agda.Compiler.FLib
+
 import Agda.Interaction.Options ( OptDescr(..) , ArgDescr(..) )
 
+import Agda.Syntax.TopLevelModuleName
 import Agda.Syntax.Treeless ( EvaluationStrategy(..) )
 
 import Agda.TypeChecking.Pretty
@@ -18,7 +19,7 @@ import Agda.TypeChecking.Pretty
 import Agda.Utils.Either
 import Agda.Utils.Functor
 import Agda.Utils.Null
-import Agda.Utils.Pretty ( prettyShow )
+import Agda.Syntax.Common.Pretty ( prettyShow )
 
 import Control.DeepSeq ( NFData )
 
@@ -27,6 +28,7 @@ import Control.Monad.State
 import Control.Monad.Writer
 
 import Data.Function
+import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
@@ -44,7 +46,7 @@ main = runAgda [backend]
 backend :: Backend
 backend = Backend backend'
 
-backend' :: Backend' FthOptions FthOptions () () (Maybe FthForm)
+backend' :: Backend' FthOptions FthOptions () () (IsMain, Definition)
 backend' = Backend'
   { backendName           = "agda2forth"
   , options               = FthOptions EagerEvaluation
@@ -53,11 +55,13 @@ backend' = Backend'
   , preCompile            = fthPreCompile
   , postCompile           = \ _ _ _ -> return ()
   , preModule             = \ _ _ _ _ -> return $ Recompile ()
-  , compileDef            = fthCompileDef
+  , compileDef            = \ _ _ isMain def -> return (isMain,def)
   , postModule            = fthPostModule
   , backendVersion        = Nothing
   , scopeCheckingSuffices = False
   , mayEraseType          = \ _ -> return True
+  , backendInteractTop    = Nothing
+  , backendInteractHole   = Nothing
   }
 
 fthFlags :: [OptDescr (Flag FthOptions)]
@@ -69,25 +73,23 @@ fthFlags =
   ]
 
 fthPreCompile :: FthOptions -> TCM FthOptions
-fthPreCompile = return
+fthPreCompile opts = return opts
 
-fthCompileDef :: FthOptions -> () -> IsMain -> Definition -> TCM (Maybe FthForm)
-fthCompileDef opts _ isMain def = runToForthM opts $ toForth def
-
-fthPostModule :: FthOptions -> () -> IsMain -> ModuleName -> [Maybe FthForm] -> TCM ()
+fthPostModule :: FthOptions -> () -> IsMain -> TopLevelModuleName -> [(IsMain, Definition)] -> TCM ()
 fthPostModule opts _ isMain modName defs = do
-  preamble <- runToForthM opts fthPreamble
+  forms <- runToForthM opts $ do
+    preamble <- fthPreamble
+    compiled <- catMaybes <$> traverse (toForth . snd) defs
+    return $ preamble ++ compiled
+
   let defToText = encodeOne printer . fromRich
-      modText   = T.append 
-        (T.pack getFLib) 
+      modText   = T.append
+        (T.pack getFLib)
         (makeDefines
           (T.intercalate "\n\n" $
-          map (
-              fixWord .
-              defToText
-          )
-            (preamble ++ catMaybes defs)))
-      fileName  = prettyShow (last $ mnameToList modName) ++ ".fth"
+            map (fixWord . defToText) forms))
+      fileName  = prettyShow (NE.last $ moduleNameParts modName) ++ ".fth"
+
   liftIO $ T.writeFile fileName modText
 
   where

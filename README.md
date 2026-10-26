@@ -3,13 +3,15 @@
 `agda2forth` compiles Agda code for GNU Gforth. This document defines the intended checked subset, its error boundary, and the current proof/implementation gaps.
 
 
-> **Linear/modal refinement status: NOT COMPLETE.** The Agda modules are specifications and proof ingredients, not a refinement proof for the generated Forth runtime. The unchanged upstream compiler still emits raw literals and legacy paths that bypass checked descriptors; caller-supplied execution-token declarations remain trusted assertions. Green CI validates only enumerated tests, not universal linear/modal memory safety.
+> **Linear/modal refinement status: NOT COMPLETE.** The compiler still emits raw literals and legacy paths that bypass checked descriptors; the checked Forth runtime and Agda model are not yet connected by a proved semantic refinement theorem. Passing component tests do not establish universal linear/modal memory safety.
 
-## Upstream Haskell source identity
+## Per-file Haskell provenance
 
-All tracked Haskell source files are byte-for-byte identical to pinned `LMMilliken/agda2Forth` commit `e83f8cc735bf220f80b3655ce2158a23818910fe`: `app/Main.hs`, `src/Agda/Compiler/Erase.hs`, `src/Agda/Compiler/ToForth.hs`, and `src/Main.hs`. CI fetches this exact upstream revision and diffs every `.hs` path on both pushes and pull requests. A changed upstream head causes CI to fail until the baseline is reviewed and deliberately updated.
+Source compatibility is enforced per file rather than by restoring the whole Haskell tree from one backend. `app/Main.hs` and `src/Agda/Compiler/ToForth.hs` are byte-for-byte identical to pinned `LMMilliken/agda2Forth` commit `e83f8cc735bf220f80b3655ce2158a23818910fe`. `src/Agda/Compiler/Erase.hs` is byte-for-byte identical to pinned `jespercockx/agda2scheme` commit `24e02d9669f17d98ec67b8ad961cf9c3e602bf10`. CI checks these identities and fails if either pinned upstream branch moves without an explicit baseline review.
 
-Strict Haskell-source identity requires the upstream API era: GHC 9.0.2 and Agda 2.6.2.2, with the Cabal Agda range limited to 2.6.2.x. Upgrading Agda requires an explicit upstream-source synchronization decision; do not silently adapt Haskell files. Runtime Forth, Agda specifications, tests, documentation, Cabal metadata, and workflow files remain project-specific. Byte identity proves source provenance, not compiler correctness or semantic refinement.
+`src/Main.hs` is generated from the pinned Agda2Scheme driver by `scripts/adapt-main-from-agda2scheme.py`. The adapter changes only the backend selection and output hook needed for Forth while retaining the current Agda 2.8 backend lifecycle. CI regenerates and compares it so shared driver changes cannot silently drift. `src/Agda/Utils/Pretty.hs` is a narrow compatibility re-export for the exact upstream Forth backend's older import path; it does not modify `ToForth.hs`.
+
+The build targets GHC 9.10.3 and Agda 2.8 because the current Scheme driver and erasure module use the newer API. Exact byte identity of the upstream backend source proves provenance, not compiler correctness or semantic refinement.
 
 ## Goal and scope
 

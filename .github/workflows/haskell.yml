@@ -9,20 +9,28 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Verify exact upstream Haskell source identity
+      - name: Verify per-file upstream provenance and Main adapter
         env:
-          UPSTREAM_SHA: e83f8cc735bf220f80b3655ce2158a23818910fe
+          FORTH_UPSTREAM_SHA: e83f8cc735bf220f80b3655ce2158a23818910fe
+          SCHEME_UPSTREAM_SHA: 24e02d9669f17d98ec67b8ad961cf9c3e602bf10
         run: |
           git fetch --no-tags --depth=1 https://github.com/LMMilliken/agda2Forth.git refs/heads/master
-          test "$(git rev-parse FETCH_HEAD)" = "$UPSTREAM_SHA"
-          git diff --exit-code "$UPSTREAM_SHA" HEAD -- '*.hs'
+          test "$(git rev-parse FETCH_HEAD)" = "$FORTH_UPSTREAM_SHA"
+          git diff --exit-code "$FORTH_UPSTREAM_SHA" HEAD -- app/Main.hs src/Agda/Compiler/ToForth.hs
+
+          git fetch --no-tags --depth=1 https://github.com/jespercockx/agda2scheme.git refs/heads/master
+          test "$(git rev-parse FETCH_HEAD)" = "$SCHEME_UPSTREAM_SHA"
+          git diff --exit-code "$SCHEME_UPSTREAM_SHA" HEAD -- src/Agda/Compiler/Erase.hs
+
+          git show "$SCHEME_UPSTREAM_SHA:src/Main.hs" > "$RUNNER_TEMP/Agda2Scheme.Main.hs"
+          python3 scripts/adapt-main-from-agda2scheme.py "$RUNNER_TEMP/Agda2Scheme.Main.hs" > "$RUNNER_TEMP/Main.hs"
+          cmp "$RUNNER_TEMP/Main.hs" src/Main.hs
 
       - name: Set up GHC
         uses: haskell-actions/setup@v2
         id: setup
         with:
-          ghc-version: '9.0.2'
-          # Match pinned Forth upstream source compatibility (GHC 9.0.2 / Agda 2.6.2.x).
+          ghc-version: '9.10.3'
           cabal-version: 'latest'
           cabal-update: true
 
@@ -68,7 +76,7 @@ jobs:
 
       - name: Install Agda CLI for formal checks
         run: |
-          cabal install Agda-2.6.2.2 --installdir="$HOME/.local/bin" --overwrite-policy=always
+          cabal install Agda-2.8.0.2 --installdir="$HOME/.local/bin" --overwrite-policy=always
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/agda" --version
 
