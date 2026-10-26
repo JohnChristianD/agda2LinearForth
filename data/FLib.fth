@@ -1,4 +1,8 @@
 variable MAXNUM 100000000000000 MAXNUM !
+
+\ Temporary diagnostic switch; inert unless CI explicitly enables it.
+variable ABI-TRACE
+0 ABI-TRACE !
 s" unsupported or invalid operation emitted by agda2forth" exception constant ABI-ERR-COMPILED-UNSUPPORTED
 : ABI-ERROR-COMPILED-UNSUPPORTED ( -- ) ABI-ERR-COMPILED-UNSUPPORTED THROW ;
 
@@ -130,9 +134,7 @@ variable LINEAR-SAFE-HEAD
 variable NEXT-HANDLE-ID
 0 NEXT-HANDLE-ID !
 
-\ Temporary diagnostic switch, inert unless explicitly enabled by a test harness.
-variable ABI-TRACE
-0 ABI-TRACE !
+
 
 s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
 
