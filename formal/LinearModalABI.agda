@@ -406,8 +406,8 @@ modalWitnessForMember :
   {h : Heap} → (ids : List Nat) → {n : Nat} →
   AllModal ids h → n ∈ₙ ids → HasLiveModal n h
 modalWitnessForMember [] allModal ()
-modalWitnessForMember (x :: xs) (headModal , tailModal) (here eq) =
-  subst {P = λ k → HasLiveModal k _} (symEq eq) headModal
+modalWitnessForMember {h = h} (x :: xs) (headModal , tailModal) (here eq) =
+  subst {P = λ k → HasLiveModal k h} (symEq eq) headModal
 modalWitnessForMember (x :: xs) (headModal , tailModal) (there member) =
   modalWitnessForMember xs tailModal member
 

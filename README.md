@@ -53,6 +53,8 @@ The formal model therefore separates `codeAddress` from `codeClass`. Modal promo
 
 For linear code, an analogous derivation must state stack/resource effects and prove that every linear input is consumed, transferred or returned exactly once. A code-class label alone cannot prove this.
 
+The Agda model additionally proves two promotion-precondition consequences: for a well-formed heap, no captured identity can be both live modal and live linear, and an opaque execution-token class cannot satisfy the closed-code witness requirement. These are constructive proofs about the formal preconditions. They do not prove that the current upstream compiler emits those witnesses or that the concrete Forth `promoteModal` implementation enforces the record; that implementation correspondence remains open.
+
 ## Operations and contracts
 
 The checked ABI is intended to admit only the following families. The preconditions and exceptional postconditions are part of each operation's contract; a failed precondition must produce a named error, not silently fall through to the legacy path.
