@@ -23,6 +23,31 @@ generated-subtract-test
 ;
 generated-subtract-reverse-test
 
+: generated-multiply-test ( -- )
+  scalarMultiplyAnswer dethunk 42 expect-natural
+;
+generated-multiply-test
+
+: generated-equality-true-test ( -- )
+  scalarEqualTrueAnswer dethunk -1 expect-natural
+;
+generated-equality-true-test
+
+: generated-equality-false-test ( -- )
+  scalarEqualFalseAnswer dethunk 0 expect-natural
+;
+generated-equality-false-test
+
+: generated-conditional-true-test ( -- )
+  scalarChooseTrueAnswer dethunk 11 expect-natural
+;
+generated-conditional-true-test
+
+: generated-conditional-false-test ( -- )
+  scalarChooseFalseAnswer dethunk 17 expect-natural
+;
+generated-conditional-false-test
+
 : generated-less-than-true-test ( -- )
   scalarLessThanTrueAnswer dethunk -1 expect-natural
 ;
