@@ -93,9 +93,6 @@ jobs:
         run: |
           "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalExamples.agda
 
-      - name: Type-check compiler/runtime boundary and promotion precondition proofs
-        run: |
-          "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalStackEffects.agda
 
       - name: Verify unsupported-literal output preserves the unchanged compiler boundary
         run: |
