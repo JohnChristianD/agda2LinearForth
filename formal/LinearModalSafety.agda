@@ -1513,7 +1513,7 @@ modalNaturalConditional :
      valueItem (!Ty booleanTy) :: [])
     (valueItem (codeSignature codeNatAdd) :: [])
 modalNaturalConditional =
-  ifModalBranchesEffect boxedBooleanIsBoolean modalNatAdd modalNatSub
+  ifModalBranchesEffect boxedBooleanIsBoolean modalNatSub modalNatAdd
     modalCapturesNil modalCapturesNil
 
 natConstructorSignature : ConstructorSignature
