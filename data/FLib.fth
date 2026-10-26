@@ -1156,6 +1156,30 @@ variable pointer
 : >= ( left right -- result )
     ['] ABI-NAT-GEQ ABI-LEGACY-GE ABI-DISPATCH-BINARY
 ;
+\ One narrowly-scoped borrowed comparison is needed by the fixed upstream
+\ monus preamble, which emits "dup 0 <" after subtraction. This permits a
+\ checked scalar versus raw zero read-only; it does not permit mixed arithmetic.
+: ABI-DISPATCH-LT { left right checked legacy -- result }
+    left metadata@ { leftMeta }
+    right metadata@ { rightMeta }
+    leftMeta 0<> rightMeta 0<> AND IF
+        left isScalar 0= IF ABI-ERR-EXPECTED-SCALAR THROW THEN
+        right isScalar 0= IF ABI-ERR-EXPECTED-SCALAR THROW THEN
+        left right checked EXECUTE EXIT
+    THEN
+    leftMeta 0<> rightMeta 0<> OR IF
+        leftMeta 0<> IF
+            right 0<> IF ABI-ERR-MIXED-ABI-VALUES THROW THEN
+            left ABI-SCALAR-INFO { leftValue leftMode leftDescriptor }
+            leftValue right legacy EXECUTE EXIT
+        THEN
+        left 0<> IF ABI-ERR-MIXED-ABI-VALUES THROW THEN
+        right ABI-SCALAR-INFO { rightValue rightMode rightDescriptor }
+        left rightValue legacy EXECUTE EXIT
+    THEN
+    left right legacy EXECUTE
+;
+
 : < ( left right -- result )
-    ['] ABI-NAT-LT ABI-LEGACY-LT ABI-DISPATCH-BINARY
+    ['] ABI-NAT-LT ['] ABI-LEGACY-LT ABI-DISPATCH-LT
 ;

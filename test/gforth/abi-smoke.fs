@@ -356,4 +356,27 @@ checked-linear-boolean-result-test
 ' print 0<> abi-assert
 ' pass 0<> abi-assert
 ' dethunk 0<> abi-assert
+
+\ Saturating natural subtraction's unchanged generated code does "dup 0 <".
+\ Only this checked-scalar/raw-zero comparison borrows a handle; arithmetic
+\ still rejects mixed raw/checked operands.
+: generated-monus { left right -- result }
+  left deepdethunk right deepdethunk -
+  dup 0 < IF drop 0 THEN
+;
+: generated-checked-monus-test ( -- )
+  3 MODE-LINEAR ABI-MAKE-SCALAR
+  8 MODE-MODAL ABI-MAKE-SCALAR
+  generated-monus ABI-SCALAR-INFO { value mode meta }
+  value 0 = abi-assert
+  mode MODE-LINEAR = abi-assert
+  meta META-STATE cells + @ OWN-LIVE = abi-assert
+;
+generated-checked-monus-test
+
+: generated-legacy-monus-test ( -- )
+  3 8 generated-monus 0 = abi-assert
+  8 3 generated-monus 5 = abi-assert
+;
+generated-legacy-monus-test
 BYE
