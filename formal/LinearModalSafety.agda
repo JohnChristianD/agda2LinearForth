@@ -729,6 +729,31 @@ Hoare {S = S} precondition command normalPostcondition exceptionalPostcondition 
   (s : S) → precondition s →
   wp command normalPostcondition exceptionalPostcondition s
 
+-- WP itself is a valid precondition for the requested outcome predicates.
+wpIsValid :
+  {S : Set} →
+  (command : S → Execution S) →
+  (normalPostcondition : S → Set) →
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  Hoare (wp command normalPostcondition exceptionalPostcondition)
+    command normalPostcondition exceptionalPostcondition
+wpIsValid command normalPostcondition exceptionalPostcondition s condition =
+  condition
+
+-- Leastness: every precondition that validates the command entails WP.  Since
+-- Hoare is defined from WP, this theorem cannot drift from a second rule system.
+wpIsWeakest :
+  {S : Set} →
+  (precondition : S → Set) →
+  (command : S → Execution S) →
+  (normalPostcondition : S → Set) →
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  Hoare precondition command normalPostcondition exceptionalPostcondition →
+  (s : S) → precondition s →
+  wp command normalPostcondition exceptionalPostcondition s
+wpIsWeakest precondition command normalPostcondition exceptionalPostcondition
+  valid s proof = valid s proof
+
 skip : {S : Set} → S → Execution S
 skip s = returned s
 
