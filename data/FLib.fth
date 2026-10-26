@@ -306,9 +306,16 @@ s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
     handle metadata@ dup 0= IF drop ABI-ERR-CLOSURE-METADATA THROW THEN
     { meta }
     meta META-ENV cells + @
+    ABI-TRACE @ IF
+        ." TRACE INVOKE handle=" handle .
+        ." env-count=" meta META-ENVCOUNT cells + @ .
+        ." code=" meta META-CODE cells + @ . cr
+    THEN
     meta META-ENVCOUNT cells + @
     pushArrayN
+    ABI-TRACE @ IF ." TRACE INVOKE stack-before-code " .s cr THEN
     meta META-CODE cells + @ execute
+    ABI-TRACE @ IF ." TRACE INVOKE stack-after-code " .s cr THEN
 ;
 
 : moveLinearHandle { handle meta -- moved }
@@ -756,6 +763,7 @@ variable target
 ;
 
 : dethunk { value -- result }
+    ABI-TRACE @ IF ." TRACE DETHUNK input=" value . cr THEN
     BEGIN
         value metadata@ { meta }
         meta 0= IF value EXIT THEN
@@ -777,6 +785,7 @@ variable target
             THEN
             DROP
             passMany NIP TO value
+            ABI-TRACE @ IF ." TRACE DETHUNK output=" value . cr ." TRACE DETHUNK stack " .s cr THEN
             meta META-MODE cells + @ MODE-LINEAR = IF
                 meta value checkLinearEnvConsumed
             THEN
@@ -869,6 +878,7 @@ variable target
 ;
 
 : pass { x h -- result }
+    ABI-TRACE @ IF ." TRACE PASS x=" x . ." h=" h . cr ." TRACE PASS input-stack " .s cr THEN
     h metadata@ 0<> IF h requireLiveMeta DROP THEN
     h isThunk IF
         h requireLiveMeta { hm }
@@ -913,6 +923,7 @@ variable target
         functionMode MODE-LINEAR = IF
             OWN-CONSUMED hm META-STATE cells + !
         THEN
+        ABI-TRACE @ IF ." TRACE PASS result=" newHandle . ." env-count=" newCount . cr THEN
         newHandle
     ELSE
         h
@@ -1117,6 +1128,10 @@ variable pointer
 \ Do not pass untrusted execution tokens to ABI-CHECKED-RUN-*.
 variable ABI-CHECKED-MODE
 0 ABI-CHECKED-MODE !
+
+\ Temporary diagnostic switch, inert unless explicitly enabled by a test harness.
+variable ABI-TRACE
+0 ABI-TRACE !
 
 s" checked entrypoint returned a non-scalar ABI value" exception constant ABI-ERR-CHECKED-RESULT
 s" checked entrypoint stack effect mismatch" exception constant ABI-ERR-CHECKED-STACK
