@@ -139,6 +139,80 @@ checked-add-adapter-test
 ;
 legacy-add-adapter-test
 
+\ Raw/raw adapter matrix: keep the untracked compatibility path explicit.
+: assert-raw-binary { left right operation expected -- }
+  left right operation EXECUTE expected = abi-assert
+;
+12 5 ['] ABI-ADD-OR-LEGACY 17 assert-raw-binary
+12 5 ['] ABI-SUB-OR-LEGACY 7 assert-raw-binary
+12 5 ['] ABI-MONUS-OR-LEGACY 7 assert-raw-binary
+5 12 ['] ABI-MONUS-OR-LEGACY 0 assert-raw-binary
+6 7 ['] ABI-MUL-OR-LEGACY 42 assert-raw-binary
+21 3 ['] ABI-QUOT-OR-LEGACY 7 assert-raw-binary
+22 5 ['] ABI-REM-OR-LEGACY 2 assert-raw-binary
+4 4 ['] ABI-EQ-OR-LEGACY -1 assert-raw-binary
+4 5 ['] ABI-EQ-OR-LEGACY 0 assert-raw-binary
+5 4 ['] ABI-GEQ-OR-LEGACY -1 assert-raw-binary
+4 5 ['] ABI-GEQ-OR-LEGACY 0 assert-raw-binary
+4 5 ['] ABI-LT-OR-LEGACY -1 assert-raw-binary
+5 4 ['] ABI-LT-OR-LEGACY 0 assert-raw-binary
+
+\ The same matrix through tracked handles exercises checked dispatch and result kinds.
+: assert-checked-scalar { left right operation expected -- }
+  left MODE-MODAL ABI-MAKE-SCALAR
+  right MODE-MODAL ABI-MAKE-SCALAR
+  operation EXECUTE ABI-SCALAR-INFO { value mode meta }
+  value expected = abi-assert
+  mode MODE-MODAL = abi-assert
+;
+12 5 ['] ABI-ADD-OR-LEGACY 17 assert-checked-scalar
+12 5 ['] ABI-SUB-OR-LEGACY 7 assert-checked-scalar
+12 5 ['] ABI-MONUS-OR-LEGACY 7 assert-checked-scalar
+5 12 ['] ABI-MONUS-OR-LEGACY 0 assert-checked-scalar
+6 7 ['] ABI-MUL-OR-LEGACY 42 assert-checked-scalar
+21 3 ['] ABI-QUOT-OR-LEGACY 7 assert-checked-scalar
+22 5 ['] ABI-REM-OR-LEGACY 2 assert-checked-scalar
+
+: assert-checked-boolean { left right operation expected -- }
+  left MODE-MODAL ABI-MAKE-SCALAR
+  right MODE-MODAL ABI-MAKE-SCALAR
+  operation EXECUTE ABI-BOOL-INFO { value mode meta }
+  value expected = abi-assert
+  mode MODE-MODAL = abi-assert
+;
+4 4 ['] ABI-EQ-OR-LEGACY -1 assert-checked-boolean
+4 5 ['] ABI-EQ-OR-LEGACY 0 assert-checked-boolean
+5 4 ['] ABI-GEQ-OR-LEGACY -1 assert-checked-boolean
+4 5 ['] ABI-GEQ-OR-LEGACY 0 assert-checked-boolean
+4 5 ['] ABI-LT-OR-LEGACY -1 assert-checked-boolean
+5 4 ['] ABI-LT-OR-LEGACY 0 assert-checked-boolean
+
+\ Mixed and wrong-kind values must fail closed instead of guessing a representation.
+: mixed-sub-adapter-test ( -- )
+  8 MODE-MODAL ABI-MAKE-SCALAR 9 ABI-SUB-OR-LEGACY DROP
+;
+' mixed-sub-adapter-test CATCH ABI-ERR-MIXED-ABI-VALUES = abi-assert
+: wrong-kind-adapter-test ( -- )
+  8 MODE-MODAL ABI-MAKE-SCALAR
+  9 MODE-MODAL ABI-MAKE-SCALAR ABI-MAKE-RESULT
+  ABI-ADD-OR-LEGACY DROP
+;
+' wrong-kind-adapter-test CATCH ABI-ERR-EXPECTED-SCALAR = abi-assert
+
+\ Nat monus must saturate, propagate the mode join, and consume only linear inputs.
+VARIABLE monus-linear-input
+VARIABLE monus-modal-input
+: checked-monus-mode-and-saturation-test ( -- )
+  5 MODE-LINEAR ABI-MAKE-SCALAR DUP monus-linear-input !
+  12 MODE-MODAL ABI-MAKE-SCALAR DUP monus-modal-input !
+  ABI-MONUS-OR-LEGACY ABI-SCALAR-INFO { value mode meta }
+  value 0 = abi-assert
+  mode MODE-LINEAR = abi-assert
+  monus-linear-input @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+  monus-modal-input @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
+;
+checked-monus-mode-and-saturation-test
+
 : mixed-add-adapter-test ( -- )
   8 MODE-MODAL ABI-MAKE-SCALAR 9 ABI-ADD-OR-LEGACY DROP
 ;
