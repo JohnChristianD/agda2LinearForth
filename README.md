@@ -12,7 +12,7 @@ The current source baseline pins upstream identities per file:
 - `src/Main.hs` and `src/Agda/Compiler/ToForth.hs` match Agda2Forth revision `e83f8cc735bf220f80b3655ce2158a23818910fe`.
 - The compiler targets the Agda 2.6.2.x API era and CI installs Agda 2.6.2.2.
 - GitHub Actions checks source provenance, builds/tests Haskell, type-checks one safe Agda specification, checks the unsupported-literal boundary, and runs one focused generated-code/runtime integration regression.
-- CI also pins the inspected `data/FLib.fth` blob (`7016170c970793dcc9eb372e8e1a0194286d953b`) so the manual Agda dispatch mirror cannot drift silently from the runtime source it describes. Changing the runtime requires an explicit update/review of this pin and the model.
+- CI also pins the inspected `data/FLib.fth` blob (`67791f02abdc907a43273b4a3a2c24a4a6d02e34`) so the manual Agda dispatch mirror cannot drift silently from the runtime source it describes. Changing the runtime requires an explicit update/review of this pin and the model.
 
 Pinning proves byte-level provenance, not semantic correctness. The Haskell source is intentionally unchanged by this formal consolidation.
 
@@ -124,7 +124,7 @@ The unified standard-library-free `formal/LinearModalSafety.agda` now also conta
 
 ## Consolidated Scott–Strachey semantics and refinement boundary
 
-The former standalone `LinearModalDenotational.agda` and `LinearModalConcurrency.agda` files are consolidated as nested `CoreDenotation` and `ConcurrentSeparation` modules inside `formal/LinearModalSafety.agda`. The scalar Scott-style denotation from PR #7 is also recovered as `ScottScalarDenotation`. Temporary `ABI-TRACE` instrumentation in `data/FLib.fth` is diagnostic only; it is not a runtime fix. This keeps one authoritative source while preserving PR #13's broader syntax evaluator, PR #7's explicit divergence/error semantics and mode-erasure impossibility, and normal/exceptional frame contracts with explicit disjointness evidence.
+The former standalone `LinearModalDenotational.agda` and `LinearModalConcurrency.agda` files are consolidated as nested `CoreDenotation` and `ConcurrentSeparation` modules inside `formal/LinearModalSafety.agda`. The scalar Scott-style denotation from PR #7 is also recovered as `ScottScalarDenotation`. The current checked runtime is restored without temporary trace instrumentation; the generated-scalar bug is still unresolved. This keeps one authoritative source while preserving PR #13's broader syntax evaluator, PR #7's explicit divergence/error semantics and mode-erasure impossibility, and normal/exceptional frame contracts with explicit disjointness evidence.
 
 A proof that the model evaluates its own syntax is not a compiler/runtime refinement theorem. The remaining obligation is a simulation between the exact supported emitted Forth forms and this abstract semantics, including stack effects, descriptor identity, linear ownership, error state, output observations, and state changes on both normal and exceptional exits. `wp` is now the central contract interface for those obligations, with Hoare notation derived from it.
 
