@@ -118,7 +118,12 @@ fthLambda args lambdas body = RSAtom $ T.pack $
     addPasses (x:xs) = x:addPasses xs
     addPasses [] = []
 
-    bindings = concatMap (\arg -> T.unpack arg ++ " ") args ++ " ( LAM ) " ++ concatMap (\arg -> T.unpack arg ++ " ") lambdas
+    -- Gforth locals are bound in data-stack order. Closure code is on the
+    -- lower part of the stack and the current argument is on top; therefore
+    -- bind lambda placeholders before source arguments. Otherwise `{ a c }`
+    -- binds the closure as a and the raw argument as c, so `a c pass` returns
+    -- the raw argument instead of partially applying the closure.
+    bindings = concatMap (\arg -> T.unpack arg ++ " ") lambdas ++ " ( LAM ) " ++ concatMap (\arg -> T.unpack arg ++ " ") args
     -- bindings = concatMap (\arg -> T.unpack arg ++ " ") (args ++ lambdas)
 
     injected =
@@ -171,7 +176,7 @@ fthApp f args = RSList (args ++ [f, " pass "])
 
 -- Apply to each argument individually instead of all at once.
 fthApps :: FthForm -> [FthForm] -> FthForm
-fthApps f args = foldl (\x y -> fthApp x [y]) f (reverse args)
+fthApps = foldl (\x y -> fthApp x [y])
 
 -- Fully-applied Agda primitives are operations, not closures. Route exact-arity
 -- primitive applications directly to the corresponding Forth operator. Sending
