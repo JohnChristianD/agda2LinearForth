@@ -2825,17 +2825,23 @@ module ABIAllocationWP where
 
   -- identityBound is ABI-MAX-NAT. identityCount/cellCount describe the
   -- complete preflighted allocation group. Failure leaves state untouched.
-  allocateBlock :
-    Nat → Nat → Nat → AllocationState → AllocationOutcome
-  allocateBlock identityBound identityCount cellCount state
-    with natAtMost (nextIdentity state + identityCount) identityBound
-  ... | false = allocationFailed identityOverflowError state
-  ... | true =
+  allocationAfterCapacityCheck :
+    Bool → Nat → Nat → Nat → AllocationState → AllocationOutcome
+  allocationAfterCapacityCheck false identityBound identityCount cellCount state =
+    allocationFailed identityOverflowError state
+  allocationAfterCapacityCheck true identityBound identityCount cellCount state =
     allocationSucceeded
       (allocationState
         (arenaCursor state + cellCount)
         (nextIdentity state + identityCount)
         (metadataCount state + identityCount))
+
+  allocateBlock :
+    Nat → Nat → Nat → AllocationState → AllocationOutcome
+  allocateBlock identityBound identityCount cellCount state =
+    allocationAfterCapacityCheck
+      (natAtMost (nextIdentity state + identityCount) identityBound)
+      identityBound identityCount cellCount state
 
   AllocationPost :
     (normal : AllocationState → Set) →
@@ -2877,5 +2883,5 @@ module ABIAllocationWP where
       normal exceptional
   identityExhaustionSatisfiesWP identityBound remainingIds cellCount state
     identityAtLimit normal exceptional exceptionalProof
-    rewrite identityExhaustionIsAtomic identityBound remainingIds cellCount
-      identityAtLimit = exceptionalProof
+    rewrite identityAtLimit
+          | natAtMostAfterPositiveAddition identityBound remainingIds = exceptionalProof
