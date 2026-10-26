@@ -1,20 +1,20 @@
 # agda2LinearForth — linear/modal runtime ABI specification
 
-`agda2forth` compiles Agda programs into GNU Gforth source. This repository combines a legacy Forth compiler with an intended checked linear/modal ABI. This README deliberately distinguishes (1) executable behavior, (2) a formal model, and (3) a proof that the implementation refines that model.
+`agda2forth` compiles Agda programs into GNU Gforth source. This repository combines a legacy Forth compiler with a checked linear/modal ABI. The current emitter directly lowers saturated primitive and builtin Nat operations to ABI adapters; this repairs the known `20 + 5` scalar counterexample on the tested path. The README distinguishes (1) executable behavior, (2) a formal model, and (3) a proof that the implementation refines that model.
 
-> **End-to-end compiler/runtime refinement: NOT COMPLETE.** The current Haskell backend emits raw natural-number and boolean literals and uses legacy Forth operators. The Agda model records that boundary and proves those output shapes do not carry checked ABI evidence. The dispatch decision table is a constructive model of the runtime's routing rules, not an extraction proof from Haskell/Forth.
+> **Whole-backend compiler/runtime refinement: NOT COMPLETE.** The compiler still emits raw Nat and Bool values in many contexts, so the generated program does not carry Girard modality evidence end to end. The checked ABI enforces mode/ownership rules when values are tracked handles, but the emitter does not yet establish that every source linear/modal value is represented by such a handle. Current CI tests selected generated arithmetic/comparison and direct ABI cases, not the whole backend.
 
 ## Source provenance and CI
 
 The current source baseline pins upstream identities per file:
 
 - `app/Main.hs` and `src/Agda/Compiler/Erase.hs` match compatible Agda2Scheme revision `6b3d975e9274448c09b5939e637b6718c2cfb10c`.
-- `src/Main.hs` and `src/Agda/Compiler/ToForth.hs` match Agda2Forth revision `e83f8cc735bf220f80b3655ce2158a23818910fe`.
+- `src/Main.hs` matches Agda2Forth revision `e83f8cc735bf220f80b3655ce2158a23818910fe`; `src/Agda/Compiler/ToForth.hs` is the single explicitly permitted Haskell exception and contains direct lowering for saturated primitive and builtin Nat applications.
 - The compiler targets the Agda 2.6.2.x API era and CI installs Agda 2.6.2.2.
 - GitHub Actions checks source provenance, builds/tests Haskell, runs Gforth smoke tests, type-checks one safe Agda specification, and compiles selected fixtures.
-- CI also pins the inspected `data/FLib.fth` blob (`7016170c970793dcc9eb372e8e1a0194286d953b`) so the manual Agda dispatch mirror cannot drift silently from the runtime source it describes. Changing the runtime requires an explicit update/review of this pin and the model.
+- CI pins the inspected `data/FLib.fth` blob (`46ba6a5ab8c657c42c07169cf13c95a5533b41e0`) so the manual Agda dispatch mirror cannot drift silently from the runtime source it describes. Changing the runtime requires an explicit update/review of this pin and the model.
 
-Pinning proves byte-level provenance, not semantic correctness. The Haskell source is intentionally unchanged by this formal consolidation.
+Pinning proves byte-level provenance, not semantic correctness. Only `src/Agda/Compiler/ToForth.hs` may diverge from upstream; other Haskell source files remain pinned.
 
 ## One authoritative Agda specification
 
@@ -27,8 +27,8 @@ The unified module contains:
 - a complete-state WP model whose state includes descriptor heap, root references, identity counter, ownership modes and exceptions;
 - direct weakest-precondition contracts for normal and exceptional outcomes, operational-semantic validity/leastness, sequencing and CATCH; no parallel triple API or generic frame theorem.
 - typed stack-shape effects and constructive examples for selected checked operations;
-- a model of the raw-natural/legacy-add and raw-boolean output paths in the current compiler;
-- an explicit table mirroring the current supported `TPrim` mappings and unsupported `fthError ... bye` path;
+- a model of raw Nat literals plus the emitter's direct ABI adapters for saturated addition and builtin Nat subtraction; raw/raw execution still falls back to the legacy arithmetic path;
+- an explicit table mirroring the supported `TPrim` mappings and unsupported `fthError ... bye` path;
 - a constructive decision table mirroring `ABI-DISPATCH-BINARY` for raw, checked-scalar and other tracked values.
 
 The module imports only Agda's built-in natural numbers and equality, imports no standard library, uses `--safe`, and makes no postulates to assert the missing implementation theorem.
@@ -41,7 +41,7 @@ The constructive lemmas establish properties of the formal model:
 2. The no-linear-aliasing invariant rejects aliased live linear operands under the checked arithmetic precondition.
 3. A valid modal-promotion precondition excludes live linear captures and opaque-code witnesses.
 4. The checked stack signatures cannot accept raw/raw operands for checked addition or equality.
-5. The compiler boundary model emits natural literals as raw cells, boolean literals as raw `-1/0` cells, and natural addition through a legacy `add` footprint. Those raw shapes cannot satisfy checked-value preconditions.
+5. The compiler boundary model emits natural literals as raw cells and boolean literals as raw `-1/0` cells. Saturated addition and builtin Nat subtraction use ABI adapters, but raw/raw inputs still take the legacy arithmetic implementation; a raw cell itself cannot satisfy the checked-value precondition.
 6. The runtime-dispatch model routes raw/raw to the legacy path, two tracked scalar handles to the checked path, and mixed or wrong-kind tracked values to rejection.
 
 Items 5 and 6 are explicitly models of source behavior inspected in `ToForth.hs` and `FLib.fth`, not machine-generated proofs of those files. A source hash does not establish semantic equivalence. The concrete runtime-preservation proof remains open.
@@ -50,16 +50,18 @@ Items 5 and 6 are explicitly models of source behavior inspected in `ToForth.hs`
 
 **Not completely, not while preserving source-level linear/modal semantics.** Forth can add runtime checks and fail-closed adapters. But the current compiler emits a literal such as `5` as a raw machine cell and emits ordinary operator names. It does not attach the source modality to that literal. After erasure, the runtime cannot reliably reconstruct whether an arbitrary unregistered cell is an Agda literal, an ordinary unmanaged value, or pointer-like data by inspecting its magnitude. Guessing would undermine the identity/representation boundary.
 
-A Forth-only patch can improve runtime defense, but it cannot by itself establish full source-semantic refinement while the compiler output omits required mode and value-construction evidence. There is also a more direct counterexample for the current compiler/runtime combination: a prior generated-scalar integration run (using the same upstream-pinned, unchanged Haskell emitter) produced the body `:noname { a c } a c pass ;` and application sequence `5 20 scalarAdd pass pass`. The clean `FLib.fth` implementation of `pass { x h -- result }` returns `h` unchanged when `h` is not a thunk. With raw arguments `20` and `5`, this observed application path returns `5`, not source-level `20 + 5 = 25`.
+A Forth-only patch cannot establish full source-semantic refinement while compiler output omits required mode and value-construction evidence. A historical generated-scalar CI run emitted a body resembling `:noname { a c } a c pass ;` and returned `5`, not `25`, for `scalarAdd 20 5`. That was a real counterexample to the prior application-lowering path.
 
-The Agda file now includes a clearly labelled model of this observed path and the theorem `currentGeneratedScalarDoesNotRefineAddition`. This is a counterexample to the *manually audited output-body model*, not a mechanized extraction of the Haskell emitter. Its application to the actual backend relies on the generated output observed in CI and the inspected Forth fallback branch; the current PR's green CI does not rerun that end-to-end fixture. It nevertheless rules out honestly claiming that the current observed body implements natural addition. Changing Forth's general `pass` fallback to add values would be unsound: that word implements generic function application, not numeric addition. The responsible fix is to correct or constrain the emitted application/lowering protocol, then prove that compiler output refines the source semantics. The fixed `.hs` source constraint prevents this PR from pretending to make that compiler-side fix.
+The compiler-side fix is now present in `src/Agda/Compiler/ToForth.hs`: saturated `TPrim` operations and builtin Nat addition/subtraction are lowered directly to `ABI-*-OR-LEGACY` adapters instead of being passed through generic closure application. CI run `40360898501` compiled and executed `test/CheckedScalar.agda`, checking addition and both less-than outcomes; its generated `scalarAdd` body contains `ABI-ADD-OR-LEGACY`, while `scalarAddAnswer` still uses `pass pass` to apply the actual function closure. The `pass pass` sequence is not itself erroneous; it is generic application, and the primitive inside the function body is now emitted as an operator. This corrects the observed addition counterexample on the tested path, but does not prove the entire emitter or its mode/ownership behavior. The formal module preserves `historicalGeneratedScalarDoesNotRefineAddition` as a historical counterexample model, not a claim about the current output.
+
+The new compiler-generated Nat-subtraction witnesses added here check both `20 ∸ 5 = 15` and `5 ∸ 20 = 0`. They also exposed a Forth adapter issue: `ABI-MONUS-OR-LEGACY` used plain signed `-` for raw/raw values. The adapter now uses `ABI-SUB-RAW`, whose zero-floor behavior matches Agda Nat subtraction. CI pins the new runtime blob. These tests add executable evidence for the scalar fragment, not a whole-backend refinement theorem.
 
 The sound path is to change the emission contract or introduce a verified source-aware translation step, then prove that every supported generated form uses it. Unsupported forms must fail through a documented boundary, not silently use legacy operations or terminate via `BYE`.
 
 
 ## Preserved weakest-precondition and denotational semantics
 
-This branch continues from the merged WP model and co-adjusts formal/LinearModalSafety.agda with data/FLib.fth. It removes the duplicate triple API, makes catch/frame preservation direct WP lemmas, and adds a runtime allocation-capacity contract plus concrete Gforth regression tests. The Haskell compiler files remain byte-identical to their pinned upstream revisions.
+This branch continues the merged WP model, co-adjusting formal/LinearModalSafety.agda with data/FLib.fth and the permitted ToForth.hs lowering exception. The WP-only model covers the operation-level contracts; generated-code tests cover selected scalar operations. The remaining compiler/runtime relation is still only partially established.
 
 The primary contract interface is the WP transformer, taking a command, normal postcondition, exceptional postcondition, and the full abstract state. Sequential composition and CATCH have WP equations. SemanticTriple states correctness directly from Execution; wpSemanticallyAdmissible and wpLeastnessFromOperationalSemantics establish validity and leastness for the finite-outcome model. wpCatchPreserves is stated directly in WP. The former generic frame theorem was removed because its separate frame value was untouched by construction; it did not prove that any actual Forth word respects a concrete footprint. Full-state WP is enough in principle when stack, heap, code pointers, identity counter, roots and exceptions are all modelled in the state. Separation logic remains a useful optional locality technique, not a prerequisite for defining WP. These lemmas do not establish domain-theoretic admissibility over a Scott domain, and Execution does not yet model divergence.
 
@@ -102,7 +104,7 @@ ABIAllocationWP models the checked allocator's identity-exhaustion boundary. If 
 
 In data/FLib.fth, capacity is now checked before allocating handle/environment/metadata cells on scalar, boolean, thunk, legacy-result, linear-move and partial-application paths. test/gforth/abi-smoke.fs forces identity exhaustion in the real runtime and checks that HERE, HANDLE-META-HEAD and NEXT-HANDLE-ID remain unchanged while the operation throws ABI-ERR-ID-OVERFLOW. The CI workflow pins the revised runtime blob so the Agda model and Forth implementation cannot drift unnoticed.
 
-This is one operation-level refinement step under a non-interleaved, single-threaded mutation assumption. It does not complete the full compiler/runtime theorem: generated application, raw literals, operator lowering, constructors, pattern matching and all exceptional paths still require source-to-Forth simulation proofs. The checked-binary regressions also verify that an arithmetic THROW and an identity-exhaustion THROW during result allocation leave both inputs live, matching the Agda WP contract and the implementation's final ownership-commit writes. The known scalarAdd 20 5 result mismatch is not fixed by these runtime-contract changes and is not exercised by this CI workflow.
+This remains an operation-level refinement result under a non-interleaved, single-threaded mutation assumption, not the full compiler/runtime theorem. The scalar `20 + 5` mismatch was repaired on the tested generated path by direct compiler lowering. Current CI also checks `20 ∸ 5 = 15` and `5 ∸ 20 = 0`, including the raw/raw monus adapter fix. Generated application outside this primitive fragment, raw value modalities, constructors, pattern matching, linear capture accounting, and all exceptional paths still require source-to-Forth simulation proofs. The checked-binary regressions additionally verify that arithmetic and result-allocation failures leave both inputs live, matching the Agda WP contract and the implementation's final ownership-commit writes.
 
 ## What remains unproved
 
