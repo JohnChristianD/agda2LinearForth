@@ -19,7 +19,7 @@ The target is a dynamically enforced ABI for the subset of Agda programs this ba
 
 “End-to-end” means all values and all operations reachable from a generated program use the checked representation. It does not mean trying to make arbitrary interactive GForth safe.
 
-This document deliberately distinguishes a specification, an implementation, and a refinement proof. The Agda models in `formal/LinearModalABI.agda`, `formal/LinearModalStackEffects.agda`, and `formal/LinearModalExamples.agda` are constructive and import only Agda's bundled `Agda.Builtin.Nat` and `Agda.Builtin.Equality` modules. They use no Agda standard library, no postulates and no F*. The stack-effects module gives typed normal stack-shape rules for the enumerated closed primitive subset, including numeric operations, scalar/thunk/result operations, application/force, conditional, constructor/matcher schemas and linear/modal printing. The examples provide concrete witnesses for linear, modal and mixed-mode arithmetic plus checked thunk construction and promotion. Exception transitions are specified separately from normal-return stack effects. These are specifications and proof ingredients, not yet proofs that the current Forth words implement them.
+This document deliberately distinguishes a specification, an implementation, and a refinement proof. The Agda modules `formal/LinearModalABI.agda`, `formal/LinearModalStackEffects.agda`, `formal/LinearModalExamples.agda`, `formal/LinearModalPrimitiveCoverage.agda`, and `formal/LinearModalDenotation.agda` are written constructively, use only Agda's bundled `Agda.Builtin.Nat` and `Agda.Builtin.Equality` modules, and require no Agda standard library, postulates, or F*. `LinearModalStackEffects.agda` assigns normal stack signatures to numeric operations, scalar/boolean/thunk/result construction, apply/force, conditional, constructors/matchers, print, throw, and catch. `LinearModalPrimitiveCoverage.agda` adds well-typed signature witnesses for every constructor of the `Primitive` enumeration. `LinearModalDenotation.agda` gives a bounded Scott-style flat-domain observation model for the scalar/conditional fragment, including bottom, normal returns, exceptional outcomes, arithmetic bounds, and catch composition. These are proofs about the formal contracts, not yet proofs that the current emitted Forth implements them.
 
 ## Source modes and runtime values
 
@@ -105,6 +105,16 @@ The target is GNU Gforth specifically. The ABI may use Gforth-supported locals, 
 
 The runtime defines named Gforth exception codes and uses `THROW` for checked-ABI rejection. With the Haskell sources held unchanged, `fthError` still emits a diagnostic followed by `BYE`; the runtime's `ABI-ERROR-COMPILED-UNSUPPORTED` word is available to checked Forth callers but is not emitted by the compiler. In `dethunk`, execution goes through `CATCH`; on a linear closure failure, live linear descendants of its captured environment are retired before the original error is rethrown. The smoke test exercises this failure path. This cleanup relies on the closed ABI's acyclic descriptor/reference-order discipline, which remains an invariant to enforce and prove. `CATCH` does not automatically roll back arbitrary dictionary or metadata mutations.
 
+## Scott-style denotation and the actual refinement boundary
+
+`LinearModalDenotation.agda` makes the scalar part compositional: a lifted flat domain distinguishes bottom from a defined value, and `Computation` distinguishes divergence, normal return, and `THROW`. Numeric meanings include addition, subtraction, multiplication, quotient/remainder, equality and order, monus, a parametric target-cell bound, and explicit division-by-zero/overflow outcomes. The conditional denotation selects only the chosen branch, propagates bottom and exceptions, and has constructive selection lemmas. The module also proves bind associativity, catch equations, a generic frame rule for a state split into local and framed components, and commutation of pure updates on disjoint components.
+
+This is a finite, first-order Scott-style fragment, not a complete domain-theoretic semantics of arbitrary recursive GForth. It does not silently elevate an abstract semantic equation into a proof about a Forth definition. The actual Forth correspondence still needs a verified mapping from each emitted word and each runtime transition to these contracts.
+
+The added `LinearModalPrimitiveCoverage.agda` is not limited to naturals and equality: it supplies typed witnesses for all 24 declared `Primitive` constructors, including arithmetic comparisons, construction, application, forcing, result wrapping, promotion, matching, printing, throwing, and catching. The earlier examples happened to instantiate fewer constructors; that was example coverage, not a design restriction. `rawNatsCannotEnterCheckedABI` generalizes the raw-literal mismatch proof: a pair of untagged natural cells cannot directly satisfy any checked primitive's stack signature.
+
+There is also a constructive obstruction to the requested full end-to-end theorem under the frozen Haskell-source constraint. The upstream backend emits bare natural cells and erases source modality instead of supplying a mode witness. The denotation module formalizes the information-loss point: when linear and modal source modes share the same erased runtime representation, no decoder from that representation alone can recover both modes correctly. Updating `.fth` can improve runtime behavior or enforce contracts where evidence exists, but it cannot reconstruct source evidence that the unchanged compiler never emitted. A full proof therefore requires either the existing compiler output to carry modality/code-class evidence or a verified replacement/interposition layer that preserves that evidence. No extra Haskell shim or helper script has been added.
+
 ## Hoare and separation-logic interpretation
 
 The Agda state model defines:
@@ -124,12 +134,13 @@ These are reusable proof ingredients, not the completed implementation theorem. 
 - [x] Define separating conjunction and normal/exceptional Hoare contracts.
 - [x] Define structured runtime-error outcomes and a catch-composition preservation lemma.
 - [x] Define typed stack-shape effects and example witnesses for the enumerated closed primitive subset.
-- [ ] Confirm all three Agda modules type-check in CI using Agda itself with `--no-libraries`.
-- [ ] Give each emitted primitive a complete stack/mode/resource signature and derive permitted compositions.
+- [ ] Confirm all five Agda modules type-check in CI using Agda itself with `--no-libraries`.
+- [x] Give every declared checked-ABI primitive a typed stack/mode signature and concrete witness; checked Forth correspondence remains a separate obligation.
+- [x] Add bounded scalar denotations, bottom/return/throw observations, catch equations, and a separation-style frame/non-interference lemma.
 - [ ] Route every supported generated literal, constructor, application, force, conditional and primitive through the checked ABI.
 - [ ] Replace caller-asserted XT safety with compiler/loader-generated code-class derivations tied to the closed core IR.
 - [ ] Prove actual Forth word implementations preserve `WellFormed`, including every exceptional path.
-- [ ] Prove compiler-to-core and core-to-Gforth correspondence for the supported subset.
+- [ ] Prove compiler-to-core and core-to-Gforth correspondence for the supported subset. The mode-erasure lemma shows why this cannot be inferred from bare literals or patched into existence by an unverified runtime guess.
 - [x] Add a compiler-output regression fixture recording the unchanged unsupported-literal diagnostic and legacy `BYE` output.
 - [ ] Route unsupported compiler cases through a catchable boundary without modifying the Haskell backend; this requires a verified, compatibility-preserving checked loader or runtime interception.
 - [ ] Run positive and negative Gforth tests, plus compatibility regression tests for legacy words.
