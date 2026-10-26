@@ -309,6 +309,7 @@ identity-binary-modal @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
 ' dethunk 0<> abi-assert
 \ A zero execution token is a null code pointer, not a callable closure.
 \ It must throw before allocating a handle or metadata record.
+: zero-code-token-candidate ( -- ) 0 makeTHUNK DROP ;
 : zero-code-token-test ( -- )
   here { beforeHere }
   HANDLE-META-HEAD @ { beforeMeta }
@@ -318,7 +319,6 @@ identity-binary-modal @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
   HANDLE-META-HEAD @ beforeMeta = abi-assert
   NEXT-HANDLE-ID @ beforeId = abi-assert
 ;
-: zero-code-token-candidate ( -- ) 0 makeTHUNK DROP ;
 zero-code-token-test
 
 \ Nested linear captures must all be retired if a closure aborts during force.
