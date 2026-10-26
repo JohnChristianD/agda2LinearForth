@@ -142,15 +142,21 @@ That distinction follows constructive-methods practice: a typechecked propositio
 
 ## 5. Learn refinement last
 
-Once a small runtime word has a proved Hoare contract, connect it to the actual implementation. A **refinement theorem** says each concrete execution step matches an abstract specified step. A **simulation** proof relates concrete and abstract states. For this project, the relation must connect generated Forth, the checked runtime representation, and the Agda state model. A green test suite alone cannot establish this for all inputs.
+Once a small runtime word has a proved WP contract, connect it to the actual implementation. A **refinement theorem** says each concrete execution step matches an abstract specified step. A **simulation** proof relates concrete and abstract states. For this project, the relation must connect generated Forth, the checked runtime representation, and the Agda state model. A green test suite alone cannot establish this for all inputs.
 
 ## Research anchors
 
 - [XDS-Agda: mechanising denotational semantics](https://pdmosses.github.io/xds-agda/) — close correspondence between a mathematical semantics and its Agda embedding.
+- [UPenn Software Foundations: WP semantics](https://softwarefoundations.cis.upenn.edu/current/current/slf-current/WPsem.html) — weakest preconditions characterized by the equivalence between precondition entailment and command correctness, including WP-style frame and consequence rules.
+- [Jesper Cockx and Artjoms Šinkarovs: Extracting the Power of Dependent Types](https://jesper.cx/files/extracting-the-power-of-dependent-types.pdf) — shallow embedding and correctness-by-construction as a route from a formal model toward executable code.
 - [Stanford: intuitionistic logic](https://plato.stanford.edu/entries/logic-intuitionistic/) and [intuitionistic type theory](https://plato.stanford.edu/entries/type-theory-intuitionistic/) — constructive reasoning and propositions as types.
+- [Stanford: constructive mathematics](https://plato.stanford.edu/entries/mathematics-constructive/) — background on RUSS and Richman's CPF axiom. RUSS/CPF/enumerability assumptions are not imported into the WP/runtime proof: they concern foundational computability principles, while this refinement obligation is about concrete command transitions. Keep any future axiomatic RUSS development in a separate explicitly assumed module rather than weakening the postulate-free `--safe` core.
 - [nLab: propositions as types](https://ncatlab.org/nlab/show/propositions%20as%20types) — a compact conceptual reference.
+- [nLab: Kleene's first algebra](https://ncatlab.org/nlab/show/Kleene%27s%2Bfirst%2Balgebra) and [second algebra](https://ncatlab.org/nlab/show/Kleene%27s%2Bsecond%2Balgebra) — realizability/computability models, not substitutes for operational refinement proofs.
 - [Gforth manual](https://gforth.org/manual/) — semantics for the actual target language.
 - [Hoare Type Theory](https://github.com/imdea-software/htt) and [SPLean](https://github.com/verse-lab/splean) — comparative heap-contract and separation-style examples.
 - Henry G. Baker, [Linear Logic and Permutation Stacks—The Forth Shall Be First](https://dcreager.net/papers/Baker1994/) — motivation for connecting Forth stack/resource behavior with linear reasoning, not a proof that unrestricted Forth enforces linearity.
+- [Brent Kerby: The Theory of Concatenative Combinators](https://www.nsl.com/misc/papers/The%20Theory%20of%20Concatenative%20Combinators.htm) and [the Joy language reference](https://hypercubed.github.io/joy/joy.html) — useful comparative syntax and combinator semantics for concatenative programs; use them as design references, not evidence that current generated Forth obeys the Agda model.
+- [Scott domains](https://www.pls-lab.org/en/Scott_domain) — a concise background entry for Scott-style domains and approximation. The current evaluator is a finite-fuel operational denotation, not a full Scott-domain construction.
 - M. Anton Ertl and Bernd Paysan, [Closures—The Forth Way](https://www.complang.tuwien.ac.at/papers/ertl%26paysan.pdf), EuroForth 2018 — closure/environment mechanisms, with memory management remaining an implementation concern.
 - M. Anton Ertl, [Memory Safety Without Tagging nor Static Type Checking](https://repositum.tuwien.at/handle/20.500.12708/193614), EuroForth 2022 — a technique to study, not a proof of modal or linear semantics.
