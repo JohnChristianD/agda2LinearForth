@@ -8,8 +8,8 @@
 : checked-generated-scalar ( -- )
   0 ['] scalarAnswer ABI-CHECKED-RUN-NAT
   ABI-SCALAR-INFO { value mode meta }
-  value 25 = generated-assert
-  mode MODE-MODAL = generated-assert
+  value 25 <> IF -4091 THROW THEN
+  mode MODE-MODAL <> IF -4092 THROW THEN
 ;
 
 checked-generated-scalar
