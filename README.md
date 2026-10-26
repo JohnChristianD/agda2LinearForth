@@ -24,8 +24,8 @@ The unified module contains:
 
 - a descriptor heap and identity model, root/capture/payload invariants, freshness and uniqueness conditions;
 - evidence-gated copy/discard, linear ownership, and modal-promotion preconditions;
-- a disjoint-heap predicate (`Sep`) for separation-style reasoning;
-- direct weakest-precondition contracts for normal and exceptional outcomes, operational-semantic validity/leastness, sequencing, CATCH, and a WP frame rule; no parallel triple API;
+- a complete-state WP model whose state includes descriptor heap, root references, identity counter, ownership modes and exceptions;
+- direct weakest-precondition contracts for normal and exceptional outcomes, operational-semantic validity/leastness, sequencing and CATCH; no parallel triple API or generic frame theorem.
 - typed stack-shape effects and constructive examples for selected checked operations;
 - a model of the raw-natural/legacy-add and raw-boolean output paths in the current compiler;
 - an explicit table mirroring the current supported `TPrim` mappings and unsupported `fthError ... bye` path;
@@ -61,7 +61,7 @@ The sound path is to change the emission contract or introduce a verified source
 
 This branch continues from the merged WP model and co-adjusts formal/LinearModalSafety.agda with data/FLib.fth. It removes the duplicate triple API, makes catch/frame preservation direct WP lemmas, and adds a runtime allocation-capacity contract plus concrete Gforth regression tests. The Haskell compiler files remain byte-identical to their pinned upstream revisions.
 
-The primary contract interface is the WP transformer, taking a command, normal postcondition, exceptional postcondition, and initial state. Sequential composition and CATCH have WP equations. SemanticTriple states correctness directly from Execution; wpSemanticallyAdmissible and wpLeastnessFromOperationalSemantics establish validity and leastness for the finite-outcome model. wpCatchPreserves and wpFrameRule express preservation directly in terms of WP, avoiding a second contract API. These lemmas do not establish domain-theoretic admissibility over a Scott domain, and Execution does not yet model divergence.
+The primary contract interface is the WP transformer, taking a command, normal postcondition, exceptional postcondition, and the full abstract state. Sequential composition and CATCH have WP equations. SemanticTriple states correctness directly from Execution; wpSemanticallyAdmissible and wpLeastnessFromOperationalSemantics establish validity and leastness for the finite-outcome model. wpCatchPreserves is stated directly in WP. The former generic frame theorem was removed because its separate frame value was untouched by construction; it did not prove that any actual Forth word respects a concrete footprint. Full-state WP is enough in principle when stack, heap, code pointers, identity counter, roots and exceptions are all modelled in the state. Separation logic remains a useful optional locality technique, not a prerequisite for defining WP. These lemmas do not establish domain-theoretic admissibility over a Scott domain, and Execution does not yet model divergence.
 
 This follows UPenn Software Foundations, where WP is characterized from operational evaluation and weakest-precondition validity; see https://softwarefoundations.cis.upenn.edu/current/current/slf-current/WPsem.html.
 
@@ -142,11 +142,11 @@ Useful terms: **data stack, stack effect, execution token (XT), dictionary entry
 
 ### 4. Weakest preconditions, derived Hoare triples, and separation reasoning
 
-A Hoare triple `{P} C {Q}` says that, when precondition `P` holds, command `C` establishes normal postcondition `Q`; this repo additionally specifies what happens on exceptions. Separation logic adds a way to split a heap into disjoint ownership regions. In the model, `Sep` states a disjoint descriptor-identity split, while `WellFormed` combines ownership and aliasing invariants.
+Dijkstra-style WP is the single contract mechanism: given a complete runtime state, it computes the condition required for normal and exceptional outcomes. The state must include more than the data stack: descriptor metadata, roots, code pointers, allocation counters and ownership modes affect behaviour too. The `WellFormed` predicate tracks identity uniqueness, references, ownership and linear non-aliasing. A separate separation-logic frame rule is not needed to define correctness; it becomes valuable only after a specific operation's footprint is proved.
 
-Start with wp, wpSequence, wpCatch, wpFrameRule, Sep, and wpCatchPreserves in [the unified module](formal/LinearModalSafety.agda). UPenn's WP and separation-logic development gives the closest comparison; other proof assistants can provide ideas, but their code is not imported into Agda.
+Start with wp, wpSequence, wpCatch, SemanticTriple, wpCatchPreserves, and ABIAllocationWP in [the unified module](formal/LinearModalSafety.agda). UPenn's WP development is the closest contract reference. Separation-logic texts remain useful for footprint proofs, but this code no longer presents a generic frame lemma whose locality premise is true by construction.
 
-Useful terms: **precondition, postcondition, Hoare triple, invariant, frame rule, separating conjunction, heap footprint, aliasing, ownership transfer, normal/exceptional postcondition**.
+Useful terms: **weakest precondition, operational outcome, stack effect, complete state, invariant, allocation footprint, aliasing, ownership transfer, normal/exceptional postcondition**.
 
 ### 5. Learn refinement last
 
