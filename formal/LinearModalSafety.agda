@@ -75,7 +75,7 @@ data RuntimeError : Set where
   linearCaptureNotAccounted modalPromotionRejected : RuntimeError
   unknownPrimitive badStackEffect : RuntimeError
   badResultPayload abiEscapeHatch : RuntimeError
-  arithmeticDomainError : RuntimeError
+  arithmeticDomainError arithmeticOverflowError : RuntimeError
 
 -- CodeClass is a compiler/loader classification, not an execution-token address.
 -- codeOpaque is deliberately not eligible for modal promotion.
@@ -577,7 +577,7 @@ open PrimitiveSpec public
 
 numericErrors : List RuntimeError
 numericErrors = unknownHandle :: consumedHandle :: wrongKind :: expectedScalar ::
-  invalidMode :: aliasedLinearOperands :: []
+  invalidMode :: aliasedLinearOperands :: arithmeticOverflowError :: []
 
 booleanErrors : List RuntimeError
 booleanErrors = unknownHandle :: consumedHandle :: wrongKind :: expectedBoolean :: invalidMode :: invalidBoolean :: []
@@ -2618,4 +2618,233 @@ module ConcurrentSeparation where
     Disjoint (keys left) (keys right) →
     ConcurrentPostcondition left right
   makeConcurrentPostcondition = concurrentPostcondition
-  
+
+ 
+-- Recovered from PR #7: scalar denotation with explicit bottom and errors.
+-- Kept separate from CoreDenotation because finite fuel exhaustion and
+-- denotational divergence are different observations. The flat preorder is a
+-- Scott-style partial-order ingredient; this module does not claim to build
+-- a complete domain for unrestricted Forth.
+module ScottScalarDenotation where
+
+  data FlatDomain (A : Set) : Set where
+    bottom : FlatDomain A
+    defined : A → FlatDomain A
+
+  infix 4 _⊑_
+
+  data _⊑_ {A : Set} : FlatDomain A → FlatDomain A → Set where
+    bottomLeast : {x : FlatDomain A} → bottom ⊑ x
+    definedSame : {x y : A} → x ≡ y → defined x ⊑ defined y
+
+  flatRefl : {A : Set} → (x : FlatDomain A) → x ⊑ x
+  flatRefl bottom = bottomLeast
+  flatRefl (defined x) = definedSame refl
+
+  flatTrans :
+    {A : Set} {x y z : FlatDomain A} →
+    x ⊑ y → y ⊑ z → x ⊑ z
+  flatTrans bottomLeast yz = bottomLeast
+  flatTrans (definedSame refl) yz = yz
+
+  -- Three observable outcomes: divergence, successful return, and THROW.
+  data Computation (A : Set) : Set where
+    diverges : Computation A
+    returns : A → Computation A
+    throws : RuntimeError → Computation A
+
+  mapComputation :
+    {A B : Set} → (A → B) → Computation A → Computation B
+  mapComputation f diverges = diverges
+  mapComputation f (returns a) = returns (f a)
+  mapComputation f (throws e) = throws e
+
+  bindComputation :
+    {A B : Set} → Computation A → (A → Computation B) → Computation B
+  bindComputation diverges k = diverges
+  bindComputation (returns a) k = k a
+  bindComputation (throws e) k = throws e
+
+  catchComputation :
+    {A : Set} → Computation A → (RuntimeError → Computation A) → Computation A
+  catchComputation diverges h = diverges
+  catchComputation (returns a) h = returns a
+  catchComputation (throws e) h = h e
+
+  bindAssoc :
+    {A B C : Set}
+    (c : Computation A)
+    (f : A → Computation B)
+    (g : B → Computation C) →
+    bindComputation (bindComputation c f) g ≡
+    bindComputation c (λ a → bindComputation (f a) g)
+  bindAssoc diverges f g = refl
+  bindAssoc (throws e) f g = refl
+  bindAssoc (returns a) f g = refl
+
+  catchReturn :
+    {A : Set} (a : A) (h : RuntimeError → Computation A) →
+    catchComputation (returns a) h ≡ returns a
+  catchReturn a h = refl
+
+  catchThrow :
+    {A : Set} (e : RuntimeError) (h : RuntimeError → Computation A) →
+    catchComputation (throws e) h ≡ h e
+  catchThrow e h = refl
+
+  catchBottom :
+    {A : Set} (h : RuntimeError → Computation A) →
+    catchComputation (diverges {A}) h ≡ diverges
+  catchBottom h = refl
+
+  data Truth : Set where
+    yes no : Truth
+
+  truthOr : Truth → Truth → Truth
+  truthOr yes _ = yes
+  truthOr no y = y
+
+  truthNot : Truth → Truth
+  truthNot yes = no
+  truthNot no = yes
+
+  natEq : Nat → Nat → Truth
+  natEq zero zero = yes
+  natEq zero (suc y) = no
+  natEq (suc x) zero = no
+  natEq (suc x) (suc y) = natEq x y
+
+  natLt : Nat → Nat → Truth
+  natLt zero zero = no
+  natLt zero (suc y) = yes
+  natLt (suc x) zero = no
+  natLt (suc x) (suc y) = natLt x y
+
+  natLe : Nat → Nat → Truth
+  natLe x y = truthOr (natLt x y) (natEq x y)
+
+  natMinus : Nat → Nat → Nat
+  natMinus x zero = x
+  natMinus zero (suc y) = zero
+  natMinus (suc x) (suc y) = natMinus x y
+
+  -- Fuel bounds repeated subtraction, avoiding axioms about division.
+  natDivFuel : Nat → Nat → Nat → Nat
+  natDivFuel zero n d = zero
+  natDivFuel (suc fuel) n d with natLt n d
+  ... | yes = zero
+  ... | no = suc (natDivFuel fuel (natMinus n d) d)
+
+  natRemFuel : Nat → Nat → Nat → Nat
+  natRemFuel zero n d = n
+  natRemFuel (suc fuel) n d with natLt n d
+  ... | yes = n
+  ... | no = natRemFuel fuel (natMinus n d) d
+
+  data ScalarMeaning : Set where
+    numberMeaning : Nat → ScalarMeaning
+    booleanMeaning : Truth → ScalarMeaning
+
+  data NumericOp : Set where
+    addOp subOp mulOp quotientOp remainderOp : NumericOp
+    equalOp greaterEqualOp lessThanOp monusOp : NumericOp
+
+  fitNatural : Nat → Nat → Computation ScalarMeaning
+  fitNatural bound n with natLe n bound
+  ... | yes = returns (numberMeaning n)
+  ... | no = throws arithmeticOverflowError
+
+  numericMeaning : Nat → NumericOp → Nat → Nat → Computation ScalarMeaning
+  numericMeaning bound addOp x y = fitNatural bound (x + y)
+  numericMeaning bound subOp x y = fitNatural bound (natMinus x y)
+  numericMeaning bound mulOp x y = fitNatural bound (x * y)
+  numericMeaning bound quotientOp x zero = throws arithmeticDomainError
+  numericMeaning bound quotientOp x (suc y) =
+    fitNatural bound (natDivFuel x x (suc y))
+  numericMeaning bound remainderOp x zero = throws arithmeticDomainError
+  numericMeaning bound remainderOp x (suc y) =
+    fitNatural bound (natRemFuel x x (suc y))
+  numericMeaning bound equalOp x y = returns (booleanMeaning (natEq x y))
+  numericMeaning bound greaterEqualOp x y = returns (booleanMeaning (natLe y x))
+  numericMeaning bound lessThanOp x y = returns (booleanMeaning (natLt x y))
+  numericMeaning bound monusOp x y = fitNatural bound (natMinus x y)
+
+  data Value : Set where
+    natValue : Nat → SourceMode → Value
+    boolValue : Truth → SourceMode → Value
+    unitValue : Value
+
+  valueMode : Value → SourceMode
+  valueMode (natValue n m) = m
+  valueMode (boolValue b m) = m
+  valueMode unitValue = modal
+
+  meaningValue : SourceMode → ScalarMeaning → Value
+  meaningValue m (numberMeaning n) = natValue n m
+  meaningValue m (booleanMeaning b) = boolValue b m
+
+  -- The target cell bound is a parameter, not a hard-coded machine width.
+  denoteBinary :
+    Nat → NumericOp → Value → Value → Computation Value
+  denoteBinary bound op (natValue x mx) (natValue y my)
+    with natLe x bound | natLe y bound
+  ... | yes | yes =
+    mapComputation (meaningValue (joinSourceMode mx my))
+      (numericMeaning bound op x y)
+  ... | _ | _ = throws arithmeticOverflowError
+  denoteBinary bound op _ _ = throws wrongKind
+
+  denoteIf :
+    Computation Value → Computation Value → Computation Value → Computation Value
+  denoteIf diverges yesBranch noBranch = diverges
+  denoteIf (throws e) yesBranch noBranch = throws e
+  denoteIf (returns (boolValue yes mode)) yesBranch noBranch = yesBranch
+  denoteIf (returns (boolValue no mode)) yesBranch noBranch = noBranch
+  denoteIf (returns value) yesBranch noBranch = throws wrongKind
+
+  ifChoosesTrue :
+    {yesBranch noBranch : Computation Value} →
+    denoteIf (returns (boolValue yes linear)) yesBranch noBranch ≡ yesBranch
+  ifChoosesTrue = refl
+
+  ifChoosesFalse :
+    {yesBranch noBranch : Computation Value} →
+    denoteIf (returns (boolValue no modal)) yesBranch noBranch ≡ noBranch
+  ifChoosesFalse = refl
+
+  ifPropagatesBottom :
+    {yesBranch noBranch : Computation Value} →
+    denoteIf diverges yesBranch noBranch ≡ diverges
+  ifPropagatesBottom = refl
+
+  ifPropagatesException :
+    (e : RuntimeError) (yesBranch noBranch : Computation Value) →
+    denoteIf (throws e) yesBranch noBranch ≡ throws e
+  ifPropagatesException e yesBranch noBranch = refl
+
+  everyPrimitiveHasProfile : (p : Primitive) → PrimitiveSpec p
+  everyPrimitiveHasProfile = specifiesEveryPrimitive
+
+  -- The fixed emitter erases the source mode. Both modalities map to the same
+  -- cell, so a decoder cannot reconstruct both original modes correctly.
+  erasedModeCell : SourceMode → Nat
+  erasedModeCell _ = zero
+
+  symDenotation : {A : Set} {x y : A} → x ≡ y → y ≡ x
+  symDenotation refl = refl
+
+  transDenotation : {A : Set} {x y z : A} →
+    x ≡ y → y ≡ z → x ≡ z
+  transDenotation refl q = q
+
+  linearIsNotModal : linear ≡ modal → ⊥
+  linearIsNotModal ()
+
+  noRuntimeModeDecoder :
+    (decode : Nat → SourceMode) →
+    decode (erasedModeCell linear) ≡ linear →
+    decode (erasedModeCell modal) ≡ modal →
+    ⊥
+  noRuntimeModeDecoder decode linearCorrect modalCorrect =
+    linearIsNotModal
+      (transDenotation (symDenotation linearCorrect) modalCorrect)
