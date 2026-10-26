@@ -80,16 +80,20 @@ jobs:
         run: gforth -e 'include data/FLib.fth' -e 'include test/gforth/abi-smoke.fs'
 
       - name: Type-check constructive ABI state, Hoare, and separation model
-        run: "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalABI.agda
+        run: |
+          "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalABI.agda
 
       - name: Type-check constructive ABI stack-effect derivations
-        run: "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalStackEffects.agda
+        run: |
+          "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalStackEffects.agda
 
       - name: Type-check concrete ABI signature witnesses
-        run: "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalExamples.agda
+        run: |
+          "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalExamples.agda
 
       - name: Type-check compiler/runtime boundary precondition correspondence
-        run: "$HOME/.local/bin/agda" --no-libraries -i formal formal/CompilerRuntimeBoundary.agda
+        run: |
+          "$HOME/.local/bin/agda" --no-libraries -i formal formal/CompilerRuntimeBoundary.agda
 
       - name: Verify unsupported-literal output preserves the unchanged compiler boundary
         run: |
