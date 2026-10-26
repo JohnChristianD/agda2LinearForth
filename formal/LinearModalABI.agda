@@ -425,11 +425,15 @@ promotionExcludesLinearCaptures s wf {d} pre n captured linear =
 
 -- Opaque user Forth execution tokens can never satisfy modal promotion's
 -- closed-code evidence requirement.
+noOpaqueModalCode : ModalCode codeOpaque → ⊥
+noOpaqueModalCode ()
+
 promotionExcludesOpaqueCode :
   {s : Machine} {d : Descriptor} →
   PromotionPrecondition s d → codeClass d ≡ codeOpaque → ⊥
-promotionExcludesOpaqueCode pre refl with modalCodeWitness pre
-... | ()
+promotionExcludesOpaqueCode pre codeEq =
+  noOpaqueModalCode
+    (subst {P = ModalCode} codeEq (modalCodeWitness pre))
 
 -- The core-language model covers these operations; escape hatches are excluded.
 data Primitive : Set where
