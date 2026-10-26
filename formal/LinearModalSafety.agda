@@ -1719,6 +1719,16 @@ unannotatedCannotBeModal ()
 unannotatedCannotBeLinear : unannotated ≡ linearMode → ⊥
 unannotatedCannotBeLinear ()
 
+rawNatCannotEstablishModalSourceMode :
+  (n : Nat) →
+  bridgeRuntimeModeNat (bridgeRawNat n) ≡ sourceMode modal → ⊥
+rawNatCannotEstablishModalSourceMode n ()
+
+rawNatCannotEstablishLinearSourceMode :
+  (n : Nat) →
+  bridgeRuntimeModeNat (bridgeRawNat n) ≡ sourceMode linear → ⊥
+rawNatCannotEstablishLinearSourceMode n ()
+
 data BridgeBoolCell : Set where
   bridgeRawBool : Bool → BridgeBoolCell
   bridgeCheckedBool : Bool → SourceMode → BridgeBoolCell
@@ -1752,6 +1762,16 @@ checkedBoolRuntimeModePreserved :
   (b : Bool) (m : SourceMode) →
   bridgeRuntimeModeBool (bridgeCheckedBool b m) ≡ sourceMode m
 checkedBoolRuntimeModePreserved b m = refl
+
+rawBoolCannotEstablishModalSourceMode :
+  (b : Bool) →
+  bridgeRuntimeModeBool (bridgeRawBool b) ≡ sourceMode modal → ⊥
+rawBoolCannotEstablishModalSourceMode b ()
+
+rawBoolCannotEstablishLinearSourceMode :
+  (b : Bool) →
+  bridgeRuntimeModeBool (bridgeRawBool b) ≡ sourceMode linear → ⊥
+rawBoolCannotEstablishLinearSourceMode b ()
 
 bridgeNatSub : Nat → Nat → Nat
 bridgeNatSub n zero = n
