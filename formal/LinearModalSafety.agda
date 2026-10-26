@@ -1152,6 +1152,7 @@ modalPromotionEffect = promoteModalEffect modalNatAdd modalCapturesNil
 data NatExpr : Set where
   natLiteral : Nat → NatExpr
   natAddition : NatExpr → NatExpr → NatExpr
+  natMultiplication : NatExpr → NatExpr → NatExpr
   natMonus : NatExpr → NatExpr → NatExpr
 
 -- These constructors distinguish raw literals, saturated primitive calls routed
@@ -1161,21 +1162,31 @@ data EmittedFragment : Set where
   rawNaturalCell : Nat → EmittedFragment
   rawTrueCell rawFalseCell : EmittedFragment
   abiAddAdapterCode : EmittedFragment → EmittedFragment → EmittedFragment
+  abiMulAdapterCode : EmittedFragment → EmittedFragment → EmittedFragment
   abiMonusAdapterCode : EmittedFragment → EmittedFragment → EmittedFragment
   checkedScalarCode : SourceMode → Nat → EmittedFragment
   checkedBooleanCode : SourceMode → EmittedFragment
 
 -- Mirrors the selected ToForth.hs emission paths: literals remain raw cells;
--- saturated addition uses ABI-ADD-OR-LEGACY; builtin Nat subtraction uses
--- ABI-MONUS-OR-LEGACY. With raw literal operands these adapters select raw/raw
--- execution, so this fragment still carries no checked mode evidence.
+-- saturated addition, multiplication, and builtin Nat subtraction use
+-- ABI-ADD-OR-LEGACY, ABI-MUL-OR-LEGACY, and ABI-MONUS-OR-LEGACY. With raw
+-- literal operands these adapters select raw/raw execution, so this fragment
+-- still carries no checked mode evidence.
 -- This is a manual semantic mirror, not extraction from the Haskell emitter.
 compileNatFragment : NatExpr → EmittedFragment
 compileNatFragment (natLiteral n) = rawNaturalCell n
 compileNatFragment (natAddition left right) =
   abiAddAdapterCode (compileNatFragment left) (compileNatFragment right)
+compileNatFragment (natMultiplication left right) =
+  abiMulAdapterCode (compileNatFragment left) (compileNatFragment right)
 compileNatFragment (natMonus left right) =
   abiMonusAdapterCode (compileNatFragment left) (compileNatFragment right)
+
+compiledNatMultiplicationUsesAdapter :
+  (left right : NatExpr) →
+  compileNatFragment (natMultiplication left right) ≡
+    abiMulAdapterCode (compileNatFragment left) (compileNatFragment right)
+compiledNatMultiplicationUsesAdapter left right = refl
 
 compiledNatMonusUsesAdapter :
   (left right : NatExpr) →
@@ -1233,6 +1244,8 @@ NoCheckedRepresentation rawTrueCell = ⊤
 NoCheckedRepresentation rawFalseCell = ⊤
 NoCheckedRepresentation (abiAddAdapterCode left right) =
   NoCheckedRepresentation left × NoCheckedRepresentation right
+NoCheckedRepresentation (abiMulAdapterCode left right) =
+  NoCheckedRepresentation left × NoCheckedRepresentation right
 NoCheckedRepresentation (abiMonusAdapterCode left right) =
   NoCheckedRepresentation left × NoCheckedRepresentation right
 NoCheckedRepresentation (checkedScalarCode mode n) = ⊥
@@ -1242,6 +1255,9 @@ compilerNatFragmentHasNoCheckedRepresentation :
   (expr : NatExpr) → NoCheckedRepresentation (compileNatFragment expr)
 compilerNatFragmentHasNoCheckedRepresentation (natLiteral n) = tt
 compilerNatFragmentHasNoCheckedRepresentation (natAddition left right) =
+  compilerNatFragmentHasNoCheckedRepresentation left ,
+  compilerNatFragmentHasNoCheckedRepresentation right
+compilerNatFragmentHasNoCheckedRepresentation (natMultiplication left right) =
   compilerNatFragmentHasNoCheckedRepresentation left ,
   compilerNatFragmentHasNoCheckedRepresentation right
 compilerNatFragmentHasNoCheckedRepresentation (natMonus left right) =
