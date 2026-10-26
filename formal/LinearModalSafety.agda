@@ -9,7 +9,7 @@
 -- establish that arbitrary Haskell or Forth implementations refine it.
 module LinearModalSafety where
 
-open import Agda.Builtin.Nat using (Nat; zero; suc)
+open import Agda.Builtin.Nat using (Nat; zero; suc; _+_)\nopen import Agda.Builtin.Bool using (Bool; true; false)
 open import Agda.Builtin.Equality using (_≡_; refl)
 
 -- ── 1. Descriptor heap, linear/modal invariants, Hoare and separation model ──
@@ -1429,7 +1429,235 @@ modalInputRemainsLiveOnSuccessfulCommit :
   lifeAfterBinarySuccess modal ≡ live
 modalInputRemainsLiveOnSuccessfulCommit = refl
 
--- ── 8. Verification boundary ──
+
+-- Broader witnesses: the catalogue's scalar fragment was not intended to be
+-- limited to addition/equality. These prove the remaining enumerated operations.
+linearNatSubtraction :
+  {tail : StackShape} →
+  StackEffect pNatSub
+    (valueItem naturalTy :: valueItem naturalTy :: tail)
+    (valueItem naturalTy :: tail)
+linearNatSubtraction = natSubEffect naturalIsNatural naturalIsNatural
+
+linearNatMultiplication :
+  {tail : StackShape} →
+  StackEffect pNatMul
+    (valueItem naturalTy :: valueItem naturalTy :: tail)
+    (valueItem naturalTy :: tail)
+linearNatMultiplication = natMulEffect naturalIsNatural naturalIsNatural
+
+linearNatQuotient :
+  {tail : StackShape} →
+  StackEffect pNatQuot
+    (valueItem naturalTy :: valueItem naturalTy :: tail)
+    (valueItem naturalTy :: tail)
+linearNatQuotient = natQuotEffect naturalIsNatural naturalIsNatural
+
+linearNatRemainder :
+  {tail : StackShape} →
+  StackEffect pNatRem
+    (valueItem naturalTy :: valueItem naturalTy :: tail)
+    (valueItem naturalTy :: tail)
+linearNatRemainder = natRemEffect naturalIsNatural naturalIsNatural
+
+linearNatGreaterEqual :
+  {tail : StackShape} →
+  StackEffect pNatGeq
+    (valueItem naturalTy :: valueItem naturalTy :: tail)
+    (valueItem booleanTy :: tail)
+linearNatGreaterEqual = natGeqEffect naturalIsNatural naturalIsNatural
+
+linearNatLessThan :
+  {tail : StackShape} →
+  StackEffect pNatLt
+    (valueItem naturalTy :: valueItem naturalTy :: tail)
+    (valueItem booleanTy :: tail)
+linearNatLessThan = natLtEffect naturalIsNatural naturalIsNatural
+
+linearNatMonus :
+  {tail : StackShape} →
+  StackEffect pNatMonus
+    (valueItem naturalTy :: valueItem naturalTy :: tail)
+    (valueItem naturalTy :: tail)
+linearNatMonus = natMonusEffect naturalIsNatural naturalIsNatural
+
+modalAdditionWitness :
+  StackEffect pNatAdd
+    (valueItem (!Ty naturalTy) :: valueItem (!Ty naturalTy) :: [])
+    (valueItem (!Ty naturalTy) :: [])
+modalAdditionWitness = natAddEffect boxedNaturalIsNatural boxedNaturalIsNatural
+
+mixedModeMultiplicationWitness :
+  StackEffect pNatMul
+    (valueItem (!Ty naturalTy) :: valueItem naturalTy :: [])
+    (valueItem naturalTy :: [])
+mixedModeMultiplicationWitness = natMulEffect naturalIsNatural boxedNaturalIsNatural
+
+orderComparisonReturnsBoolean :
+  StackEffect pNatGeq
+    (valueItem (!Ty naturalTy) :: valueItem naturalTy :: [])
+    (valueItem booleanTy :: [])
+orderComparisonReturnsBoolean = natGeqEffect naturalIsNatural boxedNaturalIsNatural
+
+remainderStackEffect :
+  StackEffect pNatRem
+    (valueItem naturalTy :: valueItem naturalTy :: [])
+    (valueItem naturalTy :: [])
+remainderStackEffect = natRemEffect naturalIsNatural naturalIsNatural
+
+modalNaturalConditional :
+  StackEffect pIf
+    (thunkItem modal codeNatAdd [] (codeSignature codeNatAdd) ::
+     thunkItem modal codeNatSub [] (codeSignature codeNatSub) ::
+     valueItem (!Ty booleanTy) :: [])
+    (valueItem (codeSignature codeNatAdd) :: [])
+modalNaturalConditional =
+  ifModalBranchesEffect boxedBooleanIsBoolean modalNatAdd modalNatSub
+    modalCapturesNil modalCapturesNil
+
+natConstructorSignature : ConstructorSignature
+natConstructorSignature = constructorSignature 0 (naturalTy :: []) naturalTy
+
+natConstructorStackEffect :
+  StackEffect pConstruct
+    (valueItem naturalTy :: constructorTokenItem 0 :: [])
+    (valueItem naturalTy :: [])
+natConstructorStackEffect = constructEffect natConstructorSignature
+
+natMatcherSignature : MatcherSignature
+natMatcherSignature = matcherSignature naturalTy naturalTy
+
+natMatcherStackEffect :
+  StackEffect pMatch
+    (matcherTokenItem natMatcherSignature :: valueItem naturalTy :: [])
+    (valueItem naturalTy :: [])
+natMatcherStackEffect = matchEffect natMatcherSignature
+
+linearResultPackEffect :
+  StackEffect pMakeResult (valueItem naturalTy :: []) (resultItem naturalTy :: [])
+linearResultPackEffect = makeResultEffect
+
+linearResultUnpackEffect :
+  StackEffect pUnwrapResult (resultItem naturalTy :: []) (valueItem naturalTy :: [])
+linearResultUnpackEffect = unwrapResultEffect
+
+linearNaturalPrintEffect :
+  StackEffect pPrint (valueItem naturalTy :: []) []
+linearNaturalPrintEffect = printLinearEffect linearNatural
+
+modalNaturalPrintEffect :
+  StackEffect pPrint (valueItem (!Ty naturalTy) :: [])
+    (valueItem (!Ty naturalTy) :: [])
+modalNaturalPrintEffect = printModalEffect
+\n
+-- ── Scalar bridge correspondence for the opt-in runtime gate ──
+--
+-- The concrete Forth bridge maps a bare Nat cell to a modal scalar and preserves
+-- an explicitly checked handle's mode. The source compiler's erased boolean/Nat
+-- overlap at raw 0 is handled by a caller-selected Nat/Bool result adapter.
+data BridgeNatCell : Set where
+  bridgeRawNat : Nat → BridgeNatCell
+  bridgeCheckedNat : Nat → SourceMode → BridgeNatCell
+
+bridgeNatPayload : BridgeNatCell → Nat
+bridgeNatPayload (bridgeRawNat n) = n
+bridgeNatPayload (bridgeCheckedNat n m) = n
+
+bridgeNormalizeNat : BridgeNatCell → Nat × SourceMode
+bridgeNormalizeNat (bridgeRawNat n) = n , modal
+bridgeNormalizeNat (bridgeCheckedNat n m) = n , m
+
+bridgeNatPayloadPreserved :
+  (v : BridgeNatCell) → fst (bridgeNormalizeNat v) ≡ bridgeNatPayload v
+bridgeNatPayloadPreserved (bridgeRawNat n) = refl
+bridgeNatPayloadPreserved (bridgeCheckedNat n m) = refl
+
+bridgeRawNatIsModal :
+  (n : Nat) → snd (bridgeNormalizeNat (bridgeRawNat n)) ≡ modal
+bridgeRawNatIsModal n = refl
+
+bridgeCheckedModePreserved :
+  (n : Nat) (m : SourceMode) →
+  snd (bridgeNormalizeNat (bridgeCheckedNat n m)) ≡ m
+bridgeCheckedModePreserved n m = refl
+
+data BridgeBoolCell : Set where
+  bridgeRawBool : Bool → BridgeBoolCell
+  bridgeCheckedBool : Bool → SourceMode → BridgeBoolCell
+
+bridgeBoolPayload : BridgeBoolCell → Bool
+bridgeBoolPayload (bridgeRawBool b) = b
+bridgeBoolPayload (bridgeCheckedBool b m) = b
+
+bridgeNormalizeBool : BridgeBoolCell → Bool × SourceMode
+bridgeNormalizeBool (bridgeRawBool b) = b , modal
+bridgeNormalizeBool (bridgeCheckedBool b m) = b , m
+
+bridgeBoolPayloadPreserved :
+  (v : BridgeBoolCell) → fst (bridgeNormalizeBool v) ≡ bridgeBoolPayload v
+bridgeBoolPayloadPreserved (bridgeRawBool b) = refl
+bridgeBoolPayloadPreserved (bridgeCheckedBool b m) = refl
+
+bridgeRawBoolIsModal :
+  (b : Bool) → snd (bridgeNormalizeBool (bridgeRawBool b)) ≡ modal
+bridgeRawBoolIsModal b = refl
+
+bridgeNatSub : Nat → Nat → Nat
+bridgeNatSub n zero = n
+bridgeNatSub zero (suc m) = zero
+bridgeNatSub (suc n) (suc m) = bridgeNatSub n m
+
+bridgeNatEq : Nat → Nat → Bool
+bridgeNatEq zero zero = true
+bridgeNatEq zero (suc m) = false
+bridgeNatEq (suc n) zero = false
+bridgeNatEq (suc n) (suc m) = bridgeNatEq n m
+
+bridgeEvalAdd : BridgeNatCell → BridgeNatCell → Nat × SourceMode
+bridgeEvalAdd left right =
+  (fst (bridgeNormalizeNat left) + fst (bridgeNormalizeNat right)) ,
+  joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeEvalSub : BridgeNatCell → BridgeNatCell → Nat × SourceMode
+bridgeEvalSub left right =
+  bridgeNatSub (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right)) ,
+  joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeEvalEq : BridgeNatCell → BridgeNatCell → Bool × SourceMode
+bridgeEvalEq left right =
+  bridgeNatEq (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right)) ,
+  joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeAddPayloadCorrespondence :
+  (left right : BridgeNatCell) →
+  fst (bridgeEvalAdd left right) ≡
+    fst (bridgeNormalizeNat left) + fst (bridgeNormalizeNat right)
+bridgeAddPayloadCorrespondence left right = refl
+
+bridgeSubPayloadCorrespondence :
+  (left right : BridgeNatCell) →
+  fst (bridgeEvalSub left right) ≡
+    bridgeNatSub (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right))
+bridgeSubPayloadCorrespondence left right = refl
+
+bridgeEqualityPayloadCorrespondence :
+  (left right : BridgeNatCell) →
+  fst (bridgeEvalEq left right) ≡
+    bridgeNatEq (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right))
+bridgeEqualityPayloadCorrespondence left right = refl
+
+bridgeSelect : Bool → BridgeNatCell → BridgeNatCell → BridgeNatCell
+bridgeSelect true yes no = yes
+bridgeSelect false yes no = no
+
+bridgeTrueSelectsLeft :
+  (yes no : BridgeNatCell) → bridgeSelect true yes no ≡ yes
+bridgeTrueSelectsLeft yes no = refl
+
+bridgeFalseSelectsRight :
+  (yes no : BridgeNatCell) → bridgeSelect false yes no ≡ no
+bridgeFalseSelectsRight yes no = refl
+\n-- ── 8. Verification boundary ──
 --
 -- To close end-to-end refinement, future work must prove that:
 -- (1) each supported compiler translation corresponds to the stated emission;

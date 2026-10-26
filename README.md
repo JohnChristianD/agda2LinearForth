@@ -96,7 +96,21 @@ Start with the `Hoare`, `Sep`, and `catchPreserves` declarations in [the unified
 
 Useful terms: **precondition, postcondition, Hoare triple, invariant, frame rule, separating conjunction, heap footprint, aliasing, ownership transfer, normal/exceptional postcondition**.
 
-### 5. Learn refinement last
+### Checked scalar bridge and scope of the refinement claim
+
+The fixed Haskell files are still untouched by this PR. The runtime adds an opt-in `ABI-CHECKED-RUN-NAT` / `ABI-CHECKED-RUN-BOOL` gate for an audited Forth entrypoint with an explicit input arity and exactly one result cell. While the gate is on, the unchanged backend's scalar preamble operators (`+`, `-`, `*`, `/`, `mod`, `=`, `>=`, `<`) route through the checked scalar ABI, and the subsequently compiled `IF` checks the canonical boolean representation or a checked boolean handle. The gate restores its previous setting on both normal and exceptional exit. When the gate is off, old native-cell operators retain their prior behavior.
+
+Raw unboxed Nat cells in this profile are converted to immutable modal scalar handles; a registered checked scalar keeps its existing mode. The result adapter must declare whether the result is Nat or Bool, because after erasure a raw 0 does not itself tell us whether it represents Nat zero or false. Input arity is explicit so the runtime can check the expected net Forth stack effect (`n` inputs, one output). These checks validate the scalar protocol; they do not certify arbitrary Forth code passed as an execution token.
+
+The unified standard-library-free `formal/LinearModalSafety.agda` now also contains explicit stack-effect witnesses for subtraction, multiplication, quotient, remainder, order comparisons, monus, modal/mixed modes, conditional selection, constructor/matcher schemas, result pack/unpack, and observation. Its scalar bridge lemmas prove payload/mode preservation and arithmetic/equality correspondence by Agda definitional equality. This answers why earlier examples looked like Nat addition/equality only: that was a short example set, not a justified limitation of the primitive catalogue.
+
+## What is and is not proved
+
+CI's Agda check proves the declarations in the unified model type-check; the Gforth smoke tests separately exercise the actual scalar dispatch words. A full compiler-to-runtime refinement theorem for every program emitted by `ToForth.hs` is still not established: the fixed backend also emits general thunk/application, constructor/matcher, wildcard, array, and legacy layout operations, while raw literals, booleans, code addresses, and capture ownership are not all accompanied by compiler-derived modality/code-safety evidence. Unsupported operations still include a `BYE` boundary. Thus this PR provides a concrete checked scalar subset and bridge-level correspondence, not a whole-program proof or a sandbox for untrusted execution tokens. The whole-backend theorem requires proving the remaining emitted forms against the concrete runtime contracts without misrepresenting the existing model as that proof.
+
+That distinction follows constructive-methods practice: a typechecked proposition-as-types model is evidence about its definitions, not automatic evidence that a separate implementation realizes them. See the [Stanford Encyclopedia of Philosophy on constructive mathematics](https://plato.stanford.edu/entries/mathematics-constructive/), [nLab's realizability overview](https://ncatlab.org/nlab/show/realizability), [XDS-Agda](https://pdmosses.github.io/xds-agda/) for executable semantic models, and the [Gforth manual](https://gforth.org/manual/) for compilation/exception semantics relevant to the concrete target.
+
+## 5. Learn refinement last
 
 Once a small runtime word has a proved Hoare contract, connect it to the actual implementation. A **refinement theorem** says each concrete execution step matches an abstract specified step. A **simulation** proof relates concrete and abstract states. For this project, the relation must connect generated Forth, the checked runtime representation, and the Agda state model. A green test suite alone cannot establish this for all inputs.
 

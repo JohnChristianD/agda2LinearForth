@@ -18,10 +18,7 @@ extra-source-files:
     test/TriplesFO.agda
     test/UnsupportedLiteral.agda
     test/gforth/abi-smoke.fs
-    formal/LinearModalABI.agda
-    formal/LinearModalStackEffects.agda
-    formal/CompilerRuntimeBoundary.agda
-    formal/LinearModalExamples.agda
+    formal/LinearModalSafety.agda
 
 executable agda2forth
     main-is:          Main.hs
