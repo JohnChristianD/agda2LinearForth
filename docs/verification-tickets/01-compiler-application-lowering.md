@@ -13,4 +13,4 @@ The earlier CI integration emitted an application body similar to :noname { a c 
 - State a formal source/Treeless application rule and the exact Forth stack/closure-state transition.
 - Prove translation preserves normal results, exceptional outcomes and linear/modal capture ownership.
 - Add compiler-generated integration regressions for this witness and a second non-commutative witness.
-- Keep .hs files unchanged unless the maintainer explicitly revises that constraint; do not claim end-to-end completion while the observed witness fails.
+- Only `src/Agda/Compiler/ToForth.hs` may diverge from upstream Haskell; every other `.hs` file remains pinned. Do not claim end-to-end completion while the observed witness fails.
