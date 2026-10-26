@@ -1183,9 +1183,12 @@ checkedScalarRequiresModeWitness = rawLiteralNeedsModeWitness
 -- Haskell. The per-file provenance check pins the source; it does not prove
 -- semantic equivalence between this table and the Haskell implementation.
 
+data SupportedBackendPrimitive : Set where
+  backendAdd backendSub backendMul backendQuot backendRem : SupportedBackendPrimitive
+  backendIf backendIntegerEq backendGeq backendLt : SupportedBackendPrimitive
+
 data BackendPrimitive : Set where
-  backendAdd backendSub backendMul backendQuot backendRem : BackendPrimitive
-  backendIf backendIntegerEq backendGeq backendLt : BackendPrimitive
+  backendSupported : SupportedBackendPrimitive → BackendPrimitive
   backendUnsupported : BackendPrimitive
 
 data BackendEmission : Set where
@@ -1193,16 +1196,19 @@ data BackendEmission : Set where
   emitLegacyIf emitLegacyEq emitLegacyGeq emitLegacyLt : BackendEmission
   emitDiagnosticBye : BackendEmission
 
+emitSupportedPrimitive : SupportedBackendPrimitive → BackendEmission
+emitSupportedPrimitive backendAdd = emitLegacyAdd
+emitSupportedPrimitive backendSub = emitLegacySub
+emitSupportedPrimitive backendMul = emitLegacyMul
+emitSupportedPrimitive backendQuot = emitLegacyQuot
+emitSupportedPrimitive backendRem = emitLegacyRem
+emitSupportedPrimitive backendIf = emitLegacyIf
+emitSupportedPrimitive backendIntegerEq = emitLegacyEq
+emitSupportedPrimitive backendGeq = emitLegacyGeq
+emitSupportedPrimitive backendLt = emitLegacyLt
+
 emitBackendPrimitive : BackendPrimitive → BackendEmission
-emitBackendPrimitive backendAdd = emitLegacyAdd
-emitBackendPrimitive backendSub = emitLegacySub
-emitBackendPrimitive backendMul = emitLegacyMul
-emitBackendPrimitive backendQuot = emitLegacyQuot
-emitBackendPrimitive backendRem = emitLegacyRem
-emitBackendPrimitive backendIf = emitLegacyIf
-emitBackendPrimitive backendIntegerEq = emitLegacyEq
-emitBackendPrimitive backendGeq = emitLegacyGeq
-emitBackendPrimitive backendLt = emitLegacyLt
+emitBackendPrimitive (backendSupported p) = emitSupportedPrimitive p
 emitBackendPrimitive backendUnsupported = emitDiagnosticBye
 
 data LegacyEmission : BackendEmission → Set where
@@ -1216,25 +1222,24 @@ data LegacyEmission : BackendEmission → Set where
   legacyGeqEmission : LegacyEmission emitLegacyGeq
   legacyLtEmission : LegacyEmission emitLegacyLt
 
-infixr 4 _⊎₀_
-data _⊎₀_ (A B : Set) : Set where
-  inl₀ : A → A ⊎₀ B
-  inr₀ : B → A ⊎₀ B
-
--- An exhaustive term for every case in the mirrored compiler table. The
--- right branch marks the one explicitly unsupported case.
+-- Every currently supported primitive has a typed legacy-emission witness.
+-- Unlike an unindexed "success" proposition, the result type cannot inhabit
+-- this claim for emitDiagnosticBye.
 supportedPrimitiveEmissionIsLegacy :
-  (p : BackendPrimitive) → LegacyEmission (emitBackendPrimitive p) ⊎₀ ⊤
-supportedPrimitiveEmissionIsLegacy backendAdd = inl₀ legacyAddEmission
-supportedPrimitiveEmissionIsLegacy backendSub = inl₀ legacySubEmission
-supportedPrimitiveEmissionIsLegacy backendMul = inl₀ legacyMulEmission
-supportedPrimitiveEmissionIsLegacy backendQuot = inl₀ legacyQuotEmission
-supportedPrimitiveEmissionIsLegacy backendRem = inl₀ legacyRemEmission
-supportedPrimitiveEmissionIsLegacy backendIf = inl₀ legacyIfEmission
-supportedPrimitiveEmissionIsLegacy backendIntegerEq = inl₀ legacyEqEmission
-supportedPrimitiveEmissionIsLegacy backendGeq = inl₀ legacyGeqEmission
-supportedPrimitiveEmissionIsLegacy backendLt = inl₀ legacyLtEmission
-supportedPrimitiveEmissionIsLegacy backendUnsupported = inr₀ tt
+  (p : SupportedBackendPrimitive) → LegacyEmission (emitSupportedPrimitive p)
+supportedPrimitiveEmissionIsLegacy backendAdd = legacyAddEmission
+supportedPrimitiveEmissionIsLegacy backendSub = legacySubEmission
+supportedPrimitiveEmissionIsLegacy backendMul = legacyMulEmission
+supportedPrimitiveEmissionIsLegacy backendQuot = legacyQuotEmission
+supportedPrimitiveEmissionIsLegacy backendRem = legacyRemEmission
+supportedPrimitiveEmissionIsLegacy backendIf = legacyIfEmission
+supportedPrimitiveEmissionIsLegacy backendIntegerEq = legacyEqEmission
+supportedPrimitiveEmissionIsLegacy backendGeq = legacyGeqEmission
+supportedPrimitiveEmissionIsLegacy backendLt = legacyLtEmission
+
+unsupportedPrimitiveUsesDiagnosticBye :
+  emitBackendPrimitive backendUnsupported ≡ emitDiagnosticBye
+unsupportedPrimitiveUsesDiagnosticBye = refl
 
 -- ── 6. Runtime dispatch table mirrored from data/FLib.fth ──
 --
@@ -1287,6 +1292,43 @@ trackedNonScalarPlusRawFailsClosed = refl
 rawPlusTrackedNonScalarFailsClosed :
   runtimeBinaryRoute rawUnregistered trackedNonScalar ≡ dispatchRejectMixed
 rawPlusTrackedNonScalarFailsClosed = refl
+
+
+-- The concrete runtime's combineModes has one extra state: unannotated.
+-- Model the exact rule implemented by data/FLib.fth: unannotated is absorbing,
+-- linear is absorbing over annotated modes, and only modal/modal joins to modal.
+runtimeCombineModes : RuntimeMode → RuntimeMode → RuntimeMode
+runtimeCombineModes unannotated _ = unannotated
+runtimeCombineModes _ unannotated = unannotated
+runtimeCombineModes linearMode _ = linearMode
+runtimeCombineModes _ linearMode = linearMode
+runtimeCombineModes modalMode modalMode = modalMode
+
+unannotatedIsAbsorbingLeft :
+  (m : RuntimeMode) → runtimeCombineModes unannotated m ≡ unannotated
+unannotatedIsAbsorbingLeft m = refl
+
+unannotatedIsAbsorbingRight :
+  (m : RuntimeMode) → runtimeCombineModes m unannotated ≡ unannotated
+unannotatedIsAbsorbingRight unannotated = refl
+unannotatedIsAbsorbingRight linearMode = refl
+unannotatedIsAbsorbingRight modalMode = refl
+
+linearIsAbsorbingLeft :
+  (m : RuntimeMode) → runtimeCombineModes linearMode m ≡ linearMode
+linearIsAbsorbingLeft unannotated = refl
+linearIsAbsorbingLeft linearMode = refl
+linearIsAbsorbingLeft modalMode = refl
+
+linearIsAbsorbingRight :
+  (m : RuntimeMode) → runtimeCombineModes m linearMode ≡ linearMode
+linearIsAbsorbingRight unannotated = refl
+linearIsAbsorbingRight linearMode = refl
+linearIsAbsorbingRight modalMode = refl
+
+modalOnlyJoinsToModal :
+  runtimeCombineModes modalMode modalMode ≡ modalMode
+modalOnlyJoinsToModal = refl
 
 trackedNonScalarWithTrackedScalarRejectsWrongKind :
   runtimeBinaryRoute trackedNonScalar trackedScalar ≡ dispatchRejectWrongKind
