@@ -1611,6 +1611,213 @@ disjointUpdatesCommute :
   leftUpdate updateL (rightUpdate updateR state)
 disjointUpdatesCommute updateL updateR (left , right) = refl
 
+-- ── Scalar bridge correspondence for the opt-in runtime gate ──
+--
+-- The concrete Forth bridge maps a bare Nat cell to a modal scalar and preserves
+-- an explicitly checked handle's mode. The source compiler's erased boolean/Nat
+-- overlap at raw 0 is handled by a caller-selected Nat/Bool result adapter.
+data BridgeNatCell : Set where
+  bridgeRawNat : Nat → BridgeNatCell
+  bridgeCheckedNat : Nat → SourceMode → BridgeNatCell
+
+bridgeNatPayload : BridgeNatCell → Nat
+bridgeNatPayload (bridgeRawNat n) = n
+bridgeNatPayload (bridgeCheckedNat n m) = n
+
+bridgeNormalizeNat : BridgeNatCell → Nat × SourceMode
+bridgeNormalizeNat (bridgeRawNat n) = n , modal
+bridgeNormalizeNat (bridgeCheckedNat n m) = n , m
+
+bridgeNatPayloadPreserved :
+  (v : BridgeNatCell) → fst (bridgeNormalizeNat v) ≡ bridgeNatPayload v
+bridgeNatPayloadPreserved (bridgeRawNat n) = refl
+bridgeNatPayloadPreserved (bridgeCheckedNat n m) = refl
+
+bridgeRawNatIsModal :
+  (n : Nat) → snd (bridgeNormalizeNat (bridgeRawNat n)) ≡ modal
+bridgeRawNatIsModal n = refl
+
+bridgeCheckedModePreserved :
+  (n : Nat) (m : SourceMode) →
+  snd (bridgeNormalizeNat (bridgeCheckedNat n m)) ≡ m
+bridgeCheckedModePreserved n m = refl
+
+data BridgeBoolCell : Set where
+  bridgeRawBool : Bool → BridgeBoolCell
+  bridgeCheckedBool : Bool → SourceMode → BridgeBoolCell
+
+bridgeBoolPayload : BridgeBoolCell → Bool
+bridgeBoolPayload (bridgeRawBool b) = b
+bridgeBoolPayload (bridgeCheckedBool b m) = b
+
+bridgeNormalizeBool : BridgeBoolCell → Bool × SourceMode
+bridgeNormalizeBool (bridgeRawBool b) = b , modal
+bridgeNormalizeBool (bridgeCheckedBool b m) = b , m
+
+bridgeBoolPayloadPreserved :
+  (v : BridgeBoolCell) → fst (bridgeNormalizeBool v) ≡ bridgeBoolPayload v
+bridgeBoolPayloadPreserved (bridgeRawBool b) = refl
+bridgeBoolPayloadPreserved (bridgeCheckedBool b m) = refl
+
+bridgeRawBoolIsModal :
+  (b : Bool) → snd (bridgeNormalizeBool (bridgeRawBool b)) ≡ modal
+bridgeRawBoolIsModal b = refl
+
+bridgeNatSub : Nat → Nat → Nat
+bridgeNatSub n zero = n
+bridgeNatSub zero (suc m) = zero
+bridgeNatSub (suc n) (suc m) = bridgeNatSub n m
+
+bridgeNatEq : Nat → Nat → Bool
+bridgeNatEq zero zero = true
+bridgeNatEq zero (suc m) = false
+bridgeNatEq (suc n) zero = false
+bridgeNatEq (suc n) (suc m) = bridgeNatEq n m
+
+bridgeEvalAdd : BridgeNatCell → BridgeNatCell → Nat × SourceMode
+bridgeEvalAdd left right =
+  (fst (bridgeNormalizeNat left) + fst (bridgeNormalizeNat right)) ,
+  joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeEvalSub : BridgeNatCell → BridgeNatCell → Nat × SourceMode
+bridgeEvalSub left right =
+  bridgeNatSub (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right)) ,
+  joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeEvalEq : BridgeNatCell → BridgeNatCell → Bool × SourceMode
+bridgeEvalEq left right =
+  bridgeNatEq (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right)) ,
+  joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeAddPayloadCorrespondence :
+  (left right : BridgeNatCell) →
+  fst (bridgeEvalAdd left right) ≡
+    fst (bridgeNormalizeNat left) + fst (bridgeNormalizeNat right)
+bridgeAddPayloadCorrespondence left right = refl
+
+bridgeSubPayloadCorrespondence :
+  (left right : BridgeNatCell) →
+  fst (bridgeEvalSub left right) ≡
+    bridgeNatSub (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right))
+bridgeSubPayloadCorrespondence left right = refl
+
+bridgeEqualityPayloadCorrespondence :
+  (left right : BridgeNatCell) →
+  fst (bridgeEvalEq left right) ≡
+    bridgeNatEq (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right))
+bridgeEqualityPayloadCorrespondence left right = refl
+
+bridgeSelect : Bool → BridgeNatCell → BridgeNatCell → BridgeNatCell
+bridgeSelect true yes no = yes
+bridgeSelect false yes no = no
+
+bridgeTrueSelectsLeft :
+  (yes no : BridgeNatCell) → bridgeSelect true yes no ≡ yes
+bridgeTrueSelectsLeft yes no = refl
+
+bridgeFalseSelectsRight :
+  (yes no : BridgeNatCell) → bridgeSelect false yes no ≡ no
+bridgeFalseSelectsRight yes no = refl
+
+
+-- Model the rest of the checked scalar ABI vocabulary, including the domain
+-- error for quotient/remainder by zero and the operation-specific joined mode.
+bridgeNatMul : Nat → Nat → Nat
+bridgeNatMul left right = left * right
+
+bridgeNatLt : Nat → Nat → Bool
+bridgeNatLt zero zero = false
+bridgeNatLt zero (suc right) = true
+bridgeNatLt (suc left) zero = false
+bridgeNatLt (suc left) (suc right) = bridgeNatLt left right
+
+bridgeNatGeq : Nat → Nat → Bool
+bridgeNatGeq zero zero = true
+bridgeNatGeq zero (suc right) = false
+bridgeNatGeq (suc left) zero = true
+bridgeNatGeq (suc left) (suc right) = bridgeNatGeq left right
+
+bridgeEvalMul : BridgeNatCell → BridgeNatCell → Nat × SourceMode
+bridgeEvalMul left right =
+  bridgeNatMul (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right)) ,
+  joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeEvalGeq : BridgeNatCell → BridgeNatCell → Bool × SourceMode
+bridgeEvalGeq left right =
+  bridgeNatGeq (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right)) ,
+  joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeEvalLt : BridgeNatCell → BridgeNatCell → Bool × SourceMode
+bridgeEvalLt left right =
+  bridgeNatLt (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right)) ,
+  joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeMulPayloadCorrespondence :
+  (left right : BridgeNatCell) →
+  fst (bridgeEvalMul left right) ≡
+    fst (bridgeNormalizeNat left) * fst (bridgeNormalizeNat right)
+bridgeMulPayloadCorrespondence left right = refl
+
+bridgeGeqPayloadCorrespondence :
+  (left right : BridgeNatCell) →
+  fst (bridgeEvalGeq left right) ≡
+    bridgeNatGeq (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right))
+bridgeGeqPayloadCorrespondence left right = refl
+
+bridgeLtPayloadCorrespondence :
+  (left right : BridgeNatCell) →
+  fst (bridgeEvalLt left right) ≡
+    bridgeNatLt (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right))
+bridgeLtPayloadCorrespondence left right = refl
+
+bridgeNatDivModFuel : Nat → Nat → Nat → Nat → Nat × Nat
+bridgeNatDivModFuel zero dividend divisor quotient = quotient , dividend
+bridgeNatDivModFuel (suc fuel) dividend divisor quotient
+  with bridgeNatLt dividend divisor
+... | true = quotient , dividend
+... | false =
+  bridgeNatDivModFuel fuel (bridgeNatSub dividend divisor) divisor (suc quotient)
+
+data BridgeDivision : Set where
+  bridgeDivisionByZero : BridgeDivision
+  bridgeDivisionResult : Nat → Nat → BridgeDivision
+
+bridgeNatDivMod : Nat → Nat → BridgeDivision
+bridgeNatDivMod dividend zero = bridgeDivisionByZero
+bridgeNatDivMod dividend (suc divisor)
+  with bridgeNatDivModFuel dividend dividend (suc divisor) zero
+... | quotient , remainder = bridgeDivisionResult quotient remainder
+
+data BridgeNatEval : Set where
+  bridgeNatFailure : RuntimeError → BridgeNatEval
+  bridgeNatSuccess : Nat → SourceMode → BridgeNatEval
+
+bridgeEvalQuot : BridgeNatCell → BridgeNatCell → BridgeNatEval
+bridgeEvalQuot left right
+  with bridgeNatDivMod (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right))
+... | bridgeDivisionByZero = bridgeNatFailure arithmeticDomainError
+... | bridgeDivisionResult quotient remainder =
+  bridgeNatSuccess quotient
+    (joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right)))
+
+bridgeEvalRem : BridgeNatCell → BridgeNatCell → BridgeNatEval
+bridgeEvalRem left right
+  with bridgeNatDivMod (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right))
+... | bridgeDivisionByZero = bridgeNatFailure arithmeticDomainError
+... | bridgeDivisionResult quotient remainder =
+  bridgeNatSuccess remainder
+    (joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right)))
+
+bridgeQuotZeroIsDomainError :
+  (left : BridgeNatCell) →
+  bridgeEvalQuot left (bridgeRawNat zero) ≡ bridgeNatFailure arithmeticDomainError
+bridgeQuotZeroIsDomainError left = refl
+
+bridgeRemainderZeroIsDomainError :
+  (left : BridgeNatCell) →
+  bridgeEvalRem left (bridgeRawNat zero) ≡ bridgeNatFailure arithmeticDomainError
+bridgeRemainderZeroIsDomainError left = refl
+
 -- ── 10. Compositional denotation for the closed Nat/Bool scalar fragment ──
 --
 -- This is a Scott-Strachey-style denotation for a finite, total expression
