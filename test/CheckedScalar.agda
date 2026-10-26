@@ -43,7 +43,7 @@ scalarChooseTrueAnswer = scalarChoose true 11 17
 scalarChooseFalseAnswer : Nat
 scalarChooseFalseAnswer = scalarChoose false 11 17
 
-scalarLessThan : Nat → Nat → Bool : Nat → Nat → Bool
+scalarLessThan : Nat → Nat → Bool
 scalarLessThan left right = left < right
 
 scalarLessThanTrueAnswer : Bool
