@@ -359,6 +359,78 @@ record PromotionPrecondition (s : Machine) (d : Descriptor) : Set where
     modalCodeWitness : ModalCode (codeClass d)
 open PromotionPrecondition public
 
+-- Equality utilities used to derive exclusivity from the machine invariants.
+symEq : {A : Set} {x y : A} → x ≡ y → y ≡ x
+symEq refl = refl
+
+transEq : {A : Set} {x y z : A} → x ≡ y → y ≡ z → x ≡ z
+transEq refl q = q
+
+modalIsNotLinear : modalMode ≡ linearMode → ⊥
+modalIsNotLinear ()
+
+modalKeyMember :
+  {n : Nat} {h : Heap} → HasLiveModal n h → n ∈ₙ keys h
+modalKeyMember (modalLiveHere keyEq _ _) = here (symEq keyEq)
+modalKeyMember (modalLiveThere p) = there (modalKeyMember p)
+
+linearKeyMember :
+  {n : Nat} {h : Heap} → HasLiveLinear n h → n ∈ₙ keys h
+linearKeyMember (linearLiveHere keyEq _ _) = here (symEq keyEq)
+linearKeyMember (linearLiveThere p) = there (linearKeyMember p)
+
+-- One identity cannot simultaneously denote live modal and live linear
+-- descriptors in a heap whose descriptor identities are unique.
+notBothLiveModes :
+  (h : Heap) → NoDup (keys h) → {n : Nat} →
+  HasLiveModal n h → HasLiveLinear n h → ⊥
+notBothLiveModes [] unique () _
+notBothLiveModes (d :: ds) (noDupHead , noDupTail)
+  (modalLiveHere keyEq modalEq _) (linearLiveHere _ linearEq _) =
+    modalIsNotLinear (transEq (symEq modalEq) linearEq)
+notBothLiveModes (d :: ds) (noDupHead , noDupTail)
+  (modalLiveHere keyEq _ _) (linearLiveThere linearTail) =
+    noDupHead
+      (subst {P = λ k → k ∈ₙ keys ds}
+        (symEq keyEq) (linearKeyMember linearTail))
+notBothLiveModes (d :: ds) (noDupHead , noDupTail)
+  (modalLiveThere modalTail) (linearLiveHere keyEq _ _) =
+    noDupHead
+      (subst {P = λ k → k ∈ₙ keys ds}
+        (symEq keyEq) (modalKeyMember modalTail))
+notBothLiveModes (d :: ds) (noDupHead , noDupTail)
+  (modalLiveThere modalTail) (linearLiveThere linearTail) =
+    notBothLiveModes ds noDupTail modalTail linearTail
+
+modalWitnessForMember :
+  {h : Heap} → (ids : List Nat) → {n : Nat} →
+  AllModal ids h → n ∈ₙ ids → HasLiveModal n h
+modalWitnessForMember [] allModal ()
+modalWitnessForMember (x :: xs) (headModal , tailModal) (here eq) =
+  subst {P = λ k → HasLiveModal k _} (symEq eq) headModal
+modalWitnessForMember (x :: xs) (headModal , tailModal) (there member) =
+  modalWitnessForMember xs tailModal member
+
+-- A well-formed heap plus a promotion precondition proves that no captured
+-- identity is a live linear value. This is a genuine consequence of both
+-- pieces of evidence, not a trusted execution-token flag.
+promotionExcludesLinearCaptures :
+  (s : Machine) → WellFormed s → {d : Descriptor} →
+  PromotionPrecondition s d →
+  (n : Nat) → n ∈ₙ captures d → HasLiveLinear n (heap s) → ⊥
+promotionExcludesLinearCaptures s wf {d} pre n captured linear =
+  notBothLiveModes (heap s) (identityUnique wf)
+    (modalWitnessForMember (captures d) (capturedValuesModal pre) captured)
+    linear
+
+-- Opaque user Forth execution tokens can never satisfy modal promotion's
+-- closed-code evidence requirement.
+promotionExcludesOpaqueCode :
+  {s : Machine} {d : Descriptor} →
+  PromotionPrecondition s d → codeClass d ≡ codeOpaque → ⊥
+promotionExcludesOpaqueCode pre refl with modalCodeWitness pre
+... | ()
+
 -- The core-language model covers these operations; escape hatches are excluded.
 data Primitive : Set where
   pNatAdd pNatSub pNatMul pNatQuot pNatRem : Primitive
