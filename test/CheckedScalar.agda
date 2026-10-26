@@ -1,7 +1,7 @@
 module CheckedScalar where
 
 open import Agda.Builtin.Nat using (Nat; _+_; _*_; _==_; _<_; _-_)
-open import Agda.Builtin.Bool using (Bool; if_then_else_)
+open import Agda.Builtin.Bool using (Bool; true; false)
 
 scalarAdd : Nat → Nat → Nat
 scalarAdd left right = left + right
@@ -34,7 +34,8 @@ scalarEqualFalseAnswer : Bool
 scalarEqualFalseAnswer = scalarEqual 20 5
 
 scalarChoose : Bool → Nat → Nat → Nat
-scalarChoose condition yes no = if condition then yes else no
+scalarChoose true yes no = yes
+scalarChoose false yes no = no
 
 scalarChooseTrueAnswer : Nat
 scalarChooseTrueAnswer = scalarChoose true 11 17
