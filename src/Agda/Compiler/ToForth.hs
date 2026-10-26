@@ -7,7 +7,6 @@ import Agda.Compiler.ToTreeless
 import Agda.Compiler.Treeless.EliminateLiteralPatterns
 import Agda.Compiler.Treeless.GuardsToPrims
 import Agda.Syntax.Abstract.Name
-import Agda.Syntax.Common.Pretty (prettyShow)
 import Agda.Syntax.Common
 import Agda.Syntax.Internal as I
 import Agda.Syntax.Literal
@@ -18,10 +17,11 @@ import Agda.TypeChecking.Pretty
 import Agda.TypeChecking.Primitive.Base
 import Agda.Utils.Impossible
 import Agda.Utils.Lens
-import Agda.Utils.List hiding ((!!))
+import Agda.Utils.List
 import Agda.Utils.Maybe
 import Agda.Utils.Monad
 import Agda.Utils.Null
+import Agda.Utils.Pretty
 import Agda.Utils.Singleton
 
 import Control.DeepSeq ( NFData )
@@ -406,9 +406,9 @@ makeForthName n = do
     go s     = ifM (isNameUsed $ T.pack s) (go $ nextName s) (return $ T.pack s)
 
 fixName :: Foldable t => t Char -> [Char]
-fixName s = case concatMap fixChar s of
-  s'@(d:_) | isNumber d -> "z" ++ s'
-  s' -> s'
+fixName s =
+  let s' = concatMap fixChar s in
+  if isNumber (head s') then "z" ++ s' else s'
 
 fixChar :: Char -> [Char]
 fixChar c
@@ -420,9 +420,7 @@ toHex 0 = ""
 toHex i = toHex (i `div` 16) ++ [fourBitsToChar (i `mod` 16)]
 
 fourBitsToChar :: Int -> Char
-fourBitsToChar i
-  | i < 10 = chr (ord '0' + i)
-  | otherwise = chr (ord 'A' + i - 10)
+fourBitsToChar i = "0123456789ABCDEF" !! i
 {-# INLINE fourBitsToChar #-}
 
 class ToForth a b where
@@ -624,7 +622,7 @@ isSpecialDefinition f = do
 data SpecialCase = BoolCase
 
 isSpecialCase :: CaseInfo -> ToForthM (Maybe SpecialCase)
-isSpecialCase (CaseInfo lazy _erased (CTData cty)) = do
+isSpecialCase (CaseInfo lazy (CTData q cty)) = do
   boolTy <- primBool
   if boolTy == Def cty []
     then return (Just BoolCase)

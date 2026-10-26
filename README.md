@@ -3,11 +3,18 @@
 `agda2forth` compiles Agda code for GNU Gforth. This document defines the intended checked subset, its error boundary, and the current proof/implementation gaps.
 
 
-> **PR #6 guarantee status: NOT COMPLETE.** The Agda modules are specifications and proof ingredients, not a refinement proof for the generated Forth runtime. Generated literals and multiple execution paths still bypass the checked descriptors; caller-supplied execution-token declarations remain trusted assertions. A green CI run would validate only enumerated tests, not establish universal linear/modal memory safety.
+> **Compiler/runtime refinement status: NOT COMPLETE.** The formal boundary proof now makes the missing precondition explicit for the pinned numeric-literal/addition path: compiler output uses raw cells and legacy `add`, not checked scalar descriptors or mode evidence. This is a proved negative boundary result, not a full compiler-to-Gforth simulation theorem or an end-to-end linear/modal safety guarantee.
 
-## Upstream synchronization boundary
+## Per-file Haskell provenance
 
-This repository ports the compiler backend from `jespercockx/agda2scheme` to GNU Gforth. Keep the shared frontend/erasure interface compatible with upstream: `src/Agda/Compiler/Erase.hs` is currently byte-identical to upstream. `src/Main.hs` and `src/Agda/Compiler/ToForth.hs` are intentionally target-specific: do not replace the Forth backend with Scheme-emitting code. The Cabal package name, executable name, generated file suffix, runtime assets, and GForth checks necessarily differ. Keep Agda's minimum supported version and shared dependency bounds aligned, and retain PR-triggered CI rather than copying upstream's push-only workflow verbatim.
+The source tree is assembled directly from upstream Git commits, with no source-generation scripts, no compatibility Haskell shims, and no hand-maintained substitute for upstream compiler files:
+
+- `app/Main.hs` and `src/Agda/Compiler/Erase.hs` match compatible Agda2Scheme commit `6b3d975e9274448c09b5939e637b6718c2cfb10c`.
+- `src/Main.hs` and `src/Agda/Compiler/ToForth.hs` match Agda2Forth commit `e83f8cc735bf220f80b3655ce2158a23818910fe` byte-for-byte.
+- Current Agda2Scheme master targets Agda 2.8; the older Scheme commit above is used because the unchanged Forth backend targets the Agda 2.6.2.x API.
+- CI uses Git fetch/diff checks to compare the exact per-file upstream sources. No generated compatibility layer is involved.
+
+The build targets GHC 9.0.2 and Agda 2.6.2.2 to match the upstream Forth backend's API era. Source identity establishes provenance, not semantic correctness or refinement.
 
 ## Goal and scope
 
@@ -15,7 +22,7 @@ The target is a dynamically enforced ABI for the subset of Agda programs this ba
 
 “End-to-end” means all values and all operations reachable from a generated program use the checked representation. It does not mean trying to make arbitrary interactive GForth safe.
 
-This document deliberately distinguishes a specification, an implementation, and a refinement proof. The Agda models in `formal/LinearModalABI.agda`, `formal/LinearModalStackEffects.agda`, and `formal/LinearModalExamples.agda` are constructive and import only Agda's bundled `Agda.Builtin.Nat` and `Agda.Builtin.Equality` modules. They use no Agda standard library, no postulates and no F*. The stack-effects module gives typed normal stack-shape rules for the enumerated closed primitive subset, including numeric operations, scalar/thunk/result operations, application/force, conditional, constructor/matcher schemas and linear/modal printing. The examples provide concrete witnesses for linear, modal and mixed-mode arithmetic plus checked thunk construction and promotion. Exception transitions are specified separately from normal-return stack effects. These are specifications and proof ingredients, not yet proofs that the current Forth words implement them.
+This document deliberately distinguishes a specification, an implementation, and a refinement proof. The Agda models in `formal/LinearModalABI.agda`, `formal/LinearModalStackEffects.agda`, `formal/LinearModalExamples.agda`, and `formal/CompilerRuntimeBoundary.agda` are constructive, safe modules and import only Agda's bundled `Agda.Builtin.Nat` and `Agda.Builtin.Equality` modules where needed. They use no Agda standard library, no postulates and no F*. The stack-effects module gives typed normal stack-shape rules for the enumerated closed primitive subset, including numeric operations, scalar/thunk/result operations, application/force, conditional, constructor/matcher schemas and linear/modal printing. The examples provide concrete witnesses for linear, modal and mixed-mode arithmetic plus checked thunk construction and promotion. The new compiler/runtime boundary module formalizes the pinned backend's numeric-literal and legacy-add footprint and proves that this output cannot satisfy checked-value stack preconditions. Exception transitions are specified separately from normal-return stack effects. These models and boundary facts are not yet proofs that the current Forth words implement the model's contracts.
 
 ## Source modes and runtime values
 
@@ -27,6 +34,8 @@ The source has two relevant modalities:
 The runtime's `unannotated` mode is a boundary/error state, not a third source-language type. A live unannotated value is forbidden inside a fully checked machine state. Unrestricted legacy words can still handle their historical representations outside that state.
 
 Each checked descriptor records a monotone logical identity (META-ID) distinct from its address, kind (scalar/thunk/result), runtime mode, lifecycle (live/consumed), code address, closed-code classification, capture identities and optional payload identity. Numeric payloads are not handle identities. The checked ABI must never decide “number versus pointer” using `MAXNUM` or any other magnitude heuristic.
+
+The checked arithmetic preconditions are represented by `BinaryScalarPrecondition`: both operands must be registered, live scalars with checked source modes, and the machine roots must account for two operand positions. The constructive lemma `linearOperandsCannotAlias` derives from `WellFormed` that those positions cannot name the same live linear identity. This discharges the model-side alias precondition; it is not yet a theorem that compiler-emitted operands satisfy this record.
 
 The Agda model defines these well-formedness conditions:
 
@@ -47,7 +56,17 @@ A raw execution token is not evidence of linear or modal safety. An integrator-w
 
 The formal model therefore separates `codeAddress` from `codeClass`. Modal promotion requires a constructive `ModalCode (codeClass d)` witness and proof that every captured value is live and modal. There is deliberately no modal-safety constructor for opaque user Forth code. The current implementation does not yet establish a verified correspondence from a generated XT to such a witness; this is an explicit remaining proof obligation.
 
+The stack-effect model also proves a concrete boundary fact: a raw-natural/raw-natural stack cannot inhabit the checked addition or equality signature. A raw natural becomes a checked scalar only when an explicit `pMakeScalar` operation supplies a mode token. The pinned upstream `ToForth.hs` emits natural literals as bare Forth numeric cells and does not emit this constructor/mode evidence, so this theorem identifies a real missing compiler-to-runtime precondition—not a completed compiler refinement proof.
+
 For linear code, an analogous derivation must state stack/resource effects and prove that every linear input is consumed, transferred or returned exactly once. A code-class label alone cannot prove this.
+
+The Agda model additionally proves two promotion-precondition consequences: for a well-formed heap, no captured identity can be both live modal and live linear, and an opaque execution-token class cannot satisfy the closed-code witness requirement. These are constructive proofs about the formal preconditions. They do not prove that the current upstream compiler emits those witnesses or that the concrete Forth `promoteModal` implementation enforces the record; that implementation correspondence remains open.
+
+## Compiler/runtime boundary correspondence
+
+`formal/CompilerRuntimeBoundary.agda` defines a small closed fragment corresponding to the inspected, byte-pinned `ToForth.hs` cases for natural literals and integer addition. It records literal output as a raw Forth cell and addition as the legacy `add` path, and proves constructively that these emissions contain no checked scalar/mode wrapper. It also proves that their raw result shapes cannot be inhabited by a checked scalar/boolean witness and reuses the stack-effect impossibility lemmas to show that raw/raw operands cannot satisfy the checked-addition precondition. The required repair at the compiler boundary is therefore precise: a future compiler or verified loader must insert explicit `pMakeScalar`/mode evidence and route addition through the checked ABI before a positive refinement proof can apply.
+
+This module is a formal model of the relevant pinned source fragment, not a proof extracted mechanically from Haskell or a semantic simulation of every emitted Forth word. The unchanged upstream backend emits other legacy forms too. The full correspondence—every supported compiler case to core code, every runtime word preserving `WellFormed` on normal and exceptional exits, and the resulting simulation theorem—remains unproved. This distinction is intentional: the boundary theorem proves the precondition mismatch rather than assuming it away.
 
 ## Operations and contracts
 
@@ -114,12 +133,13 @@ These are reusable proof ingredients, not the completed implementation theorem. 
 - [x] Define separating conjunction and normal/exceptional Hoare contracts.
 - [x] Define structured runtime-error outcomes and a catch-composition preservation lemma.
 - [x] Define typed stack-shape effects and example witnesses for the enumerated closed primitive subset.
-- [ ] Confirm all three Agda modules type-check in CI using Agda itself with `--no-libraries`.
+- [ ] Confirm all four Agda modules type-check in CI using Agda itself with `--no-libraries`.
+- [x] Model the pinned numeric-literal/legacy-add output footprint and prove that it cannot satisfy the checked scalar/addition preconditions.
 - [ ] Give each emitted primitive a complete stack/mode/resource signature and derive permitted compositions.
 - [ ] Route every supported generated literal, constructor, application, force, conditional and primitive through the checked ABI.
 - [ ] Replace caller-asserted XT safety with compiler/loader-generated code-class derivations tied to the closed core IR.
 - [ ] Prove actual Forth word implementations preserve `WellFormed`, including every exceptional path.
-- [ ] Prove compiler-to-core and core-to-Gforth correspondence for the supported subset.
+- [ ] Prove full compiler-to-core and core-to-Gforth correspondence for the supported subset; the new boundary lemma is only a proved negative precondition result.
 - [x] Add a compiler-output regression fixture recording the unchanged unsupported-literal diagnostic and legacy `BYE` output.
 - [ ] Route unsupported compiler cases through a catchable boundary without modifying the Haskell backend; this requires a verified, compatibility-preserving checked loader or runtime interception.
 - [ ] Run positive and negative Gforth tests, plus compatibility regression tests for legacy words.

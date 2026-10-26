@@ -11,7 +11,6 @@ import Agda.Compiler.ToForth
 -- import Agda.Compiler.FLib
 import Agda.Interaction.Options ( OptDescr(..) , ArgDescr(..) )
 
-import Agda.Syntax.TopLevelModuleName
 import Agda.Syntax.Treeless ( EvaluationStrategy(..) )
 
 import Agda.TypeChecking.Pretty
@@ -19,7 +18,7 @@ import Agda.TypeChecking.Pretty
 import Agda.Utils.Either
 import Agda.Utils.Functor
 import Agda.Utils.Null
-import Agda.Syntax.Common.Pretty ( prettyShow )
+import Agda.Utils.Pretty ( prettyShow )
 
 import Control.DeepSeq ( NFData )
 
@@ -28,7 +27,6 @@ import Control.Monad.State
 import Control.Monad.Writer
 
 import Data.Function
-import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
@@ -60,8 +58,6 @@ backend' = Backend'
   , backendVersion        = Nothing
   , scopeCheckingSuffices = False
   , mayEraseType          = \ _ -> return True
-  , backendInteractTop    = Nothing
-  , backendInteractHole   = Nothing
   }
 
 fthFlags :: [OptDescr (Flag FthOptions)]
@@ -78,7 +74,7 @@ fthPreCompile = return
 fthCompileDef :: FthOptions -> () -> IsMain -> Definition -> TCM (Maybe FthForm)
 fthCompileDef opts _ isMain def = runToForthM opts $ toForth def
 
-fthPostModule :: FthOptions -> () -> IsMain -> TopLevelModuleName -> [Maybe FthForm] -> TCM ()
+fthPostModule :: FthOptions -> () -> IsMain -> ModuleName -> [Maybe FthForm] -> TCM ()
 fthPostModule opts _ isMain modName defs = do
   preamble <- runToForthM opts fthPreamble
   let defToText = encodeOne printer . fromRich
@@ -91,7 +87,7 @@ fthPostModule opts _ isMain modName defs = do
               defToText
           )
             (preamble ++ catMaybes defs)))
-      fileName  = prettyShow (NE.last $ moduleNameParts modName) ++ ".fth"
+      fileName  = prettyShow (last $ mnameToList modName) ++ ".fth"
   liftIO $ T.writeFile fileName modText
 
   where
