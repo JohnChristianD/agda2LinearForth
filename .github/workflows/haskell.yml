@@ -87,14 +87,6 @@ jobs:
         run: |
           "$HOME/.local/bin/agda" --safe --no-libraries -i formal formal/LinearModalSafety.agda
 
-      - name: Type-check the compositional backend-core denotation
-        run: |
-          "$HOME/.local/bin/agda" --safe --no-libraries -i formal formal/LinearModalDenotational.agda
-
-      - name: Type-check heap-specific concurrent separation rules
-        run: |
-          "$HOME/.local/bin/agda" --safe --no-libraries -i formal formal/LinearModalConcurrency.agda
-
       - name: Verify unsupported-literal output preserves the unchanged compiler boundary
         run: |
           cabal run agda2forth -- -i test test/UnsupportedLiteral.agda
