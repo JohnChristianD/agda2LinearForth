@@ -93,5 +93,10 @@ jobs:
           grep -Fq 'not yet supported: String literals' UnsupportedLiteral.fth
           grep -Eq '(^|[[:space:]])bye([[:space:]]|$)' UnsupportedLiteral.fth
 
+      - name: Compile and execute a generated scalar through the checked ABI
+        run: |
+          cabal run agda2forth -- -i test test/CheckedScalar.agda
+          gforth CheckedScalar.fth test/gforth/generated-scalar-smoke.fs
+
       - name: Compile first-order triples fixture
         run: cabal run agda2forth -- -i test test/TriplesFO.agda

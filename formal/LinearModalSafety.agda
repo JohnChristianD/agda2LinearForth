@@ -1770,3 +1770,324 @@ bridgeRemainderZeroIsDomainError left = refl
 -- (4) unsupported cases fail through a specified, catchable error boundary.
 -- These obligations remain open while the Haskell backend emits raw literals
 -- and legacy operator forms.
+
+
+-- ── 9. Frame rule and disjoint concurrent updates ──
+--
+-- A framed command receives and returns an untouched resource component.
+-- This makes the locality premise explicit: a real Forth word may use the
+-- frame rule only after its actual reads and writes have been shown confined
+-- to the command-owned component. The lemma below does not assume arbitrary
+-- EXECUTE, dictionary mutation, or global metadata updates are local.
+
+data FramedExecution (S F : Set) : Set where
+  framedReturned : S → F → FramedExecution S F
+  framedThrown : S → F → RuntimeError → FramedExecution S F
+
+frameCommand :
+  {S F : Set} →
+  (command : S → Execution S) →
+  S → F → FramedExecution S F
+frameCommand command s f with command s
+... | returned s' = framedReturned s' f
+... | thrown s' err = framedThrown s' f err
+
+FramedPost :
+  {S F : Set} →
+  (normal : S → Set) →
+  (exceptional : S → RuntimeError → Set) →
+  (frameInvariant : F → Set) →
+  FramedExecution S F → Set
+FramedPost normal exceptional frameInvariant (framedReturned s f) =
+  normal s × frameInvariant f
+FramedPost normal exceptional frameInvariant (framedThrown s f err) =
+  exceptional s err × frameInvariant f
+
+FramedHoare :
+  {S F : Set} →
+  (precondition : S → Set) →
+  (command : S → F → FramedExecution S F) →
+  (normalPostcondition : S → Set) →
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  (frameInvariant : F → Set) → Set
+FramedHoare {S} {F} precondition command normalPostcondition
+  exceptionalPostcondition frameInvariant =
+  (s : S) → (f : F) → precondition s → frameInvariant f →
+  FramedPost normalPostcondition exceptionalPostcondition frameInvariant
+    (command s f)
+
+frameRule :
+  {S F : Set} →
+  {P Q : S → Set} →
+  {E : S → RuntimeError → Set} →
+  {R : F → Set} →
+  {command : S → Execution S} →
+  Hoare P command Q E →
+  FramedHoare P (frameCommand command) Q E R
+frameRule {command = command} safe s f preconditionProof frameProof
+  with command s | safe s preconditionProof
+... | returned s' | postProof = postProof , frameProof
+... | thrown s' err | postProof = postProof , frameProof
+
+-- Transitions that update separate components of a product state commute.
+-- This is an elementary interference-freedom law, not a locality theorem for
+-- the concrete Forth words.
+leftUpdate : {L R : Set} → (L → L) → L × R → L × R
+leftUpdate update (left , right) = update left , right
+
+rightUpdate : {L R : Set} → (R → R) → L × R → L × R
+rightUpdate update (left , right) = left , update right
+
+disjointUpdatesCommute :
+  {L R : Set} →
+  (updateL : L → L) →
+  (updateR : R → R) →
+  (state : L × R) →
+  rightUpdate updateR (leftUpdate updateL state) ≡
+  leftUpdate updateL (rightUpdate updateR state)
+disjointUpdatesCommute updateL updateR (left , right) = refl
+
+-- ── 10. Compositional denotation for the closed Nat/Bool scalar fragment ──
+--
+-- This is a Scott-Strachey-style denotation for a finite, total expression
+-- fragment with explicit runtime errors. Syntax maps compositionally to values
+-- and errors. It deliberately does not claim to model arbitrary Forth, mutable
+-- dictionary operations, untrusted execution tokens, or nontermination.
+
+data ScalarTerm : CoreTy → Set where
+  sNatLiteral : Nat → ScalarTerm naturalTy
+  sCheckedNat : Nat → SourceMode → ScalarTerm naturalTy
+  sBoolLiteral : Bool → SourceMode → ScalarTerm booleanTy
+  sAdd : ScalarTerm naturalTy → ScalarTerm naturalTy → ScalarTerm naturalTy
+  sSub : ScalarTerm naturalTy → ScalarTerm naturalTy → ScalarTerm naturalTy
+  sMul : ScalarTerm naturalTy → ScalarTerm naturalTy → ScalarTerm naturalTy
+  sQuot : ScalarTerm naturalTy → ScalarTerm naturalTy → ScalarTerm naturalTy
+  sRem : ScalarTerm naturalTy → ScalarTerm naturalTy → ScalarTerm naturalTy
+  sMonus : ScalarTerm naturalTy → ScalarTerm naturalTy → ScalarTerm naturalTy
+  sEq : ScalarTerm naturalTy → ScalarTerm naturalTy → ScalarTerm booleanTy
+  sGeq : ScalarTerm naturalTy → ScalarTerm naturalTy → ScalarTerm booleanTy
+  sLt : ScalarTerm naturalTy → ScalarTerm naturalTy → ScalarTerm booleanTy
+  sIfNat :
+    ScalarTerm booleanTy →
+    ScalarTerm naturalTy →
+    ScalarTerm naturalTy →
+    ScalarTerm naturalTy
+
+data ScalarValue : CoreTy → Set where
+  scalarNat : Nat → SourceMode → ScalarValue naturalTy
+  scalarBool : Bool → SourceMode → ScalarValue booleanTy
+
+data ScalarResult (A : Set) : Set where
+  scalarRaised : RuntimeError → ScalarResult A
+  scalarReturned : A → ScalarResult A
+
+scalarQuotDenotation :
+  Nat → SourceMode → Nat → SourceMode →
+  ScalarResult (ScalarValue naturalTy)
+scalarQuotDenotation left leftMode right rightMode
+  with bridgeNatDivMod left right
+... | bridgeDivisionByZero = scalarRaised arithmeticDomainError
+... | bridgeDivisionResult quotient remainder =
+  scalarReturned (scalarNat quotient (joinSourceMode leftMode rightMode))
+
+scalarRemDenotation :
+  Nat → SourceMode → Nat → SourceMode →
+  ScalarResult (ScalarValue naturalTy)
+scalarRemDenotation left leftMode right rightMode
+  with bridgeNatDivMod left right
+... | bridgeDivisionByZero = scalarRaised arithmeticDomainError
+... | bridgeDivisionResult quotient remainder =
+  scalarReturned (scalarNat remainder (joinSourceMode leftMode rightMode))
+
+denoteScalar :
+  {A : CoreTy} → ScalarTerm A → ScalarResult (ScalarValue A)
+denoteScalar (sNatLiteral n) = scalarReturned (scalarNat n modal)
+denoteScalar (sCheckedNat n mode) = scalarReturned (scalarNat n mode)
+denoteScalar (sBoolLiteral b mode) = scalarReturned (scalarBool b mode)
+denoteScalar (sAdd left right) with denoteScalar left | denoteScalar right
+... | scalarRaised err | _ = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarReturned (scalarNat y rightMode) =
+  scalarReturned (scalarNat (x + y) (joinSourceMode leftMode rightMode))
+denoteScalar (sSub left right) with denoteScalar left | denoteScalar right
+... | scalarRaised err | _ = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarReturned (scalarNat y rightMode) =
+  scalarReturned (scalarNat (bridgeNatSub x y) (joinSourceMode leftMode rightMode))
+denoteScalar (sMul left right) with denoteScalar left | denoteScalar right
+... | scalarRaised err | _ = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarReturned (scalarNat y rightMode) =
+  scalarReturned (scalarNat (bridgeNatMul x y) (joinSourceMode leftMode rightMode))
+denoteScalar (sQuot left right) with denoteScalar left | denoteScalar right
+... | scalarRaised err | _ = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarReturned (scalarNat y rightMode) =
+  scalarQuotDenotation x leftMode y rightMode
+denoteScalar (sRem left right) with denoteScalar left | denoteScalar right
+... | scalarRaised err | _ = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarReturned (scalarNat y rightMode) =
+  scalarRemDenotation x leftMode y rightMode
+denoteScalar (sMonus left right) with denoteScalar left | denoteScalar right
+... | scalarRaised err | _ = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarReturned (scalarNat y rightMode) =
+  scalarReturned (scalarNat (bridgeNatSub x y) (joinSourceMode leftMode rightMode))
+denoteScalar (sEq left right) with denoteScalar left | denoteScalar right
+... | scalarRaised err | _ = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarReturned (scalarNat y rightMode) =
+  scalarReturned (scalarBool (bridgeNatEq x y) (joinSourceMode leftMode rightMode))
+denoteScalar (sGeq left right) with denoteScalar left | denoteScalar right
+... | scalarRaised err | _ = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarReturned (scalarNat y rightMode) =
+  scalarReturned (scalarBool (bridgeNatGeq x y) (joinSourceMode leftMode rightMode))
+denoteScalar (sLt left right) with denoteScalar left | denoteScalar right
+... | scalarRaised err | _ = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarReturned (scalarNat y rightMode) =
+  scalarReturned (scalarBool (bridgeNatLt x y) (joinSourceMode leftMode rightMode))
+denoteScalar (sIfNat condition yes no) with denoteScalar condition
+... | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarBool true conditionMode) with denoteScalar yes
+...   | scalarRaised err = scalarRaised err
+...   | scalarReturned (scalarNat value selectedMode) =
+  scalarReturned (scalarNat value selectedMode)
+... | scalarReturned (scalarBool false conditionMode) with denoteScalar no
+...   | scalarRaised err = scalarRaised err
+...   | scalarReturned (scalarNat value selectedMode) =
+  scalarReturned (scalarNat value selectedMode)
+
+scalarFromCell : BridgeNatCell → ScalarTerm naturalTy
+scalarFromCell (bridgeRawNat n) = sNatLiteral n
+scalarFromCell (bridgeCheckedNat n mode) = sCheckedNat n mode
+
+scalarCellIsModal :
+  (n : Nat) →
+  denoteScalar (scalarFromCell (bridgeRawNat n)) ≡
+    scalarReturned (scalarNat n modal)
+scalarCellIsModal n = refl
+
+scalarCheckedCellPreservesMode :
+  (n : Nat) (mode : SourceMode) →
+  denoteScalar (scalarFromCell (bridgeCheckedNat n mode)) ≡
+    scalarReturned (scalarNat n mode)
+scalarCheckedCellPreservesMode n mode = refl
+
+scalarAdditionCompositional :
+  (left right : Nat) →
+  denoteScalar (sAdd (sNatLiteral left) (sNatLiteral right)) ≡
+    scalarReturned (scalarNat (left + right) modal)
+scalarAdditionCompositional left right = refl
+
+scalarMixedAdditionCompositional :
+  (left right : Nat) (mode : SourceMode) →
+  denoteScalar (sAdd (sCheckedNat left mode) (sNatLiteral right)) ≡
+    scalarReturned (scalarNat (left + right) (joinSourceMode mode modal))
+scalarMixedAdditionCompositional left right mode = refl
+
+scalarEqualityCompositional :
+  (left right : Nat) →
+  denoteScalar (sEq (sNatLiteral left) (sNatLiteral right)) ≡
+    scalarReturned (scalarBool (bridgeNatEq left right) modal)
+scalarEqualityCompositional left right = refl
+
+scalarTrueChoosesThenBranch :
+  (yes no : ScalarTerm naturalTy) →
+  denoteScalar (sIfNat (sBoolLiteral true modal) yes no) ≡ denoteScalar yes
+scalarTrueChoosesThenBranch yes no = refl
+
+scalarFalseChoosesElseBranch :
+  (yes no : ScalarTerm naturalTy) →
+  denoteScalar (sIfNat (sBoolLiteral false modal) yes no) ≡ denoteScalar no
+scalarFalseChoosesElseBranch yes no = refl
+
+scalarQuotientByZeroRaises :
+  (numerator : Nat) →
+  denoteScalar (sQuot (sNatLiteral numerator) (sNatLiteral zero)) ≡
+    scalarRaised arithmeticDomainError
+scalarQuotientByZeroRaises numerator = refl
+
+scalarRemainderByZeroRaises :
+  (numerator : Nat) →
+  denoteScalar (sRem (sNatLiteral numerator) (sNatLiteral zero)) ≡
+    scalarRaised arithmeticDomainError
+scalarRemainderByZeroRaises numerator = refl
+
+scalarNatEvalToResult : BridgeNatEval → ScalarResult (ScalarValue naturalTy)
+scalarNatEvalToResult (bridgeNatFailure err) = scalarRaised err
+scalarNatEvalToResult (bridgeNatSuccess n mode) = scalarReturned (scalarNat n mode)
+
+scalarAdditionMatchesRuntimeBridge :
+  (left right : BridgeNatCell) →
+  denoteScalar (sAdd (scalarFromCell left) (scalarFromCell right)) ≡
+    scalarReturned (scalarNat (fst (bridgeEvalAdd left right)) (snd (bridgeEvalAdd left right)))
+scalarAdditionMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y) = refl
+scalarAdditionMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode) = refl
+scalarAdditionMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y) = refl
+scalarAdditionMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode') = refl
+
+scalarSubtractionMatchesRuntimeBridge :
+  (left right : BridgeNatCell) →
+  denoteScalar (sSub (scalarFromCell left) (scalarFromCell right)) ≡
+    scalarReturned (scalarNat (fst (bridgeEvalSub left right)) (snd (bridgeEvalSub left right)))
+scalarSubtractionMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y) = refl
+scalarSubtractionMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode) = refl
+scalarSubtractionMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y) = refl
+scalarSubtractionMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode') = refl
+
+scalarMultiplicationMatchesRuntimeBridge :
+  (left right : BridgeNatCell) →
+  denoteScalar (sMul (scalarFromCell left) (scalarFromCell right)) ≡
+    scalarReturned (scalarNat (fst (bridgeEvalMul left right)) (snd (bridgeEvalMul left right)))
+scalarMultiplicationMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y) = refl
+scalarMultiplicationMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode) = refl
+scalarMultiplicationMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y) = refl
+scalarMultiplicationMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode') = refl
+
+scalarEqualityMatchesRuntimeBridge :
+  (left right : BridgeNatCell) →
+  denoteScalar (sEq (scalarFromCell left) (scalarFromCell right)) ≡
+    scalarReturned (scalarBool (fst (bridgeEvalEq left right)) (snd (bridgeEvalEq left right)))
+scalarEqualityMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y) = refl
+scalarEqualityMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode) = refl
+scalarEqualityMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y) = refl
+scalarEqualityMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode') = refl
+
+scalarGreaterEqualMatchesRuntimeBridge :
+  (left right : BridgeNatCell) →
+  denoteScalar (sGeq (scalarFromCell left) (scalarFromCell right)) ≡
+    scalarReturned (scalarBool (fst (bridgeEvalGeq left right)) (snd (bridgeEvalGeq left right)))
+scalarGreaterEqualMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y) = refl
+scalarGreaterEqualMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode) = refl
+scalarGreaterEqualMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y) = refl
+scalarGreaterEqualMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode') = refl
+
+scalarLessThanMatchesRuntimeBridge :
+  (left right : BridgeNatCell) →
+  denoteScalar (sLt (scalarFromCell left) (scalarFromCell right)) ≡
+    scalarReturned (scalarBool (fst (bridgeEvalLt left right)) (snd (bridgeEvalLt left right)))
+scalarLessThanMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y) = refl
+scalarLessThanMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode) = refl
+scalarLessThanMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y) = refl
+scalarLessThanMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode') = refl
+
+scalarQuotientMatchesRuntimeBridge :
+  (left right : BridgeNatCell) →
+  denoteScalar (sQuot (scalarFromCell left) (scalarFromCell right)) ≡
+    scalarNatEvalToResult (bridgeEvalQuot left right)
+scalarQuotientMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y) = refl
+scalarQuotientMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode) = refl
+scalarQuotientMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y) = refl
+scalarQuotientMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode') = refl
+
+scalarRemainderMatchesRuntimeBridge :
+  (left right : BridgeNatCell) →
+  denoteScalar (sRem (scalarFromCell left) (scalarFromCell right)) ≡
+    scalarNatEvalToResult (bridgeEvalRem left right)
+scalarRemainderMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y) = refl
+scalarRemainderMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode) = refl
+scalarRemainderMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y) = refl
+scalarRemainderMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode') = refl

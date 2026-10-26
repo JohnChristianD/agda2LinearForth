@@ -18,6 +18,8 @@ extra-source-files:
     test/TriplesFO.agda
     test/UnsupportedLiteral.agda
     test/gforth/abi-smoke.fs
+    test/gforth/generated-scalar-smoke.fs
+    test/CheckedScalar.agda
     formal/LinearModalSafety.agda
 
 executable agda2forth
