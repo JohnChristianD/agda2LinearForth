@@ -76,6 +76,7 @@ data RuntimeError : Set where
   unknownPrimitive badStackEffect : RuntimeError
   badResultPayload abiEscapeHatch : RuntimeError
   arithmeticDomainError arithmeticOverflowError identityOverflowError : RuntimeError
+  nullExecutionTokenError : RuntimeError
 
 -- CodeClass is a compiler/loader classification, not an execution-token address.
 -- codeOpaque is deliberately not eligible for modal promotion.
@@ -587,7 +588,7 @@ divisionErrors = numericErrors ++ (arithmeticDomainError :: [])
 
 closureErrors : List RuntimeError
 closureErrors = unknownHandle :: consumedHandle :: wrongKind ::
-  invalidMode :: badStackEffect :: identityOverflowError :: []
+  invalidMode :: badStackEffect :: identityOverflowError :: nullExecutionTokenError :: []
 
 modalErrors : List RuntimeError
 modalErrors = unknownHandle :: consumedHandle :: wrongKind ::
@@ -2934,3 +2935,43 @@ module ABIAllocationWP where
     identityAtLimit normal exceptional exceptionalProof
     rewrite identityAtLimit
           | natAtMostAfterPositiveAddition identityBound remainingIds = exceptionalProof
+
+  -- The runtime's makeTHUNK rejects a null execution token before allocating
+  -- the handle or metadata cells. This is the Agda counterpart of the zero-page
+  -- trap guard, separate from identity exhaustion.
+  data ExecutionToken : Set where
+    nullExecutionToken : ExecutionToken
+    nonNullExecutionToken : Nat → ExecutionToken
+
+  allocateThunk :
+    ExecutionToken → Nat → Nat → Nat → AllocationState → AllocationOutcome
+  allocateThunk nullExecutionToken identityBound identityCount cellCount state =
+    allocationFailed nullExecutionTokenError state
+  allocateThunk (nonNullExecutionToken token) identityBound identityCount cellCount state =
+    allocateBlock identityBound identityCount cellCount state
+
+  wpAllocateThunk :
+    ExecutionToken → Nat → Nat → Nat → AllocationState →
+    (normal : AllocationState → Set) →
+    (exceptional : RuntimeError → AllocationState → Set) → Set
+  wpAllocateThunk token identityBound identityCount cellCount state normal exceptional =
+    AllocationPost normal exceptional
+      (allocateThunk token identityBound identityCount cellCount state)
+
+  nullExecutionTokenRejectedAtomically :
+    (identityBound identityCount cellCount : Nat) →
+    (state : AllocationState) →
+    allocateThunk nullExecutionToken identityBound identityCount cellCount state ≡
+      allocationFailed nullExecutionTokenError state
+  nullExecutionTokenRejectedAtomically identityBound identityCount cellCount state = refl
+
+  nullExecutionTokenSatisfiesWP :
+    (identityBound identityCount cellCount : Nat) →
+    (state : AllocationState) →
+    (normal : AllocationState → Set) →
+    (exceptional : RuntimeError → AllocationState → Set) →
+    exceptional nullExecutionTokenError state →
+    wpAllocateThunk nullExecutionToken identityBound identityCount cellCount
+      state normal exceptional
+  nullExecutionTokenSatisfiesWP identityBound identityCount cellCount state
+    normal exceptional exceptionalProof = exceptionalProof
