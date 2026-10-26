@@ -173,6 +173,37 @@ fthApp f args = RSList (args ++ [f, " pass "])
 fthApps :: FthForm -> [FthForm] -> FthForm
 fthApps = foldl (\x y -> fthApp x [y])
 
+-- Fully-applied Agda primitives are operations, not closures. Route exact-arity
+-- primitive applications directly to the corresponding Forth operator. Sending
+-- them through fthApps would use `pass` on a raw operand/word and turns `x + y`
+-- into generic closure application (the observed result was the right operand).
+-- Partial applications still use the curried closure path above.
+fthDirectPrimitive :: TPrim -> [FthForm] -> Maybe FthForm
+fthDirectPrimitive PAdd [left, right] = Just $ fthDirectBinary "+" left right
+fthDirectPrimitive PSub [left, right] = Just $ fthDirectBinary "-" left right
+fthDirectPrimitive PMul [left, right] = Just $ fthDirectBinary "*" left right
+fthDirectPrimitive PQuot [left, right] = Just $ fthDirectBinary "/" left right
+fthDirectPrimitive PRem [left, right] = Just $ fthDirectBinary "mod" left right
+fthDirectPrimitive PEqI [left, right] = Just $ fthDirectBinary "=" left right
+fthDirectPrimitive PGeq [left, right] = Just $ fthDirectBinary ">=" left right
+fthDirectPrimitive PLt [left, right] = Just $ fthDirectBinary "<" left right
+fthDirectPrimitive PIf [condition, yesBranch, noBranch] = Just $ RSList
+  [ fthForce condition
+  , RSAtom "if"
+  , fthForce yesBranch
+  , RSAtom "else"
+  , fthForce noBranch
+  , RSAtom "then"
+  ]
+fthDirectPrimitive _ _ = Nothing
+
+fthDirectBinary :: FthAtom -> FthForm -> FthForm -> FthForm
+fthDirectBinary operator left right = RSList
+  [ fthForce left
+  , fthForce right
+  , RSAtom operator
+  ]
+
 fthLet :: [(FthAtom,FthForm)] -> FthForm -> FthForm
 fthLet binds body = RSAtom $ T.pack $
   concatMap (\(x,v) -> T.unpack (formToAtom v) ++ "{ " ++ T.unpack x ++ " " ++ "} ") binds
@@ -480,7 +511,9 @@ instance ToForth TTerm FthForm where
           -- force <- makeForce
           -- applyToArgs $ force $ RSAtom name
           applyToArgs $ RSAtom name
-      TPrim p -> toForth p >>= applyToArgs
+      TPrim p -> case fthDirectPrimitive p args' of
+        Just direct -> return direct
+        Nothing -> toForth p >>= applyToArgs
       TDef d -> do
         special <- isSpecialDefinition d
         case special of
