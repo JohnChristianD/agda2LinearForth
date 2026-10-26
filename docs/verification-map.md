@@ -11,7 +11,7 @@ Use Agda --safe --no-libraries core. Keep the WP transformer as the only contrac
 ## Decisions so far
 
 - WP-only contracts: wp, operational SemanticTriple, sequencing/CATCH laws, wpCatchPreserves, wpFrameRule, and WP leastness/validity live in formal/LinearModalSafety.agda.
-- Allocation atomicity is the first paired operation-level obligation: identity exhaustion is modelled in ABIAllocationWP and checked against concrete Forth preflight plus adversarial Gforth assertions.
+- Allocation atomicity is the first paired operation-level obligation: identity exhaustion is modelled in ABIAllocationWP and checked against concrete Forth preflight plus adversarial Gforth assertions. The checked binary transaction has WP lemmas for arithmetic/result-allocation failures and Gforth checks that both input handles remain live.
 - The generated scalar example previously returned 5 rather than 25. Keep that counterexample open; allocation atomicity does not fix compiler application/lowering.
 
 ## Not yet specified

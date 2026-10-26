@@ -102,7 +102,7 @@ ABIAllocationWP models the checked allocator's identity-exhaustion boundary. If 
 
 In data/FLib.fth, capacity is now checked before allocating handle/environment/metadata cells on scalar, boolean, thunk, legacy-result, linear-move and partial-application paths. test/gforth/abi-smoke.fs forces identity exhaustion in the real runtime and checks that HERE, HANDLE-META-HEAD and NEXT-HANDLE-ID remain unchanged while the operation throws ABI-ERR-ID-OVERFLOW. The CI workflow pins the revised runtime blob so the Agda model and Forth implementation cannot drift unnoticed.
 
-This is one operation-level refinement step under a non-interleaved, single-threaded mutation assumption. It does not complete the full compiler/runtime theorem: generated application, raw literals, operator lowering, constructors, pattern matching and all exceptional paths still require source-to-Forth simulation proofs. The known scalarAdd 20 5 result mismatch is not fixed by this allocation change and is not exercised by this CI workflow.
+This is one operation-level refinement step under a non-interleaved, single-threaded mutation assumption. It does not complete the full compiler/runtime theorem: generated application, raw literals, operator lowering, constructors, pattern matching and all exceptional paths still require source-to-Forth simulation proofs. The checked-binary regressions also verify that an arithmetic THROW and an identity-exhaustion THROW during result allocation leave both inputs live, matching the Agda WP contract and the implementation's final ownership-commit writes. The known scalarAdd 20 5 result mismatch is not fixed by these runtime-contract changes and is not exercised by this CI workflow.
 
 ## What remains unproved
 

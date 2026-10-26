@@ -1568,6 +1568,52 @@ successfulBinaryCommitsJoinedModeAndOwnership :
     (lifeAfterBinarySuccess leftMode) (lifeAfterBinarySuccess rightMode)
 successfulBinaryCommitsJoinedModeAndOwnership rawValue resultHandle = refl
 
+-- WP for the checked binary transaction, with normal and exceptional postconditions.
+-- The failure postcondition observes both input ownership states.
+BinaryWPPost :
+  {leftMode rightMode : SourceMode} →
+  (normal : Nat → SourceMode → Life → Life → Set) →
+  (exceptional : RuntimeError → Life → Life → Set) →
+  BinaryCommitResult leftMode rightMode → Set
+BinaryWPPost normal exceptional (binaryFailure err leftLife rightLife) =
+  exceptional err leftLife rightLife
+BinaryWPPost normal exceptional (binarySuccess value mode leftLife rightLife) =
+  normal value mode leftLife rightLife
+
+checkedBinaryWP :
+  {leftMode rightMode : SourceMode} →
+  BinaryAliasStatus →
+  OperationOutcome Nat →
+  (Nat → SourceMode → OperationOutcome Nat) →
+  (normal : Nat → SourceMode → Life → Life → Set) →
+  (exceptional : RuntimeError → Life → Life → Set) → Set
+checkedBinaryWP alias operation makeResult normal exceptional =
+  BinaryWPPost normal exceptional
+    (checkedBinaryTransaction alias operation makeResult)
+
+-- A primitive THROW happens before the linear-ownership commit writes.
+checkedBinaryWPArithmeticFailurePreservesOperands :
+  {leftMode rightMode : SourceMode} →
+  (err : RuntimeError) →
+  (makeResult : Nat → SourceMode → OperationOutcome Nat) →
+  (normal : Nat → SourceMode → Life → Life → Set) →
+  (exceptional : RuntimeError → Life → Life → Set) →
+  exceptional err live live →
+  checkedBinaryWP noLinearAlias (operationThrew err) makeResult normal exceptional
+checkedBinaryWPArithmeticFailurePreservesOperands err makeResult normal exceptional proof = proof
+
+-- Result-allocation failure also occurs before either operand is consumed.
+checkedBinaryWPResultAllocationFailurePreservesOperands :
+  {leftMode rightMode : SourceMode} →
+  (rawValue : Nat) →
+  (err : RuntimeError) →
+  (normal : Nat → SourceMode → Life → Life → Set) →
+  (exceptional : RuntimeError → Life → Life → Set) →
+  exceptional err live live →
+  checkedBinaryWP noLinearAlias (operationReturned rawValue)
+    (λ value mode → operationThrew err) normal exceptional
+checkedBinaryWPResultAllocationFailurePreservesOperands rawValue err normal exceptional proof = proof
+
 linearInputConsumedOnSuccessfulCommit :
   lifeAfterBinarySuccess linear ≡ consumed
 linearInputConsumedOnSuccessfulCommit = refl

@@ -498,6 +498,7 @@ s" invalid Agda boolean payload" exception constant ABI-ERR-INVALID-BOOLEAN
     THEN
     leftValue rightValue operation EXECUTE { resultValue }
     leftMode rightMode combineModes { resultMode }
+    \ makeResult may THROW (including identity exhaustion); inputs remain live until it succeeds.
     resultValue resultMode makeResult EXECUTE { resultHandle }
     leftMode MODE-LINEAR = IF OWN-CONSUMED leftMeta META-STATE cells + ! THEN
     rightMode MODE-LINEAR = IF OWN-CONSUMED rightMeta META-STATE cells + ! THEN

@@ -217,6 +217,17 @@ checked-linear-boolean-result-test
 ;
 ' checked-quot-zero-test CATCH ABI-ERR-ARITHMETIC-DOMAIN = abi-assert
 
+VARIABLE retained-dividend
+VARIABLE retained-divisor
+10 MODE-LINEAR ABI-MAKE-SCALAR retained-dividend !
+0 MODE-MODAL ABI-MAKE-SCALAR retained-divisor !
+: checked-quot-zero-preserves-inputs ( -- )
+  retained-dividend @ retained-divisor @ ABI-NAT-QUOT DROP
+;
+' checked-quot-zero-preserves-inputs CATCH ABI-ERR-ARITHMETIC-DOMAIN = abi-assert
+retained-dividend @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
+retained-divisor @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
+
 : checked-rem-zero-test ( -- )
   10 MODE-LINEAR ABI-MAKE-SCALAR
   0 MODE-MODAL ABI-MAKE-SCALAR
@@ -278,6 +289,18 @@ identity-test-linear-handle @ metadata@ META-STATE cells + @ OWN-LIVE = abi-asse
 ' identity-test-body makeTHUNK CONSTANT identity-test-thunk
 : identity-exhaustion-pass ( -- ) 1 identity-test-thunk pass DROP ;
 ' identity-exhaustion-pass assert-id-exhaustion-atomic
+
+\ ABI-BINARY must not consume inputs if result allocation fails.
+VARIABLE identity-binary-linear
+VARIABLE identity-binary-modal
+10 MODE-LINEAR ABI-MAKE-SCALAR identity-binary-linear !
+20 MODE-MODAL ABI-MAKE-SCALAR identity-binary-modal !
+: identity-exhaustion-binary ( -- )
+  identity-binary-linear @ identity-binary-modal @ ABI-NAT-ADD DROP
+;
+' identity-exhaustion-binary assert-id-exhaustion-atomic
+identity-binary-linear @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
+identity-binary-modal @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
 
 \ A caught invalid operation must return to the test harness, not BYE the VM.
 \ Legacy symbols remain loadable; their general behavior is outside this ABI proof.
