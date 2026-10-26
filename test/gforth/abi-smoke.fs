@@ -261,7 +261,7 @@ checked-linear-boolean-result-test
 ;
 
 : checked-generated-add-test ( -- )
-  20 5 2 ' generated-style-add ABI-CHECKED-RUN-NAT
+  20 5 2 ['] generated-style-add ABI-CHECKED-RUN-NAT
   ABI-SCALAR-INFO { value mode meta }
   value 25 = abi-assert
   mode MODE-MODAL = abi-assert
@@ -269,57 +269,57 @@ checked-linear-boolean-result-test
 checked-generated-add-test
 
 : checked-generated-sub-test ( -- )
-  17 5 2 ' generated-style-sub ABI-CHECKED-RUN-NAT ABI-SCALAR-INFO { value mode meta }
+  17 5 2 ['] generated-style-sub ABI-CHECKED-RUN-NAT ABI-SCALAR-INFO { value mode meta }
   value 12 = abi-assert
 ;
 checked-generated-sub-test
 
 : checked-generated-mul-test ( -- )
-  6 7 2 ' generated-style-mul ABI-CHECKED-RUN-NAT ABI-SCALAR-INFO { value mode meta }
+  6 7 2 ['] generated-style-mul ABI-CHECKED-RUN-NAT ABI-SCALAR-INFO { value mode meta }
   value 42 = abi-assert
 ;
 checked-generated-mul-test
 
 : checked-generated-quot-test ( -- )
-  21 4 2 ' generated-style-quot ABI-CHECKED-RUN-NAT ABI-SCALAR-INFO { value mode meta }
+  21 4 2 ['] generated-style-quot ABI-CHECKED-RUN-NAT ABI-SCALAR-INFO { value mode meta }
   value 5 = abi-assert
 ;
 checked-generated-quot-test
 
 : checked-generated-rem-test ( -- )
-  21 4 2 ' generated-style-rem ABI-CHECKED-RUN-NAT ABI-SCALAR-INFO { value mode meta }
+  21 4 2 ['] generated-style-rem ABI-CHECKED-RUN-NAT ABI-SCALAR-INFO { value mode meta }
   value 1 = abi-assert
 ;
 checked-generated-rem-test
 
 : checked-generated-eq-test ( -- )
-  7 7 2 ' generated-style-eq ABI-CHECKED-RUN-BOOL ABI-BOOL-INFO { value mode meta }
+  7 7 2 ['] generated-style-eq ABI-CHECKED-RUN-BOOL ABI-BOOL-INFO { value mode meta }
   value -1 = abi-assert
   mode MODE-MODAL = abi-assert
 ;
 checked-generated-eq-test
 
 : checked-generated-geq-test ( -- )
-  7 8 2 ' generated-style-geq ABI-CHECKED-RUN-BOOL ABI-BOOL-INFO { value mode meta }
+  7 8 2 ['] generated-style-geq ABI-CHECKED-RUN-BOOL ABI-BOOL-INFO { value mode meta }
   value 0 = abi-assert
 ;
 checked-generated-geq-test
 
 : checked-generated-lt-test ( -- )
-  7 8 2 ' generated-style-lt ABI-CHECKED-RUN-BOOL ABI-BOOL-INFO { value mode meta }
+  7 8 2 ['] generated-style-lt ABI-CHECKED-RUN-BOOL ABI-BOOL-INFO { value mode meta }
   value -1 = abi-assert
 ;
 checked-generated-lt-test
 
 : checked-generated-if-test ( -- )
-  0 44 55 3 ' generated-style-if ABI-CHECKED-RUN-NAT ABI-SCALAR-INFO { value mode meta }
+  0 44 55 3 ['] generated-style-if ABI-CHECKED-RUN-NAT ABI-SCALAR-INFO { value mode meta }
   value 55 = abi-assert
 ;
 checked-generated-if-test
 
-: generated-style-quot-zero ( -- result ) 10 0 ' generated-style-quot execute ;
+: generated-style-quot-zero ( -- result ) 10 0 ['] generated-style-quot execute ;
 : checked-generated-exception-test ( -- )
-  0 ' generated-style-quot-zero ABI-CHECKED-RUN-NAT DROP
+  0 ['] generated-style-quot-zero ABI-CHECKED-RUN-NAT DROP
 ;
 ' checked-generated-exception-test CATCH ABI-ERR-ARITHMETIC-DOMAIN = abi-assert
 ABI-CHECKED-MODE @ 0= abi-assert
