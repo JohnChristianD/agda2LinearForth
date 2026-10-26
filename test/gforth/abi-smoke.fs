@@ -271,7 +271,7 @@ retained-divisor @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
 : identity-exhaustion-boolean ( -- ) -1 MODE-MODAL ABI-MAKE-BOOL DROP ;
 ' identity-exhaustion-boolean assert-id-exhaustion-atomic
 
-: identity-exhaustion-thunk ( -- ) ' modal-body makeTHUNK DROP ;
+: identity-exhaustion-thunk ( -- ) ['] modal-body makeTHUNK DROP ;
 ' identity-exhaustion-thunk assert-id-exhaustion-atomic
 
 : identity-exhaustion-legacy-result ( -- ) 123 makeRESULT DROP ;
