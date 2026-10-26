@@ -13,6 +13,16 @@
 ;
 generated-add-test
 
+: generated-subtract-test ( -- )
+  scalarSubtractAnswer dethunk 15 expect-natural
+;
+generated-subtract-test
+
+: generated-subtract-reverse-test ( -- )
+  scalarSubtractReverseAnswer dethunk 0 expect-natural
+;
+generated-subtract-reverse-test
+
 : generated-less-than-true-test ( -- )
   scalarLessThanTrueAnswer dethunk -1 expect-natural
 ;
