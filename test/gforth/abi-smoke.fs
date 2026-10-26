@@ -247,7 +247,7 @@ checked-linear-boolean-result-test
 ' pass 0<> abi-assert
 ' dethunk 0<> abi-assert
 
-\\ Same emitted operator shape as the fixed ToForth.hs preamble.
+\ Same emitted operator shape as the fixed ToForth.hs preamble.
 : generated-style-add { m n -- result } m deepdethunk n deepdethunk + ;
 : generated-style-sub { m n -- result } m deepdethunk n deepdethunk - ;
 : generated-style-mul { m n -- result } m deepdethunk n deepdethunk * ;
@@ -324,7 +324,7 @@ checked-generated-if-test
 ' checked-generated-exception-test CATCH ABI-ERR-ARITHMETIC-DOMAIN = abi-assert
 ABI-CHECKED-MODE @ 0= abi-assert
 
-\\ The opt-in gate is off by default; legacy cell arithmetic is preserved.
+\ The opt-in gate is off by default; legacy cell arithmetic is preserved.
 8 9 + 17 = abi-assert
 
 BYE

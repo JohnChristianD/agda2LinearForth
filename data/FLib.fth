@@ -1113,8 +1113,8 @@ variable pointer
   dup 2 < if 2drop exit then
   1- cells over + fastQsort ;
 
-\\ Opt-in scalar ABI gate for audited generated entrypoints. Off by default.
-\\ Do not pass untrusted execution tokens to ABI-CHECKED-RUN-*.
+\ Opt-in scalar ABI gate for audited generated entrypoints. Off by default.
+\ Do not pass untrusted execution tokens to ABI-CHECKED-RUN-*.
 variable ABI-CHECKED-MODE
 0 ABI-CHECKED-MODE !
 
@@ -1122,7 +1122,7 @@ s" checked entrypoint returned a non-scalar ABI value" exception constant ABI-ER
 s" checked entrypoint stack effect mismatch" exception constant ABI-ERR-CHECKED-STACK
 s" checked conditional requires a canonical boolean" exception constant ABI-ERR-CHECKED-CONDITION
 
-\\ Capture the actual native operators before defining checked dispatch wrappers.
+\ Capture the actual native operators before defining checked dispatch wrappers.
 : ABI-LEGACY-PLUS + ;
 : ABI-LEGACY-MINUS - ;
 : ABI-LEGACY-STAR * ;
@@ -1134,8 +1134,8 @@ s" checked conditional requires a canonical boolean" exception constant ABI-ERR-
 
 : ABI-CHECKED? ( -- flag ) ABI-CHECKED-MODE @ 0<> ;
 
-\\ Raw natural cells in the scalar subset become immutable modal handles.
-\\ A tracked value must already be a scalar handle; wrong-kind handles fail closed.
+\ Raw natural cells in the scalar subset become immutable modal handles.
+\ A tracked value must already be a scalar handle; wrong-kind handles fail closed.
 : ABI-COERCE-NAT { value -- handle }
     value metadata@ { meta }
     meta 0<> IF
@@ -1156,8 +1156,8 @@ s" checked conditional requires a canonical boolean" exception constant ABI-ERR-
     leftHandle rightHandle checked EXECUTE
 ;
 
-\\ inputCount describes the compiled entrypoint's scalar input stack arity.
-\\ CATCH restores the entry stack on THROW; this gate always restores its prior mode.
+\ inputCount describes the compiled entrypoint's scalar input stack arity.
+\ CATCH restores the entry stack on THROW; this gate always restores its prior mode.
 : ABI-CHECKED-EXECUTE { inputCount xt -- value }
     DEPTH { depthBefore }
     ABI-CHECKED-MODE @ { previousMode }
@@ -1186,8 +1186,8 @@ s" checked conditional requires a canonical boolean" exception constant ABI-ERR-
     result MODE-MODAL ABI-MAKE-BOOL
 ;
 
-\\ Check the runtime condition convention used by Agda: false=0, true=-1.
-\\ A managed linear boolean is consumed only after validation.
+\ Check the runtime condition convention used by Agda: false=0, true=-1.
+\ A managed linear boolean is consumed only after validation.
 : ABI-CHECKED-IF-FLAG { value -- flag }
     ABI-CHECKED? 0= IF value EXIT THEN
     value metadata@ { meta }
@@ -1200,8 +1200,8 @@ s" checked conditional requires a canonical boolean" exception constant ABI-ERR-
     flag
 ;
 
-\\ These operator names are emitted by the unchanged ToForth.hs scalar preamble.
-\\ They dispatch only while the opt-in checked gate is active.
+\ These operator names are emitted by the unchanged ToForth.hs scalar preamble.
+\ They dispatch only while the opt-in checked gate is active.
 : + { left right -- result }
     left right ['] ABI-NAT-ADD ['] ABI-LEGACY-PLUS ABI-CHECKED-BINARY
 ;
@@ -1227,7 +1227,7 @@ s" checked conditional requires a canonical boolean" exception constant ABI-ERR-
     left right ['] ABI-NAT-LT ['] ABI-LEGACY-LT ABI-CHECKED-BINARY
 ;
 
-\\ Shadow IF only for subsequently compiled definitions. Its previous compilation
-\\ semantics remain the branch implementation; the added runtime check is inert
-\\ outside ABI-CHECKED-MODE.
+\ Shadow IF only for subsequently compiled definitions. Its previous compilation
+\ semantics remain the branch implementation; the added runtime check is inert
+\ outside ABI-CHECKED-MODE.
 : IF POSTPONE ABI-CHECKED-IF-FLAG POSTPONE IF ; IMMEDIATE
