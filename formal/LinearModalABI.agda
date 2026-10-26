@@ -478,10 +478,10 @@ promotionExcludesLinearCaptures :
   (s : Machine) → WellFormed s → {d : Descriptor} →
   PromotionPrecondition s d →
   (n : Nat) → n ∈ₙ captures d → HasLiveLinear n (heap s) → ⊥
-promotionExcludesLinearCaptures s wf {d} pre n captured linear =
+promotionExcludesLinearCaptures s wf {d} pre n captured linearWitness =
   notBothLiveModes (heap s) (identityUnique wf)
     (modalWitnessForMember (captures d) (capturedValuesModal pre) captured)
-    linear
+    linearWitness
 
 -- Opaque user Forth execution tokens can never satisfy modal promotion's
 -- closed-code evidence requirement.
