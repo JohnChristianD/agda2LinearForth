@@ -3,8 +3,8 @@
 -- Single-source-of-truth constructive specification for agda2LinearForth.
 --
 -- This module combines descriptor/ownership invariants, weakest-precondition
--- semantics with direct WP contracts, separation, checked stack effects,
--- concrete witnesses, and a semantic mirror of the pinned compiler/runtime.
+-- semantics, checked stack effects, allocation/exception contracts, denotational
+-- models, and a semantic mirror of the compiler/runtime boundary.
 -- The proof terms
 -- below establish properties of this Agda model. They do not, by themselves,
 -- establish that arbitrary Haskell or Forth implementations refine it.
@@ -14,7 +14,7 @@ open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _*_)
 open import Agda.Builtin.Bool using (Bool; true; false)
 open import Agda.Builtin.Equality using (_≡_; refl)
 
--- ── 1. Descriptor heap, linear/modal invariants, WP and separation model ──
+-- ── 1. Descriptor heap, linear/modal invariants, and WP model ──
 
 data ⊥ : Set where
 
@@ -372,22 +372,6 @@ nextIsFresh :
   (s : Machine) → WellFormed s →
   (nextIdentity s ∈ₙ keys (heap s)) → ⊥
 nextIsFresh s wf = freshNotPresent (nextIdentityFresh wf)
-
--- Separation conjunction over disjoint descriptor identities.
-Disjoint : List Nat → List Nat → Set
-Disjoint [] ys = ⊤
-Disjoint (x :: xs) ys = ((x ∈ₙ ys) → ⊥) × Disjoint xs ys
-
-record Sep (P Q : Heap → Set) (whole : Heap) : Set where
-  constructor splitHeap
-  field
-    leftHeap : Heap
-    rightHeap : Heap
-    heapDecomposition : whole ≡ leftHeap ++ rightHeap
-    leftPredicate : P leftHeap
-    rightPredicate : Q rightHeap
-    disjointIdentities : Disjoint (keys leftHeap) (keys rightHeap)
-open Sep public
 
 -- The copy/drop rules are evidence-gated. No evidence constructor exists for
 -- linear or unannotated handles.
@@ -1639,82 +1623,13 @@ modalInputRemainsLiveOnSuccessfulCommit = refl
 -- and legacy operator forms.
 
 
--- ── 9. Frame rule and disjoint concurrent updates ──
---
--- A framed command receives and returns an untouched resource component.
--- This makes the locality premise explicit: a real Forth word may use the
--- frame rule only after its actual reads and writes have been shown confined
--- to the command-owned component. The lemma below does not assume arbitrary
--- EXECUTE, dictionary mutation, or global metadata updates are local.
+-- Full-state WP is the contract mechanism: stack, descriptor heap, roots,
+-- metadata identities and exception state belong in S. The former generic frame
+-- theorem merely threaded an unrelated F value unchanged by construction; it did
+-- not prove footprint locality for any Forth word, so it was removed. Reintroduce
+-- a frame theorem only with concrete read/write-footprint evidence for a runtime
+-- operation, not a stack-tail product that is untouched by definition.
 
-data FramedExecution (S F : Set) : Set where
-  framedReturned : S → F → FramedExecution S F
-  framedThrown : S → F → RuntimeError → FramedExecution S F
-
-frameCommand :
-  {S F : Set} →
-  (command : S → Execution S) →
-  S → F → FramedExecution S F
-frameCommand command s f with command s
-... | returned s' = framedReturned s' f
-... | thrown s' err = framedThrown s' f err
-
-FramedPost :
-  {S F : Set} →
-  (normal : S → Set) →
-  (exceptional : S → RuntimeError → Set) →
-  (frameInvariant : F → Set) →
-  FramedExecution S F → Set
-FramedPost normal exceptional frameInvariant (framedReturned s f) =
-  normal s × frameInvariant f
-FramedPost normal exceptional frameInvariant (framedThrown s f err) =
-  exceptional s err × frameInvariant f
-
-FramedWP :
-  {S F : Set} →
-  (precondition : S → Set) →
-  (command : S → F → FramedExecution S F) →
-  (normalPostcondition : S → Set) →
-  (exceptionalPostcondition : S → RuntimeError → Set) →
-  (frameInvariant : F → Set) → Set
-FramedWP {S} {F} precondition command normalPostcondition
-  exceptionalPostcondition frameInvariant =
-  (s : S) → (f : F) → precondition s → frameInvariant f →
-  FramedPost normalPostcondition exceptionalPostcondition frameInvariant
-    (command s f)
-
--- WP frame rule for a command whose concrete footprint is already known to
--- leave the frame untouched. It does not establish locality for arbitrary Forth.
-wpFrameRule :
-  {S F : Set} →
-  {P Q : S → Set} →
-  {E : S → RuntimeError → Set} →
-  {R : F → Set} →
-  {command : S → Execution S} →
-  ((s : S) → P s → wp command Q E s) →
-  FramedWP P (frameCommand command) Q E R
-wpFrameRule {command = command} safe s f preconditionProof frameProof
-  with command s | safe s preconditionProof
-... | returned s' | postProof = postProof , frameProof
-... | thrown s' err | postProof = postProof , frameProof
-
--- Transitions that update separate components of a product state commute.
--- This is an elementary interference-freedom law, not a locality theorem for
--- the concrete Forth words.
-leftUpdate : {L R : Set} → (L → L) → L × R → L × R
-leftUpdate update (left , right) = update left , right
-
-rightUpdate : {L R : Set} → (R → R) → L × R → L × R
-rightUpdate update (left , right) = left , update right
-
-disjointUpdatesCommute :
-  {L R : Set} →
-  (updateL : L → L) →
-  (updateR : R → R) →
-  (state : L × R) →
-  rightUpdate updateR (leftUpdate updateL state) ≡
-  leftUpdate updateL (rightUpdate updateR state)
-disjointUpdatesCommute updateL updateR (left , right) = refl
 
 -- ── Scalar bridge correspondence for the opt-in runtime gate ──
 --
@@ -2531,78 +2446,6 @@ module CoreDenotation where
   
 
 
--- Recovered normal and exceptional separation/frame contracts. They remain
--- in the single specification, not in a second module with duplicated imports.
-module ConcurrentSeparation where
-  record FramedSeparation
-    (P Q R : Heap → Set)
-    (before after frame : Heap) : Set where
-    constructor framedSeparation
-    field
-      initialSplit : Sep P R (before ++ frame)
-      finalSplit : Sep Q R (after ++ frame)
-  open FramedSeparation public
-  
-  frameRuleForDisjointHeaps :
-    {P Q R : Heap → Set} {before after frame : Heap} →
-    P before →
-    Q after →
-    R frame →
-    Disjoint (keys before) (keys frame) →
-    Disjoint (keys after) (keys frame) →
-    FramedSeparation P Q R before after frame
-  frameRuleForDisjointHeaps {before = before} {after = after} {frame = frame}
-    pre post frameInvariant beforeDisjoint afterDisjoint =
-    framedSeparation
-      (splitHeap before frame refl pre frameInvariant beforeDisjoint)
-      (splitHeap after frame refl post frameInvariant afterDisjoint)
-  
-  record FramedExceptional
-    (E R : Heap → Set)
-    (after frame : Heap) : Set where
-    constructor framedExceptional
-    field
-      errorSplit : Sep E R (after ++ frame)
-  open FramedExceptional public
-  
-  exceptionalFrameRuleForDisjointHeaps :
-    {E R : Heap → Set} {after frame : Heap} →
-    E after →
-    R frame →
-    Disjoint (keys after) (keys frame) →
-    FramedExceptional E R after frame
-  exceptionalFrameRuleForDisjointHeaps {after = after} {frame = frame}
-    errorInvariant frameInvariant disjoint =
-    framedExceptional
-      (splitHeap after frame refl errorInvariant frameInvariant disjoint)
-  
-  -- The concurrent precondition and postcondition are deliberately separate
-  -- evidence: interference freedom is not inherited merely from the pre-state.
-  record ConcurrentPrecondition (left right : Heap) : Set where
-    constructor concurrentPrecondition
-    field
-      leftRightDisjoint : Disjoint (keys left) (keys right)
-  open ConcurrentPrecondition public
-  
-  record ConcurrentPostcondition (left right : Heap) : Set where
-    constructor concurrentPostcondition
-    field
-      postLeftRightDisjoint : Disjoint (keys left) (keys right)
-  open ConcurrentPostcondition public
-  
-  makeConcurrentPrecondition :
-    {left right : Heap} →
-    Disjoint (keys left) (keys right) →
-    ConcurrentPrecondition left right
-  makeConcurrentPrecondition = concurrentPrecondition
-  
-  makeConcurrentPostcondition :
-    {left right : Heap} →
-    Disjoint (keys left) (keys right) →
-    ConcurrentPostcondition left right
-  makeConcurrentPostcondition = concurrentPostcondition
-
- 
 -- Recovered from PR #7: scalar denotation with explicit bottom and errors.
 -- Kept separate from CoreDenotation because finite fuel exhaustion and
 -- denotational divergence are different observations. The flat preorder is a
