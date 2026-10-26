@@ -275,6 +275,24 @@ mutual
   ...   | valuesRaised err later = valuesRaised err (appendD trace later)
   ...   | valuesOutOfFuel later = valuesOutOfFuel (appendD trace later)
 
+  matchOutcome fuel env expectedTag expectedArity matched fallback
+    (returned (vConstructed actualTag fields) trace)
+    with natEq actualTag expectedTag | natEq (lengthD fields) expectedArity
+  ... | true | true =
+    prefixOutcome trace (eval fuel (appendD fields env) matched)
+  ... | _ | _ = prefixOutcome trace (eval fuel env fallback)
+  matchOutcome fuel env expectedTag expectedArity matched fallback
+    (returned value trace) = prefixOutcome trace (eval fuel env fallback)
+  matchOutcome fuel env expectedTag expectedArity matched fallback
+    (raised err trace) = raised err trace
+  matchOutcome fuel env expectedTag expectedArity matched fallback
+    (outOfFuel trace) = outOfFuel trace
+
+  catchOutcome fuel env handler (returned value trace) = returned value trace
+  catchOutcome fuel env handler (outOfFuel trace) = outOfFuel trace
+  catchOutcome fuel env handler (raised err trace) =
+    prefixOutcome trace (eval fuel (dcons (vError err) env) handler)
+
 -- Constructive equations for representative backend forms. These prove the
 -- denotation's equations; concrete compiler/runtime refinement is a separate
 -- simulation obligation and is not implied by these equations.
