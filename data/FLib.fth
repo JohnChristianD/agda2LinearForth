@@ -824,7 +824,13 @@ variable target
     BEGIN
     dethunk                     ( o1 )
     dup isScalar IF EXIT THEN
-    dup isBoolean IF EXIT THEN
+    dup isBoolean IF
+        ABI-BOOL-INFO { booleanValue booleanMode booleanMeta }
+        booleanMode MODE-LINEAR = IF
+            OWN-CONSUMED booleanMeta META-STATE cells + !
+        THEN
+        booleanValue EXIT
+    THEN
     dup MAXNUM @ < 0 =          ( o1 0/-1 )
     if
         dup @ THUNK = 0 =   ( o1 0/-1 )
@@ -1113,3 +1119,43 @@ variable pointer
   dup 2 < if 2drop exit then
   1- cells over + fastQsort ;
   
+
+\ Generated ToForth.hs preamble words call the native arithmetic operators after
+\ deepdethunk. Capture native execution tokens after every runtime word above has
+\ been compiled, then redefine the operators for later generated code. Existing
+\ runtime definitions keep the original native arithmetic. Raw/raw operands keep
+\ legacy behavior; checked/checked scalar operands use the checked ABI; mixed
+\ checked/raw operands fail closed.
+' +   constant ABI-LEGACY-PLUS
+' -   constant ABI-LEGACY-MINUS
+' *   constant ABI-LEGACY-STAR
+' /   constant ABI-LEGACY-SLASH
+' mod constant ABI-LEGACY-MOD
+' =   constant ABI-LEGACY-EQUAL
+' >=  constant ABI-LEGACY-GE
+' <   constant ABI-LEGACY-LT
+
+: + ( left right -- result )
+    ['] ABI-NAT-ADD ABI-LEGACY-PLUS ABI-DISPATCH-BINARY
+;
+: - ( left right -- result )
+    ['] ABI-NAT-SUB ABI-LEGACY-MINUS ABI-DISPATCH-BINARY
+;
+: * ( left right -- result )
+    ['] ABI-NAT-MUL ABI-LEGACY-STAR ABI-DISPATCH-BINARY
+;
+: / ( left right -- result )
+    ['] ABI-NAT-QUOT ABI-LEGACY-SLASH ABI-DISPATCH-BINARY
+;
+: mod ( left right -- result )
+    ['] ABI-NAT-REM ABI-LEGACY-MOD ABI-DISPATCH-BINARY
+;
+: = ( left right -- result )
+    ['] ABI-NAT-EQ ABI-LEGACY-EQUAL ABI-DISPATCH-BINARY
+;
+: >= ( left right -- result )
+    ['] ABI-NAT-GEQ ABI-LEGACY-GE ABI-DISPATCH-BINARY
+;
+: < ( left right -- result )
+    ['] ABI-NAT-LT ABI-LEGACY-LT ABI-DISPATCH-BINARY
+;

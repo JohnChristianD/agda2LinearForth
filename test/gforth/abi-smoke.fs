@@ -139,6 +139,116 @@ checked-add-adapter-test
 ;
 legacy-add-adapter-test
 
+\ These definitions mirror the fixed ToForth.hs preamble: push each local,
+\ deepdethunk it, then use the ordinary Forth arithmetic token. Late-bound
+\ operator dispatch must recognize checked handles while preserving raw/raw.
+: generated-add { left right -- result }
+  left deepdethunk right deepdethunk +
+;
+: generated-sub { left right -- result }
+  left deepdethunk right deepdethunk -
+;
+: generated-mul { left right -- result }
+  left deepdethunk right deepdethunk *
+;
+: generated-quot { left right -- result }
+  left deepdethunk right deepdethunk /
+;
+: generated-rem { left right -- result }
+  left deepdethunk right deepdethunk mod
+;
+: generated-eq { left right -- result }
+  left deepdethunk right deepdethunk =
+;
+: generated-geq { left right -- result }
+  left deepdethunk right deepdethunk >=
+;
+: generated-lt { left right -- result }
+  left deepdethunk right deepdethunk <
+;
+
+: generated-checked-arithmetic-test ( -- )
+  19 MODE-LINEAR ABI-MAKE-SCALAR
+  7 MODE-MODAL ABI-MAKE-SCALAR
+  generated-sub ABI-SCALAR-INFO { value mode meta }
+  value 12 = abi-assert
+  mode MODE-LINEAR = abi-assert
+
+  3 MODE-LINEAR ABI-MAKE-SCALAR
+  4 MODE-MODAL ABI-MAKE-SCALAR
+  generated-mul ABI-SCALAR-INFO { value mode meta }
+  value 12 = abi-assert
+  mode MODE-LINEAR = abi-assert
+
+  18 MODE-LINEAR ABI-MAKE-SCALAR
+  3 MODE-MODAL ABI-MAKE-SCALAR
+  generated-quot ABI-SCALAR-INFO { value mode meta }
+  value 6 = abi-assert
+  mode MODE-LINEAR = abi-assert
+
+  17 MODE-MODAL ABI-MAKE-SCALAR
+  5 MODE-MODAL ABI-MAKE-SCALAR
+  generated-rem ABI-SCALAR-INFO { value mode meta }
+  value 2 = abi-assert
+  mode MODE-MODAL = abi-assert
+;
+generated-checked-arithmetic-test
+
+: generated-checked-comparison-test ( -- )
+  4 MODE-MODAL ABI-MAKE-SCALAR
+  4 MODE-MODAL ABI-MAKE-SCALAR
+  generated-eq ABI-BOOL-INFO { value mode meta }
+  value -1 = abi-assert
+  mode MODE-MODAL = abi-assert
+
+  5 MODE-LINEAR ABI-MAKE-SCALAR
+  4 MODE-MODAL ABI-MAKE-SCALAR
+  generated-geq ABI-BOOL-INFO { value mode meta }
+  value -1 = abi-assert
+  mode MODE-LINEAR = abi-assert
+
+  3 MODE-MODAL ABI-MAKE-SCALAR
+  4 MODE-LINEAR ABI-MAKE-SCALAR
+  generated-lt ABI-BOOL-INFO { value mode meta }
+  value -1 = abi-assert
+  mode MODE-LINEAR = abi-assert
+;
+generated-checked-comparison-test
+
+: generated-legacy-dispatch-test ( -- )
+  19 7 generated-sub 12 = abi-assert
+  3 4 generated-mul 12 = abi-assert
+  18 3 generated-quot 6 = abi-assert
+  17 5 generated-rem 2 = abi-assert
+  4 4 generated-eq -1 = abi-assert
+  5 4 generated-geq -1 = abi-assert
+  3 4 generated-lt -1 = abi-assert
+;
+generated-legacy-dispatch-test
+
+: generated-mixed-values-fail-closed ( -- )
+  7 MODE-MODAL ABI-MAKE-SCALAR 3 generated-add DROP
+;
+' generated-mixed-values-fail-closed CATCH
+  ABI-ERR-MIXED-ABI-VALUES = abi-assert
+
+\ The fixed compiler preamble uses IF on the forced condition. deepdethunk must
+\ validate/unbox a checked boolean; a linear boolean is consumed exactly once.
+: checked-condition { condition yes no -- selected }
+  condition deepdethunk IF yes deepdethunk ELSE no deepdethunk THEN
+;
+: generated-checked-condition-test ( -- )
+  5 MODE-LINEAR ABI-MAKE-SCALAR
+  5 MODE-MODAL ABI-MAKE-SCALAR
+  generated-eq
+  7 MODE-MODAL ABI-MAKE-SCALAR
+  9 MODE-MODAL ABI-MAKE-SCALAR
+  checked-condition ABI-SCALAR-INFO { value mode meta }
+  value 7 = abi-assert
+  mode MODE-MODAL = abi-assert
+;
+generated-checked-condition-test
+
 : mixed-add-adapter-test ( -- )
   8 MODE-MODAL ABI-MAKE-SCALAR 9 ABI-ADD-OR-LEGACY DROP
 ;
