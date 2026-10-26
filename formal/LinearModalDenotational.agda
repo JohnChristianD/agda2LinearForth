@@ -245,30 +245,9 @@ mutual
     matchOutcome fuel env expectedTag expectedArity matched fallback
       (eval fuel env scrutinee)
 
-  matchOutcome : Nat → Env → Nat → Nat → Term → Term → Outcome → Outcome
-  matchOutcome fuel env expectedTag expectedArity matched fallback
-    (returned (vConstructed actualTag fields) trace)
-    with natEq actualTag expectedTag | natEq (lengthD fields) expectedArity
-  ... | true | true =
-    prefixOutcome trace (eval fuel (appendD fields env) matched)
-  ... | _ | _ = prefixOutcome trace (eval fuel env fallback)
-  matchOutcome fuel env expectedTag expectedArity matched fallback
-    (returned value trace) = prefixOutcome trace (eval fuel env fallback)
-  matchOutcome fuel env expectedTag expectedArity matched fallback
-    (raised err trace) = raised err trace
-  matchOutcome fuel env expectedTag expectedArity matched fallback
-    (outOfFuel trace) = outOfFuel trace
-
   eval (suc fuel) env (tRaise err) = raised err dnil
-  eval (suc fuel) env (tCatch body handler) with eval fuel env body
-  ... | returned value trace = returned value trace
-  ... | outOfFuel trace = outOfFuel trace
-  ... | raised err trace with eval fuel (dcons (vError err) env) handler
-  ...   | returned value handlerTrace =
-    returned value (appendD trace handlerTrace)
-  ...   | raised handlerError handlerTrace =
-    raised handlerError (appendD trace handlerTrace)
-  ...   | outOfFuel handlerTrace = outOfFuel (appendD trace handlerTrace)
+  eval (suc fuel) env (tCatch body handler) =
+    catchOutcome fuel env handler (eval fuel env body)
 
   eval (suc fuel) env (tPackResult term) =
     bindOutcome (eval fuel env term) (λ value → returned (vResult value) dnil)
