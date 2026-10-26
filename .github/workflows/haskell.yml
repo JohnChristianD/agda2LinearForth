@@ -9,21 +9,25 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Enforce no Haskell-source drift in this PR
-        if: ${{ github.event_name == 'pull_request' }}
+      - name: Verify per-file upstream source identity
         env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SCHEME_UPSTREAM_SHA: 6b3d975e9274448c09b5939e637b6718c2cfb10c
+          FORTH_UPSTREAM_SHA: e83f8cc735bf220f80b3655ce2158a23818910fe
         run: |
-          git fetch --no-tags --depth=1 origin "$PR_BASE_SHA"
-          git diff --exit-code "$PR_BASE_SHA" HEAD -- '*.hs'
+          git fetch --no-tags --depth=1 https://github.com/jespercockx/agda2scheme.git "$SCHEME_UPSTREAM_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$SCHEME_UPSTREAM_SHA"
+          git diff --exit-code "$SCHEME_UPSTREAM_SHA" HEAD -- app/Main.hs src/Agda/Compiler/Erase.hs
+
+          git fetch --no-tags --depth=1 https://github.com/LMMilliken/agda2Forth.git "$FORTH_UPSTREAM_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$FORTH_UPSTREAM_SHA"
+          git diff --exit-code "$FORTH_UPSTREAM_SHA" HEAD -- src/Main.hs src/Agda/Compiler/ToForth.hs
 
       - name: Set up GHC
         uses: haskell-actions/setup@v2
         id: setup
         with:
-          ghc-version: '9.10.3'
-          # Keep the upstream agda2scheme setup/cache/build sequence.
-          cabal-version: 'latest'
+          ghc-version: '9.0.2'
+          cabal-version: '3.10.3.0'
           cabal-update: true
 
       - name: Configure the build
@@ -40,6 +44,15 @@ jobs:
           path: ${{ steps.setup.outputs.cabal-store }}
           key: ${{ env.key }}-plan-${{ hashFiles('**/plan.json') }}
           restore-keys: ${{ env.key }}-
+
+      # Agda 2.6.2.2's setup hook needs the Agda executable while installing
+      # interface files. Install the CLI before Cabal builds library-only deps.
+      - name: Install Agda CLI for formal checks
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          cabal install Agda-2.6.2.2 --installdir="$HOME/.local/bin" --overwrite-policy=always
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/agda" --version
 
       - name: Install dependencies
         if: ${{ steps.cache.outputs.cache-hit != 'true' }}
@@ -66,12 +79,6 @@ jobs:
       - name: Check runtime ABI boundaries
         run: gforth -e 'include data/FLib.fth' -e 'include test/gforth/abi-smoke.fs'
 
-      - name: Install Agda CLI for formal checks
-        run: |
-          cabal install Agda-2.8.0.2 --installdir="$HOME/.local/bin" --overwrite-policy=always
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/agda" --version
-
       - name: Type-check constructive ABI state, Hoare, and separation model
         run: |
           "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalABI.agda
@@ -83,6 +90,10 @@ jobs:
       - name: Type-check concrete ABI signature witnesses
         run: |
           "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalExamples.agda
+
+      - name: Type-check compiler/runtime boundary precondition correspondence
+        run: |
+          "$HOME/.local/bin/agda" --no-libraries -i formal formal/CompilerRuntimeBoundary.agda
 
       - name: Verify unsupported-literal output preserves the unchanged compiler boundary
         run: |

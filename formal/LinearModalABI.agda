@@ -45,6 +45,11 @@ data SourceMode : Set where
 data RuntimeMode : Set where
   unannotated linearMode modalMode : RuntimeMode
 
+-- Checked ABI values must carry one of the two source-language modalities.
+data AnnotatedMode : RuntimeMode → Set where
+  checkedLinearMode : AnnotatedMode linearMode
+  checkedModalMode : AnnotatedMode modalMode
+
 sourceMode : SourceMode → RuntimeMode
 sourceMode linear = linearMode
 sourceMode modal = modalMode
@@ -196,6 +201,17 @@ data HasLiveModal (n : Nat) : Heap → Set where
     {d : Descriptor} {ds : Heap} →
     HasLiveModal n ds → HasLiveModal n (d :: ds)
 
+liveLinearAtKey :
+  {d : Descriptor} {h : Heap} →
+  HasDescriptor d h →
+  mode d ≡ linearMode →
+  life d ≡ live →
+  HasLiveLinear (key d) h
+liveLinearAtKey descriptorHere modeIsLinear lifeIsLive =
+  linearLiveHere refl modeIsLinear lifeIsLive
+liveLinearAtKey (descriptorThere registered) modeIsLinear lifeIsLive =
+  linearLiveThere (liveLinearAtKey registered modeIsLinear lifeIsLive)
+
 AllLive : List Nat → Heap → Set
 AllLive [] h = ⊤
 AllLive (n :: ns) h = HasLive n h × AllLive ns h
@@ -298,6 +314,50 @@ record WellFormed (s : Machine) : Set where
     nextIdentityFresh : AllBelow (nextIdentity s) (keys (heap s))
 open WellFormed public
 
+-- The operand-root list records the two inputs as separate positions.
+record OperandRoots (left right : Nat) (xs : List Nat) : Set where
+  constructor operandRoots
+  field
+    rootTail : List Nat
+    rootsContainBothOperands : xs ≡ left :: right :: rootTail
+open OperandRoots public
+
+record BinaryScalarPrecondition
+  (s : Machine) (left right : Descriptor) : Set where
+  constructor binaryScalarPrecondition
+  field
+    leftRegistered : HasDescriptor left (heap s)
+    rightRegistered : HasDescriptor right (heap s)
+    leftIsScalar : kind left ≡ scalar
+    rightIsScalar : kind right ≡ scalar
+    leftIsLive : life left ≡ live
+    rightIsLive : life right ≡ live
+    leftHasCheckedMode : AnnotatedMode (mode left)
+    rightHasCheckedMode : AnnotatedMode (mode right)
+    operandRootOrder : OperandRoots (key left) (key right) (roots s)
+open BinaryScalarPrecondition public
+
+-- A well-formed machine has no linear aliasing. Because the binary-call
+-- precondition records two separate operand-root positions, an aliased live
+-- linear input contradicts the machine invariant constructively.
+linearOperandsCannotAlias :
+  (s : Machine) → WellFormed s →
+  {left right : Descriptor} →
+  BinaryScalarPrecondition s left right →
+  key left ≡ key right →
+  mode left ≡ linearMode → ⊥
+linearOperandsCannotAlias s wf {left} {right} pre sameIdentity leftLinear
+  with subst
+    {P = λ rs →
+      NoDupOn (λ n → HasLiveLinear n (heap s))
+        (rs ++ activeCaptures (heap s) ++ activePayloads (heap s))}
+    (rootsContainBothOperands (operandRootOrder pre))
+    (noLinearAliasing wf)
+... | (noRepeatedLinearRoot , _) =
+  noRepeatedLinearRoot
+    (liveLinearAtKey (leftRegistered pre) leftLinear (leftIsLive pre))
+    (here sameIdentity)
+
 nextIsFresh :
   (s : Machine) → WellFormed s →
   (nextIdentity s ∈ₙ keys (heap s)) → ⊥
@@ -358,6 +418,82 @@ record PromotionPrecondition (s : Machine) (d : Descriptor) : Set where
     -- XT flags are not proof witnesses.
     modalCodeWitness : ModalCode (codeClass d)
 open PromotionPrecondition public
+
+-- Equality utilities used to derive exclusivity from the machine invariants.
+symEq : {A : Set} {x y : A} → x ≡ y → y ≡ x
+symEq refl = refl
+
+transEq : {A : Set} {x y z : A} → x ≡ y → y ≡ z → x ≡ z
+transEq refl q = q
+
+modalIsNotLinear : modalMode ≡ linearMode → ⊥
+modalIsNotLinear ()
+
+modalKeyMember :
+  {n : Nat} {h : Heap} → HasLiveModal n h → n ∈ₙ keys h
+modalKeyMember (modalLiveHere keyEq _ _) = here (symEq keyEq)
+modalKeyMember (modalLiveThere p) = there (modalKeyMember p)
+
+linearKeyMember :
+  {n : Nat} {h : Heap} → HasLiveLinear n h → n ∈ₙ keys h
+linearKeyMember (linearLiveHere keyEq _ _) = here (symEq keyEq)
+linearKeyMember (linearLiveThere p) = there (linearKeyMember p)
+
+-- One identity cannot simultaneously denote live modal and live linear
+-- descriptors in a heap whose descriptor identities are unique.
+notBothLiveModes :
+  (h : Heap) → NoDup (keys h) → {n : Nat} →
+  HasLiveModal n h → HasLiveLinear n h → ⊥
+notBothLiveModes [] unique () _
+notBothLiveModes (d :: ds) (noDupHead , noDupTail)
+  (modalLiveHere keyEq modalEq _) (linearLiveHere _ linearEq _) =
+    modalIsNotLinear (transEq (symEq modalEq) linearEq)
+notBothLiveModes (d :: ds) (noDupHead , noDupTail)
+  (modalLiveHere keyEq _ _) (linearLiveThere linearTail) =
+    noDupHead
+      (subst {P = λ k → k ∈ₙ keys ds}
+        (symEq keyEq) (linearKeyMember linearTail))
+notBothLiveModes (d :: ds) (noDupHead , noDupTail)
+  (modalLiveThere modalTail) (linearLiveHere keyEq _ _) =
+    noDupHead
+      (subst {P = λ k → k ∈ₙ keys ds}
+        (symEq keyEq) (modalKeyMember modalTail))
+notBothLiveModes (d :: ds) (noDupHead , noDupTail)
+  (modalLiveThere modalTail) (linearLiveThere linearTail) =
+    notBothLiveModes ds noDupTail modalTail linearTail
+
+modalWitnessForMember :
+  {h : Heap} → (ids : List Nat) → {n : Nat} →
+  AllModal ids h → n ∈ₙ ids → HasLiveModal n h
+modalWitnessForMember [] allModal ()
+modalWitnessForMember {h = h} (x :: xs) (headModal , tailModal) (here eq) =
+  subst {P = λ k → HasLiveModal k h} (symEq eq) headModal
+modalWitnessForMember (x :: xs) (headModal , tailModal) (there member) =
+  modalWitnessForMember xs tailModal member
+
+-- A well-formed heap plus a promotion precondition proves that no captured
+-- identity is a live linear value. This is a genuine consequence of both
+-- pieces of evidence, not a trusted execution-token flag.
+promotionExcludesLinearCaptures :
+  (s : Machine) → WellFormed s → {d : Descriptor} →
+  PromotionPrecondition s d →
+  (n : Nat) → n ∈ₙ captures d → HasLiveLinear n (heap s) → ⊥
+promotionExcludesLinearCaptures s wf {d} pre n captured linearWitness =
+  notBothLiveModes (heap s) (identityUnique wf)
+    (modalWitnessForMember (captures d) (capturedValuesModal pre) captured)
+    linearWitness
+
+-- Opaque user Forth execution tokens can never satisfy modal promotion's
+-- closed-code evidence requirement.
+noOpaqueModalCode : ModalCode codeOpaque → ⊥
+noOpaqueModalCode ()
+
+promotionExcludesOpaqueCode :
+  {s : Machine} {d : Descriptor} →
+  PromotionPrecondition s d → codeClass d ≡ codeOpaque → ⊥
+promotionExcludesOpaqueCode pre codeEq =
+  noOpaqueModalCode
+    (subst {P = ModalCode} codeEq (modalCodeWitness pre))
 
 -- The core-language model covers these operations; escape hatches are excluded.
 data Primitive : Set where
