@@ -171,7 +171,7 @@ fthApp f args = RSList (args ++ [f, " pass "])
 
 -- Apply to each argument individually instead of all at once.
 fthApps :: FthForm -> [FthForm] -> FthForm
-fthApps = foldl (\x y -> fthApp x [y])
+fthApps f args = foldl (\x y -> fthApp x [y]) f (reverse args)
 
 -- Fully-applied Agda primitives are operations, not closures. Route exact-arity
 -- primitive applications directly to the corresponding Forth operator. Sending
