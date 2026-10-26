@@ -45,6 +45,11 @@ data SourceMode : Set where
 data RuntimeMode : Set where
   unannotated linearMode modalMode : RuntimeMode
 
+-- Checked ABI values must carry one of the two source-language modalities.
+data AnnotatedMode : RuntimeMode → Set where
+  checkedLinearMode : AnnotatedMode linearMode
+  checkedModalMode : AnnotatedMode modalMode
+
 sourceMode : SourceMode → RuntimeMode
 sourceMode linear = linearMode
 sourceMode modal = modalMode
@@ -196,6 +201,17 @@ data HasLiveModal (n : Nat) : Heap → Set where
     {d : Descriptor} {ds : Heap} →
     HasLiveModal n ds → HasLiveModal n (d :: ds)
 
+liveLinearAtKey :
+  {d : Descriptor} {h : Heap} →
+  HasDescriptor d h →
+  mode d ≡ linearMode →
+  life d ≡ live →
+  HasLiveLinear (key d) h
+liveLinearAtKey descriptorHere modeIsLinear lifeIsLive =
+  linearLiveHere refl modeIsLinear lifeIsLive
+liveLinearAtKey (descriptorThere registered) modeIsLinear lifeIsLive =
+  linearLiveThere (liveLinearAtKey registered modeIsLinear lifeIsLive)
+
 AllLive : List Nat → Heap → Set
 AllLive [] h = ⊤
 AllLive (n :: ns) h = HasLive n h × AllLive ns h
@@ -297,6 +313,50 @@ record WellFormed (s : Machine) : Set where
     noLiveUnannotated : AllAnnotated (heap s)
     nextIdentityFresh : AllBelow (nextIdentity s) (keys (heap s))
 open WellFormed public
+
+-- The operand-root list records the two inputs as separate positions.
+record OperandRoots (left right : Nat) (xs : List Nat) : Set where
+  constructor operandRoots
+  field
+    rootTail : List Nat
+    rootsContainBothOperands : xs ≡ left :: right :: rootTail
+open OperandRoots public
+
+record BinaryScalarPrecondition
+  (s : Machine) (left right : Descriptor) : Set where
+  constructor binaryScalarPrecondition
+  field
+    leftRegistered : HasDescriptor left (heap s)
+    rightRegistered : HasDescriptor right (heap s)
+    leftIsScalar : kind left ≡ scalar
+    rightIsScalar : kind right ≡ scalar
+    leftIsLive : life left ≡ live
+    rightIsLive : life right ≡ live
+    leftHasCheckedMode : AnnotatedMode (mode left)
+    rightHasCheckedMode : AnnotatedMode (mode right)
+    operandRootOrder : OperandRoots (key left) (key right) (roots s)
+open BinaryScalarPrecondition public
+
+-- A well-formed machine has no linear aliasing. Because the binary-call
+-- precondition records two separate operand-root positions, an aliased live
+-- linear input contradicts the machine invariant constructively.
+linearOperandsCannotAlias :
+  (s : Machine) → WellFormed s →
+  {left right : Descriptor} →
+  BinaryScalarPrecondition s left right →
+  key left ≡ key right →
+  mode left ≡ linearMode → ⊥
+linearOperandsCannotAlias s wf {left} {right} pre sameIdentity leftLinear
+  with subst
+    {P = λ rs →
+      NoDupOn (λ n → HasLiveLinear n (heap s))
+        (rs ++ activeCaptures (heap s) ++ activePayloads (heap s))}
+    (rootsContainBothOperands (operandRootOrder pre))
+    (noLinearAliasing wf)
+... | (noRepeatedLinearRoot , _) =
+  noRepeatedLinearRoot
+    (liveLinearAtKey (leftRegistered pre) leftLinear (leftIsLive pre))
+    (here sameIdentity)
 
 nextIsFresh :
   (s : Machine) → WellFormed s →

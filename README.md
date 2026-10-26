@@ -32,6 +32,8 @@ The runtime's `unannotated` mode is a boundary/error state, not a third source-l
 
 Each checked descriptor records a monotone logical identity (META-ID) distinct from its address, kind (scalar/thunk/result), runtime mode, lifecycle (live/consumed), code address, closed-code classification, capture identities and optional payload identity. Numeric payloads are not handle identities. The checked ABI must never decide “number versus pointer” using `MAXNUM` or any other magnitude heuristic.
 
+The checked arithmetic preconditions are represented by `BinaryScalarPrecondition`: both operands must be registered, live scalars with checked source modes, and the machine roots must account for two operand positions. The constructive lemma `linearOperandsCannotAlias` derives from `WellFormed` that those positions cannot name the same live linear identity. This discharges the model-side alias precondition; it is not yet a theorem that compiler-emitted operands satisfy this record.
+
 The Agda model defines these well-formedness conditions:
 
 1. Descriptor identities are unique.
