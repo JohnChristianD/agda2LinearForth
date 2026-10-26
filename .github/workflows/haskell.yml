@@ -96,6 +96,9 @@ jobs:
       - name: Compile and execute a generated scalar through the checked ABI
         run: |
           cabal run agda2forth -- -i test test/CheckedScalar.agda
+          echo "---- generated CheckedScalar.fth (diagnostic) ----"
+          cat CheckedScalar.fth
+          echo "---- runtime result ----"
           gforth CheckedScalar.fth test/gforth/generated-scalar-smoke.fs
 
       - name: Compile first-order triples fixture
