@@ -154,6 +154,8 @@ s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
 ;
 
 : newMeta { handle kind code env count mode state -- meta }
+    \ Preflight before allocating the metadata record itself.
+    1 requireIdentityRoom
     reserveMeta { meta }
     handle kind code env count mode state meta initializeMeta
 ;
@@ -317,6 +319,7 @@ s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
     meta META-MODE cells + @ MODE-LINEAR <> IF ABI-ERR-UNKNOWN-REPRESENTATION THROW THEN
     0 { moved }
     handle @ THUNK = IF
+        1 requireIdentityRoom
         align here 2 cells allot TO moved
         THUNK moved !
         ['] invokeClosure moved cell+ !
@@ -330,17 +333,20 @@ s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
         meta META-PAYLOAD cells + @ contained <> IF ABI-ERR-RESULT-PAYLOAD THROW THEN
         contained requireLiveMeta { containedMeta }
         containedMeta META-MODE cells + @ MODE-LINEAR <> IF ABI-ERR-RESULT-PAYLOAD THROW THEN
+        1 requireIdentityRoom
         align here 2 cells allot TO moved
         RESULT moved !
         contained moved cell+ !
         moved KIND-RESULT 0 0 0 MODE-LINEAR OWN-LIVE newMeta { movedMeta }
         contained movedMeta META-PAYLOAD cells + !
     ELSE handle @ SCALAR = IF
+        1 requireIdentityRoom
         align here 2 cells allot TO moved
         SCALAR moved !
         handle cell+ @ moved cell+ !
         moved KIND-SCALAR 0 0 0 MODE-LINEAR OWN-LIVE newMeta DROP
     ELSE handle @ ABI-BOOL-TAG = IF
+        1 requireIdentityRoom
         align here 2 cells allot TO moved
         ABI-BOOL-TAG moved !
         handle cell+ @ moved cell+ !
@@ -400,6 +406,8 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
     mode MODE-LINEAR = mode MODE-MODAL = OR 0= IF ABI-ERR-INVALID-MODE THROW THEN
     value 0< IF ABI-ERR-NAT-NEGATIVE THROW THEN
     value ABI-MAX-NAT > IF ABI-ERR-NAT-OVERFLOW THROW THEN
+    \ Check capacity before allocating the handle or metadata.
+    1 requireIdentityRoom
     align here 2 cells allot { handle }
     SCALAR handle !
     value handle cell+ !
@@ -413,6 +421,7 @@ s" invalid Agda boolean payload" exception constant ABI-ERR-INVALID-BOOLEAN
 : ABI-MAKE-BOOL { value mode -- handle }
     mode MODE-LINEAR = mode MODE-MODAL = OR 0= IF ABI-ERR-INVALID-MODE THROW THEN
     value 0= value -1 = OR 0= IF ABI-ERR-INVALID-BOOLEAN THROW THEN
+    1 requireIdentityRoom
     align here 2 cells allot { handle }
     ABI-BOOL-TAG handle !
     value handle cell+ !
@@ -650,6 +659,7 @@ s" invalid Agda boolean payload" exception constant ABI-ERR-INVALID-BOOLEAN
 
 : makeTHUNK { xt -- handle }
     xt isThunk xt isResult OR IF xt EXIT THEN
+    1 requireIdentityRoom
     align here 2 cells allot { handle }
     THUNK handle !
     ['] invokeClosure handle cell+ !
@@ -660,6 +670,7 @@ s" invalid Agda boolean payload" exception constant ABI-ERR-INVALID-BOOLEAN
 :noname ." T: " ; THUNK 1 cells + !
 
 : makeRESULT { value -- handle }
+    1 requireIdentityRoom
     align here 2 cells allot { handle }
     RESULT handle !
     value handle cell+ !
@@ -890,6 +901,8 @@ variable target
         x h = argumentMode MODE-LINEAR = AND
             IF ABI-ERR-LINEAR-SELF-CAPTURE THROW THEN
 
+        \ A linear capture needs two identities: moved capture and partial closure.
+        argumentMode MODE-LINEAR = IF 2 requireIdentityRoom ELSE 1 requireIdentityRoom THEN
         x captureValue { captured }
         hm META-ENVCOUNT cells + @ { oldCount }
         hm META-ENV cells + @ { oldEnv }

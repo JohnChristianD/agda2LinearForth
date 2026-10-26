@@ -241,6 +241,44 @@ checked-linear-boolean-result-test
 ;
 ' unsupported-boundary-test CATCH ABI-ERR-COMPILED-UNSUPPORTED = abi-assert
 
+\ Identity exhaustion must fail before changing HERE, NEXT-HANDLE-ID, or the metadata list.
+: assert-id-exhaustion-atomic { xt -- }
+  NEXT-HANDLE-ID @ { previousId }
+  HANDLE-META-HEAD @ { previousHead }
+  here { previousHere }
+  ABI-MAX-NAT NEXT-HANDLE-ID !
+  xt CATCH ABI-ERR-ID-OVERFLOW = abi-assert
+  here previousHere = abi-assert
+  HANDLE-META-HEAD @ previousHead = abi-assert
+  NEXT-HANDLE-ID @ ABI-MAX-NAT = abi-assert
+  previousId NEXT-HANDLE-ID !
+;
+
+: identity-exhaustion-scalar ( -- ) 1 MODE-MODAL ABI-MAKE-SCALAR DROP ;
+' identity-exhaustion-scalar assert-id-exhaustion-atomic
+
+: identity-exhaustion-boolean ( -- ) -1 MODE-MODAL ABI-MAKE-BOOL DROP ;
+' identity-exhaustion-boolean assert-id-exhaustion-atomic
+
+: identity-exhaustion-thunk ( -- ) 0 makeTHUNK DROP ;
+' identity-exhaustion-thunk assert-id-exhaustion-atomic
+
+: identity-exhaustion-legacy-result ( -- ) 123 makeRESULT DROP ;
+' identity-exhaustion-legacy-result assert-id-exhaustion-atomic
+
+VARIABLE identity-test-linear-handle
+88 MODE-LINEAR ABI-MAKE-SCALAR identity-test-linear-handle !
+: identity-exhaustion-linear-move ( -- )
+  identity-test-linear-handle @ DUP metadata@ moveLinearHandle DROP
+;
+' identity-exhaustion-linear-move assert-id-exhaustion-atomic
+identity-test-linear-handle @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
+
+: identity-test-body ( x -- x ) ;
+' identity-test-body makeTHUNK CONSTANT identity-test-thunk
+: identity-exhaustion-pass ( -- ) 1 identity-test-thunk pass DROP ;
+' identity-exhaustion-pass assert-id-exhaustion-atomic
+
 \ A caught invalid operation must return to the test harness, not BYE the VM.
 \ Legacy symbols remain loadable; their general behavior is outside this ABI proof.
 ' print 0<> abi-assert

@@ -13,7 +13,7 @@ jobs:
         env:
           SCHEME_UPSTREAM_SHA: 6b3d975e9274448c09b5939e637b6718c2cfb10c
           FORTH_UPSTREAM_SHA: e83f8cc735bf220f80b3655ce2158a23818910fe
-          FLIB_BASELINE_BLOB: 7016170c970793dcc9eb372e8e1a0194286d953b
+          FLIB_BASELINE_BLOB: 1330b6c13df9f97d95288e02be386f528c3f5745
         run: |
           git fetch --no-tags --depth=1 https://github.com/jespercockx/agda2scheme.git "$SCHEME_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$SCHEME_UPSTREAM_SHA"

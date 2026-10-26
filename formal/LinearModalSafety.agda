@@ -3,7 +3,7 @@
 -- Single-source-of-truth constructive specification for agda2LinearForth.
 --
 -- This module combines descriptor/ownership invariants, weakest-precondition
--- semantics with derived Hoare contracts, separation, checked stack effects,
+-- semantics with direct WP contracts, separation, checked stack effects,
 -- concrete witnesses, and a semantic mirror of the pinned compiler/runtime.
 -- The proof terms
 -- below establish properties of this Agda model. They do not, by themselves,
@@ -75,7 +75,7 @@ data RuntimeError : Set where
   linearCaptureNotAccounted modalPromotionRejected : RuntimeError
   unknownPrimitive badStackEffect : RuntimeError
   badResultPayload abiEscapeHatch : RuntimeError
-  arithmeticDomainError arithmeticOverflowError : RuntimeError
+  arithmeticDomainError arithmeticOverflowError identityOverflowError : RuntimeError
 
 -- CodeClass is a compiler/loader classification, not an execution-token address.
 -- codeOpaque is deliberately not eligible for modal promotion.
@@ -577,17 +577,17 @@ open PrimitiveSpec public
 
 numericErrors : List RuntimeError
 numericErrors = unknownHandle :: consumedHandle :: wrongKind :: expectedScalar ::
-  invalidMode :: aliasedLinearOperands :: arithmeticOverflowError :: []
+  invalidMode :: aliasedLinearOperands :: arithmeticOverflowError :: identityOverflowError :: []
 
 booleanErrors : List RuntimeError
-booleanErrors = unknownHandle :: consumedHandle :: wrongKind :: expectedBoolean :: invalidMode :: invalidBoolean :: []
+booleanErrors = unknownHandle :: consumedHandle :: wrongKind :: expectedBoolean :: invalidMode :: invalidBoolean :: identityOverflowError :: []
 
 divisionErrors : List RuntimeError
 divisionErrors = numericErrors ++ (arithmeticDomainError :: [])
 
 closureErrors : List RuntimeError
 closureErrors = unknownHandle :: consumedHandle :: wrongKind ::
-  invalidMode :: badStackEffect :: []
+  invalidMode :: badStackEffect :: identityOverflowError :: []
 
 modalErrors : List RuntimeError
 modalErrors = unknownHandle :: consumedHandle :: wrongKind ::
@@ -595,7 +595,7 @@ modalErrors = unknownHandle :: consumedHandle :: wrongKind ::
 
 constructErrors : List RuntimeError
 constructErrors = unknownHandle :: consumedHandle :: wrongKind ::
-  badStackEffect :: abiEscapeHatch :: []
+  badStackEffect :: abiEscapeHatch :: identityOverflowError :: []
 
 throwErrors : List RuntimeError
 throwErrors = abiEscapeHatch :: []
@@ -717,47 +717,8 @@ wpCatch command handler normalPostcondition exceptionalPostcondition s
 ... | returned s' = refl
 ... | thrown s' e = refl
 
--- Hoare triples remain useful as a derived, human-facing contract notation;
--- their sole definition is implication into WP, not an independent rule set.
-Hoare :
-  {S : Set} →
-  (precondition : S → Set) →
-  (command : S → Execution S) →
-  (normalPostcondition : S → Set) →
-  (exceptionalPostcondition : S → RuntimeError → Set) →
-  Set
-Hoare {S = S} precondition command normalPostcondition exceptionalPostcondition =
-  (s : S) → precondition s →
-  wp command normalPostcondition exceptionalPostcondition s
-
--- WP itself is a valid precondition for the requested outcome predicates.
-wpIsValid :
-  {S : Set} →
-  (command : S → Execution S) →
-  (normalPostcondition : S → Set) →
-  (exceptionalPostcondition : S → RuntimeError → Set) →
-  Hoare (wp command normalPostcondition exceptionalPostcondition)
-    command normalPostcondition exceptionalPostcondition
-wpIsValid command normalPostcondition exceptionalPostcondition s condition =
-  condition
-
--- Leastness: every precondition that validates the command entails WP.  Since
--- Hoare is defined from WP, this theorem cannot drift from a second rule system.
-wpIsWeakest :
-  {S : Set} →
-  (precondition : S → Set) →
-  (command : S → Execution S) →
-  (normalPostcondition : S → Set) →
-  (exceptionalPostcondition : S → RuntimeError → Set) →
-  Hoare precondition command normalPostcondition exceptionalPostcondition →
-  (s : S) → precondition s →
-  wp command normalPostcondition exceptionalPostcondition s
-wpIsWeakest precondition command normalPostcondition exceptionalPostcondition
-  valid s proof = valid s proof
-
--- State the connection to operational semantics explicitly.  This is the
--- semantic triple obtained directly from Execution, independently of the
--- Hoare presentation.  The proofs below show that the two presentations agree.
+-- Operational correctness is defined directly from command outcomes.
+-- There is deliberately no parallel triple API or second rule system.
 SemanticTriple :
   {S : Set} →
   (precondition : S → Set) →
@@ -769,32 +730,7 @@ SemanticTriple {S} precondition command normalPostcondition exceptionalPostcondi
   (s : S) → precondition s →
   executionPost normalPostcondition exceptionalPostcondition (command s)
 
-hoareToSemanticTriple :
-  {S : Set}
-  (precondition : S → Set)
-  (command : S → Execution S)
-  (normalPostcondition : S → Set)
-  (exceptionalPostcondition : S → RuntimeError → Set) →
-  Hoare precondition command normalPostcondition exceptionalPostcondition →
-  SemanticTriple precondition command normalPostcondition exceptionalPostcondition
-hoareToSemanticTriple precondition command normalPostcondition exceptionalPostcondition
-  valid s proof = valid s proof
-
-semanticTripleToHoare :
-  {S : Set}
-  (precondition : S → Set)
-  (command : S → Execution S)
-  (normalPostcondition : S → Set)
-  (exceptionalPostcondition : S → RuntimeError → Set) →
-  SemanticTriple precondition command normalPostcondition exceptionalPostcondition →
-  Hoare precondition command normalPostcondition exceptionalPostcondition
-semanticTripleToHoare precondition command normalPostcondition exceptionalPostcondition
-  valid s proof = valid s proof
-
--- Semantic admissibility and leastness: the WP predicate itself satisfies
--- the outcome contract, and every semantic precondition for that contract
--- entails WP.  This is precondition admissibility/leastness, not domain-
--- theoretic admissibility of Scott-continuous predicates over an omega-cpo.
+-- The WP predicate itself is a valid precondition for the requested outcomes.
 wpSemanticallyAdmissible :
   {S : Set}
   (command : S → Execution S)
@@ -804,8 +740,11 @@ wpSemanticallyAdmissible :
     (wp command normalPostcondition exceptionalPostcondition)
     command normalPostcondition exceptionalPostcondition
 wpSemanticallyAdmissible command normalPostcondition exceptionalPostcondition
-  s precondition = precondition
+  s preconditionProof = preconditionProof
 
+-- Leastness from the operational contract: any precondition which proves the
+-- requested outcome entails WP. This is precondition validity/leastness for
+-- the finite Execution model, not domain-theoretic admissibility over a domain.
 wpLeastnessFromOperationalSemantics :
   {S : Set}
   (precondition : S → Set)
@@ -821,23 +760,28 @@ wpLeastnessFromOperationalSemantics precondition command normalPostcondition
 skip : {S : Set} → S → Execution S
 skip s = returned s
 
-skipPreserves :
+wpSkip :
   {S : Set} {P : S → Set} →
-  Hoare P skip P (λ s e → P s)
-skipPreserves s proof = proof
+  (s : S) → P s →
+  wp skip P (λ state err → P state) s
+wpSkip s proof = proof
 
-catchPreserves :
+-- CATCH preservation is derived directly from the WP contract of the protected
+-- command and the handler's operational outcome.
+wpCatchPreserves :
   {S : Set} {P : S → Set}
   (command : S → Execution S)
   (handler : RuntimeError → S → Execution S) →
-  Hoare P command P (λ s e → P s) →
-  ((e : RuntimeError) (s : S) → P s →
-    executionPost P (λ s' e' → P s') (handler e s)) →
-  Hoare P (λ s → catchExecution (command s) handler) P (λ s e → P s)
-catchPreserves command handler commandSafe handlerSafe s proof
+  ((s : S) → P s → wp command P (λ state err → P state) s) →
+  ((err : RuntimeError) (state : S) → P state →
+    executionPost P (λ state' err' → P state') (handler err state)) →
+  (s : S) → P s →
+  wp (λ state → catchExecution (command state) handler)
+    P (λ state err → P state) s
+wpCatchPreserves command handler commandSafe handlerSafe s proof
   with command s | commandSafe s proof
 ... | returned s' | normalProof = normalProof
-... | thrown s' e | exceptionalProof = handlerSafe e s' exceptionalProof
+... | thrown s' err | exceptionalProof = handlerSafe err s' exceptionalProof
 
 
 -- ── 2. Closed checked-ABI stack effects ──
@@ -1110,7 +1054,7 @@ data StackEffect : Primitive → StackShape → StackShape → Set where
     StackEffect pPrint (valueItem (!Ty A) :: tail) (valueItem (!Ty A) :: tail)
 
 -- These are error transitions, not ordinary stack-returning effects. The
--- state/error payload is modeled by Execution and the Hoare contracts.
+-- state/error payload is modeled by Execution and the WP contracts.
 data ErrorEffect : Primitive → StackShape → RuntimeError → Set where
   throwEffect : {e : RuntimeError} {tail : StackShape} →
     ErrorEffect pThrow (errorTokenItem e :: tail) e
@@ -1676,28 +1620,30 @@ FramedPost normal exceptional frameInvariant (framedReturned s f) =
 FramedPost normal exceptional frameInvariant (framedThrown s f err) =
   exceptional s err × frameInvariant f
 
-FramedHoare :
+FramedWP :
   {S F : Set} →
   (precondition : S → Set) →
   (command : S → F → FramedExecution S F) →
   (normalPostcondition : S → Set) →
   (exceptionalPostcondition : S → RuntimeError → Set) →
   (frameInvariant : F → Set) → Set
-FramedHoare {S} {F} precondition command normalPostcondition
+FramedWP {S} {F} precondition command normalPostcondition
   exceptionalPostcondition frameInvariant =
   (s : S) → (f : F) → precondition s → frameInvariant f →
   FramedPost normalPostcondition exceptionalPostcondition frameInvariant
     (command s f)
 
-frameRule :
+-- WP frame rule for a command whose concrete footprint is already known to
+-- leave the frame untouched. It does not establish locality for arbitrary Forth.
+wpFrameRule :
   {S F : Set} →
   {P Q : S → Set} →
   {E : S → RuntimeError → Set} →
   {R : F → Set} →
   {command : S → Execution S} →
-  Hoare P command Q E →
-  FramedHoare P (frameCommand command) Q E R
-frameRule {command = command} safe s f preconditionProof frameProof
+  ((s : S) → P s → wp command Q E s) →
+  FramedWP P (frameCommand command) Q E R
+wpFrameRule {command = command} safe s f preconditionProof frameProof
   with command s | safe s preconditionProof
 ... | returned s' | postProof = postProof , frameProof
 ... | thrown s' err | postProof = postProof , frameProof
@@ -2835,3 +2781,101 @@ module ScottScalarDenotation where
   noRuntimeModeDecoder decode linearCorrect modalCorrect =
     linearIsNotModal
       (transDenotation (symDenotation linearCorrect) modalCorrect)
+
+ 
+-- Abstract account of the checked allocator's identity-exhaustion boundary.
+-- arenaCursor and metadataCount abstract HERE and the metadata-list mutation.
+module ABIAllocationWP where
+
+  natLessBool : Nat → Nat → Bool
+  natLessBool zero zero = false
+  natLessBool zero (suc y) = true
+  natLessBool (suc x) zero = false
+  natLessBool (suc x) (suc y) = natLessBool x y
+
+  natAtMost : Nat → Nat → Bool
+  natAtMost n bound = natLessBool n (suc bound)
+
+  natLessThanZero : (n : Nat) → natLessBool n zero ≡ false
+  natLessThanZero zero = refl
+  natLessThanZero (suc n) = refl
+
+  natLessThanAfterPositiveAddition :
+    (n k : Nat) → natLessBool (n + suc k) (suc n) ≡ false
+  natLessThanAfterPositiveAddition zero k = natLessThanZero k
+  natLessThanAfterPositiveAddition (suc n) k =
+    natLessThanAfterPositiveAddition n k
+
+  natAtMostAfterPositiveAddition :
+    (n k : Nat) → natAtMost (n + suc k) n ≡ false
+  natAtMostAfterPositiveAddition n k =
+    natLessThanAfterPositiveAddition n k
+
+  record AllocationState : Set where
+    constructor allocationState
+    field
+      arenaCursor : Nat
+      nextIdentity : Nat
+      metadataCount : Nat
+  open AllocationState public
+
+  data AllocationOutcome : Set where
+    allocationFailed : RuntimeError → AllocationState → AllocationOutcome
+    allocationSucceeded : AllocationState → AllocationOutcome
+
+  -- identityBound is ABI-MAX-NAT. identityCount/cellCount describe the
+  -- complete preflighted allocation group. Failure leaves state untouched.
+  allocateBlock :
+    Nat → Nat → Nat → AllocationState → AllocationOutcome
+  allocateBlock identityBound identityCount cellCount state
+    with natAtMost (nextIdentity state + identityCount) identityBound
+  ... | false = allocationFailed identityOverflowError state
+  ... | true =
+    allocationSucceeded
+      (allocationState
+        (arenaCursor state + cellCount)
+        (nextIdentity state + identityCount)
+        (metadataCount state + identityCount))
+
+  AllocationPost :
+    (normal : AllocationState → Set) →
+    (exceptional : RuntimeError → AllocationState → Set) →
+    AllocationOutcome → Set
+  AllocationPost normal exceptional (allocationFailed err state) =
+    exceptional err state
+  AllocationPost normal exceptional (allocationSucceeded state) =
+    normal state
+
+  wpAllocateBlock :
+    (identityBound identityCount cellCount : Nat) →
+    (state : AllocationState) →
+    (normal : AllocationState → Set) →
+    (exceptional : RuntimeError → AllocationState → Set) → Set
+  wpAllocateBlock identityBound identityCount cellCount state normal exceptional =
+    AllocationPost normal exceptional
+      (allocateBlock identityBound identityCount cellCount state)
+
+  identityExhaustionIsAtomic :
+    (identityBound remainingIds cellCount : Nat) →
+    {state : AllocationState} →
+    nextIdentity state ≡ identityBound →
+    allocateBlock identityBound (suc remainingIds) cellCount state ≡
+      allocationFailed identityOverflowError state
+  identityExhaustionIsAtomic identityBound remainingIds cellCount {state}
+    identityAtLimit
+    rewrite identityAtLimit
+          | natAtMostAfterPositiveAddition identityBound remainingIds = refl
+
+  identityExhaustionSatisfiesWP :
+    (identityBound remainingIds cellCount : Nat) →
+    (state : AllocationState) →
+    nextIdentity state ≡ identityBound →
+    (normal : AllocationState → Set) →
+    (exceptional : RuntimeError → AllocationState → Set) →
+    exceptional identityOverflowError state →
+    wpAllocateBlock identityBound (suc remainingIds) cellCount state
+      normal exceptional
+  identityExhaustionSatisfiesWP identityBound remainingIds cellCount state
+    identityAtLimit normal exceptional exceptionalProof
+    rewrite identityExhaustionIsAtomic identityBound remainingIds cellCount
+      identityAtLimit = exceptionalProof
