@@ -27,7 +27,7 @@ The unified module contains:
 - a descriptor heap and identity model, root/capture/payload invariants, freshness and uniqueness conditions;
 - evidence-gated copy/discard, linear ownership, and modal-promotion preconditions;
 - a disjoint-heap predicate (`Sep`) for separation-style reasoning;
-- total Hoare triples with distinct normal and exceptional postconditions, plus a `CATCH` composition-preservation lemma;
+- a weakest-precondition (`wp`) transformer for normal and exceptional outcomes, sequential composition and `CATCH`; Hoare triples are derived from WP rather than maintained as a second rule system;
 - typed stack-shape effects and constructive examples for selected checked operations;
 - a model of the raw-natural/legacy-add and raw-boolean output paths in the current compiler;
 - an explicit table mirroring the current supported `TPrim` mappings and unsupported `fthError ... bye` path;
@@ -90,13 +90,17 @@ The [GNU Gforth manual](https://gforth.org/manual/) is directly relevant. Focus 
 
 Useful terms: **data stack, stack effect, execution token (XT), dictionary entry, compile-time semantics, run-time semantics, static binding, literal, normal exit, exceptional exit**.
 
-### 4. Hoare logic and separation reasoning
+### 4. Weakest preconditions, derived Hoare contracts, and separation
 
-A Hoare triple `{P} C {Q}` says that, when precondition `P` holds, command `C` establishes normal postcondition `Q`; this repo additionally specifies what happens on exceptions. Separation logic adds a way to split a heap into disjoint ownership regions. In the model, `Sep` states a disjoint descriptor-identity split, while `WellFormed` combines ownership and aliasing invariants.
+The authoritative contract interface is `wp command normal exceptional state`. It maps a command and its two outcome predicates back to the initial state. A normal result must establish the normal postcondition; a `THROW` must establish the exceptional postcondition using the resulting state and error. The model explicitly does not treat divergence as successful termination: ordinary `Execution` models normal and exceptional outcomes, while `CoreDenotation` represents finite-fuel exhaustion separately.
 
-Start with the `Hoare`, `Sep`, and `catchPreserves` declarations in [the unified module](formal/LinearModalSafety.agda). Then compare the vocabulary with [Hoare Type Theory](https://github.com/imdea-software/htt) or [Separation Logic Proofs in Lean](https://github.com/verse-lab/splean). Those use other proof assistants; study their specifications and proof structure rather than trying to import their code into Agda.
+`Hoare P command Q E` is derived as `∀ state, P state → wp command Q E state`. Thus Hoare triples remain a convenient presentation for specifications, while the WP transformer owns the semantics. The checked proofs include WP equations for sequential composition and `CATCH`, which are the important backward-reasoning laws for the runtime. This mirrors the UPenn Software Foundations treatment of WP as the predicate making a triple valid, rather than duplicating WP and Hoare rules as independent systems.
 
-Useful terms: **precondition, postcondition, Hoare triple, invariant, frame rule, separating conjunction, heap footprint, aliasing, ownership transfer, normal/exceptional postcondition**.
+`Sep` describes a decomposition into heaps with disjoint descriptor identities. The `ConcurrentSeparation` submodule carries normal and exceptional frame contracts and explicit pre-state/post-state disjointness. A frame theorem is applicable to actual Forth code only after its read/write footprint is established; disjointness at entry alone does not prove that a command leaves the frame untouched.
+
+Start with `wp`, `wpSequence`, `wpCatch`, `Hoare`, `Sep`, and the frame proofs in [the single Agda specification](formal/LinearModalSafety.agda). Useful comparative sources include [UPenn Software Foundations on WP semantics](https://softwarefoundations.cis.upenn.edu/current/current/slf-current/WPsem.html), [Hoare Type Theory](https://github.com/imdea-software/htt), and [Separation Logic Proofs in Lean](https://github.com/verse-lab/splean). Those use other proof assistants; their ideas guide the specification, not code imports.
+
+Useful terms: **weakest precondition, predicate transformer, normal/exceptional outcome, precondition strength, frame rule, separating conjunction, heap footprint, aliasing, ownership transfer**.
 
 ### Denotational semantics, frame rule, and concurrent interference
 
@@ -120,17 +124,15 @@ Raw unboxed Nat cells in this profile are converted to immutable modal scalar ha
 
 The unified standard-library-free `formal/LinearModalSafety.agda` now also contains explicit stack-effect witnesses for subtraction, multiplication, quotient, remainder, order comparisons, monus, modal/mixed modes, conditional selection, constructor/matcher schemas, result pack/unpack, and observation. Its scalar bridge lemmas prove payload/mode preservation and arithmetic/equality correspondence by Agda definitional equality. This answers why earlier examples looked like Nat addition/equality only: that was a short example set, not a justified limitation of the primitive catalogue.
 
-## Broader Scott-Strachey-style reference semantics
+## Consolidated Scott–Strachey semantics and refinement boundary
 
-The new `formal/LinearModalDenotational.agda` defines a compositional, fuel-bounded denotation for a wider core language than the scalar example set: variables and closures, application, Nat arithmetic and comparisons, conditionals, tagged constructors and arity-checked matching, result packing/unpacking, explicit exceptions and catch, and observable print events. The evaluator distinguishes normal return, a named exception, and finite-fuel exhaustion, and carries an output trace. Its proof examples establish equations for beta-reduction of an identity closure, arithmetic and division-by-zero, a constructor/matcher case, result round-tripping, catch, and print. It imports no Agda standard library and introduces no postulates.
+The former standalone `LinearModalDenotational.agda` and `LinearModalConcurrency.agda` files are consolidated as nested `CoreDenotation` and `ConcurrentSeparation` submodules inside `formal/LinearModalSafety.agda`. This keeps one source of truth while recovering useful PR #13 work: fuel-bounded compositional evaluation of variables, closures/application, arithmetic and comparisons, conditionals, constructors/matching, result packing, exceptions/catch, and observable print traces; plus normal and exceptional frame contracts with explicit disjointness evidence.
 
-The finite evaluator is deliberately a reference semantics for the modeled core, not a domain-theoretic model of every Haskell or Forth program. Fuel exhaustion is explicit rather than silently treating nontermination as a value. The current model does not claim to make arbitrary recursion total or to model arbitrary Forth dictionary mutation, I/O, pointers, or execution tokens. The existing `LinearModalSafety.agda` remains the source of truth for descriptor invariants, copy/drop permissions, stack effects, scalar ABI correspondence, Hoare contracts, and the runtime dispatch table.
+A proof that the model evaluates its own syntax is not a compiler/runtime refinement theorem. The remaining obligation is a simulation between the exact supported emitted Forth forms and this abstract semantics, including stack effects, descriptor identity, linear ownership, error state, output observations, and state changes on both normal and exceptional exits. `wp` is now the central contract interface for those obligations, with Hoare notation derived from it.
 
-`formal/LinearModalConcurrency.agda` adds a heap-specific separation frame rule for both normal and exceptional postconditions. Crucially, the rule requires disjoint identities before and after the local command; starting disjointness alone is not a proof that a Forth operation remains local. This is useful concurrency reasoning only once concrete reads/writes and interference have been bounded for each operation. It is not a proof that the present global metadata lists, dictionary operations, or arbitrary `EXECUTE` satisfy locality.
+The previously failing conditional example has been repaired by proving the neutral-trace law for `prefixOutcome`; `refl` could not establish that law when the branch evaluation was stuck behind a variable. The complete CI run must still confirm this fix and the consolidated module under pinned Agda 2.6.2.2.
 
-These modules broaden the formal account but do not magically discharge the whole-backend refinement obligation. The fixed `ToForth.hs` still emits the general thunk/application, constructor/matcher, wildcard, array and legacy layouts. The scalar integration check covers one audited generated entrypoint; it does not establish a simulation theorem for every emitted form. The next proof step is to relate each emitted form to this syntax and the actual Forth word transition, with invariant preservation on both normal and exceptional exits.
-
-Reference background: the [Haskell Wikibooks chapter on denotational semantics](https://en.wikibooks.org/wiki/Haskell/Denotational_semantics) explains compositional denotations and partial computations; the [Stanford Encyclopedia entry on games, full abstraction and full completeness](https://plato.stanford.edu/entries/games-abstraction/) connects compositional denotation to operational observations, adequacy, and full abstraction. The latter is a stronger goal than the current bridge lemmas establish.
+Reference background: [Haskell Wikibooks on denotational semantics](https://en.wikibooks.org/wiki/Haskell/Denotational_semantics), [UPenn Software Foundations on WP semantics](https://softwarefoundations.cis.upenn.edu/current/current/slf-current/WPsem.html), [XDS-Agda](https://pdmosses.github.io/xds-agda/), [nLab on denotational semantics](https://ncatlab.org/nlab/show/denotational%2Bsemantics), and [Stanford Encyclopedia of Philosophy on constructive mathematics and RUSS](https://plato.stanford.edu/entries/mathematics-constructive/). For linear ownership and Forth, see Henry Baker's [Linear Logic and Permutation Stacks — The Forth Shall Be First](https://dcreager.net/papers/Baker1994/). These references motivate design choices; none, individually, establishes this repository's end-to-end theorem.
 
 ## What is and is not proved
 
