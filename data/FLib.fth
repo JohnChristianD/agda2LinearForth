@@ -77,7 +77,8 @@ s" unreachable Agda branch" exception constant ABI-ERR-UNREACHABLE
     BEGIN
     addr 1 pick cells + @
     dup ENDFLAG = if
-        2drop
+        \ Drop only the index; preserve accumulated values for foldThunks.
+        drop
         EXIT
     then
     swap 1 +
