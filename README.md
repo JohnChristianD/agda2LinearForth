@@ -52,6 +52,36 @@ Items 5 and 6 are explicitly models of source behavior inspected in `ToForth.hs`
 
 A Forth-only patch can improve runtime defense, but it cannot by itself establish full source-semantic refinement while the compiler output omits required mode and value-construction evidence. The sound path is to change the emission contract or introduce a verified source-aware translation step, then prove that every supported generated form uses it. Unsupported forms must fail through a documented boundary, not silently use legacy operations or terminate via `BYE`.
 
+
+## Preserved weakest-precondition and denotational semantics
+
+This branch is intentionally based on the last green master commit. It preserves PR #14's Agda model for continued review, but deliberately does **not** import that PR's experimental Forth changes, CI edits, debugging trace code, or generated-runtime regression. No Haskell, Forth runtime, workflow, or test files are changed here. The purpose is to assess and preserve formal ideas independently from the unresolved compiler/runtime failure.
+
+The primary contract interface is the WP transformer, taking a command, normal postcondition, exceptional postcondition, and initial state. It computes the conditions required for the requested normal result or exceptional THROW outcome. Sequential composition and CATCH have WP equations. Hoare triples are derived as
+
+    Hoare P command Q E = ∀ state, P state → wp command Q E state
+
+The wpIsValid and wpIsWeakest lemmas show admissibility and leastness *for this formal transition model*. Hoare notation is therefore redundant as an independent axiom/rule system, but not redundant as readable specification syntax: keep it as a derived view. This matches the UPenn Software Foundations characterization of WP as the precondition predicate equivalent to triple validity: https://softwarefoundations.cis.upenn.edu/current/current/slf-current/WPsem.html.
+
+The unified Agda file contains three semantic layers: a finite scalar fragment with explicit errors and mode propagation; CoreDenotation, a fuel-bounded compositional model of variables, closures, application, constructors, matching, result wrappers, exceptions and print traces; and ScottScalarDenotation, which separates divergence (bottom), normal returns and exceptions. It also retains normal/exceptional frame-contract lemmas and disjoint-update commutation. These are properties of the Agda models. They are **not yet** a compiler-correctness theorem or a proof that the unchanged Haskell emitter and existing Forth runtime implement every modeled transition.
+
+### Where Kleene's first and second algebras fit
+
+The nLab entries on [Kleene's first algebra](https://ncatlab.org/nlab/show/Kleene%27s%2Bfirst%2Balgebra), [Kleene's second algebra](https://ncatlab.org/nlab/show/Kleene%27s%2Bsecond%2Balgebra), and [partial combinatory algebras](https://ncatlab.org/nlab/show/partial%2Bcombinatory%2Balgebra) are useful, but for a different layer than WP itself.
+
+- **Kleene's first algebra (K1)** models partial recursive computation through number-coded programs and application. It is the natural realizability reference for the Richman/RUSS and parametric-enumerability part of this project: a computational interpretation of propositions and effective program witnesses.
+- **Kleene's second algebra (K2)** uses Baire-space functions and models function realizability / type-two computability. It becomes relevant if the denotational domain explicitly includes infinite streams, choice sequences, or computable analysis. It is not needed just to model finite Forth stacks and natural-number primitives.
+- **Neither algebra automatically supplies** the Scott domain for this language, an end-to-end Forth refinement, or weakest-precondition leastness/admissibility proofs. A PCA provides an applicative/computability model; the compiler proof still needs a relation between source terms, emitted Forth, runtime states, and observations.
+- **WP leastness** is an order-theoretic fact about predicates: the semantic WP is valid, and every other valid precondition entails it. **Domain-theoretic admissibility** is a separate question about predicates over a domain, typically closure under limits of increasing chains. The current state model uses finite execution outcomes and does not yet define a Scott domain/order for the full Forth state space, so it cannot claim that stronger admissibility property.
+
+A sensible follow-on is to formalize the computability interpretation separately from the runtime WP core: first define the chosen K1/partial-recursive representation and the exact parametric-enumerability assumption; then prove the specific Rice-style result with its extensionality and coding hypotheses; only afterwards connect that result to the supported compiler fragment. Keep K2 optional unless the project adds genuinely type-two/infinite-input semantics. This follows the modular style demonstrated by [XDS-Agda](https://pdmosses.github.io/xds-agda/) without importing its domain postulates into the current safe file.
+
+### Axiom and rewrite discipline
+
+Keep parametric enumerability in a separate, explicitly assumed Richman/RUSS module. Do not silently conflate it with countable choice; derive any choice principle required by the exact PE formulation or state it separately. Do not combine full univalence with global K/UIP (Agda's with-K mode); an optional univalent synthetic-computability development belongs in a separate Cubical Agda / without-K track. The compiler/runtime WP model does not need RUSS axioms.
+
+There are currently no custom Agda rewrite rules in this core. The confluence checker becomes relevant when actual rewrite rules are introduced, not just because postulates exist. Agda's checker addresses overlaps and the triangle property for rewrite rules; keep any such experiment isolated and run the checker after each rule-set change: https://agda.readthedocs.io/en/latest/language/rewriting.html.
+
 ## What remains unproved
 
 These are the outstanding obligations, not claims that CI has already discharged them:
@@ -88,7 +118,7 @@ The [GNU Gforth manual](https://gforth.org/manual/) is directly relevant. Focus 
 
 Useful terms: **data stack, stack effect, execution token (XT), dictionary entry, compile-time semantics, run-time semantics, static binding, literal, normal exit, exceptional exit**.
 
-### 4. Hoare logic and separation reasoning
+### 4. Weakest preconditions, derived Hoare triples, and separation reasoning
 
 A Hoare triple `{P} C {Q}` says that, when precondition `P` holds, command `C` establishes normal postcondition `Q`; this repo additionally specifies what happens on exceptions. Separation logic adds a way to split a heap into disjoint ownership regions. In the model, `Sep` states a disjoint descriptor-identity split, while `WellFormed` combines ownership and aliasing invariants.
 
