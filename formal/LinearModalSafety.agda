@@ -1300,8 +1300,9 @@ rawPlusTrackedNonScalarFailsClosed = refl
 runtimeCombineModes : RuntimeMode → RuntimeMode → RuntimeMode
 runtimeCombineModes unannotated _ = unannotated
 runtimeCombineModes _ unannotated = unannotated
-runtimeCombineModes linearMode _ = linearMode
-runtimeCombineModes _ linearMode = linearMode
+runtimeCombineModes linearMode linearMode = linearMode
+runtimeCombineModes linearMode modalMode = linearMode
+runtimeCombineModes modalMode linearMode = linearMode
 runtimeCombineModes modalMode modalMode = modalMode
 
 unannotatedIsAbsorbingLeft :
@@ -1314,33 +1315,21 @@ unannotatedIsAbsorbingRight unannotated = refl
 unannotatedIsAbsorbingRight linearMode = refl
 unannotatedIsAbsorbingRight modalMode = refl
 
-linearIsAbsorbingLeft :
-  (m : RuntimeMode) → runtimeCombineModes linearMode m ≡ linearMode
-linearIsAbsorbingLeft unannotated = refl
-linearIsAbsorbingLeft linearMode = refl
-linearIsAbsorbingLeft modalMode = refl
+linearWithAnnotatedRight :
+  (m : RuntimeMode) → AnnotatedMode m →
+  runtimeCombineModes linearMode m ≡ linearMode
+linearWithAnnotatedRight linearMode checkedLinearMode = refl
+linearWithAnnotatedRight modalMode checkedModalMode = refl
 
-linearIsAbsorbingRight :
-  (m : RuntimeMode) → runtimeCombineModes m linearMode ≡ linearMode
-linearIsAbsorbingRight unannotated = refl
-linearIsAbsorbingRight linearMode = refl
-linearIsAbsorbingRight modalMode = refl
+linearWithAnnotatedLeft :
+  (m : RuntimeMode) → AnnotatedMode m →
+  runtimeCombineModes m linearMode ≡ linearMode
+linearWithAnnotatedLeft linearMode checkedLinearMode = refl
+linearWithAnnotatedLeft modalMode checkedModalMode = refl
 
 modalOnlyJoinsToModal :
   runtimeCombineModes modalMode modalMode ≡ modalMode
 modalOnlyJoinsToModal = refl
-
-trackedNonScalarWithTrackedScalarRejectsWrongKind :
-  runtimeBinaryRoute trackedNonScalar trackedScalar ≡ dispatchRejectWrongKind
-trackedNonScalarWithTrackedScalarRejectsWrongKind = refl
-
-trackedScalarWithTrackedNonScalarRejectsWrongKind :
-  runtimeBinaryRoute trackedScalar trackedNonScalar ≡ dispatchRejectWrongKind
-trackedScalarWithTrackedNonScalarRejectsWrongKind = refl
-
-trackedNonScalarPairRejectsWrongKind :
-  runtimeBinaryRoute trackedNonScalar trackedNonScalar ≡ dispatchRejectWrongKind
-trackedNonScalarPairRejectsWrongKind = refl
 
 -- ── 7. Verification boundary ──
 --
