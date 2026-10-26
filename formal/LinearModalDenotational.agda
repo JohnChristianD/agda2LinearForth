@@ -186,6 +186,10 @@ mutual
   -- Fuel bounds recursive evaluation depth. It makes the denotation total
   -- without assuming normalization for arbitrary recursive or user Forth code.
   eval : Nat → Env → Term → Outcome
+  evalList : Nat → Env → DList Term → ValuesOutcome
+  matchOutcome : Nat → Env → Nat → Nat → Term → Term → Outcome → Outcome
+  catchOutcome : Nat → Env → Term → Outcome → Outcome
+
   eval zero env term = outOfFuel dnil
   eval (suc fuel) env (tNat n) = returned (vNat n modal) dnil
   eval (suc fuel) env (tBool b mode) = returned (vBool b mode) dnil
@@ -260,7 +264,6 @@ mutual
   ... | raised err trace = raised err trace
   ... | outOfFuel trace = outOfFuel trace
 
-  evalList : Nat → Env → DList Term → ValuesOutcome
   evalList zero env terms = valuesOutOfFuel dnil
   evalList (suc fuel) env dnil = valuesReturned dnil dnil
   evalList (suc fuel) env (dcons term terms) with eval fuel env term
