@@ -64,8 +64,11 @@ s" unreachable Agda branch" exception constant ABI-ERR-UNREACHABLE
 ;
 
 : pushArrayN { addr n -- xn .. x2 x1 }
+    \ Closure environment index 0 is the newest De Bruijn binding. Gforth locals
+    \ consume from the top of the data stack in reverse declaration order, so
+    \ push the environment backwards to make env[0] the topmost local argument.
     n 0 > if n 0 do
-        addr i cells + @
+        addr n 1- i - cells + @
     loop
     then
 ;
