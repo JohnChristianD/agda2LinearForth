@@ -9,20 +9,20 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Enforce no Haskell-source drift in this PR
-        if: ${{ github.event_name == 'pull_request' }}
+      - name: Verify exact upstream Haskell source identity
         env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          UPSTREAM_SHA: e83f8cc735bf220f80b3655ce2158a23818910fe
         run: |
-          git fetch --no-tags --depth=1 origin "$PR_BASE_SHA"
-          git diff --exit-code "$PR_BASE_SHA" HEAD -- '*.hs'
+          git fetch --no-tags --depth=1 https://github.com/LMMilliken/agda2Forth.git refs/heads/master
+          test "$(git rev-parse FETCH_HEAD)" = "$UPSTREAM_SHA"
+          git diff --exit-code "$UPSTREAM_SHA" HEAD -- '*.hs'
 
       - name: Set up GHC
         uses: haskell-actions/setup@v2
         id: setup
         with:
-          ghc-version: '9.10.3'
-          # Keep the upstream agda2scheme setup/cache/build sequence.
+          ghc-version: '9.0.2'
+          # Match pinned Forth upstream source compatibility (GHC 9.0.2 / Agda 2.6.2.x).
           cabal-version: 'latest'
           cabal-update: true
 
@@ -68,7 +68,7 @@ jobs:
 
       - name: Install Agda CLI for formal checks
         run: |
-          cabal install Agda-2.8.0.2 --installdir="$HOME/.local/bin" --overwrite-policy=always
+          cabal install Agda-2.6.2.2 --installdir="$HOME/.local/bin" --overwrite-policy=always
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/agda" --version
 
