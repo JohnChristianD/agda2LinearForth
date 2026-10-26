@@ -107,6 +107,8 @@ The generic `frameRule` lifts a proved command to a state plus an untouched fram
 CI now compiles a small Agda scalar fixture and executes the emitted `.fth` through `ABI-CHECKED-RUN-NAT`. This is an end-to-end runtime test for that particular scalar entrypoint, not a theorem about all generated programs. Whole-backend correspondence for closures, application, constructor/matcher layout, capture ownership, and unsupported output remains open.
 
 Useful references include the [Haskell Wikibooks chapter on denotational semantics](https://en.wikibooks.org/wiki/Haskell/Denotational_semantics), [XDS-Agda](https://pdmosses.github.io/xds-agda/), [nLab's denotational semantics overview](https://ncatlab.org/nlab/show/denotational%2Bsemantics), and the [Stanford Encyclopedia of Philosophy entry on constructive mathematics](https://plato.stanford.edu/entries/mathematics-constructive/). The SEP describes RUSS as recursive-function theory using intuitionistic logic and summarizes Richman's CPF-based axiomatization; those foundations inform the constructive style here but do not prove the compiler/runtime correspondence.
+- [Rntz: On dynamic and static types](https://www.rntz.net/post/2014-06-16-on-dynamic-and-static-types.html) — treats dynamic values as semantic variants rather than encouraging the runtime to guess what an untagged cell means.
+- [Rntz: Datafun](https://www.rntz.net/files/datafun.pdf) — compositional denotational semantics, iteration, and termination are useful background for any later extension from the finite scalar fragment toward recursive programs.
 
 ### Checked scalar bridge and scope of the refinement claim
 

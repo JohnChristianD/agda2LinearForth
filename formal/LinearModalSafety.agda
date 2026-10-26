@@ -1951,14 +1951,8 @@ denoteScalar (sLt left right) with denoteScalar left | denoteScalar right
   scalarReturned (scalarBool (bridgeNatLt x y) (joinSourceMode leftMode rightMode))
 denoteScalar (sIfNat condition yes no) with denoteScalar condition
 ... | scalarRaised err = scalarRaised err
-... | scalarReturned (scalarBool true conditionMode) with denoteScalar yes
-...   | scalarRaised err = scalarRaised err
-...   | scalarReturned (scalarNat value selectedMode) =
-  scalarReturned (scalarNat value selectedMode)
-... | scalarReturned (scalarBool false conditionMode) with denoteScalar no
-...   | scalarRaised err = scalarRaised err
-...   | scalarReturned (scalarNat value selectedMode) =
-  scalarReturned (scalarNat value selectedMode)
+... | scalarReturned (scalarBool true conditionMode) = denoteScalar yes
+... | scalarReturned (scalarBool false conditionMode) = denoteScalar no
 
 scalarFromCell : BridgeNatCell → ScalarTerm naturalTy
 scalarFromCell (bridgeRawNat n) = sNatLiteral n
