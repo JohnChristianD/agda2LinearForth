@@ -755,6 +755,69 @@ wpIsWeakest :
 wpIsWeakest precondition command normalPostcondition exceptionalPostcondition
   valid s proof = valid s proof
 
+-- State the connection to operational semantics explicitly.  This is the
+-- semantic triple obtained directly from Execution, independently of the
+-- Hoare presentation.  The proofs below show that the two presentations agree.
+SemanticTriple :
+  {S : Set} →
+  (precondition : S → Set) →
+  (command : S → Execution S) →
+  (normalPostcondition : S → Set) →
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  Set
+SemanticTriple {S} precondition command normalPostcondition exceptionalPostcondition =
+  (s : S) → precondition s →
+  executionPost normalPostcondition exceptionalPostcondition (command s)
+
+hoareToSemanticTriple :
+  {S : Set}
+  (precondition : S → Set)
+  (command : S → Execution S)
+  (normalPostcondition : S → Set)
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  Hoare precondition command normalPostcondition exceptionalPostcondition →
+  SemanticTriple precondition command normalPostcondition exceptionalPostcondition
+hoareToSemanticTriple precondition command normalPostcondition exceptionalPostcondition
+  valid s proof = valid s proof
+
+semanticTripleToHoare :
+  {S : Set}
+  (precondition : S → Set)
+  (command : S → Execution S)
+  (normalPostcondition : S → Set)
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  SemanticTriple precondition command normalPostcondition exceptionalPostcondition →
+  Hoare precondition command normalPostcondition exceptionalPostcondition
+semanticTripleToHoare precondition command normalPostcondition exceptionalPostcondition
+  valid s proof = valid s proof
+
+-- Semantic admissibility and leastness: the WP predicate itself satisfies
+-- the outcome contract, and every semantic precondition for that contract
+-- entails WP.  This is precondition admissibility/leastness, not domain-
+-- theoretic admissibility of Scott-continuous predicates over an omega-cpo.
+wpSemanticallyAdmissible :
+  {S : Set}
+  (command : S → Execution S)
+  (normalPostcondition : S → Set)
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  SemanticTriple
+    (wp command normalPostcondition exceptionalPostcondition)
+    command normalPostcondition exceptionalPostcondition
+wpSemanticallyAdmissible command normalPostcondition exceptionalPostcondition
+  s precondition = precondition
+
+wpLeastnessFromOperationalSemantics :
+  {S : Set}
+  (precondition : S → Set)
+  (command : S → Execution S)
+  (normalPostcondition : S → Set)
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  SemanticTriple precondition command normalPostcondition exceptionalPostcondition →
+  (s : S) → precondition s →
+  wp command normalPostcondition exceptionalPostcondition s
+wpLeastnessFromOperationalSemantics precondition command normalPostcondition
+  exceptionalPostcondition valid s proof = valid s proof
+
 skip : {S : Set} → S → Execution S
 skip s = returned s
 
@@ -1177,6 +1240,42 @@ compileNatFragment : NatExpr → EmittedFragment
 compileNatFragment (natLiteral n) = rawNaturalCell n
 compileNatFragment (natAddition left right) =
   legacyAddCode (compileNatFragment left) (compileNatFragment right)
+
+-- A counterexample for the *observed* curried-application path, kept separate
+-- from the primitive-level table above. The generated scalar fixture has
+-- emitted a lambda body of the form `a c pass`. In FLib.fth, the raw/non-thunk
+-- branch of `pass { x h -- result }` returns h unchanged. Consequently this
+-- body, when both arguments are raw cells, returns the second argument instead
+-- of denoting addition. This is an audited counterexample model, not an
+-- extraction proof from Haskell; the CI output and runtime branch are the
+-- external premises that justify applying it to the current compiler.
+forthPassRawFallback : Nat → Nat → Nat
+forthPassRawFallback x h = h
+
+observedGeneratedScalarAddBody : Nat → Nat → Nat
+observedGeneratedScalarAddBody left right = forthPassRawFallback left right
+
+observedGeneratedBodyReturnsRightArgument :
+  (left right : Nat) → observedGeneratedScalarAddBody left right ≡ right
+observedGeneratedBodyReturnsRightArgument left right = refl
+
+observedGeneratedScalarBodyAt20And5 :
+  observedGeneratedScalarAddBody 20 5 ≡ 5
+observedGeneratedScalarBodyAt20And5 = refl
+
+sourceAdditionAt20And5 : 20 + 5 ≡ 25
+sourceAdditionAt20And5 = refl
+
+fiveIsNotTwentyFive : 5 ≡ 25 → ⊥
+fiveIsNotTwentyFive ()
+
+observedGeneratedBodyCannotRefineAddition :
+  (observedGeneratedScalarAddBody 20 5 ≡ 20 + 5) → ⊥
+observedGeneratedBodyCannotRefineAddition bodyRefinement =
+  fiveIsNotTwentyFive
+    (transEq
+      (transEq (symEq observedGeneratedScalarBodyAt20And5) bodyRefinement)
+      sourceAdditionAt20And5)
 
 NoCheckedRepresentation : EmittedFragment → Set
 NoCheckedRepresentation (rawNaturalCell n) = ⊤
