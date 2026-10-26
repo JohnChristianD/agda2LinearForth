@@ -8,8 +8,11 @@ module LinearModalDenotation where
 open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _*_)
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import LinearModalABI using
-  ( SourceMode; linear; modal; RuntimeError; wrongKind
+  ( ⊥; _×_; _,_; fst; snd
+  ; SourceMode; linear; modal; RuntimeError; wrongKind
   ; arithmeticDomainError; arithmeticOverflowError
+  ; Primitive; PrimitiveSpec; specifiesEveryPrimitive
+  ; Execution; returned; thrown; executionPost; Hoare
   )
 open import LinearModalStackEffects using (joinSourceMode)
 
@@ -218,7 +221,74 @@ ifPropagatesException e yesBranch noBranch = refl
 -- The source-to-ABI proof surface is exhaustive over Primitive. This theorem
 -- establishes that every declared checked primitive has a formal profile;
 -- it intentionally does not identify that profile with the bytes of FLib.fth.
-open import LinearModalABI using (Primitive; PrimitiveSpec; specifiesEveryPrimitive)
-
 everyPrimitiveHasProfile : (p : Primitive) → PrimitiveSpec p
 everyPrimitiveHasProfile = specifiesEveryPrimitive
+
+
+-- Modality erasure is information loss, not a runtime inference problem.
+-- The witness below models the fixed compiler output channel that carries a
+-- value without a source-mode tag. Since both modes map to the same cell,
+-- no decoder from that cell alone can recover both source modes correctly.
+erasedModeCell : SourceMode → Nat
+erasedModeCell _ = zero
+
+symDenotation : {A : Set} {x y : A} → x ≡ y → y ≡ x
+symDenotation refl = refl
+
+transDenotation : {A : Set} {x y z : A} →
+  x ≡ y → y ≡ z → x ≡ z
+transDenotation refl q = q
+
+linearIsNotModal : linear ≡ modal → ⊥
+linearIsNotModal ()
+
+noRuntimeModeDecoder :
+  (decode : Nat → SourceMode) →
+  decode (erasedModeCell linear) ≡ linear →
+  decode (erasedModeCell modal) ≡ modal →
+  ⊥
+noRuntimeModeDecoder decode linearCorrect modalCorrect =
+  linearIsNotModal
+    (transDenotation (symDenotation linearCorrect) modalCorrect)
+
+-- Frame rule for an operation whose transition is confined to its local
+-- component. The frame predicate is preserved on both success and THROW.
+-- In a concrete heap instantiation, F is the disjoint heap portion from Sep.
+frameRun :
+  {S F : Set} → (S → Execution S) → (S × F) → Execution (S × F)
+frameRun command (local , frame) with command local
+... | returned local' = returned (local' , frame)
+... | thrown local' err = thrown (local' , frame) err
+
+frameHoare :
+  {S F : Set}
+  {pre post : S → Set}
+  {exceptionalPost : S → RuntimeError → Set}
+  {framePredicate : F → Set}
+  (command : S → Execution S) →
+  Hoare pre command post exceptionalPost →
+  (local : S) (frame : F) →
+  pre local → framePredicate frame →
+  executionPost
+    (λ state → post (fst state) × framePredicate (snd state))
+    (λ state err → exceptionalPost (fst state) err × framePredicate (snd state))
+    (frameRun command (local , frame))
+frameHoare command safe local frame preProof frameProof
+  with command local | safe local preProof
+... | returned local' | normalProof = normalProof , frameProof
+... | thrown local' err | exceptionalProof = exceptionalProof , frameProof
+
+-- Two pure transitions over disjoint components commute. This is the
+-- algebraic non-interference fact used by the separation/frame interpretation.
+updateLeft : {S F : Set} → (S → S) → S × F → S × F
+updateLeft change (local , frame) = change local , frame
+
+updateRight : {S F : Set} → (F → F) → S × F → S × F
+updateRight change (local , frame) = local , change frame
+
+independentUpdatesCommute :
+  {S F : Set} (leftChange : S → S) (rightChange : F → F)
+  (state : S × F) →
+  updateLeft leftChange (updateRight rightChange state) ≡
+  updateRight rightChange (updateLeft leftChange state)
+independentUpdatesCommute leftChange rightChange (local , frame) = refl
