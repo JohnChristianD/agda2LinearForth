@@ -68,6 +68,7 @@ data Kind : Set where
 
 data RuntimeError : Set where
   unknownHandle consumedHandle invalidMode wrongKind : RuntimeError
+  aliasedLinearOperands : RuntimeError
   expectedScalar expectedBoolean invalidBoolean : RuntimeError
   linearCaptureNotAccounted modalPromotionRejected : RuntimeError
   unknownPrimitive badStackEffect : RuntimeError
@@ -573,14 +574,14 @@ record PrimitiveSpec (p : Primitive) : Set where
 open PrimitiveSpec public
 
 numericErrors : List RuntimeError
-numericErrors = unknownHandle :: consumedHandle :: wrongKind :: expectedScalar :: invalidMode :: []
+numericErrors = unknownHandle :: consumedHandle :: wrongKind :: expectedScalar ::
+  invalidMode :: aliasedLinearOperands :: []
 
 booleanErrors : List RuntimeError
 booleanErrors = unknownHandle :: consumedHandle :: wrongKind :: expectedBoolean :: invalidMode :: invalidBoolean :: []
 
 divisionErrors : List RuntimeError
-divisionErrors = unknownHandle :: consumedHandle :: wrongKind ::
-  invalidMode :: arithmeticDomainError :: []
+divisionErrors = numericErrors ++ (arithmeticDomainError :: [])
 
 closureErrors : List RuntimeError
 closureErrors = unknownHandle :: consumedHandle :: wrongKind ::
@@ -1331,7 +1332,104 @@ modalOnlyJoinsToModal :
   runtimeCombineModes modalMode modalMode ≡ modalMode
 modalOnlyJoinsToModal = refl
 
--- ── 7. Verification boundary ──
+-- ── 7. Constructive transaction contract for ABI-BINARY ──
+--
+-- This models the order in data/FLib.fth's ABI-BINARY:
+--   1. validate both handles as live checked scalars (precondition here);
+--   2. reject aliased linear operands;
+--   3. evaluate the raw arithmetic/comparison operator;
+--   4. allocate the result with the joined operand mode;
+--   5. consume linear inputs only after result allocation succeeds.
+--
+-- The runtime blob checked by CI is the exact source examined for this contract.
+-- These are proofs of the following explicit transition model, not a proof
+-- extracted from the concrete Forth implementation.
+
+data BinaryAliasStatus : Set where
+  noLinearAlias linearAliasDetected : BinaryAliasStatus
+
+data OperationOutcome (A : Set) : Set where
+  operationReturned : A → OperationOutcome A
+  operationThrew : RuntimeError → OperationOutcome A
+
+data BinaryCommitResult (leftMode rightMode : SourceMode) : Set where
+  binaryFailure :
+    RuntimeError → Life → Life → BinaryCommitResult leftMode rightMode
+  binarySuccess :
+    Nat → SourceMode → Life → Life → BinaryCommitResult leftMode rightMode
+
+lifeAfterBinarySuccess : SourceMode → Life
+lifeAfterBinarySuccess linear = consumed
+lifeAfterBinarySuccess modal = live
+
+checkedBinaryTransaction :
+  {leftMode rightMode : SourceMode} →
+  BinaryAliasStatus →
+  OperationOutcome Nat →
+  (Nat → SourceMode → OperationOutcome Nat) →
+  BinaryCommitResult leftMode rightMode
+checkedBinaryTransaction {leftMode} {rightMode} linearAliasDetected operation makeResult =
+  binaryFailure aliasedLinearOperands live live
+checkedBinaryTransaction {leftMode} {rightMode} noLinearAlias
+    (operationThrew err) makeResult =
+  binaryFailure err live live
+checkedBinaryTransaction {leftMode} {rightMode} noLinearAlias
+    (operationReturned rawValue) makeResult
+  with makeResult rawValue (joinSourceMode leftMode rightMode)
+... | operationThrew err = binaryFailure err live live
+... | operationReturned resultHandle =
+  binarySuccess resultHandle (joinSourceMode leftMode rightMode)
+    (lifeAfterBinarySuccess leftMode) (lifeAfterBinarySuccess rightMode)
+
+-- These equations prove that no failure before the ownership-commit writes
+-- consumes either logical operand.
+linearAliasRejectedBeforeOperation :
+  {leftMode rightMode : SourceMode} →
+  (operation : OperationOutcome Nat) →
+  (makeResult : Nat → SourceMode → OperationOutcome Nat) →
+  checkedBinaryTransaction {leftMode} {rightMode}
+    linearAliasDetected operation makeResult ≡
+  binaryFailure aliasedLinearOperands live live
+linearAliasRejectedBeforeOperation operation makeResult = refl
+
+operationFailurePreservesOperands :
+  {leftMode rightMode : SourceMode} →
+  (err : RuntimeError) →
+  (makeResult : Nat → SourceMode → OperationOutcome Nat) →
+  checkedBinaryTransaction {leftMode} {rightMode}
+    noLinearAlias (operationThrew err) makeResult ≡
+  binaryFailure err live live
+operationFailurePreservesOperands err makeResult = refl
+
+resultAllocationFailurePreservesOperands :
+  {leftMode rightMode : SourceMode} →
+  (rawValue : Nat) →
+  (err : RuntimeError) →
+  checkedBinaryTransaction {leftMode} {rightMode}
+    noLinearAlias (operationReturned rawValue)
+    (λ _ _ → operationThrew err) ≡
+  binaryFailure err live live
+resultAllocationFailurePreservesOperands rawValue err = refl
+
+successfulBinaryCommitsJoinedModeAndOwnership :
+  {leftMode rightMode : SourceMode} →
+  (rawValue resultHandle : Nat) →
+  checkedBinaryTransaction {leftMode} {rightMode}
+    noLinearAlias (operationReturned rawValue)
+    (λ _ _ → operationReturned resultHandle) ≡
+  binarySuccess resultHandle (joinSourceMode leftMode rightMode)
+    (lifeAfterBinarySuccess leftMode) (lifeAfterBinarySuccess rightMode)
+successfulBinaryCommitsJoinedModeAndOwnership rawValue resultHandle = refl
+
+linearInputConsumedOnSuccessfulCommit :
+  lifeAfterBinarySuccess linear ≡ consumed
+linearInputConsumedOnSuccessfulCommit = refl
+
+modalInputRemainsLiveOnSuccessfulCommit :
+  lifeAfterBinarySuccess modal ≡ live
+modalInputRemainsLiveOnSuccessfulCommit = refl
+
+-- ── 8. Verification boundary ──
 --
 -- To close end-to-end refinement, future work must prove that:
 -- (1) each supported compiler translation corresponds to the stated emission;
