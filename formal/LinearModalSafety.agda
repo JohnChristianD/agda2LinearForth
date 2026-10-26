@@ -2,9 +2,10 @@
 
 -- Single-source-of-truth constructive specification for agda2LinearForth.
 --
--- This module combines the descriptor/ownership model, Hoare and separation
--- contracts, checked primitive stack effects, concrete witnesses, and a small
--- semantic mirror of the pinned compiler/runtime boundary. The proof terms
+-- This module combines descriptor/ownership invariants, weakest-precondition
+-- semantics with derived Hoare contracts, separation, checked stack effects,
+-- concrete witnesses, and a semantic mirror of the pinned compiler/runtime.
+-- The proof terms
 -- below establish properties of this Agda model. They do not, by themselves,
 -- establish that arbitrary Haskell or Forth implementations refine it.
 module LinearModalSafety where
@@ -13,7 +14,7 @@ open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _*_ )
 open import Agda.Builtin.Bool using (Bool; true; false)
 open import Agda.Builtin.Equality using (_≡_; refl)
 
--- ── 1. Descriptor heap, linear/modal invariants, Hoare and separation model ──
+-- ── 1. Descriptor heap, linear/modal invariants, WP and separation model ──
 
 data ⊥ : Set where
 
