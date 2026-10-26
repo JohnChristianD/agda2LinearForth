@@ -21,7 +21,8 @@ jobs:
 
           git fetch --no-tags --depth=1 https://github.com/LMMilliken/agda2Forth.git "$FORTH_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$FORTH_UPSTREAM_SHA"
-          git diff --exit-code "$FORTH_UPSTREAM_SHA" HEAD -- src/Main.hs src/Agda/Compiler/ToForth.hs
+          # ToForth.hs is the one explicitly permitted Haskell exception; keep Main.hs pinned.
+          git diff --exit-code "$FORTH_UPSTREAM_SHA" HEAD -- src/Main.hs
 
           # The runtime dispatch table in LinearModalSafety.agda mirrors this exact baseline.
           test "$(git hash-object data/FLib.fth)" = "$FLIB_BASELINE_BLOB"
@@ -92,6 +93,11 @@ jobs:
           cabal run agda2forth -- -i test test/UnsupportedLiteral.agda
           grep -Fq 'not yet supported: String literals' UnsupportedLiteral.fth
           grep -Eq '(^|[[:space:]])bye([[:space:]]|$)' UnsupportedLiteral.fth
+
+      - name: Compile and execute supported primitive applications end to end
+        run: |
+          cabal run agda2forth -- -i test test/CheckedScalar.agda
+          gforth CheckedScalar.fth test/gforth/compiler-integration.fs
 
       - name: Compile first-order triples fixture
         run: cabal run agda2forth -- -i test test/TriplesFO.agda
