@@ -3,8 +3,8 @@
 -- Single-source-of-truth constructive specification for agda2LinearForth.
 --
 -- This module combines descriptor/ownership invariants, weakest-precondition
--- semantics with derived Hoare contracts, separation, checked stack effects,
--- concrete witnesses, and a semantic mirror of the pinned compiler/runtime.
+-- semantics, checked stack effects, allocation/exception contracts, denotational
+-- models, and a semantic mirror of the compiler/runtime boundary.
 -- The proof terms
 -- below establish properties of this Agda model. They do not, by themselves,
 -- establish that arbitrary Haskell or Forth implementations refine it.
@@ -14,7 +14,7 @@ open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _*_)
 open import Agda.Builtin.Bool using (Bool; true; false)
 open import Agda.Builtin.Equality using (_≡_; refl)
 
--- ── 1. Descriptor heap, linear/modal invariants, WP and separation model ──
+-- ── 1. Descriptor heap, linear/modal invariants, and WP model ──
 
 data ⊥ : Set where
 
@@ -75,7 +75,8 @@ data RuntimeError : Set where
   linearCaptureNotAccounted modalPromotionRejected : RuntimeError
   unknownPrimitive badStackEffect : RuntimeError
   badResultPayload abiEscapeHatch : RuntimeError
-  arithmeticDomainError arithmeticOverflowError : RuntimeError
+  arithmeticDomainError arithmeticOverflowError identityOverflowError : RuntimeError
+  nullExecutionTokenError : RuntimeError
 
 -- CodeClass is a compiler/loader classification, not an execution-token address.
 -- codeOpaque is deliberately not eligible for modal promotion.
@@ -372,22 +373,6 @@ nextIsFresh :
   (nextIdentity s ∈ₙ keys (heap s)) → ⊥
 nextIsFresh s wf = freshNotPresent (nextIdentityFresh wf)
 
--- Separation conjunction over disjoint descriptor identities.
-Disjoint : List Nat → List Nat → Set
-Disjoint [] ys = ⊤
-Disjoint (x :: xs) ys = ((x ∈ₙ ys) → ⊥) × Disjoint xs ys
-
-record Sep (P Q : Heap → Set) (whole : Heap) : Set where
-  constructor splitHeap
-  field
-    leftHeap : Heap
-    rightHeap : Heap
-    heapDecomposition : whole ≡ leftHeap ++ rightHeap
-    leftPredicate : P leftHeap
-    rightPredicate : Q rightHeap
-    disjointIdentities : Disjoint (keys leftHeap) (keys rightHeap)
-open Sep public
-
 -- The copy/drop rules are evidence-gated. No evidence constructor exists for
 -- linear or unannotated handles.
 data CanDuplicate : RuntimeMode → Set where
@@ -577,17 +562,17 @@ open PrimitiveSpec public
 
 numericErrors : List RuntimeError
 numericErrors = unknownHandle :: consumedHandle :: wrongKind :: expectedScalar ::
-  invalidMode :: aliasedLinearOperands :: arithmeticOverflowError :: []
+  invalidMode :: aliasedLinearOperands :: arithmeticOverflowError :: identityOverflowError :: []
 
 booleanErrors : List RuntimeError
-booleanErrors = unknownHandle :: consumedHandle :: wrongKind :: expectedBoolean :: invalidMode :: invalidBoolean :: []
+booleanErrors = unknownHandle :: consumedHandle :: wrongKind :: expectedBoolean :: invalidMode :: invalidBoolean :: identityOverflowError :: []
 
 divisionErrors : List RuntimeError
 divisionErrors = numericErrors ++ (arithmeticDomainError :: [])
 
 closureErrors : List RuntimeError
 closureErrors = unknownHandle :: consumedHandle :: wrongKind ::
-  invalidMode :: badStackEffect :: []
+  invalidMode :: badStackEffect :: identityOverflowError :: nullExecutionTokenError :: []
 
 modalErrors : List RuntimeError
 modalErrors = unknownHandle :: consumedHandle :: wrongKind ::
@@ -595,7 +580,7 @@ modalErrors = unknownHandle :: consumedHandle :: wrongKind ::
 
 constructErrors : List RuntimeError
 constructErrors = unknownHandle :: consumedHandle :: wrongKind ::
-  badStackEffect :: abiEscapeHatch :: []
+  badStackEffect :: abiEscapeHatch :: identityOverflowError :: []
 
 throwErrors : List RuntimeError
 throwErrors = abiEscapeHatch :: []
@@ -717,47 +702,8 @@ wpCatch command handler normalPostcondition exceptionalPostcondition s
 ... | returned s' = refl
 ... | thrown s' e = refl
 
--- Hoare triples remain useful as a derived, human-facing contract notation;
--- their sole definition is implication into WP, not an independent rule set.
-Hoare :
-  {S : Set} →
-  (precondition : S → Set) →
-  (command : S → Execution S) →
-  (normalPostcondition : S → Set) →
-  (exceptionalPostcondition : S → RuntimeError → Set) →
-  Set
-Hoare {S = S} precondition command normalPostcondition exceptionalPostcondition =
-  (s : S) → precondition s →
-  wp command normalPostcondition exceptionalPostcondition s
-
--- WP itself is a valid precondition for the requested outcome predicates.
-wpIsValid :
-  {S : Set} →
-  (command : S → Execution S) →
-  (normalPostcondition : S → Set) →
-  (exceptionalPostcondition : S → RuntimeError → Set) →
-  Hoare (wp command normalPostcondition exceptionalPostcondition)
-    command normalPostcondition exceptionalPostcondition
-wpIsValid command normalPostcondition exceptionalPostcondition s condition =
-  condition
-
--- Leastness: every precondition that validates the command entails WP.  Since
--- Hoare is defined from WP, this theorem cannot drift from a second rule system.
-wpIsWeakest :
-  {S : Set} →
-  (precondition : S → Set) →
-  (command : S → Execution S) →
-  (normalPostcondition : S → Set) →
-  (exceptionalPostcondition : S → RuntimeError → Set) →
-  Hoare precondition command normalPostcondition exceptionalPostcondition →
-  (s : S) → precondition s →
-  wp command normalPostcondition exceptionalPostcondition s
-wpIsWeakest precondition command normalPostcondition exceptionalPostcondition
-  valid s proof = valid s proof
-
--- State the connection to operational semantics explicitly.  This is the
--- semantic triple obtained directly from Execution, independently of the
--- Hoare presentation.  The proofs below show that the two presentations agree.
+-- Operational correctness is defined directly from command outcomes.
+-- There is deliberately no parallel triple API or second rule system.
 SemanticTriple :
   {S : Set} →
   (precondition : S → Set) →
@@ -769,32 +715,7 @@ SemanticTriple {S} precondition command normalPostcondition exceptionalPostcondi
   (s : S) → precondition s →
   executionPost normalPostcondition exceptionalPostcondition (command s)
 
-hoareToSemanticTriple :
-  {S : Set}
-  (precondition : S → Set)
-  (command : S → Execution S)
-  (normalPostcondition : S → Set)
-  (exceptionalPostcondition : S → RuntimeError → Set) →
-  Hoare precondition command normalPostcondition exceptionalPostcondition →
-  SemanticTriple precondition command normalPostcondition exceptionalPostcondition
-hoareToSemanticTriple precondition command normalPostcondition exceptionalPostcondition
-  valid s proof = valid s proof
-
-semanticTripleToHoare :
-  {S : Set}
-  (precondition : S → Set)
-  (command : S → Execution S)
-  (normalPostcondition : S → Set)
-  (exceptionalPostcondition : S → RuntimeError → Set) →
-  SemanticTriple precondition command normalPostcondition exceptionalPostcondition →
-  Hoare precondition command normalPostcondition exceptionalPostcondition
-semanticTripleToHoare precondition command normalPostcondition exceptionalPostcondition
-  valid s proof = valid s proof
-
--- Semantic admissibility and leastness: the WP predicate itself satisfies
--- the outcome contract, and every semantic precondition for that contract
--- entails WP.  This is precondition admissibility/leastness, not domain-
--- theoretic admissibility of Scott-continuous predicates over an omega-cpo.
+-- The WP predicate itself is a valid precondition for the requested outcomes.
 wpSemanticallyAdmissible :
   {S : Set}
   (command : S → Execution S)
@@ -804,8 +725,11 @@ wpSemanticallyAdmissible :
     (wp command normalPostcondition exceptionalPostcondition)
     command normalPostcondition exceptionalPostcondition
 wpSemanticallyAdmissible command normalPostcondition exceptionalPostcondition
-  s precondition = precondition
+  s preconditionProof = preconditionProof
 
+-- Leastness from the operational contract: any precondition which proves the
+-- requested outcome entails WP. This is precondition validity/leastness for
+-- the finite Execution model, not domain-theoretic admissibility over a domain.
 wpLeastnessFromOperationalSemantics :
   {S : Set}
   (precondition : S → Set)
@@ -821,23 +745,28 @@ wpLeastnessFromOperationalSemantics precondition command normalPostcondition
 skip : {S : Set} → S → Execution S
 skip s = returned s
 
-skipPreserves :
+wpSkip :
   {S : Set} {P : S → Set} →
-  Hoare P skip P (λ s e → P s)
-skipPreserves s proof = proof
+  (s : S) → P s →
+  wp skip P (λ state err → P state) s
+wpSkip s proof = proof
 
-catchPreserves :
+-- CATCH preservation is derived directly from the WP contract of the protected
+-- command and the handler's operational outcome.
+wpCatchPreserves :
   {S : Set} {P : S → Set}
   (command : S → Execution S)
   (handler : RuntimeError → S → Execution S) →
-  Hoare P command P (λ s e → P s) →
-  ((e : RuntimeError) (s : S) → P s →
-    executionPost P (λ s' e' → P s') (handler e s)) →
-  Hoare P (λ s → catchExecution (command s) handler) P (λ s e → P s)
-catchPreserves command handler commandSafe handlerSafe s proof
+  ((s : S) → P s → wp command P (λ state err → P state) s) →
+  ((err : RuntimeError) (state : S) → P state →
+    executionPost P (λ state' err' → P state') (handler err state)) →
+  (s : S) → P s →
+  wp (λ state → catchExecution (command state) handler)
+    P (λ state err → P state) s
+wpCatchPreserves command handler commandSafe handlerSafe s proof
   with command s | commandSafe s proof
 ... | returned s' | normalProof = normalProof
-... | thrown s' e | exceptionalProof = handlerSafe e s' exceptionalProof
+... | thrown s' err | exceptionalProof = handlerSafe err s' exceptionalProof
 
 
 -- ── 2. Closed checked-ABI stack effects ──
@@ -1110,7 +1039,7 @@ data StackEffect : Primitive → StackShape → StackShape → Set where
     StackEffect pPrint (valueItem (!Ty A) :: tail) (valueItem (!Ty A) :: tail)
 
 -- These are error transitions, not ordinary stack-returning effects. The
--- state/error payload is modeled by Execution and the Hoare contracts.
+-- state/error payload is modeled by Execution and the WP contracts.
 data ErrorEffect : Primitive → StackShape → RuntimeError → Set where
   throwEffect : {e : RuntimeError} {tail : StackShape} →
     ErrorEffect pThrow (errorTokenItem e :: tail) e
@@ -1224,44 +1153,43 @@ data NatExpr : Set where
   natLiteral : Nat → NatExpr
   natAddition : NatExpr → NatExpr → NatExpr
 
--- These constructors distinguish the compiler's legacy/raw representation
--- from the representation required by the checked ABI. The checked constructors
--- are included so the predicate below can state, and prove, their absence.
+-- These constructors distinguish raw literals, saturated primitive calls routed
+-- through the checked-or-legacy ABI adapters, and checked result constructors.
+-- The checked constructors are included so the predicate below can state, and prove, their absence.
 data EmittedFragment : Set where
   rawNaturalCell : Nat → EmittedFragment
   rawTrueCell rawFalseCell : EmittedFragment
-  legacyAddCode : EmittedFragment → EmittedFragment → EmittedFragment
+  abiAddAdapterCode : EmittedFragment → EmittedFragment → EmittedFragment
   checkedScalarCode : SourceMode → Nat → EmittedFragment
   checkedBooleanCode : SourceMode → EmittedFragment
 
--- Mirrors ToForth.hs's LitNat and PAdd cases at the value/operator-footprint
--- level: a numeric literal is a raw cell; integer addition uses legacy "add".
+-- Mirrors ToForth.hs's LitNat and saturated addition lowering: literals remain
+-- raw cells; addition is emitted via ABI-ADD-OR-LEGACY, which selects the legacy
+-- raw operation for raw/raw inputs and checked ABI for tracked scalar handles.
 compileNatFragment : NatExpr → EmittedFragment
 compileNatFragment (natLiteral n) = rawNaturalCell n
 compileNatFragment (natAddition left right) =
-  legacyAddCode (compileNatFragment left) (compileNatFragment right)
+  abiAddAdapterCode (compileNatFragment left) (compileNatFragment right)
 
--- A counterexample for the *observed* curried-application path, kept separate
--- from the primitive-level table above. The generated scalar fixture has
--- emitted a lambda body of the form `a c pass`. In FLib.fth, the raw/non-thunk
--- branch of `pass { x h -- result }` returns h unchanged. Consequently this
--- body, when both arguments are raw cells, returns the second argument instead
--- of denoting addition. This is an audited counterexample model, not an
--- extraction proof from Haskell; the CI output and runtime branch are the
--- external premises that justify applying it to the current compiler.
-forthPassRawFallback : Nat → Nat → Nat
-forthPassRawFallback x h = h
+-- Historical counterexample for the pre-fix curried-application path. The
+-- earlier generated fixture emitted a lambda body `a c pass`; the raw/non-thunk
+-- branch of `pass { x h -- result }` returns h unchanged. This witness is kept
+-- as a regression specification, not a claim about the current output after
+-- saturated primitive/builtin lowering was routed through ABI adapters. It is
+-- a model of the observed body, not a proof extracted from the Haskell emitter.
+historicalPassRawFallback : Nat → Nat → Nat
+historicalPassRawFallback x h = h
 
-observedGeneratedScalarAddBody : Nat → Nat → Nat
-observedGeneratedScalarAddBody left right = forthPassRawFallback left right
+historicalGeneratedScalarAddBody : Nat → Nat → Nat
+historicalGeneratedScalarAddBody left right = historicalPassRawFallback left right
 
-observedGeneratedBodyReturnsRightArgument :
-  (left right : Nat) → observedGeneratedScalarAddBody left right ≡ right
-observedGeneratedBodyReturnsRightArgument left right = refl
+historicalGeneratedBodyReturnsRightArgument :
+  (left right : Nat) → historicalGeneratedScalarAddBody left right ≡ right
+historicalGeneratedBodyReturnsRightArgument left right = refl
 
-observedGeneratedScalarBodyAt20And5 :
-  observedGeneratedScalarAddBody 20 5 ≡ 5
-observedGeneratedScalarBodyAt20And5 = refl
+historicalGeneratedScalarBodyAt20And5 :
+  historicalGeneratedScalarAddBody 20 5 ≡ 5
+historicalGeneratedScalarBodyAt20And5 = refl
 
 sourceAdditionAt20And5 : 20 + 5 ≡ 25
 sourceAdditionAt20And5 = refl
@@ -1269,29 +1197,29 @@ sourceAdditionAt20And5 = refl
 fiveIsNotTwentyFive : 5 ≡ 25 → ⊥
 fiveIsNotTwentyFive ()
 
-observedGeneratedBodyCannotRefineAddition :
-  (observedGeneratedScalarAddBody 20 5 ≡ 20 + 5) → ⊥
-observedGeneratedBodyCannotRefineAddition bodyRefinement =
+historicalGeneratedBodyCannotRefineAddition :
+  (historicalGeneratedScalarAddBody 20 5 ≡ 20 + 5) → ⊥
+historicalGeneratedBodyCannotRefineAddition bodyRefinement =
   fiveIsNotTwentyFive
     (transEq
-      (transEq (symEq observedGeneratedScalarBodyAt20And5) bodyRefinement)
+      (transEq (symEq historicalGeneratedScalarBodyAt20And5) bodyRefinement)
       sourceAdditionAt20And5)
 
-CurrentGeneratedScalarRefinesAddition : Set
-CurrentGeneratedScalarRefinesAddition =
+HistoricalGeneratedScalarRefinesAddition : Set
+HistoricalGeneratedScalarRefinesAddition =
   (left right : Nat) →
-  observedGeneratedScalarAddBody left right ≡ left + right
+  historicalGeneratedScalarAddBody left right ≡ left + right
 
-currentGeneratedScalarDoesNotRefineAddition :
-  CurrentGeneratedScalarRefinesAddition → ⊥
-currentGeneratedScalarDoesNotRefineAddition refinement =
-  observedGeneratedBodyCannotRefineAddition (refinement 20 5)
+historicalGeneratedScalarDoesNotRefineAddition :
+  HistoricalGeneratedScalarRefinesAddition → ⊥
+historicalGeneratedScalarDoesNotRefineAddition refinement =
+  historicalGeneratedBodyCannotRefineAddition (refinement 20 5)
 
 NoCheckedRepresentation : EmittedFragment → Set
 NoCheckedRepresentation (rawNaturalCell n) = ⊤
 NoCheckedRepresentation rawTrueCell = ⊤
 NoCheckedRepresentation rawFalseCell = ⊤
-NoCheckedRepresentation (legacyAddCode left right) =
+NoCheckedRepresentation (abiAddAdapterCode left right) =
   NoCheckedRepresentation left × NoCheckedRepresentation right
 NoCheckedRepresentation (checkedScalarCode mode n) = ⊥
 NoCheckedRepresentation (checkedBooleanCode mode) = ⊥
@@ -1396,50 +1324,48 @@ data BackendPrimitive : Set where
   backendUnsupported : BackendPrimitive
 
 data BackendEmission : Set where
-  emitLegacyAdd emitLegacySub emitLegacyMul emitLegacyQuot emitLegacyRem : BackendEmission
-  emitLegacyIf emitLegacyEq emitLegacyGeq emitLegacyLt : BackendEmission
+  emitBinaryAdapterAdd emitBinaryAdapterSub emitBinaryAdapterMul emitBinaryAdapterQuot emitBinaryAdapterRem : BackendEmission
+  emitInlineIf emitBinaryAdapterEq emitBinaryAdapterGeq emitBinaryAdapterLt : BackendEmission
   emitDiagnosticBye : BackendEmission
 
 emitSupportedPrimitive : SupportedBackendPrimitive → BackendEmission
-emitSupportedPrimitive backendAdd = emitLegacyAdd
-emitSupportedPrimitive backendSub = emitLegacySub
-emitSupportedPrimitive backendMul = emitLegacyMul
-emitSupportedPrimitive backendQuot = emitLegacyQuot
-emitSupportedPrimitive backendRem = emitLegacyRem
-emitSupportedPrimitive backendIf = emitLegacyIf
-emitSupportedPrimitive backendIntegerEq = emitLegacyEq
-emitSupportedPrimitive backendGeq = emitLegacyGeq
-emitSupportedPrimitive backendLt = emitLegacyLt
+emitSupportedPrimitive backendAdd = emitBinaryAdapterAdd
+emitSupportedPrimitive backendSub = emitBinaryAdapterSub
+emitSupportedPrimitive backendMul = emitBinaryAdapterMul
+emitSupportedPrimitive backendQuot = emitBinaryAdapterQuot
+emitSupportedPrimitive backendRem = emitBinaryAdapterRem
+emitSupportedPrimitive backendIf = emitInlineIf
+emitSupportedPrimitive backendIntegerEq = emitBinaryAdapterEq
+emitSupportedPrimitive backendGeq = emitBinaryAdapterGeq
+emitSupportedPrimitive backendLt = emitBinaryAdapterLt
 
 emitBackendPrimitive : BackendPrimitive → BackendEmission
 emitBackendPrimitive (backendSupported p) = emitSupportedPrimitive p
 emitBackendPrimitive backendUnsupported = emitDiagnosticBye
 
-data LegacyEmission : BackendEmission → Set where
-  legacyAddEmission : LegacyEmission emitLegacyAdd
-  legacySubEmission : LegacyEmission emitLegacySub
-  legacyMulEmission : LegacyEmission emitLegacyMul
-  legacyQuotEmission : LegacyEmission emitLegacyQuot
-  legacyRemEmission : LegacyEmission emitLegacyRem
-  legacyIfEmission : LegacyEmission emitLegacyIf
-  legacyEqEmission : LegacyEmission emitLegacyEq
-  legacyGeqEmission : LegacyEmission emitLegacyGeq
-  legacyLtEmission : LegacyEmission emitLegacyLt
+data SupportedEmission : BackendEmission → Set where
+  adapterAddEmission : SupportedEmission emitBinaryAdapterAdd
+  adapterSubEmission : SupportedEmission emitBinaryAdapterSub
+  adapterMulEmission : SupportedEmission emitBinaryAdapterMul
+  adapterQuotEmission : SupportedEmission emitBinaryAdapterQuot
+  adapterRemEmission : SupportedEmission emitBinaryAdapterRem
+  inlineIfEmission : SupportedEmission emitInlineIf
+  adapterEqEmission : SupportedEmission emitBinaryAdapterEq
+  adapterGeqEmission : SupportedEmission emitBinaryAdapterGeq
+  adapterLtEmission : SupportedEmission emitBinaryAdapterLt
 
--- Every currently supported primitive has a typed legacy-emission witness.
--- Unlike an unindexed "success" proposition, the result type cannot inhabit
--- this claim for emitDiagnosticBye.
-supportedPrimitiveEmissionIsLegacy :
-  (p : SupportedBackendPrimitive) → LegacyEmission (emitSupportedPrimitive p)
-supportedPrimitiveEmissionIsLegacy backendAdd = legacyAddEmission
-supportedPrimitiveEmissionIsLegacy backendSub = legacySubEmission
-supportedPrimitiveEmissionIsLegacy backendMul = legacyMulEmission
-supportedPrimitiveEmissionIsLegacy backendQuot = legacyQuotEmission
-supportedPrimitiveEmissionIsLegacy backendRem = legacyRemEmission
-supportedPrimitiveEmissionIsLegacy backendIf = legacyIfEmission
-supportedPrimitiveEmissionIsLegacy backendIntegerEq = legacyEqEmission
-supportedPrimitiveEmissionIsLegacy backendGeq = legacyGeqEmission
-supportedPrimitiveEmissionIsLegacy backendLt = legacyLtEmission
+-- Every supported primitive maps to a typed ABI adapter or an inline conditional.
+supportedPrimitiveEmissionIsSpecified :
+  (p : SupportedBackendPrimitive) → SupportedEmission (emitSupportedPrimitive p)
+supportedPrimitiveEmissionIsSpecified backendAdd = adapterAddEmission
+supportedPrimitiveEmissionIsSpecified backendSub = adapterSubEmission
+supportedPrimitiveEmissionIsSpecified backendMul = adapterMulEmission
+supportedPrimitiveEmissionIsSpecified backendQuot = adapterQuotEmission
+supportedPrimitiveEmissionIsSpecified backendRem = adapterRemEmission
+supportedPrimitiveEmissionIsSpecified backendIf = inlineIfEmission
+supportedPrimitiveEmissionIsSpecified backendIntegerEq = adapterEqEmission
+supportedPrimitiveEmissionIsSpecified backendGeq = adapterGeqEmission
+supportedPrimitiveEmissionIsSpecified backendLt = adapterLtEmission
 
 unsupportedPrimitiveUsesDiagnosticBye :
   emitBackendPrimitive backendUnsupported ≡ emitDiagnosticBye
@@ -1624,6 +1550,55 @@ successfulBinaryCommitsJoinedModeAndOwnership :
     (lifeAfterBinarySuccess leftMode) (lifeAfterBinarySuccess rightMode)
 successfulBinaryCommitsJoinedModeAndOwnership rawValue resultHandle = refl
 
+-- WP for the checked binary transaction, with normal and exceptional postconditions.
+-- The failure postcondition observes both input ownership states.
+BinaryWPPost :
+  {leftMode rightMode : SourceMode} →
+  (normal : Nat → SourceMode → Life → Life → Set) →
+  (exceptional : RuntimeError → Life → Life → Set) →
+  BinaryCommitResult leftMode rightMode → Set
+BinaryWPPost normal exceptional (binaryFailure err leftLife rightLife) =
+  exceptional err leftLife rightLife
+BinaryWPPost normal exceptional (binarySuccess value mode leftLife rightLife) =
+  normal value mode leftLife rightLife
+
+checkedBinaryWP :
+  {leftMode rightMode : SourceMode} →
+  BinaryAliasStatus →
+  OperationOutcome Nat →
+  (Nat → SourceMode → OperationOutcome Nat) →
+  (normal : Nat → SourceMode → Life → Life → Set) →
+  (exceptional : RuntimeError → Life → Life → Set) → Set
+checkedBinaryWP {leftMode} {rightMode} alias operation makeResult normal exceptional =
+  BinaryWPPost {leftMode = leftMode} {rightMode = rightMode} normal exceptional
+    (checkedBinaryTransaction {leftMode = leftMode} {rightMode = rightMode}
+      alias operation makeResult)
+
+-- A primitive THROW happens before the linear-ownership commit writes.
+checkedBinaryWPArithmeticFailurePreservesOperands :
+  {leftMode rightMode : SourceMode} →
+  (err : RuntimeError) →
+  (makeResult : Nat → SourceMode → OperationOutcome Nat) →
+  (normal : Nat → SourceMode → Life → Life → Set) →
+  (exceptional : RuntimeError → Life → Life → Set) →
+  exceptional err live live →
+  checkedBinaryWP {leftMode = leftMode} {rightMode = rightMode}
+    noLinearAlias (operationThrew err) makeResult normal exceptional
+checkedBinaryWPArithmeticFailurePreservesOperands err makeResult normal exceptional proof = proof
+
+-- Result-allocation failure also occurs before either operand is consumed.
+checkedBinaryWPResultAllocationFailurePreservesOperands :
+  {leftMode rightMode : SourceMode} →
+  (rawValue : Nat) →
+  (err : RuntimeError) →
+  (normal : Nat → SourceMode → Life → Life → Set) →
+  (exceptional : RuntimeError → Life → Life → Set) →
+  exceptional err live live →
+  checkedBinaryWP {leftMode = leftMode} {rightMode = rightMode}
+    noLinearAlias (operationReturned rawValue)
+    (λ value mode → operationThrew err) normal exceptional
+checkedBinaryWPResultAllocationFailurePreservesOperands rawValue err normal exceptional proof = proof
+
 linearInputConsumedOnSuccessfulCommit :
   lifeAfterBinarySuccess linear ≡ consumed
 linearInputConsumedOnSuccessfulCommit = refl
@@ -1645,80 +1620,13 @@ modalInputRemainsLiveOnSuccessfulCommit = refl
 -- and legacy operator forms.
 
 
--- ── 9. Frame rule and disjoint concurrent updates ──
---
--- A framed command receives and returns an untouched resource component.
--- This makes the locality premise explicit: a real Forth word may use the
--- frame rule only after its actual reads and writes have been shown confined
--- to the command-owned component. The lemma below does not assume arbitrary
--- EXECUTE, dictionary mutation, or global metadata updates are local.
+-- Full-state WP is the contract mechanism: stack, descriptor heap, roots,
+-- metadata identities and exception state belong in S. The former generic frame
+-- theorem merely threaded an unrelated F value unchanged by construction; it did
+-- not prove footprint locality for any Forth word, so it was removed. Reintroduce
+-- a frame theorem only with concrete read/write-footprint evidence for a runtime
+-- operation, not a stack-tail product that is untouched by definition.
 
-data FramedExecution (S F : Set) : Set where
-  framedReturned : S → F → FramedExecution S F
-  framedThrown : S → F → RuntimeError → FramedExecution S F
-
-frameCommand :
-  {S F : Set} →
-  (command : S → Execution S) →
-  S → F → FramedExecution S F
-frameCommand command s f with command s
-... | returned s' = framedReturned s' f
-... | thrown s' err = framedThrown s' f err
-
-FramedPost :
-  {S F : Set} →
-  (normal : S → Set) →
-  (exceptional : S → RuntimeError → Set) →
-  (frameInvariant : F → Set) →
-  FramedExecution S F → Set
-FramedPost normal exceptional frameInvariant (framedReturned s f) =
-  normal s × frameInvariant f
-FramedPost normal exceptional frameInvariant (framedThrown s f err) =
-  exceptional s err × frameInvariant f
-
-FramedHoare :
-  {S F : Set} →
-  (precondition : S → Set) →
-  (command : S → F → FramedExecution S F) →
-  (normalPostcondition : S → Set) →
-  (exceptionalPostcondition : S → RuntimeError → Set) →
-  (frameInvariant : F → Set) → Set
-FramedHoare {S} {F} precondition command normalPostcondition
-  exceptionalPostcondition frameInvariant =
-  (s : S) → (f : F) → precondition s → frameInvariant f →
-  FramedPost normalPostcondition exceptionalPostcondition frameInvariant
-    (command s f)
-
-frameRule :
-  {S F : Set} →
-  {P Q : S → Set} →
-  {E : S → RuntimeError → Set} →
-  {R : F → Set} →
-  {command : S → Execution S} →
-  Hoare P command Q E →
-  FramedHoare P (frameCommand command) Q E R
-frameRule {command = command} safe s f preconditionProof frameProof
-  with command s | safe s preconditionProof
-... | returned s' | postProof = postProof , frameProof
-... | thrown s' err | postProof = postProof , frameProof
-
--- Transitions that update separate components of a product state commute.
--- This is an elementary interference-freedom law, not a locality theorem for
--- the concrete Forth words.
-leftUpdate : {L R : Set} → (L → L) → L × R → L × R
-leftUpdate update (left , right) = update left , right
-
-rightUpdate : {L R : Set} → (R → R) → L × R → L × R
-rightUpdate update (left , right) = left , update right
-
-disjointUpdatesCommute :
-  {L R : Set} →
-  (updateL : L → L) →
-  (updateR : R → R) →
-  (state : L × R) →
-  rightUpdate updateR (leftUpdate updateL state) ≡
-  leftUpdate updateL (rightUpdate updateR state)
-disjointUpdatesCommute updateL updateR (left , right) = refl
 
 -- ── Scalar bridge correspondence for the opt-in runtime gate ──
 --
@@ -2535,78 +2443,6 @@ module CoreDenotation where
   
 
 
--- Recovered normal and exceptional separation/frame contracts. They remain
--- in the single specification, not in a second module with duplicated imports.
-module ConcurrentSeparation where
-  record FramedSeparation
-    (P Q R : Heap → Set)
-    (before after frame : Heap) : Set where
-    constructor framedSeparation
-    field
-      initialSplit : Sep P R (before ++ frame)
-      finalSplit : Sep Q R (after ++ frame)
-  open FramedSeparation public
-  
-  frameRuleForDisjointHeaps :
-    {P Q R : Heap → Set} {before after frame : Heap} →
-    P before →
-    Q after →
-    R frame →
-    Disjoint (keys before) (keys frame) →
-    Disjoint (keys after) (keys frame) →
-    FramedSeparation P Q R before after frame
-  frameRuleForDisjointHeaps {before = before} {after = after} {frame = frame}
-    pre post frameInvariant beforeDisjoint afterDisjoint =
-    framedSeparation
-      (splitHeap before frame refl pre frameInvariant beforeDisjoint)
-      (splitHeap after frame refl post frameInvariant afterDisjoint)
-  
-  record FramedExceptional
-    (E R : Heap → Set)
-    (after frame : Heap) : Set where
-    constructor framedExceptional
-    field
-      errorSplit : Sep E R (after ++ frame)
-  open FramedExceptional public
-  
-  exceptionalFrameRuleForDisjointHeaps :
-    {E R : Heap → Set} {after frame : Heap} →
-    E after →
-    R frame →
-    Disjoint (keys after) (keys frame) →
-    FramedExceptional E R after frame
-  exceptionalFrameRuleForDisjointHeaps {after = after} {frame = frame}
-    errorInvariant frameInvariant disjoint =
-    framedExceptional
-      (splitHeap after frame refl errorInvariant frameInvariant disjoint)
-  
-  -- The concurrent precondition and postcondition are deliberately separate
-  -- evidence: interference freedom is not inherited merely from the pre-state.
-  record ConcurrentPrecondition (left right : Heap) : Set where
-    constructor concurrentPrecondition
-    field
-      leftRightDisjoint : Disjoint (keys left) (keys right)
-  open ConcurrentPrecondition public
-  
-  record ConcurrentPostcondition (left right : Heap) : Set where
-    constructor concurrentPostcondition
-    field
-      postLeftRightDisjoint : Disjoint (keys left) (keys right)
-  open ConcurrentPostcondition public
-  
-  makeConcurrentPrecondition :
-    {left right : Heap} →
-    Disjoint (keys left) (keys right) →
-    ConcurrentPrecondition left right
-  makeConcurrentPrecondition = concurrentPrecondition
-  
-  makeConcurrentPostcondition :
-    {left right : Heap} →
-    Disjoint (keys left) (keys right) →
-    ConcurrentPostcondition left right
-  makeConcurrentPostcondition = concurrentPostcondition
-
- 
 -- Recovered from PR #7: scalar denotation with explicit bottom and errors.
 -- Kept separate from CoreDenotation because finite fuel exhaustion and
 -- denotational divergence are different observations. The flat preorder is a
@@ -2835,3 +2671,147 @@ module ScottScalarDenotation where
   noRuntimeModeDecoder decode linearCorrect modalCorrect =
     linearIsNotModal
       (transDenotation (symDenotation linearCorrect) modalCorrect)
+
+ 
+-- Abstract account of the checked allocator's identity-exhaustion boundary.
+-- arenaCursor and metadataCount abstract HERE and the metadata-list mutation.
+module ABIAllocationWP where
+
+  natLessBool : Nat → Nat → Bool
+  natLessBool zero zero = false
+  natLessBool zero (suc y) = true
+  natLessBool (suc x) zero = false
+  natLessBool (suc x) (suc y) = natLessBool x y
+
+  natAtMost : Nat → Nat → Bool
+  natAtMost n bound = natLessBool n (suc bound)
+
+  natLessThanZero : (n : Nat) → natLessBool n zero ≡ false
+  natLessThanZero zero = refl
+  natLessThanZero (suc n) = refl
+
+  natLessThanAfterPositiveAddition :
+    (n k : Nat) → natLessBool (n + suc k) (suc n) ≡ false
+  natLessThanAfterPositiveAddition zero k = natLessThanZero k
+  natLessThanAfterPositiveAddition (suc n) k =
+    natLessThanAfterPositiveAddition n k
+
+  natAtMostAfterPositiveAddition :
+    (n k : Nat) → natAtMost (n + suc k) n ≡ false
+  natAtMostAfterPositiveAddition n k =
+    natLessThanAfterPositiveAddition n k
+
+  record AllocationState : Set where
+    constructor allocationState
+    field
+      arenaCursor : Nat
+      nextIdentity : Nat
+      metadataCount : Nat
+  open AllocationState public
+
+  data AllocationOutcome : Set where
+    allocationFailed : RuntimeError → AllocationState → AllocationOutcome
+    allocationSucceeded : AllocationState → AllocationOutcome
+
+  -- identityBound is ABI-MAX-NAT. identityCount/cellCount describe the
+  -- complete preflighted allocation group. Failure leaves state untouched.
+  allocationAfterCapacityCheck :
+    Bool → Nat → Nat → Nat → AllocationState → AllocationOutcome
+  allocationAfterCapacityCheck false identityBound identityCount cellCount state =
+    allocationFailed identityOverflowError state
+  allocationAfterCapacityCheck true identityBound identityCount cellCount state =
+    allocationSucceeded
+      (allocationState
+        (arenaCursor state + cellCount)
+        (nextIdentity state + identityCount)
+        (metadataCount state + identityCount))
+
+  allocateBlock :
+    Nat → Nat → Nat → AllocationState → AllocationOutcome
+  allocateBlock identityBound identityCount cellCount state =
+    allocationAfterCapacityCheck
+      (natAtMost (nextIdentity state + identityCount) identityBound)
+      identityBound identityCount cellCount state
+
+  AllocationPost :
+    (normal : AllocationState → Set) →
+    (exceptional : RuntimeError → AllocationState → Set) →
+    AllocationOutcome → Set
+  AllocationPost normal exceptional (allocationFailed err state) =
+    exceptional err state
+  AllocationPost normal exceptional (allocationSucceeded state) =
+    normal state
+
+  wpAllocateBlock :
+    (identityBound identityCount cellCount : Nat) →
+    (state : AllocationState) →
+    (normal : AllocationState → Set) →
+    (exceptional : RuntimeError → AllocationState → Set) → Set
+  wpAllocateBlock identityBound identityCount cellCount state normal exceptional =
+    AllocationPost normal exceptional
+      (allocateBlock identityBound identityCount cellCount state)
+
+  identityExhaustionIsAtomic :
+    (identityBound remainingIds cellCount : Nat) →
+    {state : AllocationState} →
+    nextIdentity state ≡ identityBound →
+    allocateBlock identityBound (suc remainingIds) cellCount state ≡
+      allocationFailed identityOverflowError state
+  identityExhaustionIsAtomic identityBound remainingIds cellCount {state}
+    identityAtLimit
+    rewrite identityAtLimit
+          | natAtMostAfterPositiveAddition identityBound remainingIds = refl
+
+  identityExhaustionSatisfiesWP :
+    (identityBound remainingIds cellCount : Nat) →
+    (state : AllocationState) →
+    nextIdentity state ≡ identityBound →
+    (normal : AllocationState → Set) →
+    (exceptional : RuntimeError → AllocationState → Set) →
+    exceptional identityOverflowError state →
+    wpAllocateBlock identityBound (suc remainingIds) cellCount state
+      normal exceptional
+  identityExhaustionSatisfiesWP identityBound remainingIds cellCount state
+    identityAtLimit normal exceptional exceptionalProof
+    rewrite identityAtLimit
+          | natAtMostAfterPositiveAddition identityBound remainingIds = exceptionalProof
+
+  -- The runtime's makeTHUNK rejects a null execution token before allocating
+  -- the handle or metadata cells. This is the Agda counterpart of the zero-page
+  -- trap guard, separate from identity exhaustion.
+  data ExecutionToken : Set where
+    nullExecutionToken : ExecutionToken
+    nonNullExecutionToken : Nat → ExecutionToken
+
+  allocateThunk :
+    ExecutionToken → Nat → Nat → Nat → AllocationState → AllocationOutcome
+  allocateThunk nullExecutionToken identityBound identityCount cellCount state =
+    allocationFailed nullExecutionTokenError state
+  allocateThunk (nonNullExecutionToken token) identityBound identityCount cellCount state =
+    allocateBlock identityBound identityCount cellCount state
+
+  wpAllocateThunk :
+    ExecutionToken → Nat → Nat → Nat → AllocationState →
+    (normal : AllocationState → Set) →
+    (exceptional : RuntimeError → AllocationState → Set) → Set
+  wpAllocateThunk token identityBound identityCount cellCount state normal exceptional =
+    AllocationPost normal exceptional
+      (allocateThunk token identityBound identityCount cellCount state)
+
+  nullExecutionTokenRejectedAtomically :
+    (identityBound identityCount cellCount : Nat) →
+    (state : AllocationState) →
+    allocateThunk nullExecutionToken identityBound identityCount cellCount state ≡
+      allocationFailed nullExecutionTokenError state
+  nullExecutionTokenRejectedAtomically identityBound identityCount cellCount state = refl
+
+  nullExecutionTokenSatisfiesWP :
+    (identityBound identityCount cellCount : Nat) →
+    (state : AllocationState) →
+    (normal : AllocationState → Set) →
+    (exceptional : RuntimeError → AllocationState → Set) →
+    exceptional nullExecutionTokenError state →
+    wpAllocateThunk nullExecutionToken identityBound identityCount cellCount
+      state normal exceptional
+  nullExecutionTokenSatisfiesWP identityBound identityCount cellCount state
+    normal exceptional exceptionalProof = exceptionalProof

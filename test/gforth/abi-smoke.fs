@@ -217,6 +217,17 @@ checked-linear-boolean-result-test
 ;
 ' checked-quot-zero-test CATCH ABI-ERR-ARITHMETIC-DOMAIN = abi-assert
 
+VARIABLE retained-dividend
+VARIABLE retained-divisor
+10 MODE-LINEAR ABI-MAKE-SCALAR retained-dividend !
+0 MODE-MODAL ABI-MAKE-SCALAR retained-divisor !
+: checked-quot-zero-preserves-inputs ( -- )
+  retained-dividend @ retained-divisor @ ABI-NAT-QUOT DROP
+;
+' checked-quot-zero-preserves-inputs CATCH ABI-ERR-ARITHMETIC-DOMAIN = abi-assert
+retained-dividend @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
+retained-divisor @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
+
 : checked-rem-zero-test ( -- )
   10 MODE-LINEAR ABI-MAKE-SCALAR
   0 MODE-MODAL ABI-MAKE-SCALAR
@@ -241,9 +252,98 @@ checked-linear-boolean-result-test
 ;
 ' unsupported-boundary-test CATCH ABI-ERR-COMPILED-UNSUPPORTED = abi-assert
 
+\ Identity exhaustion must fail before changing HERE, NEXT-HANDLE-ID, or the metadata list.
+: assert-id-exhaustion-atomic { xt -- }
+  NEXT-HANDLE-ID @ { previousId }
+  HANDLE-META-HEAD @ { previousHead }
+  here { previousHere }
+  ABI-MAX-NAT NEXT-HANDLE-ID !
+  xt CATCH ABI-ERR-ID-OVERFLOW = abi-assert
+  here previousHere = abi-assert
+  HANDLE-META-HEAD @ previousHead = abi-assert
+  NEXT-HANDLE-ID @ ABI-MAX-NAT = abi-assert
+  previousId NEXT-HANDLE-ID !
+;
+
+: identity-exhaustion-scalar ( -- ) 1 MODE-MODAL ABI-MAKE-SCALAR DROP ;
+' identity-exhaustion-scalar assert-id-exhaustion-atomic
+
+: identity-exhaustion-boolean ( -- ) -1 MODE-MODAL ABI-MAKE-BOOL DROP ;
+' identity-exhaustion-boolean assert-id-exhaustion-atomic
+
+: identity-exhaustion-thunk ( -- ) ['] modal-body makeTHUNK DROP ;
+' identity-exhaustion-thunk assert-id-exhaustion-atomic
+
+: identity-exhaustion-legacy-result ( -- ) 123 makeRESULT DROP ;
+' identity-exhaustion-legacy-result assert-id-exhaustion-atomic
+
+VARIABLE identity-test-linear-handle
+88 MODE-LINEAR ABI-MAKE-SCALAR identity-test-linear-handle !
+: identity-exhaustion-linear-move ( -- )
+  identity-test-linear-handle @ DUP metadata@ moveLinearHandle DROP
+;
+' identity-exhaustion-linear-move assert-id-exhaustion-atomic
+identity-test-linear-handle @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
+
+: identity-test-body ( x -- x ) ;
+' identity-test-body makeTHUNK CONSTANT identity-test-thunk
+: identity-exhaustion-pass ( -- ) 1 identity-test-thunk pass DROP ;
+' identity-exhaustion-pass assert-id-exhaustion-atomic
+
+\ ABI-BINARY must not consume inputs if result allocation fails.
+VARIABLE identity-binary-linear
+VARIABLE identity-binary-modal
+10 MODE-LINEAR ABI-MAKE-SCALAR identity-binary-linear !
+20 MODE-MODAL ABI-MAKE-SCALAR identity-binary-modal !
+: identity-exhaustion-binary ( -- )
+  identity-binary-linear @ identity-binary-modal @ ABI-NAT-ADD DROP
+;
+' identity-exhaustion-binary assert-id-exhaustion-atomic
+identity-binary-linear @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
+identity-binary-modal @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
+
 \ A caught invalid operation must return to the test harness, not BYE the VM.
 \ Legacy symbols remain loadable; their general behavior is outside this ABI proof.
 ' print 0<> abi-assert
 ' pass 0<> abi-assert
 ' dethunk 0<> abi-assert
+\ A zero execution token is a null code pointer, not a callable closure.
+\ It must throw before allocating a handle or metadata record.
+: zero-code-token-candidate ( -- ) 0 makeTHUNK DROP ;
+: zero-code-token-test ( -- )
+  here { beforeHere }
+  HANDLE-META-HEAD @ { beforeMeta }
+  NEXT-HANDLE-ID @ { beforeId }
+  ['] zero-code-token-candidate CATCH ABI-ERR-NULL-XT = abi-assert
+  here beforeHere = abi-assert
+  HANDLE-META-HEAD @ beforeMeta = abi-assert
+  NEXT-HANDLE-ID @ beforeId = abi-assert
+;
+zero-code-token-test
+
+\ Nested linear captures must all be retired if a closure aborts during force.
+VARIABLE nested-linear-input
+VARIABLE nested-first-closure
+VARIABLE nested-outer-closure
+VARIABLE nested-moved-closure
+VARIABLE nested-linear-leaf
+: nested-fail-after-capture ( x -- ) drop -4333 THROW ;
+' nested-fail-after-capture declareLinearSafeXT
+: build-nested-linear-closure ( -- )
+  99 MODE-LINEAR ABI-MAKE-SCALAR DUP nested-linear-input !
+  ['] identity-body makeTHUNK assertLinear pass nested-first-closure !
+  nested-first-closure @ metadata@ META-ENV cells + @ @ nested-linear-leaf !
+  ['] nested-fail-after-capture makeTHUNK assertLinear
+  nested-first-closure @ swap pass nested-outer-closure !
+  nested-outer-closure @ metadata@ META-ENV cells + @ @ nested-moved-closure !
+;
+build-nested-linear-closure
+: force-nested-linear-closure ( -- ) nested-outer-closure @ dethunk DROP ;
+' force-nested-linear-closure CATCH -4333 = abi-assert
+nested-linear-input @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+nested-first-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+nested-outer-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+nested-moved-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+nested-linear-leaf @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+
 BYE

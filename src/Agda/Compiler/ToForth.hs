@@ -173,6 +173,37 @@ fthApp f args = RSList (args ++ [f, " pass "])
 fthApps :: FthForm -> [FthForm] -> FthForm
 fthApps = foldl (\x y -> fthApp x [y])
 
+-- Fully-applied Agda primitives are operations, not closures. Route exact-arity
+-- primitive applications directly to the corresponding Forth operator. Sending
+-- them through fthApps would use `pass` on a raw operand/word and turns `x + y`
+-- into generic closure application (the observed result was the right operand).
+-- Partial applications still use the curried closure path above.
+fthDirectPrimitive :: TPrim -> [FthForm] -> Maybe FthForm
+fthDirectPrimitive PAdd [left, right] = Just $ fthDirectBinary "ABI-ADD-OR-LEGACY" left right
+fthDirectPrimitive PSub [left, right] = Just $ fthDirectBinary "ABI-SUB-OR-LEGACY" left right
+fthDirectPrimitive PMul [left, right] = Just $ fthDirectBinary "ABI-MUL-OR-LEGACY" left right
+fthDirectPrimitive PQuot [left, right] = Just $ fthDirectBinary "ABI-QUOT-OR-LEGACY" left right
+fthDirectPrimitive PRem [left, right] = Just $ fthDirectBinary "ABI-REM-OR-LEGACY" left right
+fthDirectPrimitive PEqI [left, right] = Just $ fthDirectBinary "ABI-EQ-OR-LEGACY" left right
+fthDirectPrimitive PGeq [left, right] = Just $ fthDirectBinary "ABI-GEQ-OR-LEGACY" left right
+fthDirectPrimitive PLt [left, right] = Just $ fthDirectBinary "ABI-LT-OR-LEGACY" left right
+fthDirectPrimitive PIf [condition, yesBranch, noBranch] = Just $ RSList
+  [ fthForce condition
+  , RSAtom "if"
+  , fthForce yesBranch
+  , RSAtom "else"
+  , fthForce noBranch
+  , RSAtom "then"
+  ]
+fthDirectPrimitive _ _ = Nothing
+
+fthDirectBinary :: FthAtom -> FthForm -> FthForm -> FthForm
+fthDirectBinary operator left right = RSList
+  [ fthForce left
+  , fthForce right
+  , RSAtom operator
+  ]
+
 fthLet :: [(FthAtom,FthForm)] -> FthForm -> FthForm
 fthLet binds body = RSAtom $ T.pack $
   concatMap (\(x,v) -> T.unpack (formToAtom v) ++ "{ " ++ T.unpack x ++ " " ++ "} ") binds
@@ -480,14 +511,20 @@ instance ToForth TTerm FthForm where
           -- force <- makeForce
           -- applyToArgs $ force $ RSAtom name
           applyToArgs $ RSAtom name
-      TPrim p -> toForth p >>= applyToArgs
+      TPrim p -> case fthDirectPrimitive p args' of
+        Just direct -> return direct
+        Nothing -> toForth p >>= applyToArgs
       TDef d -> do
-        special <- isSpecialDefinition d
-        case special of
+        direct <- fthDirectDefinition d args'
+        case direct of
+          Just result -> return result
           Nothing -> do
-            d' <- toForth d
-            applyToArgs $ RSList [RSAtom d']
-          Just v -> applyToArgs v
+            special <- isSpecialDefinition d
+            case special of
+              Nothing -> do
+                d' <- toForth d
+                applyToArgs $ RSList [RSAtom d']
+              Just v -> applyToArgs v
       TLam v -> withFreshVar $ \x -> do
         unless (null args) __IMPOSSIBLE__
         body <- toForth v
@@ -616,6 +653,21 @@ isSpecialDefinition f = do
   minusDef <- getBuiltinName builtinNatMinus
   if | Just f == minusDef -> return $ Just $ RSList [RSAtom "monus"]
      | otherwise          -> return Nothing
+
+-- The Treeless simplifier may leave Nat addition as the builtin definition
+-- rather than a TPrim. Saturated calls must still lower as operations, not be
+-- turned into pass/partial-application chains. The Forth adapters select the
+-- checked ABI for managed scalar handles and preserve legacy raw/raw calls.
+fthDirectDefinition :: QName -> [FthForm] -> ToForthM (Maybe FthForm)
+fthDirectDefinition name [left,right] = do
+  plusDef <- getBuiltinName builtinNatPlus
+  minusDef <- getBuiltinName builtinNatMinus
+  if | Just name == plusDef ->
+         return $ Just $ fthDirectBinary "ABI-ADD-OR-LEGACY" left right
+     | Just name == minusDef ->
+         return $ Just $ fthDirectBinary "ABI-MONUS-OR-LEGACY" left right
+     | otherwise -> return Nothing
+fthDirectDefinition _ _ = return Nothing
 
 -- Some kinds of case statements are treated in a special way.
 -- Currently, matches on Bool are translated to an `if` statement.

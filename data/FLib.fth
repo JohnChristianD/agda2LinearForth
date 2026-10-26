@@ -64,8 +64,11 @@ s" unreachable Agda branch" exception constant ABI-ERR-UNREACHABLE
 ;
 
 : pushArrayN { addr n -- xn .. x2 x1 }
+    \ Closure environment index 0 is the newest De Bruijn binding. Gforth locals
+    \ consume from the top of the data stack in reverse declaration order, so
+    \ push the environment backwards to make env[0] the topmost local argument.
     n 0 > if n 0 do
-        addr i cells + @
+        addr n 1- i - cells + @
     loop
     then
 ;
@@ -127,6 +130,7 @@ variable NEXT-HANDLE-ID
 0 NEXT-HANDLE-ID !
 
 s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
+s" null or invalid code execution token" exception constant ABI-ERR-NULL-XT
 
 : requireIdentityRoom { count -- }
     NEXT-HANDLE-ID @ ABI-MAX-NAT count - > IF ABI-ERR-ID-OVERFLOW THROW THEN
@@ -154,6 +158,8 @@ s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
 ;
 
 : newMeta { handle kind code env count mode state -- meta }
+    \ Preflight before allocating the metadata record itself.
+    1 requireIdentityRoom
     reserveMeta { meta }
     handle kind code env count mode state meta initializeMeta
 ;
@@ -317,6 +323,7 @@ s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
     meta META-MODE cells + @ MODE-LINEAR <> IF ABI-ERR-UNKNOWN-REPRESENTATION THROW THEN
     0 { moved }
     handle @ THUNK = IF
+        1 requireIdentityRoom
         align here 2 cells allot TO moved
         THUNK moved !
         ['] invokeClosure moved cell+ !
@@ -330,17 +337,20 @@ s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
         meta META-PAYLOAD cells + @ contained <> IF ABI-ERR-RESULT-PAYLOAD THROW THEN
         contained requireLiveMeta { containedMeta }
         containedMeta META-MODE cells + @ MODE-LINEAR <> IF ABI-ERR-RESULT-PAYLOAD THROW THEN
+        1 requireIdentityRoom
         align here 2 cells allot TO moved
         RESULT moved !
         contained moved cell+ !
         moved KIND-RESULT 0 0 0 MODE-LINEAR OWN-LIVE newMeta { movedMeta }
         contained movedMeta META-PAYLOAD cells + !
     ELSE handle @ SCALAR = IF
+        1 requireIdentityRoom
         align here 2 cells allot TO moved
         SCALAR moved !
         handle cell+ @ moved cell+ !
         moved KIND-SCALAR 0 0 0 MODE-LINEAR OWN-LIVE newMeta DROP
     ELSE handle @ ABI-BOOL-TAG = IF
+        1 requireIdentityRoom
         align here 2 cells allot TO moved
         ABI-BOOL-TAG moved !
         handle cell+ @ moved cell+ !
@@ -400,6 +410,8 @@ s" unregistered modal payload" exception constant ABI-ERR-UNREGISTERED-MODAL-PAY
     mode MODE-LINEAR = mode MODE-MODAL = OR 0= IF ABI-ERR-INVALID-MODE THROW THEN
     value 0< IF ABI-ERR-NAT-NEGATIVE THROW THEN
     value ABI-MAX-NAT > IF ABI-ERR-NAT-OVERFLOW THROW THEN
+    \ Check capacity before allocating the handle or metadata.
+    1 requireIdentityRoom
     align here 2 cells allot { handle }
     SCALAR handle !
     value handle cell+ !
@@ -413,6 +425,7 @@ s" invalid Agda boolean payload" exception constant ABI-ERR-INVALID-BOOLEAN
 : ABI-MAKE-BOOL { value mode -- handle }
     mode MODE-LINEAR = mode MODE-MODAL = OR 0= IF ABI-ERR-INVALID-MODE THROW THEN
     value 0= value -1 = OR 0= IF ABI-ERR-INVALID-BOOLEAN THROW THEN
+    1 requireIdentityRoom
     align here 2 cells allot { handle }
     ABI-BOOL-TAG handle !
     value handle cell+ !
@@ -489,6 +502,7 @@ s" invalid Agda boolean payload" exception constant ABI-ERR-INVALID-BOOLEAN
     THEN
     leftValue rightValue operation EXECUTE { resultValue }
     leftMode rightMode combineModes { resultMode }
+    \ makeResult may THROW (including identity exhaustion); inputs remain live until it succeeds.
     resultValue resultMode makeResult EXECUTE { resultHandle }
     leftMode MODE-LINEAR = IF OWN-CONSUMED leftMeta META-STATE cells + ! THEN
     rightMode MODE-LINEAR = IF OWN-CONSUMED rightMeta META-STATE cells + ! THEN
@@ -649,7 +663,11 @@ s" invalid Agda boolean payload" exception constant ABI-ERR-INVALID-BOOLEAN
 ;
 
 : makeTHUNK { xt -- handle }
+    \ A zero execution token would turn a valid-looking handle into a null code pointer.
+    \ Reject it before allocating any dictionary or metadata cells.
+    xt 0= IF ABI-ERR-NULL-XT THROW THEN
     xt isThunk xt isResult OR IF xt EXIT THEN
+    1 requireIdentityRoom
     align here 2 cells allot { handle }
     THUNK handle !
     ['] invokeClosure handle cell+ !
@@ -660,6 +678,7 @@ s" invalid Agda boolean payload" exception constant ABI-ERR-INVALID-BOOLEAN
 :noname ." T: " ; THUNK 1 cells + !
 
 : makeRESULT { value -- handle }
+    1 requireIdentityRoom
     align here 2 cells allot { handle }
     RESULT handle !
     value handle cell+ !
@@ -890,6 +909,8 @@ variable target
         x h = argumentMode MODE-LINEAR = AND
             IF ABI-ERR-LINEAR-SELF-CAPTURE THROW THEN
 
+        \ A linear capture needs two identities: moved capture and partial closure.
+        argumentMode MODE-LINEAR = IF 2 requireIdentityRoom ELSE 1 requireIdentityRoom THEN
         x captureValue { captured }
         hm META-ENVCOUNT cells + @ { oldCount }
         hm META-ENV cells + @ { oldEnv }

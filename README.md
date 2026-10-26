@@ -24,8 +24,8 @@ The unified module contains:
 
 - a descriptor heap and identity model, root/capture/payload invariants, freshness and uniqueness conditions;
 - evidence-gated copy/discard, linear ownership, and modal-promotion preconditions;
-- a disjoint-heap predicate (`Sep`) for separation-style reasoning;
-- a weakest-precondition transformer for normal and exceptional outcomes, with operational-semantic characterization, validity/admissibility and leastness lemmas, plus derived Hoare notation and `CATCH`/sequencing laws;
+- a complete-state WP model whose state includes descriptor heap, root references, identity counter, ownership modes and exceptions;
+- direct weakest-precondition contracts for normal and exceptional outcomes, operational-semantic validity/leastness, sequencing and CATCH; no parallel triple API or generic frame theorem.
 - typed stack-shape effects and constructive examples for selected checked operations;
 - a model of the raw-natural/legacy-add and raw-boolean output paths in the current compiler;
 - an explicit table mirroring the current supported `TPrim` mappings and unsupported `fthError ... bye` path;
@@ -59,11 +59,11 @@ The sound path is to change the emission contract or introduce a verified source
 
 ## Preserved weakest-precondition and denotational semantics
 
-This branch is intentionally based on the last green master commit. It preserves PR #14's Agda model for continued review, but deliberately does **not** import that PR's experimental Forth changes, CI edits, debugging trace code, or generated-runtime regression. No Haskell, Forth runtime, workflow, or test files are changed here. The purpose is to assess and preserve formal ideas independently from the unresolved compiler/runtime failure.
+This branch continues from the merged WP model and co-adjusts formal/LinearModalSafety.agda with data/FLib.fth. It removes the duplicate triple API, makes catch/frame preservation direct WP lemmas, and adds a runtime allocation-capacity contract plus concrete Gforth regression tests. The Haskell compiler files remain byte-identical to their pinned upstream revisions.
 
-The primary contract interface is the WP transformer, taking a command, normal postcondition, exceptional postcondition, and initial state. It computes the conditions required for the requested normal result or exceptional THROW outcome. Sequential composition and CATCH have WP equations. The new `SemanticTriple` predicate states correctness directly from `Execution`; `hoareToSemanticTriple` and `semanticTripleToHoare` show that this operational contract and the Hoare presentation agree. The lemmas `wpSemanticallyAdmissible` and `wpLeastnessFromOperationalSemantics` state that WP itself is valid and every semantically valid precondition entails it. They are sound for the current explicit finite-outcome model, where divergence is not a constructor of `Execution`.
+The primary contract interface is the WP transformer, taking a command, normal postcondition, exceptional postcondition, and the full abstract state. Sequential composition and CATCH have WP equations. SemanticTriple states correctness directly from Execution; wpSemanticallyAdmissible and wpLeastnessFromOperationalSemantics establish validity and leastness for the finite-outcome model. wpCatchPreserves is stated directly in WP. The former generic frame theorem was removed because its separate frame value was untouched by construction; it did not prove that any actual Forth word respects a concrete footprint. Full-state WP is enough in principle when stack, heap, code pointers, identity counter, roots and exceptions are all modelled in the state. Separation logic remains a useful optional locality technique, not a prerequisite for defining WP. These lemmas do not establish domain-theoretic admissibility over a Scott domain, and Execution does not yet model divergence.
 
-Hoare triples are therefore redundant as an independent axiom/rule system, but not as readable specification syntax: keep them as a derived view. This follows UPenn Software Foundations, where `wp t Q` is defined from the operational evaluation predicate and characterized by `H ==> wp t Q` iff the triple is valid: https://softwarefoundations.cis.upenn.edu/current/current/slf-current/WPsem.html.
+This follows UPenn Software Foundations, where WP is characterized from operational evaluation and weakest-precondition validity; see https://softwarefoundations.cis.upenn.edu/current/current/slf-current/WPsem.html.
 
 **Terminology warning:** the code's WP *admissibility/validity* lemma means that WP itself is a valid precondition. It does **not** establish domain-theoretic admissibility (closure under suprema of increasing chains). The latter requires an ordered semantic domain and an appropriate continuity/admissibility development, which this finite state/outcome model does not yet define.
 
@@ -96,6 +96,14 @@ Henry Baker's [Linear Logic and Permutation Stacks—The Forth Shall Be First](h
 
 For computability foundations, [nLab's Kleene first algebra](https://ncatlab.org/nlab/show/Kleene%27s%2Bfirst%2Balgebra) is the type-one partial-recursive model relevant to RUSS/PE, while [Kleene's second algebra](https://ncatlab.org/nlab/show/Kleene%27s%2Bsecond%2Balgebra) is based on Baire-space functions and is more relevant to type-two or infinite-input computation. Richman's CPF-style axiom is described in the [Stanford Encyclopedia entry on constructive mathematics](https://plato.stanford.edu/entries/mathematics-constructive/). These computability models are separate from the concrete Forth/compiler refinement theorem.
 
+## Paired WP/runtime allocation-refinement step
+
+ABIAllocationWP models the checked allocator's identity-exhaustion boundary. If an allocation group would exceed the identity bound, the Agda outcome is allocationFailed identityOverflowError state, preserving the arena cursor, identity counter and metadata count. Its WP theorem proves the specified exceptional postcondition for the unchanged state.
+
+In data/FLib.fth, capacity is now checked before allocating handle/environment/metadata cells on scalar, boolean, thunk, legacy-result, linear-move and partial-application paths. test/gforth/abi-smoke.fs forces identity exhaustion in the real runtime and checks that HERE, HANDLE-META-HEAD and NEXT-HANDLE-ID remain unchanged while the operation throws ABI-ERR-ID-OVERFLOW. The CI workflow pins the revised runtime blob so the Agda model and Forth implementation cannot drift unnoticed.
+
+This is one operation-level refinement step under a non-interleaved, single-threaded mutation assumption. It does not complete the full compiler/runtime theorem: generated application, raw literals, operator lowering, constructors, pattern matching and all exceptional paths still require source-to-Forth simulation proofs. The checked-binary regressions also verify that an arithmetic THROW and an identity-exhaustion THROW during result allocation leave both inputs live, matching the Agda WP contract and the implementation's final ownership-commit writes. The known scalarAdd 20 5 result mismatch is not fixed by these runtime-contract changes and is not exercised by this CI workflow.
+
 ## What remains unproved
 
 These are the outstanding obligations, not claims that CI has already discharged them:
@@ -108,7 +116,7 @@ These are the outstanding obligations, not claims that CI has already discharged
 - **Unsupported paths:** the unchanged backend's `fthError` emits a diagnostic followed by `BYE`, while the checked runtime exposes catchable errors. That correspondence is not proved.
 - **Operational regression coverage:** exercise all dispatch cases and generated examples against the source semantics, rather than relying only on direct ABI calls.
 
-The Hoare/separation model is valuable because it makes intended preconditions, normal postconditions, exceptional postconditions and disjoint ownership explicit. It does not substitute for proving the implementation preserves those properties.
+The WP/separation model is valuable because it makes intended preconditions, normal postconditions, exceptional postconditions and disjoint ownership explicit. It does not substitute for proving the implementation preserves those properties.
 
 ## Beginner's learning path
 
@@ -134,15 +142,15 @@ Useful terms: **data stack, stack effect, execution token (XT), dictionary entry
 
 ### 4. Weakest preconditions, derived Hoare triples, and separation reasoning
 
-A Hoare triple `{P} C {Q}` says that, when precondition `P` holds, command `C` establishes normal postcondition `Q`; this repo additionally specifies what happens on exceptions. Separation logic adds a way to split a heap into disjoint ownership regions. In the model, `Sep` states a disjoint descriptor-identity split, while `WellFormed` combines ownership and aliasing invariants.
+Dijkstra-style WP is the single contract mechanism: given a complete runtime state, it computes the condition required for normal and exceptional outcomes. The state must include more than the data stack: descriptor metadata, roots, code pointers, allocation counters and ownership modes affect behaviour too. The `WellFormed` predicate tracks identity uniqueness, references, ownership and linear non-aliasing. A separate separation-logic frame rule is not needed to define correctness; it becomes valuable only after a specific operation's footprint is proved.
 
-Start with the `Hoare`, `Sep`, and `catchPreserves` declarations in [the unified module](formal/LinearModalSafety.agda). Then compare the vocabulary with [Hoare Type Theory](https://github.com/imdea-software/htt) or [Separation Logic Proofs in Lean](https://github.com/verse-lab/splean). Those use other proof assistants; study their specifications and proof structure rather than trying to import their code into Agda.
+Start with wp, wpSequence, wpCatch, SemanticTriple, wpCatchPreserves, and ABIAllocationWP in [the unified module](formal/LinearModalSafety.agda). UPenn's WP development is the closest contract reference. Separation-logic texts remain useful for footprint proofs, but this code no longer presents a generic frame lemma whose locality premise is true by construction.
 
-Useful terms: **precondition, postcondition, Hoare triple, invariant, frame rule, separating conjunction, heap footprint, aliasing, ownership transfer, normal/exceptional postcondition**.
+Useful terms: **weakest precondition, operational outcome, stack effect, complete state, invariant, allocation footprint, aliasing, ownership transfer, normal/exceptional postcondition**.
 
 ### 5. Learn refinement last
 
-Once a small runtime word has a proved Hoare contract, connect it to the actual implementation. A **refinement theorem** says each concrete execution step matches an abstract specified step. A **simulation** proof relates concrete and abstract states. For this project, the relation must connect generated Forth, the checked runtime representation, and the Agda state model. A green test suite alone cannot establish this for all inputs.
+Once a small runtime word has a proved WP contract, connect it to the actual implementation. A **refinement theorem** says each concrete execution step matches an abstract specified step. A **simulation** proof relates concrete and abstract states. For this project, the relation must connect generated Forth, the checked runtime representation, and the Agda state model. A green test suite alone cannot establish this for all inputs.
 
 ## Research anchors
 

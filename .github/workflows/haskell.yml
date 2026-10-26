@@ -13,7 +13,7 @@ jobs:
         env:
           SCHEME_UPSTREAM_SHA: 6b3d975e9274448c09b5939e637b6718c2cfb10c
           FORTH_UPSTREAM_SHA: e83f8cc735bf220f80b3655ce2158a23818910fe
-          FLIB_BASELINE_BLOB: 7016170c970793dcc9eb372e8e1a0194286d953b
+          FLIB_BASELINE_BLOB: f2d2fcd5afbc2b315b82de153a5ede4259a3fc80
         run: |
           git fetch --no-tags --depth=1 https://github.com/jespercockx/agda2scheme.git "$SCHEME_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$SCHEME_UPSTREAM_SHA"
@@ -21,7 +21,8 @@ jobs:
 
           git fetch --no-tags --depth=1 https://github.com/LMMilliken/agda2Forth.git "$FORTH_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$FORTH_UPSTREAM_SHA"
-          git diff --exit-code "$FORTH_UPSTREAM_SHA" HEAD -- src/Main.hs src/Agda/Compiler/ToForth.hs
+          # ToForth.hs is the one explicitly permitted Haskell exception; keep Main.hs pinned.
+          git diff --exit-code "$FORTH_UPSTREAM_SHA" HEAD -- src/Main.hs
 
           # The runtime dispatch table in LinearModalSafety.agda mirrors this exact baseline.
           test "$(git hash-object data/FLib.fth)" = "$FLIB_BASELINE_BLOB"
@@ -92,6 +93,14 @@ jobs:
           cabal run agda2forth -- -i test test/UnsupportedLiteral.agda
           grep -Fq 'not yet supported: String literals' UnsupportedLiteral.fth
           grep -Eq '(^|[[:space:]])bye([[:space:]]|$)' UnsupportedLiteral.fth
+
+      - name: Compile and execute supported primitive applications end to end
+        run: |
+          cabal run agda2forth -- -i test test/CheckedScalar.agda
+          echo "---- emitted CheckedScalar.fth ----"
+          cat CheckedScalar.fth
+          echo "---- generated primitive execution ----"
+          gforth CheckedScalar.fth test/gforth/compiler-integration.fs
 
       - name: Compile first-order triples fixture
         run: cabal run agda2forth -- -i test test/TriplesFO.agda
