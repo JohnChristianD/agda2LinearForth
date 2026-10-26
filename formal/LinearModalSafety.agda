@@ -1739,7 +1739,7 @@ bridgeEvalQuot left right
 ... | bridgeDivisionByZero = bridgeNatFailure arithmeticDomainError
 ... | bridgeDivisionResult quotient remainder =
   bridgeNatSuccess quotient
-    (joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+    (joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right)))
 
 bridgeEvalRem : BridgeNatCell → BridgeNatCell → BridgeNatEval
 bridgeEvalRem left right
@@ -1747,7 +1747,7 @@ bridgeEvalRem left right
 ... | bridgeDivisionByZero = bridgeNatFailure arithmeticDomainError
 ... | bridgeDivisionResult quotient remainder =
   bridgeNatSuccess remainder
-    (joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+    (joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right)))
 
 bridgeQuotZeroIsDomainError :
   (left : BridgeNatCell) →
