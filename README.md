@@ -12,6 +12,7 @@ The current source baseline pins upstream identities per file:
 - `src/Main.hs` and `src/Agda/Compiler/ToForth.hs` match Agda2Forth revision `e83f8cc735bf220f80b3655ce2158a23818910fe`.
 - The compiler targets the Agda 2.6.2.x API era and CI installs Agda 2.6.2.2.
 - GitHub Actions checks source provenance, builds/tests Haskell, runs Gforth smoke tests, type-checks one safe Agda specification, and compiles selected fixtures.
+- CI also pins the inspected `data/FLib.fth` blob (`7016170c970793dcc9eb372e8e1a0194286d953b`) so the manual Agda dispatch mirror cannot drift silently from the runtime source it describes. Changing the runtime requires an explicit update/review of this pin and the model.
 
 Pinning proves byte-level provenance, not semantic correctness. The Haskell source is intentionally unchanged by this formal consolidation.
 
