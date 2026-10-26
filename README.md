@@ -51,6 +51,8 @@ A raw execution token is not evidence of linear or modal safety. An integrator-w
 
 The formal model therefore separates `codeAddress` from `codeClass`. Modal promotion requires a constructive `ModalCode (codeClass d)` witness and proof that every captured value is live and modal. There is deliberately no modal-safety constructor for opaque user Forth code. The current implementation does not yet establish a verified correspondence from a generated XT to such a witness; this is an explicit remaining proof obligation.
 
+The stack-effect model also proves a concrete boundary fact: a raw-natural/raw-natural stack cannot inhabit the checked addition or equality signature. A raw natural becomes a checked scalar only when an explicit `pMakeScalar` operation supplies a mode token. The pinned upstream `ToForth.hs` emits natural literals as bare Forth numeric cells and does not emit this constructor/mode evidence, so this theorem identifies a real missing compiler-to-runtime precondition—not a completed compiler refinement proof.
+
 For linear code, an analogous derivation must state stack/resource effects and prove that every linear input is consumed, transferred or returned exactly once. A code-class label alone cannot prove this.
 
 The Agda model additionally proves two promotion-precondition consequences: for a well-formed heap, no captured identity can be both live modal and live linear, and an opaque execution-token class cannot satisfy the closed-code witness requirement. These are constructive proofs about the formal preconditions. They do not prove that the current upstream compiler emits those witnesses or that the concrete Forth `promoteModal` implementation enforces the record; that implementation correspondence remains open.
