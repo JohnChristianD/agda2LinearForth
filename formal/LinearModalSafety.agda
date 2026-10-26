@@ -1152,6 +1152,7 @@ modalPromotionEffect = promoteModalEffect modalNatAdd modalCapturesNil
 data NatExpr : Set where
   natLiteral : Nat → NatExpr
   natAddition : NatExpr → NatExpr → NatExpr
+  natMonus : NatExpr → NatExpr → NatExpr
 
 -- These constructors distinguish raw literals, saturated primitive calls routed
 -- through the checked-or-legacy ABI adapters, and checked result constructors.
@@ -1160,16 +1161,27 @@ data EmittedFragment : Set where
   rawNaturalCell : Nat → EmittedFragment
   rawTrueCell rawFalseCell : EmittedFragment
   abiAddAdapterCode : EmittedFragment → EmittedFragment → EmittedFragment
+  abiMonusAdapterCode : EmittedFragment → EmittedFragment → EmittedFragment
   checkedScalarCode : SourceMode → Nat → EmittedFragment
   checkedBooleanCode : SourceMode → EmittedFragment
 
--- Mirrors ToForth.hs's LitNat and saturated addition lowering: literals remain
--- raw cells; addition is emitted via ABI-ADD-OR-LEGACY, which selects the legacy
--- raw operation for raw/raw inputs and checked ABI for tracked scalar handles.
+-- Mirrors the selected ToForth.hs emission paths: literals remain raw cells;
+-- saturated addition uses ABI-ADD-OR-LEGACY; builtin Nat subtraction uses
+-- ABI-MONUS-OR-LEGACY. With raw literal operands these adapters select raw/raw
+-- execution, so this fragment still carries no checked mode evidence.
+-- This is a manual semantic mirror, not extraction from the Haskell emitter.
 compileNatFragment : NatExpr → EmittedFragment
 compileNatFragment (natLiteral n) = rawNaturalCell n
 compileNatFragment (natAddition left right) =
   abiAddAdapterCode (compileNatFragment left) (compileNatFragment right)
+compileNatFragment (natMonus left right) =
+  abiMonusAdapterCode (compileNatFragment left) (compileNatFragment right)
+
+compiledNatMonusUsesAdapter :
+  (left right : NatExpr) →
+  compileNatFragment (natMonus left right) ≡
+    abiMonusAdapterCode (compileNatFragment left) (compileNatFragment right)
+compiledNatMonusUsesAdapter left right = refl
 
 -- Historical counterexample for the pre-fix curried-application path. The
 -- earlier generated fixture emitted a lambda body `a c pass`; the raw/non-thunk
@@ -1221,6 +1233,8 @@ NoCheckedRepresentation rawTrueCell = ⊤
 NoCheckedRepresentation rawFalseCell = ⊤
 NoCheckedRepresentation (abiAddAdapterCode left right) =
   NoCheckedRepresentation left × NoCheckedRepresentation right
+NoCheckedRepresentation (abiMonusAdapterCode left right) =
+  NoCheckedRepresentation left × NoCheckedRepresentation right
 NoCheckedRepresentation (checkedScalarCode mode n) = ⊥
 NoCheckedRepresentation (checkedBooleanCode mode) = ⊥
 
@@ -1228,6 +1242,9 @@ compilerNatFragmentHasNoCheckedRepresentation :
   (expr : NatExpr) → NoCheckedRepresentation (compileNatFragment expr)
 compilerNatFragmentHasNoCheckedRepresentation (natLiteral n) = tt
 compilerNatFragmentHasNoCheckedRepresentation (natAddition left right) =
+  compilerNatFragmentHasNoCheckedRepresentation left ,
+  compilerNatFragmentHasNoCheckedRepresentation right
+compilerNatFragmentHasNoCheckedRepresentation (natMonus left right) =
   compilerNatFragmentHasNoCheckedRepresentation left ,
   compilerNatFragmentHasNoCheckedRepresentation right
 
