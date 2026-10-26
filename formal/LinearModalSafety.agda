@@ -2072,16 +2072,40 @@ scalarQuotientMatchesRuntimeBridge :
   (left right : BridgeNatCell) →
   denoteScalar (sQuot (scalarFromCell left) (scalarFromCell right)) ≡
     scalarNatEvalToResult (bridgeEvalQuot left right)
-scalarQuotientMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y) = refl
-scalarQuotientMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode) = refl
-scalarQuotientMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y) = refl
-scalarQuotientMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode') = refl
+scalarQuotientMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y)
+  with bridgeNatDivMod x y
+... | bridgeDivisionByZero = refl
+... | bridgeDivisionResult quotient remainder = refl
+scalarQuotientMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode)
+  with bridgeNatDivMod x y
+... | bridgeDivisionByZero = refl
+... | bridgeDivisionResult quotient remainder = refl
+scalarQuotientMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y)
+  with bridgeNatDivMod x y
+... | bridgeDivisionByZero = refl
+... | bridgeDivisionResult quotient remainder = refl
+scalarQuotientMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode')
+  with bridgeNatDivMod x y
+... | bridgeDivisionByZero = refl
+... | bridgeDivisionResult quotient remainder = refl
 
 scalarRemainderMatchesRuntimeBridge :
   (left right : BridgeNatCell) →
   denoteScalar (sRem (scalarFromCell left) (scalarFromCell right)) ≡
     scalarNatEvalToResult (bridgeEvalRem left right)
-scalarRemainderMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y) = refl
-scalarRemainderMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode) = refl
-scalarRemainderMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y) = refl
-scalarRemainderMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode') = refl
+scalarRemainderMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y)
+  with bridgeNatDivMod x y
+... | bridgeDivisionByZero = refl
+... | bridgeDivisionResult quotient remainder = refl
+scalarRemainderMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode)
+  with bridgeNatDivMod x y
+... | bridgeDivisionByZero = refl
+... | bridgeDivisionResult quotient remainder = refl
+scalarRemainderMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y)
+  with bridgeNatDivMod x y
+... | bridgeDivisionByZero = refl
+... | bridgeDivisionResult quotient remainder = refl
+scalarRemainderMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode')
+  with bridgeNatDivMod x y
+... | bridgeDivisionByZero = refl
+... | bridgeDivisionResult quotient remainder = refl
