@@ -98,6 +98,32 @@ jobs:
           cabal run agda2forth -- -i test test/CheckedScalar.agda
           echo "---- generated CheckedScalar.fth (diagnostic) ----"
           cat CheckedScalar.fth
+          cat >> CheckedScalar.fth <<'FORTH_DEBUG'
+          : trace-value { h -- }
+            0 { layer }
+            BEGIN
+              ." LAYER " layer . ." HANDLE " h . cr
+              h metadata@ { meta }
+              meta 0= IF ." RAW " h . cr EXIT THEN
+              meta META-KIND cells + @ { kind }
+              ." KIND " kind . ." MODE " meta META-MODE cells + @ .
+              ." ENVS " meta META-ENVCOUNT cells + @ . cr
+              kind KIND-SCALAR = IF
+                h ABI-SCALAR-INFO { payload mode ignored }
+                ." SCALAR " payload . ." MODE " mode . cr EXIT
+              THEN
+              kind KIND-BOOLEAN = IF
+                h ABI-BOOL-INFO { payload mode ignored }
+                ." BOOL " payload . ." MODE " mode . cr EXIT
+              THEN
+              h isThunk 0= IF ." NOT THUNK" cr EXIT THEN
+              h dethunk TO h
+              layer 1+ TO layer
+            AGAIN ;
+          1 ABI-CHECKED-MODE !
+          scalarAnswer trace-value
+          0 ABI-CHECKED-MODE !
+          FORTH_DEBUG
           echo "---- runtime result ----"
           gforth CheckedScalar.fth test/gforth/generated-scalar-smoke.fs
 
