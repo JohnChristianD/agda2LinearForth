@@ -16,6 +16,8 @@ The current source baseline pins upstream identities per file:
 
 Pinning proves byte-level provenance, not semantic correctness. The Haskell source is intentionally unchanged by this formal consolidation.
 
+Compatibility note: this is the newest source line that can be paired with the byte-identical upstream Agda2Forth backend under the no-Haskell-changes/no-shim constraint. Agda2Scheme `master` currently declares Agda 2.8, while the unchanged upstream Agda2Forth package declares Agda 2.6.2.x and uses APIs removed/changed after that series. Those two exact upstream source sets do not compose into one build. The repository therefore pins the compatible Agda2Scheme revision for the shared entrypoint/erasure code while keeping the Forth compiler backend from Agda2Forth. Following Agda2Scheme `master` would require upstream providing an API-compatible branch or a real backend port; silently mixing the two vintages would make source sync a decorative sticker rather than a reproducible build.
+
 ## One authoritative Agda specification
 
 The proof source is consolidated into [`formal/LinearModalSafety.agda`](formal/LinearModalSafety.agda). The former four files have been merged into this single source of truth so CI checks one coherent specification rather than four modules that can drift apart.
@@ -117,6 +119,18 @@ The fixed Haskell files are still untouched by this PR. The runtime adds an opt-
 Raw unboxed Nat cells in this profile are converted to immutable modal scalar handles; a registered checked scalar keeps its existing mode. The result adapter must declare whether the result is Nat or Bool, because after erasure a raw 0 does not itself tell us whether it represents Nat zero or false. Input arity is explicit so the runtime can check the expected net Forth stack effect (`n` inputs, one output). These checks validate the scalar protocol; they do not certify arbitrary Forth code passed as an execution token.
 
 The unified standard-library-free `formal/LinearModalSafety.agda` now also contains explicit stack-effect witnesses for subtraction, multiplication, quotient, remainder, order comparisons, monus, modal/mixed modes, conditional selection, constructor/matcher schemas, result pack/unpack, and observation. Its scalar bridge lemmas prove payload/mode preservation and arithmetic/equality correspondence by Agda definitional equality. This answers why earlier examples looked like Nat addition/equality only: that was a short example set, not a justified limitation of the primitive catalogue.
+
+## Broader Scott-Strachey-style reference semantics
+
+The new `formal/LinearModalDenotational.agda` defines a compositional, fuel-bounded denotation for a wider core language than the scalar example set: variables and closures, application, Nat arithmetic and comparisons, conditionals, tagged constructors and arity-checked matching, result packing/unpacking, explicit exceptions and catch, and observable print events. The evaluator distinguishes normal return, a named exception, and finite-fuel exhaustion, and carries an output trace. Its proof examples establish equations for beta-reduction of an identity closure, arithmetic and division-by-zero, a constructor/matcher case, result round-tripping, catch, and print. It imports no Agda standard library and introduces no postulates.
+
+The finite evaluator is deliberately a reference semantics for the modeled core, not a domain-theoretic model of every Haskell or Forth program. Fuel exhaustion is explicit rather than silently treating nontermination as a value. The current model does not claim to make arbitrary recursion total or to model arbitrary Forth dictionary mutation, I/O, pointers, or execution tokens. The existing `LinearModalSafety.agda` remains the source of truth for descriptor invariants, copy/drop permissions, stack effects, scalar ABI correspondence, Hoare contracts, and the runtime dispatch table.
+
+`formal/LinearModalConcurrency.agda` adds a heap-specific separation frame rule for both normal and exceptional postconditions. Crucially, the rule requires disjoint identities before and after the local command; starting disjointness alone is not a proof that a Forth operation remains local. This is useful concurrency reasoning only once concrete reads/writes and interference have been bounded for each operation. It is not a proof that the present global metadata lists, dictionary operations, or arbitrary `EXECUTE` satisfy locality.
+
+These modules broaden the formal account but do not magically discharge the whole-backend refinement obligation. The fixed `ToForth.hs` still emits the general thunk/application, constructor/matcher, wildcard, array and legacy layouts. The scalar integration check covers one audited generated entrypoint; it does not establish a simulation theorem for every emitted form. The next proof step is to relate each emitted form to this syntax and the actual Forth word transition, with invariant preservation on both normal and exceptional exits.
+
+Reference background: the [Haskell Wikibooks chapter on denotational semantics](https://en.wikibooks.org/wiki/Haskell/Denotational_semantics) explains compositional denotations and partial computations; the [Stanford Encyclopedia entry on games, full abstraction and full completeness](https://plato.stanford.edu/entries/games-abstraction/) connects compositional denotation to operational observations, adequacy, and full abstraction. The latter is a stronger goal than the current bridge lemmas establish.
 
 ## What is and is not proved
 
