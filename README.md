@@ -16,8 +16,6 @@ The current source baseline pins upstream identities per file:
 
 Pinning proves byte-level provenance, not semantic correctness. The Haskell source is intentionally unchanged by this formal consolidation.
 
-Compatibility note: this is the newest source line that can be paired with the byte-identical upstream Agda2Forth backend under the no-Haskell-changes/no-shim constraint. Agda2Scheme `master` currently declares Agda 2.8, while the unchanged upstream Agda2Forth package declares Agda 2.6.2.x and uses APIs removed/changed after that series. Those two exact upstream source sets do not compose into one build. The repository therefore pins the compatible Agda2Scheme revision for the shared entrypoint/erasure code while keeping the Forth compiler backend from Agda2Forth. Following Agda2Scheme `master` would require upstream providing an API-compatible branch or a real backend port; silently mixing the two vintages would make source sync a decorative sticker rather than a reproducible build.
-
 ## One authoritative Agda specification
 
 The proof source is consolidated into [`formal/LinearModalSafety.agda`](formal/LinearModalSafety.agda). The former four files have been merged into this single source of truth so CI checks one coherent specification rather than four modules that can drift apart.
