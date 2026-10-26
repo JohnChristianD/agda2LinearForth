@@ -283,3 +283,32 @@ data ErrorEffect : Primitive → StackShape → RuntimeError → Set where
 -- Every primitive with an ordinary return path must have a stack-effect derivation
 -- for the specific input/output shape. Dynamic constructor/matcher effects carry
 -- explicit schemas; throws use ErrorEffect instead.
+
+-- A bare emitted natural literal is not a checked ABI scalar. The only way to
+-- turn a raw natural into a checked scalar is the explicit pMakeScalar effect,
+-- which requires a source-mode token. In particular, raw/raw arithmetic does
+-- not inhabit the checked numeric primitive signature.
+rawLiteralCannotUseCheckedAddition :
+  {tail output : StackShape} →
+  StackEffect pNatAdd
+    (rawNatItem :: rawNatItem :: tail)
+    output →
+  ⊥
+rawLiteralCannotUseCheckedAddition ()
+
+rawLiteralCannotUseCheckedEquality :
+  {tail output : StackShape} →
+  StackEffect pNatEq
+    (rawNatItem :: rawNatItem :: tail)
+    output →
+  ⊥
+rawLiteralCannotUseCheckedEquality ()
+
+-- The checked constructor has the missing witness explicitly: it takes a
+-- runtime mode token and a raw natural, producing a mode-indexed value.
+rawLiteralNeedsModeWitness :
+  {m : SourceMode} {tail : StackShape} →
+  StackEffect pMakeScalar
+    (modeTokenItem m :: rawNatItem :: tail)
+    (valueItem (naturalTypeFor m) :: tail)
+rawLiteralNeedsModeWitness = makeScalarEffect

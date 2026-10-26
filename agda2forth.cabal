@@ -4,8 +4,8 @@ version:            0.1.0.0
 synopsis:           Agda backend for GNU Gforth
 description:        -
 
--- Package layout follows upstream jespercockx/agda2scheme; the Forth backend
--- and its ABI checker are target-specific additions.
+-- Shared frontend sources use the Agda2Scheme 2.6.2-era API; only
+-- Agda.Compiler.ToForth is sourced from the Forth backend.
 author:             Louis Milliken
 maintainer:         L.m.Milliken@student.tudelft.nl
 
@@ -28,8 +28,8 @@ executable agda2forth
                       Agda.Compiler.Erase
                       Paths_agda2forth
     autogen-modules:  Paths_agda2forth
-    build-depends:    base >=4.15.0.0
-                      , Agda >= 2.8
+    build-depends:    base ^>=4.15.0.0
+                      , Agda >= 2.6.2.1 && < 2.6.3
                       , containers >= 0.5.7.1
                       , deepseq >= 1.4.5
                       , mtl >= 2.2.2
@@ -64,4 +64,3 @@ executable agda2forth
                        , StandaloneDeriving
                        , TupleSections
                        , TypeSynonymInstances
-

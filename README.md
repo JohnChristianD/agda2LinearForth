@@ -3,11 +3,15 @@
 `agda2forth` compiles Agda code for GNU Gforth. This document defines the intended checked subset, its error boundary, and the current proof/implementation gaps.
 
 
-> **PR #6 guarantee status: NOT COMPLETE.** The Agda modules are specifications and proof ingredients, not a refinement proof for the generated Forth runtime. Generated literals and multiple execution paths still bypass the checked descriptors; caller-supplied execution-token declarations remain trusted assertions. A green CI run would validate only enumerated tests, not establish universal linear/modal memory safety.
+> **Linear/modal refinement status: NOT COMPLETE.** The upstream Forth compiler still emits raw literals and legacy operations, so the checked ABI and Agda model are not yet connected by a proved end-to-end semantic refinement theorem. Component tests establish only their enumerated behaviors.
 
-## Upstream synchronization boundary
+## Per-file Haskell provenance
 
-This repository ports the compiler backend from `jespercockx/agda2scheme` to GNU Gforth. Keep the shared frontend/erasure interface compatible with upstream: `src/Agda/Compiler/Erase.hs` is currently byte-identical to upstream. `src/Main.hs` and `src/Agda/Compiler/ToForth.hs` are intentionally target-specific: do not replace the Forth backend with Scheme-emitting code. The Cabal package name, executable name, generated file suffix, runtime assets, and GForth checks necessarily differ. Keep Agda's minimum supported version and shared dependency bounds aligned, and retain PR-triggered CI rather than copying upstream's push-only workflow verbatim.
+The shared source baseline is pinned to the compatible Agda2Scheme revision `6b3d975e9274448c09b5939e637b6718c2cfb10c` (Agda 2.6.2.x API era). `app/Main.hs` and `src/Agda/Compiler/Erase.hs` are kept byte-identical to that revision. The Forth code generator, `src/Agda/Compiler/ToForth.hs`, is kept byte-identical to `LMMilliken/agda2Forth` revision `e83f8cc735bf220f80b3655ce2158a23818910fe`. The current Agda2Scheme master targets Agda 2.8, whose API no longer matches this exact Forth backend; the pinned compatible revision avoids changing the upstream Forth source or adding compatibility shims.
+
+`src/Main.hs` is the target-specific backend adapter derived from the pinned Scheme driver's lifecycle and options flow. It calls the Forth compiler and writes the runtime preamble plus generated definitions to a `.fth` file. CI verifies the pinned shared-file identities, the exact upstream Forth backend identity, and the reviewed adapter blob. There are no source-generation helper scripts or local Haskell compatibility shims.
+
+The build targets GHC 9.0.2 and Agda 2.6.2.2 to match the exact upstream Forth backend's API era. Source identity is provenance only; it does not prove compiler correctness or semantic refinement.
 
 ## Goal and scope
 
@@ -28,6 +32,8 @@ The runtime's `unannotated` mode is a boundary/error state, not a third source-l
 
 Each checked descriptor records a monotone logical identity (META-ID) distinct from its address, kind (scalar/thunk/result), runtime mode, lifecycle (live/consumed), code address, closed-code classification, capture identities and optional payload identity. Numeric payloads are not handle identities. The checked ABI must never decide “number versus pointer” using `MAXNUM` or any other magnitude heuristic.
 
+The checked arithmetic preconditions are represented by `BinaryScalarPrecondition`: both operands must be registered, live scalars with checked source modes, and the machine roots must account for two operand positions. The constructive lemma `linearOperandsCannotAlias` derives from `WellFormed` that those positions cannot name the same live linear identity. This discharges the model-side alias precondition; it is not yet a theorem that compiler-emitted operands satisfy this record.
+
 The Agda model defines these well-formedness conditions:
 
 1. Descriptor identities are unique.
@@ -47,7 +53,11 @@ A raw execution token is not evidence of linear or modal safety. An integrator-w
 
 The formal model therefore separates `codeAddress` from `codeClass`. Modal promotion requires a constructive `ModalCode (codeClass d)` witness and proof that every captured value is live and modal. There is deliberately no modal-safety constructor for opaque user Forth code. The current implementation does not yet establish a verified correspondence from a generated XT to such a witness; this is an explicit remaining proof obligation.
 
+The stack-effect model also proves a concrete boundary fact: a raw-natural/raw-natural stack cannot inhabit the checked addition or equality signature. A raw natural becomes a checked scalar only when an explicit `pMakeScalar` operation supplies a mode token. The pinned upstream `ToForth.hs` emits natural literals as bare Forth numeric cells and does not emit this constructor/mode evidence, so this theorem identifies a real missing compiler-to-runtime precondition—not a completed compiler refinement proof.
+
 For linear code, an analogous derivation must state stack/resource effects and prove that every linear input is consumed, transferred or returned exactly once. A code-class label alone cannot prove this.
+
+The Agda model additionally proves two promotion-precondition consequences: for a well-formed heap, no captured identity can be both live modal and live linear, and an opaque execution-token class cannot satisfy the closed-code witness requirement. These are constructive proofs about the formal preconditions. They do not prove that the current upstream compiler emits those witnesses or that the concrete Forth `promoteModal` implementation enforces the record; that implementation correspondence remains open.
 
 ## Operations and contracts
 

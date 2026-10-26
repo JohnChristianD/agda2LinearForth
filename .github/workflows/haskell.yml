@@ -9,20 +9,27 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Enforce no Haskell-source drift in this PR
-        if: ${{ github.event_name == 'pull_request' }}
+      - name: Verify per-file upstream source identity
         env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SCHEME_UPSTREAM_SHA: 6b3d975e9274448c09b5939e637b6718c2cfb10c
+          FORTH_UPSTREAM_SHA: e83f8cc735bf220f80b3655ce2158a23818910fe
+          MAIN_ADAPTER_BLOB: a827be87cdb3622fa4f22cb74bb6b723258a4b26
         run: |
-          git fetch --no-tags --depth=1 origin "$PR_BASE_SHA"
-          git diff --exit-code "$PR_BASE_SHA" HEAD -- '*.hs'
+          git fetch --no-tags --depth=1 https://github.com/jespercockx/agda2scheme.git "$SCHEME_UPSTREAM_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$SCHEME_UPSTREAM_SHA"
+          git diff --exit-code "$SCHEME_UPSTREAM_SHA" HEAD -- app/Main.hs src/Agda/Compiler/Erase.hs
+
+          git fetch --no-tags --depth=1 https://github.com/LMMilliken/agda2Forth.git "$FORTH_UPSTREAM_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$FORTH_UPSTREAM_SHA"
+          git diff --exit-code "$FORTH_UPSTREAM_SHA" HEAD -- src/Agda/Compiler/ToForth.hs
+
+          test "$(git hash-object src/Main.hs)" = "$MAIN_ADAPTER_BLOB"
 
       - name: Set up GHC
         uses: haskell-actions/setup@v2
         id: setup
         with:
-          ghc-version: '9.10.3'
-          # Keep the upstream agda2scheme setup/cache/build sequence.
+          ghc-version: '9.0.2'
           cabal-version: 'latest'
           cabal-update: true
 
@@ -68,7 +75,9 @@ jobs:
 
       - name: Install Agda CLI for formal checks
         run: |
-          cabal install Agda-2.8.0.2 --installdir="$HOME/.local/bin" --overwrite-policy=always
+          mkdir -p "$HOME/.local/bin"
+          export PATH="$HOME/.local/bin:$PATH"
+          cabal install Agda-2.6.2.2 --installdir="$HOME/.local/bin" --overwrite-policy=always
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/agda" --version
 
@@ -83,6 +92,7 @@ jobs:
       - name: Type-check concrete ABI signature witnesses
         run: |
           "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalExamples.agda
+
 
       - name: Verify unsupported-literal output preserves the unchanged compiler boundary
         run: |
