@@ -72,13 +72,16 @@ s" unreachable Agda branch" exception constant ABI-ERR-UNREACHABLE
 
 
 : pushArray { addr -- xn .. x2 x1 ENDFLAG }
+    ABI-TRACE @ IF ." TRACE PUSHARRAY input " .s cr THEN
     ENDFLAG
     0
     BEGIN
     addr 1 pick cells + @
+    ABI-TRACE @ IF ." TRACE PUSHARRAY item " dup . ." stack " .s cr THEN
     dup ENDFLAG = if
-        \ Drop only the index; preserve accumulated values for foldThunks.
-        drop
+        ABI-TRACE @ IF ." TRACE PUSHARRAY terminator-before-2drop " .s cr THEN
+        2drop
+        ABI-TRACE @ IF ." TRACE PUSHARRAY terminator-after-2drop " .s cr THEN
         EXIT
     then
     swap 1 +
@@ -947,15 +950,21 @@ variable target
 ; is passMany
 
 : foldThunks ( addr - THUNK )
+    ABI-TRACE @ IF ." TRACE FOLD input " .s cr THEN
     pushArray       ( xn .. x2 x1 ENDFLAG )
+    ABI-TRACE @ IF ." TRACE FOLD after-pushArray " .s cr THEN
     makeTHUNK       ( [THUNK xn] .. x2 x1 ENDFLAG)
+    ABI-TRACE @ IF ." TRACE FOLD after-makeTHUNK " .s cr THEN
     BEGIN
     swap            ( xn-1 [THUNK xn] .. x2 x1 ENDFLAG )
-    dup ENDFLAG = if 
+    ABI-TRACE @ IF ." TRACE FOLD after-swap " .s cr THEN
+    dup ENDFLAG = if
         drop        ( [THUNK xn] )
+        ABI-TRACE @ IF ." TRACE FOLD exit " .s cr THEN
         EXIT
     then
     makeTHUNK pass
+    ABI-TRACE @ IF ." TRACE FOLD after-makeTHUNK-pass " .s cr THEN
     AGAIN
 ;
 
