@@ -54,13 +54,15 @@ s" unreachable Agda branch" exception constant ABI-ERR-UNREACHABLE
 ;
 
 : fillHere ( ENDFLAG xn .. x2 x1 -- )
-    BEGIN
-    ,
-    dup ENDFLAG = if
-        ,
-        exit
-    then
-    AGAIN
+    \ The input XT list is on the data stack in source order, with ENDFLAG at
+    \ the bottom. PICK from the bottom upward so the stored array preserves
+    \ lambda-stage order; the old repeated comma stored the stack in reverse.
+    depth 1- { count }
+    count 0 DO
+        count 1- i - pick ,
+    LOOP
+    ENDFLAG ,
+    count 1+ dropN
 ;
 
 : pushArrayN { addr n -- xn .. x2 x1 }
