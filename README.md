@@ -3,15 +3,15 @@
 `agda2forth` compiles Agda code for GNU Gforth. This document defines the intended checked subset, its error boundary, and the current proof/implementation gaps.
 
 
-> **Linear/modal refinement status: NOT COMPLETE.** The compiler still emits raw literals and legacy paths that bypass checked descriptors; the checked Forth runtime and Agda model are not yet connected by a proved semantic refinement theorem. Passing component tests do not establish universal linear/modal memory safety.
+> **Linear/modal refinement status: NOT COMPLETE.** The upstream Forth compiler still emits raw literals and legacy operations, so the checked ABI and Agda model are not yet connected by a proved end-to-end semantic refinement theorem. Component tests establish only their enumerated behaviors.
 
 ## Per-file Haskell provenance
 
-Source compatibility is enforced per file rather than by restoring the whole Haskell tree from one backend. `app/Main.hs` and `src/Agda/Compiler/ToForth.hs` are byte-for-byte identical to pinned `LMMilliken/agda2Forth` commit `e83f8cc735bf220f80b3655ce2158a23818910fe`. `src/Agda/Compiler/Erase.hs` is byte-for-byte identical to pinned `jespercockx/agda2scheme` commit `24e02d9669f17d98ec67b8ad961cf9c3e602bf10`. CI checks these identities and fails if either pinned upstream branch moves without an explicit baseline review.
+The shared source baseline is pinned to the compatible Agda2Scheme revision `6b3d975e9274448c09b5939e637b6718c2cfb10c` (Agda 2.6.2.x API era). `app/Main.hs` and `src/Agda/Compiler/Erase.hs` are kept byte-identical to that revision. The Forth code generator, `src/Agda/Compiler/ToForth.hs`, is kept byte-identical to `LMMilliken/agda2Forth` revision `e83f8cc735bf220f80b3655ce2158a23818910fe`. The current Agda2Scheme master targets Agda 2.8, whose API no longer matches this exact Forth backend; the pinned compatible revision avoids changing the upstream Forth source or adding compatibility shims.
 
-`src/Main.hs` is generated from the pinned Agda2Scheme driver by `scripts/adapt-main-from-agda2scheme.py`. The adapter changes only the backend selection and output hook needed for Forth while retaining the current Agda 2.8 backend lifecycle. CI regenerates and compares it so shared driver changes cannot silently drift. `src/Agda/Utils/Pretty.hs` is a narrow compatibility re-export for the exact upstream Forth backend's older import path; it does not modify `ToForth.hs`.
+`src/Main.hs` is the target-specific backend adapter derived from the pinned Scheme driver's lifecycle and options flow. It calls the Forth compiler and writes the runtime preamble plus generated definitions to a `.fth` file. CI verifies the pinned shared-file identities, the exact upstream Forth backend identity, and the reviewed adapter blob. There are no source-generation helper scripts or local Haskell compatibility shims.
 
-The build targets GHC 9.10.3 and Agda 2.8 because the current Scheme driver and erasure module use the newer API. Exact byte identity of the upstream backend source proves provenance, not compiler correctness or semantic refinement.
+The build targets GHC 9.0.2 and Agda 2.6.2.2 to match the exact upstream Forth backend's API era. Source identity is provenance only; it does not prove compiler correctness or semantic refinement.
 
 ## Goal and scope
 
