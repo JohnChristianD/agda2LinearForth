@@ -274,6 +274,16 @@ data StackEffect : Primitive → StackShape → StackShape → Set where
   printModalEffect : {A : CoreTy} {tail : StackShape} →
     StackEffect pPrint (valueItem (!Ty A) :: tail) (valueItem (!Ty A) :: tail)
 
+  -- Catch receives a checked computation and a handler token.  The returned
+  -- value has the computation's result type; error preservation is separately
+  -- specified by catchPreserves in LinearModalABI.
+  catchEffect : {m : SourceMode} {c : CodeClass}
+    {captures : List CoreTy} {A : CoreTy} {tail : StackShape} →
+    CodeSafe m c →
+    StackEffect pCatch
+      (handlerTokenItem :: thunkItem m c captures A :: tail)
+      (valueItem A :: tail)
+
 -- These are error transitions, not ordinary stack-returning effects. The
 -- state/error payload is modeled by Execution and the Hoare contracts.
 data ErrorEffect : Primitive → StackShape → RuntimeError → Set where
@@ -283,6 +293,14 @@ data ErrorEffect : Primitive → StackShape → RuntimeError → Set where
 -- Every primitive with an ordinary return path must have a stack-effect derivation
 -- for the specific input/output shape. Dynamic constructor/matcher effects carry
 -- explicit schemas; throws use ErrorEffect instead.
+
+-- No checked primitive accepts two raw natural cells as its complete
+-- operand prefix. Constructor-specific values are indexed CoreTy values, and
+-- the scalar constructor uniquely requires an explicit mode token.
+rawNatsCannotEnterCheckedABI :
+  {p : Primitive} {tail output : StackShape} →
+  StackEffect p (rawNatItem :: rawNatItem :: tail) output → ⊥
+rawNatsCannotEnterCheckedABI ()
 
 -- A bare emitted natural literal is not a checked ABI scalar. The only way to
 -- turn a raw natural into a checked scalar is the explicit pMakeScalar effect,
