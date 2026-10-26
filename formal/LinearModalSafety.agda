@@ -2,17 +2,19 @@
 
 -- Single-source-of-truth constructive specification for agda2LinearForth.
 --
--- This module combines the descriptor/ownership model, Hoare and separation
--- contracts, checked primitive stack effects, concrete witnesses, and a small
--- semantic mirror of the pinned compiler/runtime boundary. The proof terms
+-- This module combines descriptor/ownership invariants, weakest-precondition
+-- semantics with derived Hoare contracts, separation, checked stack effects,
+-- concrete witnesses, and a semantic mirror of the pinned compiler/runtime.
+-- The proof terms
 -- below establish properties of this Agda model. They do not, by themselves,
 -- establish that arbitrary Haskell or Forth implementations refine it.
 module LinearModalSafety where
 
-open import Agda.Builtin.Nat using (Nat; zero; suc)
+open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _*_)
+open import Agda.Builtin.Bool using (Bool; true; false)
 open import Agda.Builtin.Equality using (_≡_; refl)
 
--- ── 1. Descriptor heap, linear/modal invariants, Hoare and separation model ──
+-- ── 1. Descriptor heap, linear/modal invariants, WP and separation model ──
 
 data ⊥ : Set where
 
@@ -73,7 +75,7 @@ data RuntimeError : Set where
   linearCaptureNotAccounted modalPromotionRejected : RuntimeError
   unknownPrimitive badStackEffect : RuntimeError
   badResultPayload abiEscapeHatch : RuntimeError
-  arithmeticDomainError : RuntimeError
+  arithmeticDomainError arithmeticOverflowError : RuntimeError
 
 -- CodeClass is a compiler/loader classification, not an execution-token address.
 -- codeOpaque is deliberately not eligible for modal promotion.
@@ -575,7 +577,7 @@ open PrimitiveSpec public
 
 numericErrors : List RuntimeError
 numericErrors = unknownHandle :: consumedHandle :: wrongKind :: expectedScalar ::
-  invalidMode :: aliasedLinearOperands :: []
+  invalidMode :: aliasedLinearOperands :: arithmeticOverflowError :: []
 
 booleanErrors : List RuntimeError
 booleanErrors = unknownHandle :: consumedHandle :: wrongKind :: expectedBoolean :: invalidMode :: invalidBoolean :: []
@@ -649,7 +651,74 @@ executionPost :
 executionPost normal exceptional (returned s) = normal s
 executionPost normal exceptional (thrown s e) = exceptional s e
 
--- Total, constructive Hoare triple with distinct normal/exceptional postconditions.
+-- Weakest-precondition semantics is the authoritative contract interface.
+-- A command is modeled as a total state transformer into an explicit outcome:
+-- normal return or a THROW carrying both the post-state and error.  The WP
+-- requires the normal postcondition on return and the exceptional postcondition
+-- on every exceptional exit.  Divergence is not silently identified with
+-- success: the current Execution model is total-outcome and does not model
+-- divergence; finite-fuel denotation below records exhaustion explicitly.
+wp :
+  {S : Set} →
+  (command : S → Execution S) →
+  (normalPostcondition : S → Set) →
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  S → Set
+wp command normalPostcondition exceptionalPostcondition s =
+  executionPost normalPostcondition exceptionalPostcondition (command s)
+
+-- Sequential composition propagates THROW without running the next command.
+sequenceExecution :
+  {S : Set} → Execution S → (S → Execution S) → Execution S
+sequenceExecution (returned s) next = next s
+sequenceExecution (thrown s e) next = thrown s e
+
+sequence :
+  {S : Set} →
+  (first second : S → Execution S) → S → Execution S
+sequence first second s = sequenceExecution (first s) second
+
+-- Dijkstra's sequencing law: compute the later condition first, then pull it
+-- backwards through the first command. Exceptional exits of the first command
+-- use the final exceptional postcondition directly.
+wpSequence :
+  {S : Set} →
+  (first second : S → Execution S) →
+  (normalPostcondition : S → Set) →
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  (s : S) →
+  wp (sequence first second) normalPostcondition exceptionalPostcondition s ≡
+  wp first
+    (λ s' → wp second normalPostcondition exceptionalPostcondition s')
+    exceptionalPostcondition s
+wpSequence first second normalPostcondition exceptionalPostcondition s
+  with first s
+... | returned s' = refl
+... | thrown s' e = refl
+
+-- Weakest-precondition rule for CATCH: when the protected command throws,
+-- its actual post-state and error are passed to the handler's WP.  On normal
+-- return, the handler is irrelevant.
+wpCatch :
+  {S : Set} →
+  (command : S → Execution S) →
+  (handler : RuntimeError → S → Execution S) →
+  (normalPostcondition : S → Set) →
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  (s : S) →
+  wp (λ state → catchExecution (command state) handler)
+    normalPostcondition exceptionalPostcondition s
+  ≡
+  wp command normalPostcondition
+    (λ state err → wp (λ state' → handler err state')
+      normalPostcondition exceptionalPostcondition state) s
+wpCatch command handler normalPostcondition exceptionalPostcondition s
+  with command s
+... | returned s' = refl
+... | thrown s' e = refl
+
+-- Hoare triples remain useful as a derived, human-facing contract notation;
+-- their sole definition is implication into WP, not an independent rule set.
 Hoare :
   {S : Set} →
   (precondition : S → Set) →
@@ -659,7 +728,95 @@ Hoare :
   Set
 Hoare {S = S} precondition command normalPostcondition exceptionalPostcondition =
   (s : S) → precondition s →
+  wp command normalPostcondition exceptionalPostcondition s
+
+-- WP itself is a valid precondition for the requested outcome predicates.
+wpIsValid :
+  {S : Set} →
+  (command : S → Execution S) →
+  (normalPostcondition : S → Set) →
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  Hoare (wp command normalPostcondition exceptionalPostcondition)
+    command normalPostcondition exceptionalPostcondition
+wpIsValid command normalPostcondition exceptionalPostcondition s condition =
+  condition
+
+-- Leastness: every precondition that validates the command entails WP.  Since
+-- Hoare is defined from WP, this theorem cannot drift from a second rule system.
+wpIsWeakest :
+  {S : Set} →
+  (precondition : S → Set) →
+  (command : S → Execution S) →
+  (normalPostcondition : S → Set) →
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  Hoare precondition command normalPostcondition exceptionalPostcondition →
+  (s : S) → precondition s →
+  wp command normalPostcondition exceptionalPostcondition s
+wpIsWeakest precondition command normalPostcondition exceptionalPostcondition
+  valid s proof = valid s proof
+
+-- State the connection to operational semantics explicitly.  This is the
+-- semantic triple obtained directly from Execution, independently of the
+-- Hoare presentation.  The proofs below show that the two presentations agree.
+SemanticTriple :
+  {S : Set} →
+  (precondition : S → Set) →
+  (command : S → Execution S) →
+  (normalPostcondition : S → Set) →
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  Set
+SemanticTriple {S} precondition command normalPostcondition exceptionalPostcondition =
+  (s : S) → precondition s →
   executionPost normalPostcondition exceptionalPostcondition (command s)
+
+hoareToSemanticTriple :
+  {S : Set}
+  (precondition : S → Set)
+  (command : S → Execution S)
+  (normalPostcondition : S → Set)
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  Hoare precondition command normalPostcondition exceptionalPostcondition →
+  SemanticTriple precondition command normalPostcondition exceptionalPostcondition
+hoareToSemanticTriple precondition command normalPostcondition exceptionalPostcondition
+  valid s proof = valid s proof
+
+semanticTripleToHoare :
+  {S : Set}
+  (precondition : S → Set)
+  (command : S → Execution S)
+  (normalPostcondition : S → Set)
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  SemanticTriple precondition command normalPostcondition exceptionalPostcondition →
+  Hoare precondition command normalPostcondition exceptionalPostcondition
+semanticTripleToHoare precondition command normalPostcondition exceptionalPostcondition
+  valid s proof = valid s proof
+
+-- Semantic admissibility and leastness: the WP predicate itself satisfies
+-- the outcome contract, and every semantic precondition for that contract
+-- entails WP.  This is precondition admissibility/leastness, not domain-
+-- theoretic admissibility of Scott-continuous predicates over an omega-cpo.
+wpSemanticallyAdmissible :
+  {S : Set}
+  (command : S → Execution S)
+  (normalPostcondition : S → Set)
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  SemanticTriple
+    (wp command normalPostcondition exceptionalPostcondition)
+    command normalPostcondition exceptionalPostcondition
+wpSemanticallyAdmissible command normalPostcondition exceptionalPostcondition
+  s precondition = precondition
+
+wpLeastnessFromOperationalSemantics :
+  {S : Set}
+  (precondition : S → Set)
+  (command : S → Execution S)
+  (normalPostcondition : S → Set)
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  SemanticTriple precondition command normalPostcondition exceptionalPostcondition →
+  (s : S) → precondition s →
+  wp command normalPostcondition exceptionalPostcondition s
+wpLeastnessFromOperationalSemantics precondition command normalPostcondition
+  exceptionalPostcondition valid s proof = valid s proof
 
 skip : {S : Set} → S → Execution S
 skip s = returned s
@@ -1084,6 +1241,52 @@ compileNatFragment (natLiteral n) = rawNaturalCell n
 compileNatFragment (natAddition left right) =
   legacyAddCode (compileNatFragment left) (compileNatFragment right)
 
+-- A counterexample for the *observed* curried-application path, kept separate
+-- from the primitive-level table above. The generated scalar fixture has
+-- emitted a lambda body of the form `a c pass`. In FLib.fth, the raw/non-thunk
+-- branch of `pass { x h -- result }` returns h unchanged. Consequently this
+-- body, when both arguments are raw cells, returns the second argument instead
+-- of denoting addition. This is an audited counterexample model, not an
+-- extraction proof from Haskell; the CI output and runtime branch are the
+-- external premises that justify applying it to the current compiler.
+forthPassRawFallback : Nat → Nat → Nat
+forthPassRawFallback x h = h
+
+observedGeneratedScalarAddBody : Nat → Nat → Nat
+observedGeneratedScalarAddBody left right = forthPassRawFallback left right
+
+observedGeneratedBodyReturnsRightArgument :
+  (left right : Nat) → observedGeneratedScalarAddBody left right ≡ right
+observedGeneratedBodyReturnsRightArgument left right = refl
+
+observedGeneratedScalarBodyAt20And5 :
+  observedGeneratedScalarAddBody 20 5 ≡ 5
+observedGeneratedScalarBodyAt20And5 = refl
+
+sourceAdditionAt20And5 : 20 + 5 ≡ 25
+sourceAdditionAt20And5 = refl
+
+fiveIsNotTwentyFive : 5 ≡ 25 → ⊥
+fiveIsNotTwentyFive ()
+
+observedGeneratedBodyCannotRefineAddition :
+  (observedGeneratedScalarAddBody 20 5 ≡ 20 + 5) → ⊥
+observedGeneratedBodyCannotRefineAddition bodyRefinement =
+  fiveIsNotTwentyFive
+    (transEq
+      (transEq (symEq observedGeneratedScalarBodyAt20And5) bodyRefinement)
+      sourceAdditionAt20And5)
+
+CurrentGeneratedScalarRefinesAddition : Set
+CurrentGeneratedScalarRefinesAddition =
+  (left right : Nat) →
+  observedGeneratedScalarAddBody left right ≡ left + right
+
+currentGeneratedScalarDoesNotRefineAddition :
+  CurrentGeneratedScalarRefinesAddition → ⊥
+currentGeneratedScalarDoesNotRefineAddition refinement =
+  observedGeneratedBodyCannotRefineAddition (refinement 20 5)
+
 NoCheckedRepresentation : EmittedFragment → Set
 NoCheckedRepresentation (rawNaturalCell n) = ⊤
 NoCheckedRepresentation rawTrueCell = ⊤
@@ -1440,3 +1643,1195 @@ modalInputRemainsLiveOnSuccessfulCommit = refl
 -- (4) unsupported cases fail through a specified, catchable error boundary.
 -- These obligations remain open while the Haskell backend emits raw literals
 -- and legacy operator forms.
+
+
+-- ── 9. Frame rule and disjoint concurrent updates ──
+--
+-- A framed command receives and returns an untouched resource component.
+-- This makes the locality premise explicit: a real Forth word may use the
+-- frame rule only after its actual reads and writes have been shown confined
+-- to the command-owned component. The lemma below does not assume arbitrary
+-- EXECUTE, dictionary mutation, or global metadata updates are local.
+
+data FramedExecution (S F : Set) : Set where
+  framedReturned : S → F → FramedExecution S F
+  framedThrown : S → F → RuntimeError → FramedExecution S F
+
+frameCommand :
+  {S F : Set} →
+  (command : S → Execution S) →
+  S → F → FramedExecution S F
+frameCommand command s f with command s
+... | returned s' = framedReturned s' f
+... | thrown s' err = framedThrown s' f err
+
+FramedPost :
+  {S F : Set} →
+  (normal : S → Set) →
+  (exceptional : S → RuntimeError → Set) →
+  (frameInvariant : F → Set) →
+  FramedExecution S F → Set
+FramedPost normal exceptional frameInvariant (framedReturned s f) =
+  normal s × frameInvariant f
+FramedPost normal exceptional frameInvariant (framedThrown s f err) =
+  exceptional s err × frameInvariant f
+
+FramedHoare :
+  {S F : Set} →
+  (precondition : S → Set) →
+  (command : S → F → FramedExecution S F) →
+  (normalPostcondition : S → Set) →
+  (exceptionalPostcondition : S → RuntimeError → Set) →
+  (frameInvariant : F → Set) → Set
+FramedHoare {S} {F} precondition command normalPostcondition
+  exceptionalPostcondition frameInvariant =
+  (s : S) → (f : F) → precondition s → frameInvariant f →
+  FramedPost normalPostcondition exceptionalPostcondition frameInvariant
+    (command s f)
+
+frameRule :
+  {S F : Set} →
+  {P Q : S → Set} →
+  {E : S → RuntimeError → Set} →
+  {R : F → Set} →
+  {command : S → Execution S} →
+  Hoare P command Q E →
+  FramedHoare P (frameCommand command) Q E R
+frameRule {command = command} safe s f preconditionProof frameProof
+  with command s | safe s preconditionProof
+... | returned s' | postProof = postProof , frameProof
+... | thrown s' err | postProof = postProof , frameProof
+
+-- Transitions that update separate components of a product state commute.
+-- This is an elementary interference-freedom law, not a locality theorem for
+-- the concrete Forth words.
+leftUpdate : {L R : Set} → (L → L) → L × R → L × R
+leftUpdate update (left , right) = update left , right
+
+rightUpdate : {L R : Set} → (R → R) → L × R → L × R
+rightUpdate update (left , right) = left , update right
+
+disjointUpdatesCommute :
+  {L R : Set} →
+  (updateL : L → L) →
+  (updateR : R → R) →
+  (state : L × R) →
+  rightUpdate updateR (leftUpdate updateL state) ≡
+  leftUpdate updateL (rightUpdate updateR state)
+disjointUpdatesCommute updateL updateR (left , right) = refl
+
+-- ── Scalar bridge correspondence for the opt-in runtime gate ──
+--
+-- The concrete Forth bridge maps a bare Nat cell to a modal scalar and preserves
+-- an explicitly checked handle's mode. The source compiler's erased boolean/Nat
+-- overlap at raw 0 is handled by a caller-selected Nat/Bool result adapter.
+data BridgeNatCell : Set where
+  bridgeRawNat : Nat → BridgeNatCell
+  bridgeCheckedNat : Nat → SourceMode → BridgeNatCell
+
+bridgeNatPayload : BridgeNatCell → Nat
+bridgeNatPayload (bridgeRawNat n) = n
+bridgeNatPayload (bridgeCheckedNat n m) = n
+
+bridgeNormalizeNat : BridgeNatCell → Nat × SourceMode
+bridgeNormalizeNat (bridgeRawNat n) = n , modal
+bridgeNormalizeNat (bridgeCheckedNat n m) = n , m
+
+bridgeNatPayloadPreserved :
+  (v : BridgeNatCell) → fst (bridgeNormalizeNat v) ≡ bridgeNatPayload v
+bridgeNatPayloadPreserved (bridgeRawNat n) = refl
+bridgeNatPayloadPreserved (bridgeCheckedNat n m) = refl
+
+bridgeRawNatIsModal :
+  (n : Nat) → snd (bridgeNormalizeNat (bridgeRawNat n)) ≡ modal
+bridgeRawNatIsModal n = refl
+
+bridgeCheckedModePreserved :
+  (n : Nat) (m : SourceMode) →
+  snd (bridgeNormalizeNat (bridgeCheckedNat n m)) ≡ m
+bridgeCheckedModePreserved n m = refl
+
+data BridgeBoolCell : Set where
+  bridgeRawBool : Bool → BridgeBoolCell
+  bridgeCheckedBool : Bool → SourceMode → BridgeBoolCell
+
+bridgeBoolPayload : BridgeBoolCell → Bool
+bridgeBoolPayload (bridgeRawBool b) = b
+bridgeBoolPayload (bridgeCheckedBool b m) = b
+
+bridgeNormalizeBool : BridgeBoolCell → Bool × SourceMode
+bridgeNormalizeBool (bridgeRawBool b) = b , modal
+bridgeNormalizeBool (bridgeCheckedBool b m) = b , m
+
+bridgeBoolPayloadPreserved :
+  (v : BridgeBoolCell) → fst (bridgeNormalizeBool v) ≡ bridgeBoolPayload v
+bridgeBoolPayloadPreserved (bridgeRawBool b) = refl
+bridgeBoolPayloadPreserved (bridgeCheckedBool b m) = refl
+
+bridgeRawBoolIsModal :
+  (b : Bool) → snd (bridgeNormalizeBool (bridgeRawBool b)) ≡ modal
+bridgeRawBoolIsModal b = refl
+
+bridgeNatSub : Nat → Nat → Nat
+bridgeNatSub n zero = n
+bridgeNatSub zero (suc m) = zero
+bridgeNatSub (suc n) (suc m) = bridgeNatSub n m
+
+bridgeNatEq : Nat → Nat → Bool
+bridgeNatEq zero zero = true
+bridgeNatEq zero (suc m) = false
+bridgeNatEq (suc n) zero = false
+bridgeNatEq (suc n) (suc m) = bridgeNatEq n m
+
+bridgeEvalAdd : BridgeNatCell → BridgeNatCell → Nat × SourceMode
+bridgeEvalAdd left right =
+  (fst (bridgeNormalizeNat left) + fst (bridgeNormalizeNat right)) ,
+  joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeEvalSub : BridgeNatCell → BridgeNatCell → Nat × SourceMode
+bridgeEvalSub left right =
+  bridgeNatSub (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right)) ,
+  joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeEvalEq : BridgeNatCell → BridgeNatCell → Bool × SourceMode
+bridgeEvalEq left right =
+  bridgeNatEq (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right)) ,
+  joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeAddPayloadCorrespondence :
+  (left right : BridgeNatCell) →
+  fst (bridgeEvalAdd left right) ≡
+    fst (bridgeNormalizeNat left) + fst (bridgeNormalizeNat right)
+bridgeAddPayloadCorrespondence left right = refl
+
+bridgeSubPayloadCorrespondence :
+  (left right : BridgeNatCell) →
+  fst (bridgeEvalSub left right) ≡
+    bridgeNatSub (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right))
+bridgeSubPayloadCorrespondence left right = refl
+
+bridgeEqualityPayloadCorrespondence :
+  (left right : BridgeNatCell) →
+  fst (bridgeEvalEq left right) ≡
+    bridgeNatEq (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right))
+bridgeEqualityPayloadCorrespondence left right = refl
+
+bridgeSelect : Bool → BridgeNatCell → BridgeNatCell → BridgeNatCell
+bridgeSelect true yes no = yes
+bridgeSelect false yes no = no
+
+bridgeTrueSelectsLeft :
+  (yes no : BridgeNatCell) → bridgeSelect true yes no ≡ yes
+bridgeTrueSelectsLeft yes no = refl
+
+bridgeFalseSelectsRight :
+  (yes no : BridgeNatCell) → bridgeSelect false yes no ≡ no
+bridgeFalseSelectsRight yes no = refl
+
+
+-- Model the rest of the checked scalar ABI vocabulary, including the domain
+-- error for quotient/remainder by zero and the operation-specific joined mode.
+bridgeNatMul : Nat → Nat → Nat
+bridgeNatMul left right = left * right
+
+bridgeNatLt : Nat → Nat → Bool
+bridgeNatLt zero zero = false
+bridgeNatLt zero (suc right) = true
+bridgeNatLt (suc left) zero = false
+bridgeNatLt (suc left) (suc right) = bridgeNatLt left right
+
+bridgeNatGeq : Nat → Nat → Bool
+bridgeNatGeq zero zero = true
+bridgeNatGeq zero (suc right) = false
+bridgeNatGeq (suc left) zero = true
+bridgeNatGeq (suc left) (suc right) = bridgeNatGeq left right
+
+bridgeEvalMul : BridgeNatCell → BridgeNatCell → Nat × SourceMode
+bridgeEvalMul left right =
+  bridgeNatMul (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right)) ,
+  joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeEvalGeq : BridgeNatCell → BridgeNatCell → Bool × SourceMode
+bridgeEvalGeq left right =
+  bridgeNatGeq (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right)) ,
+  joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeEvalLt : BridgeNatCell → BridgeNatCell → Bool × SourceMode
+bridgeEvalLt left right =
+  bridgeNatLt (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right)) ,
+  joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeMulPayloadCorrespondence :
+  (left right : BridgeNatCell) →
+  fst (bridgeEvalMul left right) ≡
+    fst (bridgeNormalizeNat left) * fst (bridgeNormalizeNat right)
+bridgeMulPayloadCorrespondence left right = refl
+
+bridgeGeqPayloadCorrespondence :
+  (left right : BridgeNatCell) →
+  fst (bridgeEvalGeq left right) ≡
+    bridgeNatGeq (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right))
+bridgeGeqPayloadCorrespondence left right = refl
+
+bridgeLtPayloadCorrespondence :
+  (left right : BridgeNatCell) →
+  fst (bridgeEvalLt left right) ≡
+    bridgeNatLt (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right))
+bridgeLtPayloadCorrespondence left right = refl
+
+bridgeNatDivModFuel : Nat → Nat → Nat → Nat → Nat × Nat
+bridgeNatDivModFuel zero dividend divisor quotient = quotient , dividend
+bridgeNatDivModFuel (suc fuel) dividend divisor quotient
+  with bridgeNatLt dividend divisor
+... | true = quotient , dividend
+... | false =
+  bridgeNatDivModFuel fuel (bridgeNatSub dividend divisor) divisor (suc quotient)
+
+data BridgeDivision : Set where
+  bridgeDivisionByZero : BridgeDivision
+  bridgeDivisionResult : Nat → Nat → BridgeDivision
+
+bridgeNatDivMod : Nat → Nat → BridgeDivision
+bridgeNatDivMod dividend zero = bridgeDivisionByZero
+bridgeNatDivMod dividend (suc divisor)
+  with bridgeNatDivModFuel dividend dividend (suc divisor) zero
+... | quotient , remainder = bridgeDivisionResult quotient remainder
+
+data BridgeNatEval : Set where
+  bridgeNatFailure : RuntimeError → BridgeNatEval
+  bridgeNatSuccess : Nat → SourceMode → BridgeNatEval
+
+bridgeEvalQuot : BridgeNatCell → BridgeNatCell → BridgeNatEval
+bridgeEvalQuot left right
+  with bridgeNatDivMod (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right))
+... | bridgeDivisionByZero = bridgeNatFailure arithmeticDomainError
+... | bridgeDivisionResult quotient remainder =
+  bridgeNatSuccess quotient
+    (joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right)))
+
+bridgeEvalRem : BridgeNatCell → BridgeNatCell → BridgeNatEval
+bridgeEvalRem left right
+  with bridgeNatDivMod (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right))
+... | bridgeDivisionByZero = bridgeNatFailure arithmeticDomainError
+... | bridgeDivisionResult quotient remainder =
+  bridgeNatSuccess remainder
+    (joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right)))
+
+bridgeQuotZeroIsDomainError :
+  (left : BridgeNatCell) →
+  bridgeEvalQuot left (bridgeRawNat zero) ≡ bridgeNatFailure arithmeticDomainError
+bridgeQuotZeroIsDomainError left = refl
+
+bridgeRemainderZeroIsDomainError :
+  (left : BridgeNatCell) →
+  bridgeEvalRem left (bridgeRawNat zero) ≡ bridgeNatFailure arithmeticDomainError
+bridgeRemainderZeroIsDomainError left = refl
+
+-- ── 10. Compositional denotation for the closed Nat/Bool scalar fragment ──
+--
+-- This is a Scott-Strachey-style denotation for a finite, total expression
+-- fragment with explicit runtime errors. Syntax maps compositionally to values
+-- and errors. It deliberately does not claim to model arbitrary Forth, mutable
+-- dictionary operations, untrusted execution tokens, or nontermination.
+
+data ScalarTerm : CoreTy → Set where
+  sNatLiteral : Nat → ScalarTerm naturalTy
+  sCheckedNat : Nat → SourceMode → ScalarTerm naturalTy
+  sBoolLiteral : Bool → SourceMode → ScalarTerm booleanTy
+  sAdd : ScalarTerm naturalTy → ScalarTerm naturalTy → ScalarTerm naturalTy
+  sSub : ScalarTerm naturalTy → ScalarTerm naturalTy → ScalarTerm naturalTy
+  sMul : ScalarTerm naturalTy → ScalarTerm naturalTy → ScalarTerm naturalTy
+  sQuot : ScalarTerm naturalTy → ScalarTerm naturalTy → ScalarTerm naturalTy
+  sRem : ScalarTerm naturalTy → ScalarTerm naturalTy → ScalarTerm naturalTy
+  sMonus : ScalarTerm naturalTy → ScalarTerm naturalTy → ScalarTerm naturalTy
+  sEq : ScalarTerm naturalTy → ScalarTerm naturalTy → ScalarTerm booleanTy
+  sGeq : ScalarTerm naturalTy → ScalarTerm naturalTy → ScalarTerm booleanTy
+  sLt : ScalarTerm naturalTy → ScalarTerm naturalTy → ScalarTerm booleanTy
+  sIfNat :
+    ScalarTerm booleanTy →
+    ScalarTerm naturalTy →
+    ScalarTerm naturalTy →
+    ScalarTerm naturalTy
+
+data ScalarValue : CoreTy → Set where
+  scalarNat : Nat → SourceMode → ScalarValue naturalTy
+  scalarBool : Bool → SourceMode → ScalarValue booleanTy
+
+data ScalarResult (A : Set) : Set where
+  scalarRaised : RuntimeError → ScalarResult A
+  scalarReturned : A → ScalarResult A
+
+scalarQuotDenotation :
+  Nat → SourceMode → Nat → SourceMode →
+  ScalarResult (ScalarValue naturalTy)
+scalarQuotDenotation left leftMode right rightMode
+  with bridgeNatDivMod left right
+... | bridgeDivisionByZero = scalarRaised arithmeticDomainError
+... | bridgeDivisionResult quotient remainder =
+  scalarReturned (scalarNat quotient (joinSourceMode leftMode rightMode))
+
+scalarRemDenotation :
+  Nat → SourceMode → Nat → SourceMode →
+  ScalarResult (ScalarValue naturalTy)
+scalarRemDenotation left leftMode right rightMode
+  with bridgeNatDivMod left right
+... | bridgeDivisionByZero = scalarRaised arithmeticDomainError
+... | bridgeDivisionResult quotient remainder =
+  scalarReturned (scalarNat remainder (joinSourceMode leftMode rightMode))
+
+denoteScalar :
+  {A : CoreTy} → ScalarTerm A → ScalarResult (ScalarValue A)
+denoteScalar (sNatLiteral n) = scalarReturned (scalarNat n modal)
+denoteScalar (sCheckedNat n mode) = scalarReturned (scalarNat n mode)
+denoteScalar (sBoolLiteral b mode) = scalarReturned (scalarBool b mode)
+denoteScalar (sAdd left right) with denoteScalar left | denoteScalar right
+... | scalarRaised err | _ = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarReturned (scalarNat y rightMode) =
+  scalarReturned (scalarNat (x + y) (joinSourceMode leftMode rightMode))
+denoteScalar (sSub left right) with denoteScalar left | denoteScalar right
+... | scalarRaised err | _ = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarReturned (scalarNat y rightMode) =
+  scalarReturned (scalarNat (bridgeNatSub x y) (joinSourceMode leftMode rightMode))
+denoteScalar (sMul left right) with denoteScalar left | denoteScalar right
+... | scalarRaised err | _ = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarReturned (scalarNat y rightMode) =
+  scalarReturned (scalarNat (bridgeNatMul x y) (joinSourceMode leftMode rightMode))
+denoteScalar (sQuot left right) with denoteScalar left | denoteScalar right
+... | scalarRaised err | _ = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarReturned (scalarNat y rightMode) =
+  scalarQuotDenotation x leftMode y rightMode
+denoteScalar (sRem left right) with denoteScalar left | denoteScalar right
+... | scalarRaised err | _ = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarReturned (scalarNat y rightMode) =
+  scalarRemDenotation x leftMode y rightMode
+denoteScalar (sMonus left right) with denoteScalar left | denoteScalar right
+... | scalarRaised err | _ = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarReturned (scalarNat y rightMode) =
+  scalarReturned (scalarNat (bridgeNatSub x y) (joinSourceMode leftMode rightMode))
+denoteScalar (sEq left right) with denoteScalar left | denoteScalar right
+... | scalarRaised err | _ = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarReturned (scalarNat y rightMode) =
+  scalarReturned (scalarBool (bridgeNatEq x y) (joinSourceMode leftMode rightMode))
+denoteScalar (sGeq left right) with denoteScalar left | denoteScalar right
+... | scalarRaised err | _ = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarReturned (scalarNat y rightMode) =
+  scalarReturned (scalarBool (bridgeNatGeq x y) (joinSourceMode leftMode rightMode))
+denoteScalar (sLt left right) with denoteScalar left | denoteScalar right
+... | scalarRaised err | _ = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarNat x leftMode) | scalarReturned (scalarNat y rightMode) =
+  scalarReturned (scalarBool (bridgeNatLt x y) (joinSourceMode leftMode rightMode))
+denoteScalar (sIfNat condition yes no) with denoteScalar condition
+... | scalarRaised err = scalarRaised err
+... | scalarReturned (scalarBool true conditionMode) = denoteScalar yes
+... | scalarReturned (scalarBool false conditionMode) = denoteScalar no
+
+scalarFromCell : BridgeNatCell → ScalarTerm naturalTy
+scalarFromCell (bridgeRawNat n) = sNatLiteral n
+scalarFromCell (bridgeCheckedNat n mode) = sCheckedNat n mode
+
+scalarCellIsModal :
+  (n : Nat) →
+  denoteScalar (scalarFromCell (bridgeRawNat n)) ≡
+    scalarReturned (scalarNat n modal)
+scalarCellIsModal n = refl
+
+scalarCheckedCellPreservesMode :
+  (n : Nat) (mode : SourceMode) →
+  denoteScalar (scalarFromCell (bridgeCheckedNat n mode)) ≡
+    scalarReturned (scalarNat n mode)
+scalarCheckedCellPreservesMode n mode = refl
+
+scalarAdditionCompositional :
+  (left right : Nat) →
+  denoteScalar (sAdd (sNatLiteral left) (sNatLiteral right)) ≡
+    scalarReturned (scalarNat (left + right) modal)
+scalarAdditionCompositional left right = refl
+
+scalarMixedAdditionCompositional :
+  (left right : Nat) (mode : SourceMode) →
+  denoteScalar (sAdd (sCheckedNat left mode) (sNatLiteral right)) ≡
+    scalarReturned (scalarNat (left + right) (joinSourceMode mode modal))
+scalarMixedAdditionCompositional left right mode = refl
+
+scalarEqualityCompositional :
+  (left right : Nat) →
+  denoteScalar (sEq (sNatLiteral left) (sNatLiteral right)) ≡
+    scalarReturned (scalarBool (bridgeNatEq left right) modal)
+scalarEqualityCompositional left right = refl
+
+scalarTrueChoosesThenBranch :
+  (yes no : ScalarTerm naturalTy) →
+  denoteScalar (sIfNat (sBoolLiteral true modal) yes no) ≡ denoteScalar yes
+scalarTrueChoosesThenBranch yes no = refl
+
+scalarFalseChoosesElseBranch :
+  (yes no : ScalarTerm naturalTy) →
+  denoteScalar (sIfNat (sBoolLiteral false modal) yes no) ≡ denoteScalar no
+scalarFalseChoosesElseBranch yes no = refl
+
+scalarQuotientByZeroRaises :
+  (numerator : Nat) →
+  denoteScalar (sQuot (sNatLiteral numerator) (sNatLiteral zero)) ≡
+    scalarRaised arithmeticDomainError
+scalarQuotientByZeroRaises numerator = refl
+
+scalarRemainderByZeroRaises :
+  (numerator : Nat) →
+  denoteScalar (sRem (sNatLiteral numerator) (sNatLiteral zero)) ≡
+    scalarRaised arithmeticDomainError
+scalarRemainderByZeroRaises numerator = refl
+
+scalarNatEvalToResult : BridgeNatEval → ScalarResult (ScalarValue naturalTy)
+scalarNatEvalToResult (bridgeNatFailure err) = scalarRaised err
+scalarNatEvalToResult (bridgeNatSuccess n mode) = scalarReturned (scalarNat n mode)
+
+scalarAdditionMatchesRuntimeBridge :
+  (left right : BridgeNatCell) →
+  denoteScalar (sAdd (scalarFromCell left) (scalarFromCell right)) ≡
+    scalarReturned (scalarNat (fst (bridgeEvalAdd left right)) (snd (bridgeEvalAdd left right)))
+scalarAdditionMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y) = refl
+scalarAdditionMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode) = refl
+scalarAdditionMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y) = refl
+scalarAdditionMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode') = refl
+
+scalarSubtractionMatchesRuntimeBridge :
+  (left right : BridgeNatCell) →
+  denoteScalar (sSub (scalarFromCell left) (scalarFromCell right)) ≡
+    scalarReturned (scalarNat (fst (bridgeEvalSub left right)) (snd (bridgeEvalSub left right)))
+scalarSubtractionMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y) = refl
+scalarSubtractionMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode) = refl
+scalarSubtractionMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y) = refl
+scalarSubtractionMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode') = refl
+
+scalarMultiplicationMatchesRuntimeBridge :
+  (left right : BridgeNatCell) →
+  denoteScalar (sMul (scalarFromCell left) (scalarFromCell right)) ≡
+    scalarReturned (scalarNat (fst (bridgeEvalMul left right)) (snd (bridgeEvalMul left right)))
+scalarMultiplicationMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y) = refl
+scalarMultiplicationMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode) = refl
+scalarMultiplicationMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y) = refl
+scalarMultiplicationMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode') = refl
+
+scalarEqualityMatchesRuntimeBridge :
+  (left right : BridgeNatCell) →
+  denoteScalar (sEq (scalarFromCell left) (scalarFromCell right)) ≡
+    scalarReturned (scalarBool (fst (bridgeEvalEq left right)) (snd (bridgeEvalEq left right)))
+scalarEqualityMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y) = refl
+scalarEqualityMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode) = refl
+scalarEqualityMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y) = refl
+scalarEqualityMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode') = refl
+
+scalarGreaterEqualMatchesRuntimeBridge :
+  (left right : BridgeNatCell) →
+  denoteScalar (sGeq (scalarFromCell left) (scalarFromCell right)) ≡
+    scalarReturned (scalarBool (fst (bridgeEvalGeq left right)) (snd (bridgeEvalGeq left right)))
+scalarGreaterEqualMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y) = refl
+scalarGreaterEqualMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode) = refl
+scalarGreaterEqualMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y) = refl
+scalarGreaterEqualMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode') = refl
+
+scalarLessThanMatchesRuntimeBridge :
+  (left right : BridgeNatCell) →
+  denoteScalar (sLt (scalarFromCell left) (scalarFromCell right)) ≡
+    scalarReturned (scalarBool (fst (bridgeEvalLt left right)) (snd (bridgeEvalLt left right)))
+scalarLessThanMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y) = refl
+scalarLessThanMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode) = refl
+scalarLessThanMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y) = refl
+scalarLessThanMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode') = refl
+
+scalarQuotientMatchesRuntimeBridge :
+  (left right : BridgeNatCell) →
+  denoteScalar (sQuot (scalarFromCell left) (scalarFromCell right)) ≡
+    scalarNatEvalToResult (bridgeEvalQuot left right)
+scalarQuotientMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y)
+  with bridgeNatDivMod x y
+... | bridgeDivisionByZero = refl
+... | bridgeDivisionResult quotient remainder = refl
+scalarQuotientMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode)
+  with bridgeNatDivMod x y
+... | bridgeDivisionByZero = refl
+... | bridgeDivisionResult quotient remainder = refl
+scalarQuotientMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y)
+  with bridgeNatDivMod x y
+... | bridgeDivisionByZero = refl
+... | bridgeDivisionResult quotient remainder = refl
+scalarQuotientMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode')
+  with bridgeNatDivMod x y
+... | bridgeDivisionByZero = refl
+... | bridgeDivisionResult quotient remainder = refl
+
+scalarRemainderMatchesRuntimeBridge :
+  (left right : BridgeNatCell) →
+  denoteScalar (sRem (scalarFromCell left) (scalarFromCell right)) ≡
+    scalarNatEvalToResult (bridgeEvalRem left right)
+scalarRemainderMatchesRuntimeBridge (bridgeRawNat x) (bridgeRawNat y)
+  with bridgeNatDivMod x y
+... | bridgeDivisionByZero = refl
+... | bridgeDivisionResult quotient remainder = refl
+scalarRemainderMatchesRuntimeBridge (bridgeRawNat x) (bridgeCheckedNat y mode)
+  with bridgeNatDivMod x y
+... | bridgeDivisionByZero = refl
+... | bridgeDivisionResult quotient remainder = refl
+scalarRemainderMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeRawNat y)
+  with bridgeNatDivMod x y
+... | bridgeDivisionByZero = refl
+... | bridgeDivisionResult quotient remainder = refl
+scalarRemainderMatchesRuntimeBridge (bridgeCheckedNat x mode) (bridgeCheckedNat y mode')
+  with bridgeNatDivMod x y
+... | bridgeDivisionByZero = refl
+... | bridgeDivisionResult quotient remainder = refl
+
+-- Recovered compositional semantics from the formerly separate denotation
+-- module. Kept nested here so there is one authoritative Agda specification.
+module CoreDenotation where
+  data DList (A : Set) : Set where
+    dnil : DList A
+    dcons : A → DList A → DList A
+  
+  appendD : {A : Set} → DList A → DList A → DList A
+  appendD dnil ys = ys
+  appendD (dcons x xs) ys = dcons x (appendD xs ys)
+  
+  lengthD : {A : Set} → DList A → Nat
+  lengthD dnil = zero
+  lengthD (dcons x xs) = suc (lengthD xs)
+  
+  natEq : Nat → Nat → Bool
+  natEq zero zero = true
+  natEq zero (suc y) = false
+  natEq (suc x) zero = false
+  natEq (suc x) (suc y) = natEq x y
+  
+  mutual
+    data Term : Set where
+      tNat : Nat → Term
+      tBool : Bool → SourceMode → Term
+      tUnit : Term
+      tVar : Nat → Term
+      tLambda : Term → Term
+      tApply : Term → Term → Term
+      tAdd : Term → Term → Term
+      tSub : Term → Term → Term
+      tMul : Term → Term → Term
+      tQuot : Term → Term → Term
+      tRem : Term → Term → Term
+      tMonus : Term → Term → Term
+      tEqual : Term → Term → Term
+      tGeq : Term → Term → Term
+      tLt : Term → Term → Term
+      tIf : Term → Term → Term → Term
+      tConstruct : Nat → DList Term → Term
+      tMatch : Term → Nat → Nat → Term → Term → Term
+      tRaise : RuntimeError → Term
+      tCatch : Term → Term → Term
+      tPackResult : Term → Term
+      tUnpackResult : Term → Term
+      tPrint : Term → Term
+  
+    data Value : Set where
+      vNat : Nat → SourceMode → Value
+      vBool : Bool → SourceMode → Value
+      vUnit : Value
+      vClosure : DList Value → Term → Value
+      vConstructed : Nat → DList Value → Value
+      vResult : Value → Value
+      vError : RuntimeError → Value
+  
+  Env : Set
+  Env = DList Value
+  
+  data Event : Set where
+    observed : Value → Event
+  
+  -- The denotation preserves observable output and distinguishes normal return,
+  -- a language-level exception, and exhaustion of the evaluator's finite fuel.
+  data Outcome : Set where
+    returned : Value → DList Event → Outcome
+    raised : RuntimeError → DList Event → Outcome
+    outOfFuel : DList Event → Outcome
+  
+  data ValuesOutcome : Set where
+    valuesReturned : DList Value → DList Event → ValuesOutcome
+    valuesRaised : RuntimeError → DList Event → ValuesOutcome
+    valuesOutOfFuel : DList Event → ValuesOutcome
+  
+  prefixOutcome : DList Event → Outcome → Outcome
+  prefixOutcome trace (returned value later) =
+    returned value (appendD trace later)
+  prefixOutcome trace (raised err later) =
+    raised err (appendD trace later)
+  prefixOutcome trace (outOfFuel later) = outOfFuel (appendD trace later)
+  
+  prefixValues : DList Event → ValuesOutcome → ValuesOutcome
+  prefixValues trace (valuesReturned values later) =
+    valuesReturned values (appendD trace later)
+  prefixValues trace (valuesRaised err later) =
+    valuesRaised err (appendD trace later)
+  prefixValues trace (valuesOutOfFuel later) =
+    valuesOutOfFuel (appendD trace later)
+  
+  bindOutcome : Outcome → (Value → Outcome) → Outcome
+  bindOutcome (returned value trace) next =
+    prefixOutcome trace (next value)
+  bindOutcome (raised err trace) next = raised err trace
+  bindOutcome (outOfFuel trace) next = outOfFuel trace
+  
+  combineOutcome :
+    Outcome → Outcome → (Value → Value → Outcome) → Outcome
+  combineOutcome (returned left leftTrace) second operation with second
+  ... | returned right rightTrace =
+    prefixOutcome (appendD leftTrace rightTrace) (operation left right)
+  ... | raised err rightTrace = raised err (appendD leftTrace rightTrace)
+  ... | outOfFuel rightTrace = outOfFuel (appendD leftTrace rightTrace)
+  combineOutcome (raised err trace) second operation = raised err trace
+  combineOutcome (outOfFuel trace) second operation = outOfFuel trace
+  
+  data MaybeValue : Set where
+    missing : MaybeValue
+    found : Value → MaybeValue
+  
+  lookupEnv : Nat → Env → MaybeValue
+  lookupEnv zero dnil = missing
+  lookupEnv zero (dcons value rest) = found value
+  lookupEnv (suc index) dnil = missing
+  lookupEnv (suc index) (dcons value rest) = lookupEnv index rest
+  
+  addValues : Value → Value → Outcome
+  addValues (vNat x leftMode) (vNat y rightMode) =
+    returned (vNat (x + y) (joinSourceMode leftMode rightMode)) dnil
+  addValues _ _ = raised wrongKind dnil
+  
+  subValues : Value → Value → Outcome
+  subValues (vNat x leftMode) (vNat y rightMode) =
+    returned (vNat (bridgeNatSub x y) (joinSourceMode leftMode rightMode)) dnil
+  subValues _ _ = raised wrongKind dnil
+  
+  mulValues : Value → Value → Outcome
+  mulValues (vNat x leftMode) (vNat y rightMode) =
+    returned (vNat (bridgeNatMul x y) (joinSourceMode leftMode rightMode)) dnil
+  mulValues _ _ = raised wrongKind dnil
+  
+  quotValues : Value → Value → Outcome
+  quotValues (vNat x leftMode) (vNat y rightMode)
+    with bridgeNatDivMod x y
+  ... | bridgeDivisionByZero = raised arithmeticDomainError dnil
+  ... | bridgeDivisionResult quotient remainder =
+    returned (vNat quotient (joinSourceMode leftMode rightMode)) dnil
+  quotValues _ _ = raised wrongKind dnil
+  
+  remValues : Value → Value → Outcome
+  remValues (vNat x leftMode) (vNat y rightMode)
+    with bridgeNatDivMod x y
+  ... | bridgeDivisionByZero = raised arithmeticDomainError dnil
+  ... | bridgeDivisionResult quotient remainder =
+    returned (vNat remainder (joinSourceMode leftMode rightMode)) dnil
+  remValues _ _ = raised wrongKind dnil
+  
+  equalValues : Value → Value → Outcome
+  equalValues (vNat x leftMode) (vNat y rightMode) =
+    returned (vBool (natEq x y) (joinSourceMode leftMode rightMode)) dnil
+  equalValues _ _ = raised wrongKind dnil
+  
+  geqValues : Value → Value → Outcome
+  geqValues (vNat x leftMode) (vNat y rightMode) =
+    returned (vBool (bridgeNatGeq x y) (joinSourceMode leftMode rightMode)) dnil
+  geqValues _ _ = raised wrongKind dnil
+  
+  ltValues : Value → Value → Outcome
+  ltValues (vNat x leftMode) (vNat y rightMode) =
+    returned (vBool (bridgeNatLt x y) (joinSourceMode leftMode rightMode)) dnil
+  ltValues _ _ = raised wrongKind dnil
+  
+  monusValues : Value → Value → Outcome
+  monusValues = subValues
+  
+  unwrapValue : Value → Outcome
+  unwrapValue (vResult value) = returned value dnil
+  unwrapValue _ = raised wrongKind dnil
+  
+  mutual
+    -- Fuel bounds recursive evaluation depth. It makes the denotation total
+    -- without assuming normalization for arbitrary recursive or user Forth code.
+    eval : Nat → Env → Term → Outcome
+    evalList : Nat → Env → DList Term → ValuesOutcome
+    matchOutcome : Nat → Env → Nat → Nat → Term → Term → Outcome → Outcome
+    catchOutcome : Nat → Env → Term → Outcome → Outcome
+  
+    eval zero env term = outOfFuel dnil
+    eval (suc fuel) env (tNat n) = returned (vNat n modal) dnil
+    eval (suc fuel) env (tBool b mode) = returned (vBool b mode) dnil
+    eval (suc fuel) env tUnit = returned vUnit dnil
+    eval (suc fuel) env (tVar index) with lookupEnv index env
+    ... | missing = raised unknownPrimitive dnil
+    ... | found value = returned value dnil
+    eval (suc fuel) env (tLambda body) = returned (vClosure env body) dnil
+  
+    eval (suc fuel) env (tApply function argument)
+      with eval fuel env function | eval fuel env argument
+    ... | returned (vClosure captured body) functionTrace
+        | returned value argumentTrace =
+      prefixOutcome (appendD functionTrace argumentTrace)
+        (eval fuel (dcons value captured) body)
+    ... | raised err trace | _ = raised err trace
+    ... | outOfFuel trace | _ = outOfFuel trace
+    ... | returned _ functionTrace | raised err argumentTrace =
+      raised err (appendD functionTrace argumentTrace)
+    ... | returned _ functionTrace | outOfFuel argumentTrace =
+      outOfFuel (appendD functionTrace argumentTrace)
+    ... | returned _ functionTrace | returned _ argumentTrace =
+      raised wrongKind (appendD functionTrace argumentTrace)
+  
+    eval (suc fuel) env (tAdd left right) =
+      combineOutcome (eval fuel env left) (eval fuel env right) addValues
+    eval (suc fuel) env (tSub left right) =
+      combineOutcome (eval fuel env left) (eval fuel env right) subValues
+    eval (suc fuel) env (tMul left right) =
+      combineOutcome (eval fuel env left) (eval fuel env right) mulValues
+    eval (suc fuel) env (tQuot left right) =
+      combineOutcome (eval fuel env left) (eval fuel env right) quotValues
+    eval (suc fuel) env (tRem left right) =
+      combineOutcome (eval fuel env left) (eval fuel env right) remValues
+    eval (suc fuel) env (tMonus left right) =
+      combineOutcome (eval fuel env left) (eval fuel env right) monusValues
+    eval (suc fuel) env (tEqual left right) =
+      combineOutcome (eval fuel env left) (eval fuel env right) equalValues
+    eval (suc fuel) env (tGeq left right) =
+      combineOutcome (eval fuel env left) (eval fuel env right) geqValues
+    eval (suc fuel) env (tLt left right) =
+      combineOutcome (eval fuel env left) (eval fuel env right) ltValues
+  
+    eval (suc fuel) env (tIf condition yes no) with eval fuel env condition
+    ... | returned (vBool true mode) trace = prefixOutcome trace (eval fuel env yes)
+    ... | returned (vBool false mode) trace = prefixOutcome trace (eval fuel env no)
+    ... | returned value trace = raised wrongKind trace
+    ... | raised err trace = raised err trace
+    ... | outOfFuel trace = outOfFuel trace
+  
+    eval (suc fuel) env (tConstruct tag fields) with evalList fuel env fields
+    ... | valuesReturned values trace = returned (vConstructed tag values) trace
+    ... | valuesRaised err trace = raised err trace
+    ... | valuesOutOfFuel trace = outOfFuel trace
+  
+    eval (suc fuel) env (tMatch scrutinee expectedTag expectedArity matched fallback) =
+      matchOutcome fuel env expectedTag expectedArity matched fallback
+        (eval fuel env scrutinee)
+  
+    eval (suc fuel) env (tRaise err) = raised err dnil
+    eval (suc fuel) env (tCatch body handler) =
+      catchOutcome fuel env handler (eval fuel env body)
+  
+    eval (suc fuel) env (tPackResult term) =
+      bindOutcome (eval fuel env term) (λ value → returned (vResult value) dnil)
+    eval (suc fuel) env (tUnpackResult term) =
+      bindOutcome (eval fuel env term) unwrapValue
+  
+    eval (suc fuel) env (tPrint term) with eval fuel env term
+    ... | returned value trace =
+      returned value (appendD trace (dcons (observed value) dnil))
+    ... | raised err trace = raised err trace
+    ... | outOfFuel trace = outOfFuel trace
+  
+    evalList zero env terms = valuesOutOfFuel dnil
+    evalList (suc fuel) env dnil = valuesReturned dnil dnil
+    evalList (suc fuel) env (dcons term terms) with eval fuel env term
+    ... | raised err trace = valuesRaised err trace
+    ... | outOfFuel trace = valuesOutOfFuel trace
+    ... | returned value trace with evalList fuel env terms
+    ...   | valuesReturned values later =
+      valuesReturned (dcons value values) (appendD trace later)
+    ...   | valuesRaised err later = valuesRaised err (appendD trace later)
+    ...   | valuesOutOfFuel later = valuesOutOfFuel (appendD trace later)
+  
+    matchOutcome fuel env expectedTag expectedArity matched fallback
+      (returned (vConstructed actualTag fields) trace)
+      with natEq actualTag expectedTag | natEq (lengthD fields) expectedArity
+    ... | true | true =
+      prefixOutcome trace (eval fuel (appendD fields env) matched)
+    ... | _ | _ = prefixOutcome trace (eval fuel env fallback)
+    matchOutcome fuel env expectedTag expectedArity matched fallback
+      (returned value trace) = prefixOutcome trace (eval fuel env fallback)
+    matchOutcome fuel env expectedTag expectedArity matched fallback
+      (raised err trace) = raised err trace
+    matchOutcome fuel env expectedTag expectedArity matched fallback
+      (outOfFuel trace) = outOfFuel trace
+  
+    catchOutcome fuel env handler (returned value trace) = returned value trace
+    catchOutcome fuel env handler (outOfFuel trace) = outOfFuel trace
+    catchOutcome fuel env handler (raised err trace) =
+      prefixOutcome trace (eval fuel (dcons (vError err) env) handler)
+  
+  -- Constructive equations for representative backend forms. These prove the
+  -- denotation's equations; concrete compiler/runtime refinement is a separate
+  -- simulation obligation and is not implied by these equations.
+  
+  naturalLiteralDenotesItsValue :
+    (n fuel : Nat) (env : Env) →
+    eval (suc fuel) env (tNat n) ≡ returned (vNat n modal) dnil
+  naturalLiteralDenotesItsValue n fuel env = refl
+  
+  additionIsCompositional :
+    (left right : Nat) →
+    eval (suc (suc zero)) dnil (tAdd (tNat left) (tNat right)) ≡
+    returned (vNat (left + right) modal) dnil
+  additionIsCompositional left right = refl
+  
+  -- The evaluator prefixes the selected branch's trace. Prove the neutral-trace
+  -- law explicitly rather than assuming it is definitional for an unknown outcome.
+  prefixOutcomeIdentity : (outcome : Outcome) → prefixOutcome dnil outcome ≡ outcome
+  prefixOutcomeIdentity (returned value trace) = refl
+  prefixOutcomeIdentity (raised err trace) = refl
+  prefixOutcomeIdentity (outOfFuel trace) = refl
+  
+  conditionalSelectsItsTrueBranch :
+    (yes no : Term) →
+    eval (suc (suc zero)) dnil (tIf (tBool true modal) yes no) ≡ eval (suc zero) dnil yes
+  conditionalSelectsItsTrueBranch yes no =
+    prefixOutcomeIdentity (eval (suc zero) dnil yes)
+  
+  quotientByZeroRaises :
+    (numerator : Nat) →
+    eval (suc (suc zero)) dnil (tQuot (tNat numerator) (tNat zero)) ≡
+    raised arithmeticDomainError dnil
+  quotientByZeroRaises numerator = refl
+  
+  betaReductionForIdentity :
+    (n : Nat) →
+    eval (suc (suc (suc zero))) dnil
+      (tApply (tLambda (tVar zero)) (tNat n)) ≡ returned (vNat n modal) dnil
+  betaReductionForIdentity n = refl
+  
+  constructorMatcherSelectsAndBindsFields :
+    eval (suc (suc (suc (suc zero)))) dnil
+      (tMatch (tConstruct 3 (dcons (tNat 42) dnil)) 3 1 (tVar zero) (tNat zero)) ≡
+    returned (vNat 42 modal) dnil
+  constructorMatcherSelectsAndBindsFields = refl
+  
+  resultPackUnpackRoundTrips :
+    (n : Nat) →
+    eval (suc (suc (suc zero))) dnil (tUnpackResult (tPackResult (tNat n))) ≡
+    returned (vNat n modal) dnil
+  resultPackUnpackRoundTrips n = refl
+  
+  printPreservesTheValueAndRecordsAnEvent :
+    (n : Nat) →
+    eval (suc (suc zero)) dnil (tPrint (tNat n)) ≡
+    returned (vNat n modal) (dcons (observed (vNat n modal)) dnil)
+  printPreservesTheValueAndRecordsAnEvent n = refl
+  
+  catchRunsItsHandlerWithTheErrorValue :
+    eval (suc (suc zero)) dnil
+      (tCatch (tRaise arithmeticDomainError) (tVar zero)) ≡
+    returned (vError arithmeticDomainError) dnil
+  catchRunsItsHandlerWithTheErrorValue = refl
+  
+
+
+-- Recovered normal and exceptional separation/frame contracts. They remain
+-- in the single specification, not in a second module with duplicated imports.
+module ConcurrentSeparation where
+  record FramedSeparation
+    (P Q R : Heap → Set)
+    (before after frame : Heap) : Set where
+    constructor framedSeparation
+    field
+      initialSplit : Sep P R (before ++ frame)
+      finalSplit : Sep Q R (after ++ frame)
+  open FramedSeparation public
+  
+  frameRuleForDisjointHeaps :
+    {P Q R : Heap → Set} {before after frame : Heap} →
+    P before →
+    Q after →
+    R frame →
+    Disjoint (keys before) (keys frame) →
+    Disjoint (keys after) (keys frame) →
+    FramedSeparation P Q R before after frame
+  frameRuleForDisjointHeaps {before = before} {after = after} {frame = frame}
+    pre post frameInvariant beforeDisjoint afterDisjoint =
+    framedSeparation
+      (splitHeap before frame refl pre frameInvariant beforeDisjoint)
+      (splitHeap after frame refl post frameInvariant afterDisjoint)
+  
+  record FramedExceptional
+    (E R : Heap → Set)
+    (after frame : Heap) : Set where
+    constructor framedExceptional
+    field
+      errorSplit : Sep E R (after ++ frame)
+  open FramedExceptional public
+  
+  exceptionalFrameRuleForDisjointHeaps :
+    {E R : Heap → Set} {after frame : Heap} →
+    E after →
+    R frame →
+    Disjoint (keys after) (keys frame) →
+    FramedExceptional E R after frame
+  exceptionalFrameRuleForDisjointHeaps {after = after} {frame = frame}
+    errorInvariant frameInvariant disjoint =
+    framedExceptional
+      (splitHeap after frame refl errorInvariant frameInvariant disjoint)
+  
+  -- The concurrent precondition and postcondition are deliberately separate
+  -- evidence: interference freedom is not inherited merely from the pre-state.
+  record ConcurrentPrecondition (left right : Heap) : Set where
+    constructor concurrentPrecondition
+    field
+      leftRightDisjoint : Disjoint (keys left) (keys right)
+  open ConcurrentPrecondition public
+  
+  record ConcurrentPostcondition (left right : Heap) : Set where
+    constructor concurrentPostcondition
+    field
+      postLeftRightDisjoint : Disjoint (keys left) (keys right)
+  open ConcurrentPostcondition public
+  
+  makeConcurrentPrecondition :
+    {left right : Heap} →
+    Disjoint (keys left) (keys right) →
+    ConcurrentPrecondition left right
+  makeConcurrentPrecondition = concurrentPrecondition
+  
+  makeConcurrentPostcondition :
+    {left right : Heap} →
+    Disjoint (keys left) (keys right) →
+    ConcurrentPostcondition left right
+  makeConcurrentPostcondition = concurrentPostcondition
+
+ 
+-- Recovered from PR #7: scalar denotation with explicit bottom and errors.
+-- Kept separate from CoreDenotation because finite fuel exhaustion and
+-- denotational divergence are different observations. The flat preorder is a
+-- Scott-style partial-order ingredient; this module does not claim to build
+-- a complete domain for unrestricted Forth.
+module ScottScalarDenotation where
+
+  data FlatDomain (A : Set) : Set where
+    bottom : FlatDomain A
+    defined : A → FlatDomain A
+
+  infix 4 _⊑_
+
+  data _⊑_ {A : Set} : FlatDomain A → FlatDomain A → Set where
+    bottomLeast : {x : FlatDomain A} → bottom ⊑ x
+    definedSame : {x y : A} → x ≡ y → defined x ⊑ defined y
+
+  flatRefl : {A : Set} → (x : FlatDomain A) → x ⊑ x
+  flatRefl bottom = bottomLeast
+  flatRefl (defined x) = definedSame refl
+
+  flatTrans :
+    {A : Set} {x y z : FlatDomain A} →
+    x ⊑ y → y ⊑ z → x ⊑ z
+  flatTrans bottomLeast yz = bottomLeast
+  flatTrans (definedSame refl) yz = yz
+
+  -- Three observable outcomes: divergence, successful return, and THROW.
+  data Computation (A : Set) : Set where
+    diverges : Computation A
+    returns : A → Computation A
+    throws : RuntimeError → Computation A
+
+  mapComputation :
+    {A B : Set} → (A → B) → Computation A → Computation B
+  mapComputation f diverges = diverges
+  mapComputation f (returns a) = returns (f a)
+  mapComputation f (throws e) = throws e
+
+  bindComputation :
+    {A B : Set} → Computation A → (A → Computation B) → Computation B
+  bindComputation diverges k = diverges
+  bindComputation (returns a) k = k a
+  bindComputation (throws e) k = throws e
+
+  catchComputation :
+    {A : Set} → Computation A → (RuntimeError → Computation A) → Computation A
+  catchComputation diverges h = diverges
+  catchComputation (returns a) h = returns a
+  catchComputation (throws e) h = h e
+
+  bindAssoc :
+    {A B C : Set}
+    (c : Computation A)
+    (f : A → Computation B)
+    (g : B → Computation C) →
+    bindComputation (bindComputation c f) g ≡
+    bindComputation c (λ a → bindComputation (f a) g)
+  bindAssoc diverges f g = refl
+  bindAssoc (throws e) f g = refl
+  bindAssoc (returns a) f g = refl
+
+  catchReturn :
+    {A : Set} (a : A) (h : RuntimeError → Computation A) →
+    catchComputation (returns a) h ≡ returns a
+  catchReturn a h = refl
+
+  catchThrow :
+    {A : Set} (e : RuntimeError) (h : RuntimeError → Computation A) →
+    catchComputation (throws e) h ≡ h e
+  catchThrow e h = refl
+
+  catchBottom :
+    {A : Set} (h : RuntimeError → Computation A) →
+    catchComputation (diverges {A}) h ≡ diverges
+  catchBottom h = refl
+
+  data Truth : Set where
+    yes no : Truth
+
+  truthOr : Truth → Truth → Truth
+  truthOr yes _ = yes
+  truthOr no y = y
+
+  truthNot : Truth → Truth
+  truthNot yes = no
+  truthNot no = yes
+
+  natEq : Nat → Nat → Truth
+  natEq zero zero = yes
+  natEq zero (suc y) = no
+  natEq (suc x) zero = no
+  natEq (suc x) (suc y) = natEq x y
+
+  natLt : Nat → Nat → Truth
+  natLt zero zero = no
+  natLt zero (suc y) = yes
+  natLt (suc x) zero = no
+  natLt (suc x) (suc y) = natLt x y
+
+  natLe : Nat → Nat → Truth
+  natLe x y = truthOr (natLt x y) (natEq x y)
+
+  natMinus : Nat → Nat → Nat
+  natMinus x zero = x
+  natMinus zero (suc y) = zero
+  natMinus (suc x) (suc y) = natMinus x y
+
+  -- Fuel bounds repeated subtraction, avoiding axioms about division.
+  natDivFuel : Nat → Nat → Nat → Nat
+  natDivFuel zero n d = zero
+  natDivFuel (suc fuel) n d with natLt n d
+  ... | yes = zero
+  ... | no = suc (natDivFuel fuel (natMinus n d) d)
+
+  natRemFuel : Nat → Nat → Nat → Nat
+  natRemFuel zero n d = n
+  natRemFuel (suc fuel) n d with natLt n d
+  ... | yes = n
+  ... | no = natRemFuel fuel (natMinus n d) d
+
+  data ScalarMeaning : Set where
+    numberMeaning : Nat → ScalarMeaning
+    booleanMeaning : Truth → ScalarMeaning
+
+  data NumericOp : Set where
+    addOp subOp mulOp quotientOp remainderOp : NumericOp
+    equalOp greaterEqualOp lessThanOp monusOp : NumericOp
+
+  fitNatural : Nat → Nat → Computation ScalarMeaning
+  fitNatural bound n with natLe n bound
+  ... | yes = returns (numberMeaning n)
+  ... | no = throws arithmeticOverflowError
+
+  numericMeaning : Nat → NumericOp → Nat → Nat → Computation ScalarMeaning
+  numericMeaning bound addOp x y = fitNatural bound (x + y)
+  numericMeaning bound subOp x y = fitNatural bound (natMinus x y)
+  numericMeaning bound mulOp x y = fitNatural bound (x * y)
+  numericMeaning bound quotientOp x zero = throws arithmeticDomainError
+  numericMeaning bound quotientOp x (suc y) =
+    fitNatural bound (natDivFuel x x (suc y))
+  numericMeaning bound remainderOp x zero = throws arithmeticDomainError
+  numericMeaning bound remainderOp x (suc y) =
+    fitNatural bound (natRemFuel x x (suc y))
+  numericMeaning bound equalOp x y = returns (booleanMeaning (natEq x y))
+  numericMeaning bound greaterEqualOp x y = returns (booleanMeaning (natLe y x))
+  numericMeaning bound lessThanOp x y = returns (booleanMeaning (natLt x y))
+  numericMeaning bound monusOp x y = fitNatural bound (natMinus x y)
+
+  data Value : Set where
+    natValue : Nat → SourceMode → Value
+    boolValue : Truth → SourceMode → Value
+    unitValue : Value
+
+  valueMode : Value → SourceMode
+  valueMode (natValue n m) = m
+  valueMode (boolValue b m) = m
+  valueMode unitValue = modal
+
+  meaningValue : SourceMode → ScalarMeaning → Value
+  meaningValue m (numberMeaning n) = natValue n m
+  meaningValue m (booleanMeaning b) = boolValue b m
+
+  -- The target cell bound is a parameter, not a hard-coded machine width.
+  denoteBinary :
+    Nat → NumericOp → Value → Value → Computation Value
+  denoteBinary bound op (natValue x mx) (natValue y my)
+    with natLe x bound | natLe y bound
+  ... | yes | yes =
+    mapComputation (meaningValue (joinSourceMode mx my))
+      (numericMeaning bound op x y)
+  ... | _ | _ = throws arithmeticOverflowError
+  denoteBinary bound op _ _ = throws wrongKind
+
+  denoteIf :
+    Computation Value → Computation Value → Computation Value → Computation Value
+  denoteIf diverges yesBranch noBranch = diverges
+  denoteIf (throws e) yesBranch noBranch = throws e
+  denoteIf (returns (boolValue yes mode)) yesBranch noBranch = yesBranch
+  denoteIf (returns (boolValue no mode)) yesBranch noBranch = noBranch
+  denoteIf (returns value) yesBranch noBranch = throws wrongKind
+
+  ifChoosesTrue :
+    {yesBranch noBranch : Computation Value} →
+    denoteIf (returns (boolValue yes linear)) yesBranch noBranch ≡ yesBranch
+  ifChoosesTrue = refl
+
+  ifChoosesFalse :
+    {yesBranch noBranch : Computation Value} →
+    denoteIf (returns (boolValue no modal)) yesBranch noBranch ≡ noBranch
+  ifChoosesFalse = refl
+
+  ifPropagatesBottom :
+    {yesBranch noBranch : Computation Value} →
+    denoteIf diverges yesBranch noBranch ≡ diverges
+  ifPropagatesBottom = refl
+
+  ifPropagatesException :
+    (e : RuntimeError) (yesBranch noBranch : Computation Value) →
+    denoteIf (throws e) yesBranch noBranch ≡ throws e
+  ifPropagatesException e yesBranch noBranch = refl
+
+  everyPrimitiveHasProfile : (p : Primitive) → PrimitiveSpec p
+  everyPrimitiveHasProfile = specifiesEveryPrimitive
+
+  -- The fixed emitter erases the source mode. Both modalities map to the same
+  -- cell, so a decoder cannot reconstruct both original modes correctly.
+  erasedModeCell : SourceMode → Nat
+  erasedModeCell _ = zero
+
+  symDenotation : {A : Set} {x y : A} → x ≡ y → y ≡ x
+  symDenotation refl = refl
+
+  transDenotation : {A : Set} {x y z : A} →
+    x ≡ y → y ≡ z → x ≡ z
+  transDenotation refl q = q
+
+  linearIsNotModal : linear ≡ modal → ⊥
+  linearIsNotModal ()
+
+  noRuntimeModeDecoder :
+    (decode : Nat → SourceMode) →
+    decode (erasedModeCell linear) ≡ linear →
+    decode (erasedModeCell modal) ≡ modal →
+    ⊥
+  noRuntimeModeDecoder decode linearCorrect modalCorrect =
+    linearIsNotModal
+      (transDenotation (symDenotation linearCorrect) modalCorrect)
