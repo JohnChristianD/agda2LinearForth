@@ -339,7 +339,7 @@ VARIABLE nested-linear-leaf
 ;
 build-nested-linear-closure
 : force-nested-linear-closure ( -- ) nested-outer-closure @ dethunk DROP ;
-['] force-nested-linear-closure CATCH -4333 = abi-assert
+' force-nested-linear-closure CATCH -4333 = abi-assert
 nested-linear-input @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 nested-first-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 nested-outer-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
