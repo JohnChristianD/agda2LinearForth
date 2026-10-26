@@ -307,4 +307,40 @@ identity-binary-modal @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
 ' print 0<> abi-assert
 ' pass 0<> abi-assert
 ' dethunk 0<> abi-assert
+\ A zero execution token is a null code pointer, not a callable closure.
+\ It must throw before allocating a handle or metadata record.
+: zero-code-token-test ( -- )
+  here { before }
+  ' zero-code-token-candidate CATCH { caught }
+  caught 0<> abi-assert
+  here before = abi-assert
+;
+: zero-code-token-candidate ( -- ) 0 makeTHUNK DROP ;
+zero-code-token-test
+
+\ Nested linear captures must all be retired if a closure aborts during force.
+VARIABLE nested-linear-input
+VARIABLE nested-first-closure
+VARIABLE nested-outer-closure
+VARIABLE nested-moved-closure
+VARIABLE nested-linear-leaf
+: nested-fail-after-capture ( x -- ) drop -4333 THROW ;
+' nested-fail-after-capture declareLinearSafeXT
+: build-nested-linear-closure ( -- )
+  99 MODE-LINEAR ABI-MAKE-SCALAR DUP nested-linear-input !
+  ' identity-body makeTHUNK assertLinear pass nested-first-closure !
+  nested-first-closure @ metadata@ META-ENV cells + @ @ nested-linear-leaf !
+  ' nested-fail-after-capture makeTHUNK assertLinear
+  nested-first-closure @ swap pass nested-outer-closure !
+  nested-outer-closure @ metadata@ META-ENV cells + @ @ nested-moved-closure !
+;
+build-nested-linear-closure
+: force-nested-linear-closure ( -- ) nested-outer-closure @ dethunk DROP ;
+' force-nested-linear-closure CATCH -4333 = abi-assert
+nested-linear-input @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+nested-first-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+nested-outer-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+nested-moved-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+nested-linear-leaf @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+
 BYE
