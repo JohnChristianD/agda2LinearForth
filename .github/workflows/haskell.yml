@@ -93,6 +93,14 @@ jobs:
         run: |
           "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalExamples.agda
 
+      - name: Type-check Scott-style denotational semantics
+        run: |
+          "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalDenotation.agda
+
+      - name: Type-check signatures for all checked ABI primitives
+        run: |
+          "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalPrimitiveCoverage.agda
+
 
       - name: Verify unsupported-literal output preserves the unchanged compiler boundary
         run: |
