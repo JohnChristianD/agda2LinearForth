@@ -9,7 +9,7 @@
 -- establish that arbitrary Haskell or Forth implementations refine it.
 module LinearModalSafety where
 
-open import Agda.Builtin.Nat using (Nat; zero; suc; _+_)
+open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _*_ )
 open import Agda.Builtin.Bool using (Bool; true; false)
 open import Agda.Builtin.Equality using (_≡_; refl)
 
@@ -1475,12 +1475,12 @@ linearNatLessThan :
     (valueItem booleanTy :: tail)
 linearNatLessThan = natLtEffect naturalIsNatural naturalIsNatural
 
-linearNatMonus :
+linearNatMonusStackEffect :
   {tail : StackShape} →
   StackEffect pNatMonus
     (valueItem naturalTy :: valueItem naturalTy :: tail)
     (valueItem naturalTy :: tail)
-linearNatMonus = natMonusEffect naturalIsNatural naturalIsNatural
+linearNatMonusStackEffect = natMonusEffect naturalIsNatural naturalIsNatural
 
 modalAdditionWitness :
   StackEffect pNatAdd
@@ -1659,6 +1659,105 @@ bridgeTrueSelectsLeft yes no = refl
 bridgeFalseSelectsRight :
   (yes no : BridgeNatCell) → bridgeSelect false yes no ≡ no
 bridgeFalseSelectsRight yes no = refl
+
+
+-- Model the rest of the checked scalar ABI vocabulary, including the domain
+-- error for quotient/remainder by zero and the operation-specific joined mode.
+bridgeNatMul : Nat → Nat → Nat
+bridgeNatMul left right = left * right
+
+bridgeNatLt : Nat → Nat → Bool
+bridgeNatLt zero zero = false
+bridgeNatLt zero (suc right) = true
+bridgeNatLt (suc left) zero = false
+bridgeNatLt (suc left) (suc right) = bridgeNatLt left right
+
+bridgeNatGeq : Nat → Nat → Bool
+bridgeNatGeq zero zero = true
+bridgeNatGeq zero (suc right) = false
+bridgeNatGeq (suc left) zero = true
+bridgeNatGeq (suc left) (suc right) = bridgeNatGeq left right
+
+bridgeEvalMul : BridgeNatCell → BridgeNatCell → Nat × SourceMode
+bridgeEvalMul left right =
+  bridgeNatMul (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right)) ,
+  joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeEvalGeq : BridgeNatCell → BridgeNatCell → Bool × SourceMode
+bridgeEvalGeq left right =
+  bridgeNatGeq (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right)) ,
+  joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeEvalLt : BridgeNatCell → BridgeNatCell → Bool × SourceMode
+bridgeEvalLt left right =
+  bridgeNatLt (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right)) ,
+  joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeMulPayloadCorrespondence :
+  (left right : BridgeNatCell) →
+  fst (bridgeEvalMul left right) ≡
+    fst (bridgeNormalizeNat left) * fst (bridgeNormalizeNat right)
+bridgeMulPayloadCorrespondence left right = refl
+
+bridgeGeqPayloadCorrespondence :
+  (left right : BridgeNatCell) →
+  fst (bridgeEvalGeq left right) ≡
+    bridgeNatGeq (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right))
+bridgeGeqPayloadCorrespondence left right = refl
+
+bridgeLtPayloadCorrespondence :
+  (left right : BridgeNatCell) →
+  fst (bridgeEvalLt left right) ≡
+    bridgeNatLt (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right))
+bridgeLtPayloadCorrespondence left right = refl
+
+bridgeNatDivModFuel : Nat → Nat → Nat → Nat → Nat × Nat
+bridgeNatDivModFuel zero dividend divisor quotient = quotient , dividend
+bridgeNatDivModFuel (suc fuel) dividend divisor quotient
+  with bridgeNatLt dividend divisor
+... | true = quotient , dividend
+... | false =
+  bridgeNatDivModFuel fuel (bridgeNatSub dividend divisor) divisor (suc quotient)
+
+data BridgeDivision : Set where
+  bridgeDivisionByZero : BridgeDivision
+  bridgeDivisionResult : Nat → Nat → BridgeDivision
+
+bridgeNatDivMod : Nat → Nat → BridgeDivision
+bridgeNatDivMod dividend zero = bridgeDivisionByZero
+bridgeNatDivMod dividend (suc divisor)
+  with bridgeNatDivModFuel dividend dividend (suc divisor) zero
+... | quotient , remainder = bridgeDivisionResult quotient remainder
+
+data BridgeNatEval : Set where
+  bridgeNatFailure : RuntimeError → BridgeNatEval
+  bridgeNatSuccess : Nat → SourceMode → BridgeNatEval
+
+bridgeEvalQuot : BridgeNatCell → BridgeNatCell → BridgeNatEval
+bridgeEvalQuot left right
+  with bridgeNatDivMod (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right))
+... | bridgeDivisionByZero = bridgeNatFailure arithmeticDomainError
+... | bridgeDivisionResult quotient remainder =
+  bridgeNatSuccess quotient
+    (joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeEvalRem : BridgeNatCell → BridgeNatCell → BridgeNatEval
+bridgeEvalRem left right
+  with bridgeNatDivMod (fst (bridgeNormalizeNat left)) (fst (bridgeNormalizeNat right))
+... | bridgeDivisionByZero = bridgeNatFailure arithmeticDomainError
+... | bridgeDivisionResult quotient remainder =
+  bridgeNatSuccess remainder
+    (joinSourceMode (snd (bridgeNormalizeNat left)) (snd (bridgeNormalizeNat right))
+
+bridgeQuotZeroIsDomainError :
+  (left : BridgeNatCell) →
+  bridgeEvalQuot left (bridgeRawNat zero) ≡ bridgeNatFailure arithmeticDomainError
+bridgeQuotZeroIsDomainError left = refl
+
+bridgeRemainderZeroIsDomainError :
+  (left : BridgeNatCell) →
+  bridgeEvalRem left (bridgeRawNat zero) ≡ bridgeNatFailure arithmeticDomainError
+bridgeRemainderZeroIsDomainError left = refl
 
 -- ── 8. Verification boundary ──
 --
