@@ -1587,9 +1587,10 @@ checkedBinaryWP :
   (Nat → SourceMode → OperationOutcome Nat) →
   (normal : Nat → SourceMode → Life → Life → Set) →
   (exceptional : RuntimeError → Life → Life → Set) → Set
-checkedBinaryWP alias operation makeResult normal exceptional =
-  BinaryWPPost normal exceptional
-    (checkedBinaryTransaction alias operation makeResult)
+checkedBinaryWP {leftMode} {rightMode} alias operation makeResult normal exceptional =
+  BinaryWPPost {leftMode = leftMode} {rightMode = rightMode} normal exceptional
+    (checkedBinaryTransaction {leftMode = leftMode} {rightMode = rightMode}
+      alias operation makeResult)
 
 -- A primitive THROW happens before the linear-ownership commit writes.
 checkedBinaryWPArithmeticFailurePreservesOperands :
@@ -1599,7 +1600,8 @@ checkedBinaryWPArithmeticFailurePreservesOperands :
   (normal : Nat → SourceMode → Life → Life → Set) →
   (exceptional : RuntimeError → Life → Life → Set) →
   exceptional err live live →
-  checkedBinaryWP noLinearAlias (operationThrew err) makeResult normal exceptional
+  checkedBinaryWP {leftMode = leftMode} {rightMode = rightMode}
+    noLinearAlias (operationThrew err) makeResult normal exceptional
 checkedBinaryWPArithmeticFailurePreservesOperands err makeResult normal exceptional proof = proof
 
 -- Result-allocation failure also occurs before either operand is consumed.
@@ -1610,7 +1612,8 @@ checkedBinaryWPResultAllocationFailurePreservesOperands :
   (normal : Nat → SourceMode → Life → Life → Set) →
   (exceptional : RuntimeError → Life → Life → Set) →
   exceptional err live live →
-  checkedBinaryWP noLinearAlias (operationReturned rawValue)
+  checkedBinaryWP {leftMode = leftMode} {rightMode = rightMode}
+    noLinearAlias (operationReturned rawValue)
     (λ value mode → operationThrew err) normal exceptional
 checkedBinaryWPResultAllocationFailurePreservesOperands rawValue err normal exceptional proof = proof
 
