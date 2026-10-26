@@ -1277,6 +1277,16 @@ observedGeneratedBodyCannotRefineAddition bodyRefinement =
       (transEq (symEq observedGeneratedScalarBodyAt20And5) bodyRefinement)
       sourceAdditionAt20And5)
 
+CurrentGeneratedScalarRefinesAddition : Set
+CurrentGeneratedScalarRefinesAddition =
+  (left right : Nat) →
+  observedGeneratedScalarAddBody left right ≡ left + right
+
+currentGeneratedScalarDoesNotRefineAddition :
+  CurrentGeneratedScalarRefinesAddition → ⊥
+currentGeneratedScalarDoesNotRefineAddition refinement =
+  observedGeneratedBodyCannotRefineAddition (refinement 20 5)
+
 NoCheckedRepresentation : EmittedFragment → Set
 NoCheckedRepresentation (rawNaturalCell n) = ⊤
 NoCheckedRepresentation rawTrueCell = ⊤
