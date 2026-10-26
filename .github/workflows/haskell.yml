@@ -97,6 +97,9 @@ jobs:
       - name: Compile and execute supported primitive applications end to end
         run: |
           cabal run agda2forth -- -i test test/CheckedScalar.agda
+          echo "---- emitted CheckedScalar.fth ----"
+          cat CheckedScalar.fth
+          echo "---- generated primitive execution ----"
           gforth CheckedScalar.fth test/gforth/compiler-integration.fs
 
       - name: Compile first-order triples fixture
