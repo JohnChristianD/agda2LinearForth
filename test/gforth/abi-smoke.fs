@@ -314,7 +314,7 @@ identity-binary-modal @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
   here { beforeHere }
   HANDLE-META-HEAD @ { beforeMeta }
   NEXT-HANDLE-ID @ { beforeId }
-  ' zero-code-token-candidate CATCH ABI-ERR-NULL-XT = abi-assert
+  ['] zero-code-token-candidate CATCH ABI-ERR-NULL-XT = abi-assert
   here beforeHere = abi-assert
   HANDLE-META-HEAD @ beforeMeta = abi-assert
   NEXT-HANDLE-ID @ beforeId = abi-assert
@@ -331,15 +331,15 @@ VARIABLE nested-linear-leaf
 ' nested-fail-after-capture declareLinearSafeXT
 : build-nested-linear-closure ( -- )
   99 MODE-LINEAR ABI-MAKE-SCALAR DUP nested-linear-input !
-  ' identity-body makeTHUNK assertLinear pass nested-first-closure !
+  ['] identity-body makeTHUNK assertLinear pass nested-first-closure !
   nested-first-closure @ metadata@ META-ENV cells + @ @ nested-linear-leaf !
-  ' nested-fail-after-capture makeTHUNK assertLinear
+  ['] nested-fail-after-capture makeTHUNK assertLinear
   nested-first-closure @ swap pass nested-outer-closure !
   nested-outer-closure @ metadata@ META-ENV cells + @ @ nested-moved-closure !
 ;
 build-nested-linear-closure
 : force-nested-linear-closure ( -- ) nested-outer-closure @ dethunk DROP ;
-' force-nested-linear-closure CATCH -4333 = abi-assert
+['] force-nested-linear-closure CATCH -4333 = abi-assert
 nested-linear-input @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 nested-first-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 nested-outer-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
