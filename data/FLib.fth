@@ -1163,8 +1163,12 @@ s" checked conditional requires a canonical boolean" exception constant ABI-ERR-
     ABI-CHECKED-MODE @ { previousMode }
     1 ABI-CHECKED-MODE !
     xt CATCH { status }
+    status 0<> IF previousMode ABI-CHECKED-MODE ! status THROW THEN
+    \ Force the returned thunk while the checked gate is still active so lazily
+    \ emitted arithmetic cannot escape through the legacy raw-cell operators.
+    ['] deepdethunk CATCH { forceStatus }
     previousMode ABI-CHECKED-MODE !
-    status 0<> IF status THROW THEN
+    forceStatus 0<> IF forceStatus THROW THEN
     DEPTH depthBefore ABI-LEGACY-MINUS
     1 inputCount ABI-LEGACY-MINUS
     ABI-LEGACY-EQUAL 0= IF ABI-ERR-CHECKED-STACK THROW THEN
