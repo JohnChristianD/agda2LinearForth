@@ -21,8 +21,6 @@ extra-source-files:
     test/gforth/generated-scalar-smoke.fs
     test/CheckedScalar.agda
     formal/LinearModalSafety.agda
-    formal/LinearModalDenotational.agda
-    formal/LinearModalConcurrency.agda
 
 executable agda2forth
     main-is:          Main.hs
