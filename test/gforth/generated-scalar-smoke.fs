@@ -8,8 +8,14 @@
 : checked-generated-scalar ( -- )
   0 ['] scalarAnswer ABI-CHECKED-RUN-NAT
   ABI-SCALAR-INFO { value mode meta }
-  value 25 <> IF -4091 THROW THEN
-  mode MODE-MODAL <> IF -4092 THROW THEN
+  value 25 <> IF
+    ." generated scalar payload mismatch: " value . cr
+    -4091 THROW
+  THEN
+  mode MODE-MODAL <> IF
+    ." generated scalar mode mismatch: " mode . cr
+    -4092 THROW
+  THEN
 ;
 
 checked-generated-scalar
