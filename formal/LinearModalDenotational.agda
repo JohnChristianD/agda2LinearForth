@@ -89,11 +89,13 @@ data ValuesOutcome : Set where
   valuesOutOfFuel : DList Event → ValuesOutcome
 
 prefixOutcome : DList Event → Outcome → Outcome
-prefixOutcome trace (returned value later) =
-  returned value (appendD trace later)
-prefixOutcome trace (raised err later) =
-  raised err (appendD trace later)
-prefixOutcome trace (outOfFuel later) = outOfFuel (appendD trace later)
+prefixOutcome dnil outcome = outcome
+prefixOutcome (dcons event trace) (returned value later) =
+  returned value (appendD (dcons event trace) later)
+prefixOutcome (dcons event trace) (raised err later) =
+  raised err (appendD (dcons event trace) later)
+prefixOutcome (dcons event trace) (outOfFuel later) =
+  outOfFuel (appendD (dcons event trace) later)
 
 prefixValues : DList Event → ValuesOutcome → ValuesOutcome
 prefixValues trace (valuesReturned values later) =
