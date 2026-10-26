@@ -19,7 +19,17 @@ The target is a dynamically enforced ABI for the subset of Agda programs this ba
 
 “End-to-end” means all values and all operations reachable from a generated program use the checked representation. It does not mean trying to make arbitrary interactive GForth safe.
 
-This document deliberately distinguishes a specification, an implementation, and a refinement proof. The Agda models in `formal/LinearModalABI.agda`, `formal/LinearModalStackEffects.agda`, and `formal/LinearModalExamples.agda` are constructive and import only Agda's bundled `Agda.Builtin.Nat` and `Agda.Builtin.Equality` modules. They use no Agda standard library, no postulates and no F*. The stack-effects module gives typed normal stack-shape rules for the enumerated closed primitive subset, including numeric operations, scalar/thunk/result operations, application/force, conditional, constructor/matcher schemas and linear/modal printing. The examples provide concrete witnesses for linear, modal and mixed-mode arithmetic plus checked thunk construction and promotion. Exception transitions are specified separately from normal-return stack effects. These are specifications and proof ingredients, not yet proofs that the current Forth words implement them.
+This document deliberately distinguishes a specification, an implementation, and a refinement proof. The Agda models in `formal/LinearModalABI.agda`, `formal/LinearModalStackEffects.agda`, `formal/LinearModalExamples.agda`, `formal/LinearModalDenotational.agda`, and `formal/LinearModalConcurrency.agda` are constructive and import only Agda's bundled `Agda.Builtin.Nat` and `Agda.Builtin.Equality` modules. They use no Agda standard library, no postulates and no F*. The stack-effects module gives typed normal stack-shape rules for the enumerated closed primitive subset, including numeric operations, scalar/thunk/result operations, application/force, conditional, constructor/matcher schemas and linear/modal printing. The examples provide concrete witnesses for linear, modal and mixed-mode arithmetic plus checked thunk construction and promotion. Exception transitions are specified separately from normal-return stack effects. These are specifications and proof ingredients, not yet proofs that the current Forth words implement them.
+
+## Compositional reference semantics
+
+The first version of this work concentrated on naturals/equality because it was a convenient small ABI example. That was a scope choice, not a requirement from the project or the cited literature, and it was too narrow to treat as a whole-backend model. The expanded reference semantics now covers the currently relevant expression families: natural arithmetic and comparisons, conditional branch selection, closures/application, constructor/matcher dispatch, result wrapping/unwrapping, explicit errors/catch, printing traces, and explicit fuel exhaustion.
+
+In `formal/LinearModalDenotational.agda`, the interpretation is compositional: each syntax constructor maps constituent denotations to a result in `Outcome`, whose cases distinguish normal return, a raised runtime error, and insufficient fuel. The fuel-indexed evaluator is a total approximation of partial computation; fuel exhaustion is not mistaken for a proof of termination. Constructor/matcher environments, the observable print trace, and exceptions are represented in the semantic domain rather than being described only in prose. The file proves equations for arithmetic/comparison, truncated subtraction, conditionals, division/remainder-by-zero, identity application, a single-field constructor/match, result round-trip, and catch of an explicit exception.
+
+`formal/LinearModalConcurrency.agda` adds the conditional frame rule for disjoint heap regions. Both the normal and exceptional post-state must remain disjoint from the preserved frame. This is the correct concurrency precondition shape, but it remains a contract for local transitions: the proof that each concrete Forth ABI word satisfies that contract is still a separate obligation.
+
+These reference-semantics equations are not a claim of full abstraction, a proof of the concrete Forth runtime, or an end-to-end compiler correctness theorem. The source backend is fixed by the source-identity requirement. It emits raw natural literals and uses legacy constructor/closure protocols; those code paths do not carry the static mode and closed-code witnesses required by the checked heap model. Therefore no sound proof can identify every source value with a checked ABI descriptor without an additional source-to-runtime representation mechanism, or a change to the fixed Haskell emitter. The dynamic arithmetic wrappers now route checked/checked scalar operations through the checked ABI and preserve raw/raw behavior, but this does not conjure mode evidence for raw literals. The remaining representation mismatch is explicit, not silently assumed away.
 
 ## Source modes and runtime values
 
@@ -82,9 +92,9 @@ The checked ABI is intended to admit only the following families. The preconditi
 
 The current backend emits the following application/runtime forms; each needs an ABI rule or must be rejected before output:
 
-- Applications: `pass` (generated repeatedly by `fthApps`).
+- Applications: `pass` (generated repeatedly by `fthApps`). The word remains a target-specific closure protocol and its concrete ownership transfer is not yet proved equivalent to the source application semantics.
 - Closures/forcing: `makeTHUNK`, `dethunk`, `deepdethunk`, `foldThunks`, `pushArrayN`.
-- Natural-number wrappers: `add`, `sub`, `mul`, `quot`, `rem`, `iff`, `eq`, `geq`, `lt`, `monus`.
+- Natural-number wrappers: `add`, `sub`, `mul`, `quot`, `rem`, `iff`, `eq`, `geq`, `lt`, `monus`. At runtime load, the fixed preamble's arithmetic operators are late-bound to checked dispatch wrappers: checked handles go through the corresponding ABI operation, raw/raw cells retain the captured native operator, and mixed checked/raw arithmetic fails closed. The `monus` preamble's `dup 0 <` is handled by a narrowly scoped read-only checked-scalar-versus-raw-zero comparison.
 - Constructor/matcher machinery: constructor tags generated through `fthDefineType`/`fthConstructor`, `obj=`, `makeWILDCARD`, `pointer` and the generated field environment.
 - Literals: `LitNat` currently emits a bare numeric cell; boolean constructors currently emit `-1` and `0`. Those must become checked representations in generated code. `Word64`, float, string, character, QName and meta literals are not implemented by this backend and must produce explicit unsupported-operation boundaries.
 - Locals: `fthLocal` emits Gforth locals `{ ... }`. Local binding must not create a way to alias a linear handle outside the ABI.
@@ -124,15 +134,15 @@ These are reusable proof ingredients, not the completed implementation theorem. 
 - [x] Define separating conjunction and normal/exceptional Hoare contracts.
 - [x] Define structured runtime-error outcomes and a catch-composition preservation lemma.
 - [x] Define typed stack-shape effects and example witnesses for the enumerated closed primitive subset.
-- [ ] Confirm all three Agda modules type-check in CI using Agda itself with `--no-libraries`.
-- [ ] Give each emitted primitive a complete stack/mode/resource signature and derive permitted compositions.
+- [ ] Confirm all Agda modules type-check in CI using Agda itself with `--no-libraries`, including the new denotational and concurrent frame-rule modules.
+- [ ] Give each emitted primitive and every emitted constructor/matcher/closure protocol a complete stack/mode/resource signature and derive permitted compositions.
 - [ ] Route every supported generated literal, constructor, application, force, conditional and primitive through the checked ABI.
 - [ ] Replace caller-asserted XT safety with compiler/loader-generated code-class derivations tied to the closed core IR.
 - [ ] Prove actual Forth word implementations preserve `WellFormed`, including every exceptional path.
-- [ ] Prove compiler-to-core and core-to-Gforth correspondence for the supported subset.
+- [ ] Prove compiler-to-core and core-to-Gforth correspondence for the supported subset. Under the fixed Haskell-source constraint, source values with erased modalities/raw literal output remain a blocker for a whole-program checked-ABI theorem.
 - [x] Add a compiler-output regression fixture recording the unchanged unsupported-literal diagnostic and legacy `BYE` output.
 - [ ] Route unsupported compiler cases through a catchable boundary without modifying the Haskell backend; this requires a verified, compatibility-preserving checked loader or runtime interception.
-- [ ] Run positive and negative Gforth tests, plus compatibility regression tests for legacy words.
+- [ ] Run positive and negative Gforth tests, plus compatibility regression tests for legacy words. New smoke cases exercise the generated operator shape, checked arithmetic/comparisons, raw fallback, and the `monus` zero-test boundary.
 
 Until those last obligations pass, the only justified claim is runtime hardening for explicitly managed handles—not complete end-to-end linear/modal safety.
 

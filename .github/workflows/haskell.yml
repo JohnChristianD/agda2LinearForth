@@ -38,6 +38,17 @@ jobs:
           cabal configure --enable-tests --enable-benchmarks --disable-documentation
           cabal build --dry-run
 
+      # Agda 2.6.2.2's Setup hook expects the Agda executable during interface
+      # generation. Building dependencies alone omits that executable, so build
+      # and install the pinned CLI before the --only-dependencies phase.
+      - name: Bootstrap pinned Agda CLI before dependency-only build
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          export PATH="$HOME/.local/bin:$PATH"
+          cabal install Agda-2.6.2.2 --installdir="$HOME/.local/bin" --overwrite-policy=always
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/agda" --version
+
       - name: Restore cached dependencies
         uses: actions/cache/restore@v3
         id: cache
@@ -92,6 +103,14 @@ jobs:
       - name: Type-check concrete ABI signature witnesses
         run: |
           "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalExamples.agda
+
+      - name: Type-check compositional denotational semantics
+        run: |
+          "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalDenotational.agda
+
+      - name: Type-check concurrent separation and frame rule
+        run: |
+          "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalConcurrency.agda
 
 
       - name: Verify unsupported-literal output preserves the unchanged compiler boundary
