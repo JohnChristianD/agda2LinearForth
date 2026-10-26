@@ -1153,44 +1153,43 @@ data NatExpr : Set where
   natLiteral : Nat → NatExpr
   natAddition : NatExpr → NatExpr → NatExpr
 
--- These constructors distinguish the compiler's legacy/raw representation
--- from the representation required by the checked ABI. The checked constructors
--- are included so the predicate below can state, and prove, their absence.
+-- These constructors distinguish raw literals, saturated primitive calls routed
+-- through the checked-or-legacy ABI adapters, and checked result constructors.
+-- The checked constructors are included so the predicate below can state, and prove, their absence.
 data EmittedFragment : Set where
   rawNaturalCell : Nat → EmittedFragment
   rawTrueCell rawFalseCell : EmittedFragment
-  legacyAddCode : EmittedFragment → EmittedFragment → EmittedFragment
+  abiAddAdapterCode : EmittedFragment → EmittedFragment → EmittedFragment
   checkedScalarCode : SourceMode → Nat → EmittedFragment
   checkedBooleanCode : SourceMode → EmittedFragment
 
--- Mirrors ToForth.hs's LitNat and PAdd cases at the value/operator-footprint
--- level: a numeric literal is a raw cell; integer addition uses legacy "add".
+-- Mirrors ToForth.hs's LitNat and saturated addition lowering: literals remain
+-- raw cells; addition is emitted via ABI-ADD-OR-LEGACY, which selects the legacy
+-- raw operation for raw/raw inputs and checked ABI for tracked scalar handles.
 compileNatFragment : NatExpr → EmittedFragment
 compileNatFragment (natLiteral n) = rawNaturalCell n
 compileNatFragment (natAddition left right) =
-  legacyAddCode (compileNatFragment left) (compileNatFragment right)
+  abiAddAdapterCode (compileNatFragment left) (compileNatFragment right)
 
--- A counterexample for the *observed* curried-application path, kept separate
--- from the primitive-level table above. The generated scalar fixture has
--- emitted a lambda body of the form `a c pass`. In FLib.fth, the raw/non-thunk
--- branch of `pass { x h -- result }` returns h unchanged. Consequently this
--- body, when both arguments are raw cells, returns the second argument instead
--- of denoting addition. This is an audited counterexample model, not an
--- extraction proof from Haskell; the CI output and runtime branch are the
--- external premises that justify applying it to the current compiler.
-forthPassRawFallback : Nat → Nat → Nat
-forthPassRawFallback x h = h
+-- Historical counterexample for the pre-fix curried-application path. The
+-- earlier generated fixture emitted a lambda body `a c pass`; the raw/non-thunk
+-- branch of `pass { x h -- result }` returns h unchanged. This witness is kept
+-- as a regression specification, not a claim about the current output after
+-- saturated primitive/builtin lowering was routed through ABI adapters. It is
+-- a model of the observed body, not a proof extracted from the Haskell emitter.
+historicalPassRawFallback : Nat → Nat → Nat
+historicalPassRawFallback x h = h
 
-observedGeneratedScalarAddBody : Nat → Nat → Nat
-observedGeneratedScalarAddBody left right = forthPassRawFallback left right
+historicalGeneratedScalarAddBody : Nat → Nat → Nat
+historicalGeneratedScalarAddBody left right = historicalPassRawFallback left right
 
-observedGeneratedBodyReturnsRightArgument :
-  (left right : Nat) → observedGeneratedScalarAddBody left right ≡ right
-observedGeneratedBodyReturnsRightArgument left right = refl
+historicalGeneratedBodyReturnsRightArgument :
+  (left right : Nat) → historicalGeneratedScalarAddBody left right ≡ right
+historicalGeneratedBodyReturnsRightArgument left right = refl
 
-observedGeneratedScalarBodyAt20And5 :
-  observedGeneratedScalarAddBody 20 5 ≡ 5
-observedGeneratedScalarBodyAt20And5 = refl
+historicalGeneratedScalarBodyAt20And5 :
+  historicalGeneratedScalarAddBody 20 5 ≡ 5
+historicalGeneratedScalarBodyAt20And5 = refl
 
 sourceAdditionAt20And5 : 20 + 5 ≡ 25
 sourceAdditionAt20And5 = refl
@@ -1198,29 +1197,29 @@ sourceAdditionAt20And5 = refl
 fiveIsNotTwentyFive : 5 ≡ 25 → ⊥
 fiveIsNotTwentyFive ()
 
-observedGeneratedBodyCannotRefineAddition :
-  (observedGeneratedScalarAddBody 20 5 ≡ 20 + 5) → ⊥
-observedGeneratedBodyCannotRefineAddition bodyRefinement =
+historicalGeneratedBodyCannotRefineAddition :
+  (historicalGeneratedScalarAddBody 20 5 ≡ 20 + 5) → ⊥
+historicalGeneratedBodyCannotRefineAddition bodyRefinement =
   fiveIsNotTwentyFive
     (transEq
-      (transEq (symEq observedGeneratedScalarBodyAt20And5) bodyRefinement)
+      (transEq (symEq historicalGeneratedScalarBodyAt20And5) bodyRefinement)
       sourceAdditionAt20And5)
 
-CurrentGeneratedScalarRefinesAddition : Set
-CurrentGeneratedScalarRefinesAddition =
+HistoricalGeneratedScalarRefinesAddition : Set
+HistoricalGeneratedScalarRefinesAddition =
   (left right : Nat) →
-  observedGeneratedScalarAddBody left right ≡ left + right
+  historicalGeneratedScalarAddBody left right ≡ left + right
 
-currentGeneratedScalarDoesNotRefineAddition :
-  CurrentGeneratedScalarRefinesAddition → ⊥
-currentGeneratedScalarDoesNotRefineAddition refinement =
-  observedGeneratedBodyCannotRefineAddition (refinement 20 5)
+historicalGeneratedScalarDoesNotRefineAddition :
+  HistoricalGeneratedScalarRefinesAddition → ⊥
+historicalGeneratedScalarDoesNotRefineAddition refinement =
+  historicalGeneratedBodyCannotRefineAddition (refinement 20 5)
 
 NoCheckedRepresentation : EmittedFragment → Set
 NoCheckedRepresentation (rawNaturalCell n) = ⊤
 NoCheckedRepresentation rawTrueCell = ⊤
 NoCheckedRepresentation rawFalseCell = ⊤
-NoCheckedRepresentation (legacyAddCode left right) =
+NoCheckedRepresentation (abiAddAdapterCode left right) =
   NoCheckedRepresentation left × NoCheckedRepresentation right
 NoCheckedRepresentation (checkedScalarCode mode n) = ⊥
 NoCheckedRepresentation (checkedBooleanCode mode) = ⊥
@@ -1325,50 +1324,48 @@ data BackendPrimitive : Set where
   backendUnsupported : BackendPrimitive
 
 data BackendEmission : Set where
-  emitLegacyAdd emitLegacySub emitLegacyMul emitLegacyQuot emitLegacyRem : BackendEmission
-  emitLegacyIf emitLegacyEq emitLegacyGeq emitLegacyLt : BackendEmission
+  emitBinaryAdapterAdd emitBinaryAdapterSub emitBinaryAdapterMul emitBinaryAdapterQuot emitBinaryAdapterRem : BackendEmission
+  emitInlineIf emitBinaryAdapterEq emitBinaryAdapterGeq emitBinaryAdapterLt : BackendEmission
   emitDiagnosticBye : BackendEmission
 
 emitSupportedPrimitive : SupportedBackendPrimitive → BackendEmission
-emitSupportedPrimitive backendAdd = emitLegacyAdd
-emitSupportedPrimitive backendSub = emitLegacySub
-emitSupportedPrimitive backendMul = emitLegacyMul
-emitSupportedPrimitive backendQuot = emitLegacyQuot
-emitSupportedPrimitive backendRem = emitLegacyRem
-emitSupportedPrimitive backendIf = emitLegacyIf
-emitSupportedPrimitive backendIntegerEq = emitLegacyEq
-emitSupportedPrimitive backendGeq = emitLegacyGeq
-emitSupportedPrimitive backendLt = emitLegacyLt
+emitSupportedPrimitive backendAdd = emitBinaryAdapterAdd
+emitSupportedPrimitive backendSub = emitBinaryAdapterSub
+emitSupportedPrimitive backendMul = emitBinaryAdapterMul
+emitSupportedPrimitive backendQuot = emitBinaryAdapterQuot
+emitSupportedPrimitive backendRem = emitBinaryAdapterRem
+emitSupportedPrimitive backendIf = emitInlineIf
+emitSupportedPrimitive backendIntegerEq = emitBinaryAdapterEq
+emitSupportedPrimitive backendGeq = emitBinaryAdapterGeq
+emitSupportedPrimitive backendLt = emitBinaryAdapterLt
 
 emitBackendPrimitive : BackendPrimitive → BackendEmission
 emitBackendPrimitive (backendSupported p) = emitSupportedPrimitive p
 emitBackendPrimitive backendUnsupported = emitDiagnosticBye
 
-data LegacyEmission : BackendEmission → Set where
-  legacyAddEmission : LegacyEmission emitLegacyAdd
-  legacySubEmission : LegacyEmission emitLegacySub
-  legacyMulEmission : LegacyEmission emitLegacyMul
-  legacyQuotEmission : LegacyEmission emitLegacyQuot
-  legacyRemEmission : LegacyEmission emitLegacyRem
-  legacyIfEmission : LegacyEmission emitLegacyIf
-  legacyEqEmission : LegacyEmission emitLegacyEq
-  legacyGeqEmission : LegacyEmission emitLegacyGeq
-  legacyLtEmission : LegacyEmission emitLegacyLt
+data SupportedEmission : BackendEmission → Set where
+  adapterAddEmission : SupportedEmission emitBinaryAdapterAdd
+  adapterSubEmission : SupportedEmission emitBinaryAdapterSub
+  adapterMulEmission : SupportedEmission emitBinaryAdapterMul
+  adapterQuotEmission : SupportedEmission emitBinaryAdapterQuot
+  adapterRemEmission : SupportedEmission emitBinaryAdapterRem
+  inlineIfEmission : SupportedEmission emitInlineIf
+  adapterEqEmission : SupportedEmission emitBinaryAdapterEq
+  adapterGeqEmission : SupportedEmission emitBinaryAdapterGeq
+  adapterLtEmission : SupportedEmission emitBinaryAdapterLt
 
--- Every currently supported primitive has a typed legacy-emission witness.
--- Unlike an unindexed "success" proposition, the result type cannot inhabit
--- this claim for emitDiagnosticBye.
-supportedPrimitiveEmissionIsLegacy :
-  (p : SupportedBackendPrimitive) → LegacyEmission (emitSupportedPrimitive p)
-supportedPrimitiveEmissionIsLegacy backendAdd = legacyAddEmission
-supportedPrimitiveEmissionIsLegacy backendSub = legacySubEmission
-supportedPrimitiveEmissionIsLegacy backendMul = legacyMulEmission
-supportedPrimitiveEmissionIsLegacy backendQuot = legacyQuotEmission
-supportedPrimitiveEmissionIsLegacy backendRem = legacyRemEmission
-supportedPrimitiveEmissionIsLegacy backendIf = legacyIfEmission
-supportedPrimitiveEmissionIsLegacy backendIntegerEq = legacyEqEmission
-supportedPrimitiveEmissionIsLegacy backendGeq = legacyGeqEmission
-supportedPrimitiveEmissionIsLegacy backendLt = legacyLtEmission
+-- Every supported primitive maps to a typed ABI adapter or an inline conditional.
+supportedPrimitiveEmissionIsSpecified :
+  (p : SupportedBackendPrimitive) → SupportedEmission (emitSupportedPrimitive p)
+supportedPrimitiveEmissionIsSpecified backendAdd = adapterAddEmission
+supportedPrimitiveEmissionIsSpecified backendSub = adapterSubEmission
+supportedPrimitiveEmissionIsSpecified backendMul = adapterMulEmission
+supportedPrimitiveEmissionIsSpecified backendQuot = adapterQuotEmission
+supportedPrimitiveEmissionIsSpecified backendRem = adapterRemEmission
+supportedPrimitiveEmissionIsSpecified backendIf = inlineIfEmission
+supportedPrimitiveEmissionIsSpecified backendIntegerEq = adapterEqEmission
+supportedPrimitiveEmissionIsSpecified backendGeq = adapterGeqEmission
+supportedPrimitiveEmissionIsSpecified backendLt = adapterLtEmission
 
 unsupportedPrimitiveUsesDiagnosticBye :
   emitBackendPrimitive backendUnsupported ≡ emitDiagnosticBye
