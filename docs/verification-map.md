@@ -12,7 +12,7 @@ Use Agda --safe --no-libraries core. Keep the WP transformer as the only contrac
 
 - WP-only contracts: wp, operational SemanticTriple, sequencing/CATCH laws, wpCatchPreserves, WP leastness/validity, and allocation/null-token contracts live in formal/LinearModalSafety.agda. The artificial generic frame abstraction was removed; stack, heap and metadata belong in the complete state.
 - Allocation atomicity is the first paired operation-level obligation: identity exhaustion is modelled in ABIAllocationWP and checked against concrete Forth preflight plus adversarial Gforth assertions. The checked binary transaction has WP lemmas for arithmetic/result-allocation failures and Gforth checks that both input handles remain live.
-- The generated scalar example previously returned 5 rather than 25. Keep that counterexample open; allocation atomicity does not fix compiler application/lowering.
+- The generated `scalarAdd 20 5` counterexample was fixed for the tested saturated-primitive path by direct lowering in `ToForth.hs`; CI checks addition and less-than. This follow-up adds non-commutative Nat monus cases (`20 ∸ 5 = 15`, `5 ∸ 20 = 0`) and fixes the raw/raw monus adapter to saturate rather than use signed subtraction. The historical `pass` counterexample remains as a model of the old output, not the current generated body. Whole-backend and modality preservation remain open.
 
 ## Not yet specified
 
