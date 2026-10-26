@@ -1,6 +1,6 @@
 module CheckedScalar where
 
-open import Agda.Builtin.Nat using (Nat; _+_; _<_; _∸_)
+open import Agda.Builtin.Nat using (Nat; _+_; _<_; _-_)
 open import Agda.Builtin.Bool using (Bool)
 
 scalarAdd : Nat → Nat → Nat
@@ -10,7 +10,7 @@ scalarAddAnswer : Nat
 scalarAddAnswer = scalarAdd 20 5
 
 scalarSubtract : Nat → Nat → Nat
-scalarSubtract left right = left ∸ right
+scalarSubtract left right = left - right
 
 scalarSubtractAnswer : Nat
 scalarSubtractAnswer = scalarSubtract 20 5
