@@ -11,6 +11,7 @@
 module LinearModalSafety where
 
 open import Agda.Builtin.Nat using (Nat; zero; suc)
+open import Agda.Builtin.Bool using (Bool; true; false)
 open import Agda.Builtin.Equality using (_≡_; refl)
 
 -- ── 1. Descriptor heap, linear/modal invariants, WP and separation model ──
