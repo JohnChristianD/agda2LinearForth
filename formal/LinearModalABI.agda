@@ -66,7 +66,7 @@ data RuntimeError : Set where
   linearCaptureNotAccounted modalPromotionRejected : RuntimeError
   unknownPrimitive badStackEffect : RuntimeError
   badResultPayload abiEscapeHatch : RuntimeError
-  arithmeticDomainError : RuntimeError
+  arithmeticDomainError arithmeticOverflowError : RuntimeError
 
 -- CodeClass is a compiler/loader classification, not an execution-token address.
 -- codeOpaque is deliberately not eligible for modal promotion.
@@ -567,14 +567,14 @@ record PrimitiveSpec (p : Primitive) : Set where
 open PrimitiveSpec public
 
 numericErrors : List RuntimeError
-numericErrors = unknownHandle :: consumedHandle :: wrongKind :: expectedScalar :: invalidMode :: []
+numericErrors = unknownHandle :: consumedHandle :: wrongKind :: expectedScalar :: invalidMode :: arithmeticOverflowError :: []
 
 booleanErrors : List RuntimeError
 booleanErrors = unknownHandle :: consumedHandle :: wrongKind :: expectedBoolean :: invalidMode :: invalidBoolean :: []
 
 divisionErrors : List RuntimeError
 divisionErrors = unknownHandle :: consumedHandle :: wrongKind ::
-  invalidMode :: arithmeticDomainError :: []
+  invalidMode :: arithmeticDomainError :: arithmeticOverflowError :: []
 
 closureErrors : List RuntimeError
 closureErrors = unknownHandle :: consumedHandle :: wrongKind ::
