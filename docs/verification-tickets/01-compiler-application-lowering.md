@@ -12,5 +12,5 @@ The original integration emitted a body similar to `:noname { a c } a c pass ;` 
 
 - State a formal source/Treeless application rule and the exact Forth stack/closure-state transition.
 - Prove translation preserves normal results, exceptional outcomes and linear/modal capture ownership.
-- Keep the generated addition and comparison regressions running on CI, and add compiler-generated regressions for `20 ∸ 5 = 15` and `5 ∸ 20 = 0` so operand order and saturation are both tested.
+- Keep generated addition, subtraction/monus in both operand orders, multiplication, equality, comparison and Boolean-branch regressions running on CI. In particular, `20 - 5 = 15` and `5 - 20 = 0` test operand order and saturation.
 - Keep the Haskell exception limited to `src/Agda/Compiler/ToForth.hs`; every other `.hs` file remains pinned. Do not claim whole-backend end-to-end completion from scalar-fragment tests.
