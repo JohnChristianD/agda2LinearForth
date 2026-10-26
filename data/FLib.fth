@@ -566,7 +566,8 @@ s" invalid Agda boolean payload" exception constant ABI-ERR-INVALID-BOOLEAN
     ['] ABI-NAT-SUB ['] - ABI-DISPATCH-BINARY
 ;
 : ABI-MONUS-OR-LEGACY ( left right -- result )
-    ['] ABI-NAT-MONUS ['] - ABI-DISPATCH-BINARY
+    \ Both the checked and legacy paths must implement Agda Nat subtraction (monus).
+    ['] ABI-NAT-MONUS ['] ABI-SUB-RAW ABI-DISPATCH-BINARY
 ;
 : ABI-MUL-OR-LEGACY ( left right -- result )
     ['] ABI-NAT-MUL ['] * ABI-DISPATCH-BINARY
