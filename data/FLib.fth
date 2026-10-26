@@ -1,8 +1,4 @@
 variable MAXNUM 100000000000000 MAXNUM !
-
-\ Temporary diagnostic switch; inert unless CI explicitly enables it.
-variable ABI-TRACE
-0 ABI-TRACE !
 s" unsupported or invalid operation emitted by agda2forth" exception constant ABI-ERR-COMPILED-UNSUPPORTED
 : ABI-ERROR-COMPILED-UNSUPPORTED ( -- ) ABI-ERR-COMPILED-UNSUPPORTED THROW ;
 
@@ -76,16 +72,12 @@ s" unreachable Agda branch" exception constant ABI-ERR-UNREACHABLE
 
 
 : pushArray { addr -- xn .. x2 x1 ENDFLAG }
-    ABI-TRACE @ IF ." TRACE PUSHARRAY input " .s cr THEN
     ENDFLAG
     0
     BEGIN
     addr 1 pick cells + @
-    ABI-TRACE @ IF ." TRACE PUSHARRAY item " dup . ." stack " .s cr THEN
     dup ENDFLAG = if
-        ABI-TRACE @ IF ." TRACE PUSHARRAY terminator-before-2drop " .s cr THEN
         2drop
-        ABI-TRACE @ IF ." TRACE PUSHARRAY terminator-after-2drop " .s cr THEN
         EXIT
     then
     swap 1 +
@@ -133,8 +125,6 @@ variable MODAL-SAFE-HEAD
 variable LINEAR-SAFE-HEAD
 variable NEXT-HANDLE-ID
 0 NEXT-HANDLE-ID !
-
-
 
 s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
 
@@ -316,16 +306,9 @@ s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
     handle metadata@ dup 0= IF drop ABI-ERR-CLOSURE-METADATA THROW THEN
     { meta }
     meta META-ENV cells + @
-    ABI-TRACE @ IF
-        ." TRACE INVOKE handle=" handle .
-        ." env-count=" meta META-ENVCOUNT cells + @ .
-        ." code=" meta META-CODE cells + @ . cr
-    THEN
     meta META-ENVCOUNT cells + @
     pushArrayN
-    ABI-TRACE @ IF ." TRACE INVOKE stack-before-code " .s cr THEN
     meta META-CODE cells + @ execute
-    ABI-TRACE @ IF ." TRACE INVOKE stack-after-code " .s cr THEN
 ;
 
 : moveLinearHandle { handle meta -- moved }
@@ -773,7 +756,6 @@ variable target
 ;
 
 : dethunk { value -- result }
-    ABI-TRACE @ IF ." TRACE DETHUNK input=" value . cr THEN
     BEGIN
         value metadata@ { meta }
         meta 0= IF value EXIT THEN
@@ -795,7 +777,6 @@ variable target
             THEN
             DROP
             passMany NIP TO value
-            ABI-TRACE @ IF ." TRACE DETHUNK output=" value . cr ." TRACE DETHUNK stack " .s cr THEN
             meta META-MODE cells + @ MODE-LINEAR = IF
                 meta value checkLinearEnvConsumed
             THEN
@@ -888,7 +869,6 @@ variable target
 ;
 
 : pass { x h -- result }
-    ABI-TRACE @ IF ." TRACE PASS x=" x . ." h=" h . cr ." TRACE PASS input-stack " .s cr THEN
     h metadata@ 0<> IF h requireLiveMeta DROP THEN
     h isThunk IF
         h requireLiveMeta { hm }
@@ -933,7 +913,6 @@ variable target
         functionMode MODE-LINEAR = IF
             OWN-CONSUMED hm META-STATE cells + !
         THEN
-        ABI-TRACE @ IF ." TRACE PASS result=" newHandle . ." env-count=" newCount . cr THEN
         newHandle
     ELSE
         h
@@ -952,21 +931,15 @@ variable target
 ; is passMany
 
 : foldThunks ( addr - THUNK )
-    ABI-TRACE @ IF ." TRACE FOLD input " .s cr THEN
     pushArray       ( xn .. x2 x1 ENDFLAG )
-    ABI-TRACE @ IF ." TRACE FOLD after-pushArray " .s cr THEN
     makeTHUNK       ( [THUNK xn] .. x2 x1 ENDFLAG)
-    ABI-TRACE @ IF ." TRACE FOLD after-makeTHUNK " .s cr THEN
     BEGIN
     swap            ( xn-1 [THUNK xn] .. x2 x1 ENDFLAG )
-    ABI-TRACE @ IF ." TRACE FOLD after-swap " .s cr THEN
-    dup ENDFLAG = if
+    dup ENDFLAG = if 
         drop        ( [THUNK xn] )
-        ABI-TRACE @ IF ." TRACE FOLD exit " .s cr THEN
         EXIT
     then
     makeTHUNK pass
-    ABI-TRACE @ IF ." TRACE FOLD after-makeTHUNK-pass " .s cr THEN
     AGAIN
 ;
 
@@ -1139,128 +1112,4 @@ variable pointer
 : fastSort ( array len -- )
   dup 2 < if 2drop exit then
   1- cells over + fastQsort ;
-
-\ Opt-in scalar ABI gate for audited generated entrypoints. Off by default.
-\ Do not pass untrusted execution tokens to ABI-CHECKED-RUN-*.
-variable ABI-CHECKED-MODE
-0 ABI-CHECKED-MODE !
-
-
-
-s" checked entrypoint returned a non-scalar ABI value" exception constant ABI-ERR-CHECKED-RESULT
-s" checked entrypoint stack effect mismatch" exception constant ABI-ERR-CHECKED-STACK
-s" checked conditional requires a canonical boolean" exception constant ABI-ERR-CHECKED-CONDITION
-
-\ Capture the actual native operators before defining checked dispatch wrappers.
-: ABI-LEGACY-PLUS + ;
-: ABI-LEGACY-MINUS - ;
-: ABI-LEGACY-STAR * ;
-: ABI-LEGACY-SLASH / ;
-: ABI-LEGACY-MOD mod ;
-: ABI-LEGACY-EQUAL = ;
-: ABI-LEGACY-GE >= ;
-: ABI-LEGACY-LT < ;
-
-: ABI-CHECKED? ( -- flag ) ABI-CHECKED-MODE @ 0<> ;
-
-\ Raw natural cells in the scalar subset become immutable modal handles.
-\ A tracked value must already be a scalar handle; wrong-kind handles fail closed.
-: ABI-COERCE-NAT { value -- handle }
-    value metadata@ { meta }
-    meta 0<> IF
-        value ABI-SCALAR-INFO DROP DROP DROP
-        value EXIT
-    THEN
-    value 0< IF ABI-ERR-NAT-NEGATIVE THROW THEN
-    value ABI-MAX-NAT > IF ABI-ERR-NAT-OVERFLOW THROW THEN
-    value MODE-MODAL ABI-MAKE-SCALAR
-;
-
-: ABI-CHECKED-BINARY { left right checked legacy -- result }
-    ABI-CHECKED? 0= IF
-        left right legacy EXECUTE EXIT
-    THEN
-    left ABI-COERCE-NAT { leftHandle }
-    right ABI-COERCE-NAT { rightHandle }
-    leftHandle rightHandle checked EXECUTE
-;
-
-\ inputCount describes the compiled entrypoint's scalar input stack arity.
-\ CATCH restores the entry stack on THROW; this gate always restores its prior mode.
-: ABI-CHECKED-EXECUTE { inputCount xt -- value }
-    DEPTH { depthBefore }
-    ABI-CHECKED-MODE @ { previousMode }
-    1 ABI-CHECKED-MODE !
-    xt CATCH { status }
-    status 0<> IF previousMode ABI-CHECKED-MODE ! status THROW THEN
-    \ Force the returned thunk while the checked gate is still active so lazily
-    \ emitted arithmetic cannot escape through the legacy raw-cell operators.
-    ['] deepdethunk CATCH { forceStatus }
-    previousMode ABI-CHECKED-MODE !
-    forceStatus 0<> IF forceStatus THROW THEN
-    DEPTH depthBefore ABI-LEGACY-MINUS
-    1 inputCount ABI-LEGACY-MINUS
-    ABI-LEGACY-EQUAL 0= IF ABI-ERR-CHECKED-STACK THROW THEN
-;
-
-: ABI-CHECKED-RUN-NAT { inputCount xt -- handle }
-    inputCount xt ABI-CHECKED-EXECUTE { result }
-    result ABI-COERCE-NAT
-;
-
-: ABI-CHECKED-RUN-BOOL { inputCount xt -- handle }
-    inputCount xt ABI-CHECKED-EXECUTE { result }
-    result metadata@ { meta }
-    meta 0<> IF
-        result ABI-BOOL-INFO DROP DROP DROP
-        result EXIT
-    THEN
-    result 0= result -1 = OR 0= IF ABI-ERR-INVALID-BOOLEAN THROW THEN
-    result MODE-MODAL ABI-MAKE-BOOL
-;
-
-\ Check the runtime condition convention used by Agda: false=0, true=-1.
-\ A managed linear boolean is consumed only after validation.
-: ABI-CHECKED-IF-FLAG { value -- flag }
-    ABI-CHECKED? 0= IF value EXIT THEN
-    value metadata@ { meta }
-    meta 0= IF
-        value 0= value -1 = OR 0= IF ABI-ERR-CHECKED-CONDITION THROW THEN
-        value EXIT
-    THEN
-    value ABI-BOOL-INFO { flag mode boolMeta }
-    mode MODE-LINEAR = IF OWN-CONSUMED boolMeta META-STATE cells + ! THEN
-    flag
-;
-
-\ These operator names are emitted by the unchanged ToForth.hs scalar preamble.
-\ They dispatch only while the opt-in checked gate is active.
-: + { left right -- result }
-    left right ['] ABI-NAT-ADD ['] ABI-LEGACY-PLUS ABI-CHECKED-BINARY
-;
-: - { left right -- result }
-    left right ['] ABI-NAT-SUB ['] ABI-LEGACY-MINUS ABI-CHECKED-BINARY
-;
-: * { left right -- result }
-    left right ['] ABI-NAT-MUL ['] ABI-LEGACY-STAR ABI-CHECKED-BINARY
-;
-: / { left right -- result }
-    left right ['] ABI-NAT-QUOT ['] ABI-LEGACY-SLASH ABI-CHECKED-BINARY
-;
-: mod { left right -- result }
-    left right ['] ABI-NAT-REM ['] ABI-LEGACY-MOD ABI-CHECKED-BINARY
-;
-: = { left right -- result }
-    left right ['] ABI-NAT-EQ ['] ABI-LEGACY-EQUAL ABI-CHECKED-BINARY
-;
-: >= { left right -- result }
-    left right ['] ABI-NAT-GEQ ['] ABI-LEGACY-GE ABI-CHECKED-BINARY
-;
-: < { left right -- result }
-    left right ['] ABI-NAT-LT ['] ABI-LEGACY-LT ABI-CHECKED-BINARY
-;
-
-\ Shadow IF only for subsequently compiled definitions. Its previous compilation
-\ semantics remain the branch implementation; the added runtime check is inert
-\ outside ABI-CHECKED-MODE.
-: IF POSTPONE ABI-CHECKED-IF-FLAG POSTPONE IF ; IMMEDIATE
+  
