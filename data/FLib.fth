@@ -127,6 +127,7 @@ variable NEXT-HANDLE-ID
 0 NEXT-HANDLE-ID !
 
 s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
+s" null or invalid code execution token" exception constant ABI-ERR-NULL-XT
 
 : requireIdentityRoom { count -- }
     NEXT-HANDLE-ID @ ABI-MAX-NAT count - > IF ABI-ERR-ID-OVERFLOW THROW THEN
@@ -659,6 +660,9 @@ s" invalid Agda boolean payload" exception constant ABI-ERR-INVALID-BOOLEAN
 ;
 
 : makeTHUNK { xt -- handle }
+    \ A zero execution token would turn a valid-looking handle into a null code pointer.
+    \ Reject it before allocating any dictionary or metadata cells.
+    xt 0= IF ABI-ERR-NULL-XT THROW THEN
     xt isThunk xt isResult OR IF xt EXIT THEN
     1 requireIdentityRoom
     align here 2 cells allot { handle }
