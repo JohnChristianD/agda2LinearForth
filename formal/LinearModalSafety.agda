@@ -1663,9 +1663,15 @@ modalInputRemainsLiveOnSuccessfulCommit = refl
 
 -- ── Scalar bridge correspondence for the opt-in runtime gate ──
 --
--- The concrete Forth bridge maps a bare Nat cell to a modal scalar and preserves
--- an explicitly checked handle's mode. The source compiler's erased boolean/Nat
--- overlap at raw 0 is handled by a caller-selected Nat/Bool result adapter.
+-- This bridge has two deliberately distinct views:
+--   * bridgeNormalizeNat/Bool are source-semantic views; a closed literal has a
+--     modal interpretation because it has no linear dependencies.
+--   * bridgeRuntimeModeNat/Bool model the actual representation boundary:
+--     FLib.fth's raw/raw dispatch leaves raw cells unannotated, while only checked
+--     handles carry MODE-LINEAR or MODE-MODAL metadata.
+-- Thus source-level modal interpretation is NOT itself evidence of a runtime !.
+-- This mismatch is a proved limitation of the current emitter, not a hidden
+-- assumption in the Girard-preservation claim.
 data BridgeNatCell : Set where
   bridgeRawNat : Nat → BridgeNatCell
   bridgeCheckedNat : Nat → SourceMode → BridgeNatCell
@@ -1692,6 +1698,27 @@ bridgeCheckedModePreserved :
   snd (bridgeNormalizeNat (bridgeCheckedNat n m)) ≡ m
 bridgeCheckedModePreserved n m = refl
 
+-- Runtime tags are distinct from the logical source interpretation above.
+-- Raw Nat cells emitted by ToForth.hs contain no descriptor/mode witness.
+bridgeRuntimeModeNat : BridgeNatCell → RuntimeMode
+bridgeRuntimeModeNat (bridgeRawNat n) = unannotated
+bridgeRuntimeModeNat (bridgeCheckedNat n m) = sourceMode m
+
+rawNatRuntimeModeIsUnannotated :
+  (n : Nat) → bridgeRuntimeModeNat (bridgeRawNat n) ≡ unannotated
+rawNatRuntimeModeIsUnannotated n = refl
+
+checkedNatRuntimeModePreserved :
+  (n : Nat) (m : SourceMode) →
+  bridgeRuntimeModeNat (bridgeCheckedNat n m) ≡ sourceMode m
+checkedNatRuntimeModePreserved n m = refl
+
+unannotatedCannotBeModal : unannotated ≡ modalMode → ⊥
+unannotatedCannotBeModal ()
+
+unannotatedCannotBeLinear : unannotated ≡ linearMode → ⊥
+unannotatedCannotBeLinear ()
+
 data BridgeBoolCell : Set where
   bridgeRawBool : Bool → BridgeBoolCell
   bridgeCheckedBool : Bool → SourceMode → BridgeBoolCell
@@ -1712,6 +1739,19 @@ bridgeBoolPayloadPreserved (bridgeCheckedBool b m) = refl
 bridgeRawBoolIsModal :
   (b : Bool) → snd (bridgeNormalizeBool (bridgeRawBool b)) ≡ modal
 bridgeRawBoolIsModal b = refl
+
+bridgeRuntimeModeBool : BridgeBoolCell → RuntimeMode
+bridgeRuntimeModeBool (bridgeRawBool b) = unannotated
+bridgeRuntimeModeBool (bridgeCheckedBool b m) = sourceMode m
+
+rawBoolRuntimeModeIsUnannotated :
+  (b : Bool) → bridgeRuntimeModeBool (bridgeRawBool b) ≡ unannotated
+rawBoolRuntimeModeIsUnannotated b = refl
+
+checkedBoolRuntimeModePreserved :
+  (b : Bool) (m : SourceMode) →
+  bridgeRuntimeModeBool (bridgeCheckedBool b m) ≡ sourceMode m
+checkedBoolRuntimeModePreserved b m = refl
 
 bridgeNatSub : Nat → Nat → Nat
 bridgeNatSub n zero = n
