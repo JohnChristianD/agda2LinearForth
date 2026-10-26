@@ -126,6 +126,10 @@ variable LINEAR-SAFE-HEAD
 variable NEXT-HANDLE-ID
 0 NEXT-HANDLE-ID !
 
+\ Temporary diagnostic switch, inert unless explicitly enabled by a test harness.
+variable ABI-TRACE
+0 ABI-TRACE !
+
 s" checked ABI identity space exhausted" exception constant ABI-ERR-ID-OVERFLOW
 
 : requireIdentityRoom { count -- }
@@ -1129,9 +1133,7 @@ variable pointer
 variable ABI-CHECKED-MODE
 0 ABI-CHECKED-MODE !
 
-\ Temporary diagnostic switch, inert unless explicitly enabled by a test harness.
-variable ABI-TRACE
-0 ABI-TRACE !
+
 
 s" checked entrypoint returned a non-scalar ABI value" exception constant ABI-ERR-CHECKED-RESULT
 s" checked entrypoint stack effect mismatch" exception constant ABI-ERR-CHECKED-STACK
