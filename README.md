@@ -108,6 +108,18 @@ The Agda state model defines:
 
 These are reusable proof ingredients, not the completed implementation theorem. The missing central theorem is that each actual ABI word refines its Agda command contract and preserves `WellFormed`. It must be proved operation by operation; a typechecked model alone is not that theorem.
 
+## Checked scalar bridge for unchanged generated code
+
+The runtime now has an opt-in, runtime-tested bridge for the operators that the unchanged ToForth.hs emits in its scalar preamble. ABI-CHECKED-RUN-NAT and ABI-CHECKED-RUN-BOOL accept a zero-argument Forth execution token, run it with checked scalar dispatch enabled, restore the previous gate even on a THROW, require exactly one returned stack value, and return a checked scalar or boolean handle of the caller-declared result kind. During that execution, +, -, *, /, mod, =, >=, <, and compiled IF route through the checked ABI. Outside the gate, those operators retain their legacy Forth semantics. Raw Nat operands are boxed as modal scalar handles; existing checked handles retain their mode; raw booleans are accepted only in canonical Agda/Gforth representation (false = 0, true = -1). The typed run entrypoint is important because an erased raw cell 0 alone cannot distinguish Nat 0 from false.
+
+This closes a concrete runtime gap for an audited scalar-only generated subset without modifying any Haskell source or adding source-generation scripts or Haskell shims. Regression tests compile Forth words with the same operator/control-flow shape as the current generated preamble and exercise arithmetic, comparisons, conditionals, typed result conversion, and restoration of the checked gate on exceptional exit.
+
+It does not prove every word emitted by ToForth.hs is inside that subset. The backend can also emit thunk/application, constructor/matcher, wildcard, array, and legacy data-layout code; unsupported cases still emit BYE, and the fixed source contains no mode evidence or closed-code witness for general execution tokens. Arbitrary XT execution, constructor/matcher field ownership, and general closure/capture refinement remain outside this scalar bridge theorem. Do not use ABI-CHECKED-RUN-* as a sandbox for untrusted Forth. The entrypoint XT must be an audited generated definition in the supported closed subset. Complete refinement for all emitted programs is impossible to certify from the fixed Haskell output alone while it continues to erase this evidence; this PR records that boundary rather than relabeling a component model as a whole-compiler proof.
+
+## Wider constructive proof coverage
+
+The stack-effect witnesses now cover subtraction, multiplication, quotient, remainder, order comparisons, truncated natural subtraction (monus), conditionals, constructor/matcher schemas, result pack/unpack, and linear/modal observation in addition to addition and equality. The new formal/LinearModalRuntimeRefinement.agda proves by definitional equality that the typed scalar bridge preserves Nat payloads, preserves explicit checked modes, assigns raw immutable scalar cells modal mode, and returns the same payload for addition/subtraction/equality as the source-level model. These are constructive standard-library-free proofs. Their scope is intentionally the bridge model; Gforth smoke tests separately exercise the adapter implementation. Neither evidence alone proves the unrestricted legacy runtime or arbitrary Forth safe.
+
 ## Verification stages and status
 
 - [x] Define a stdlib-free Agda state/invariant model, copy/drop rules, and a strict identity-decrease condition for references.
@@ -115,14 +127,15 @@ These are reusable proof ingredients, not the completed implementation theorem. 
 - [x] Define structured runtime-error outcomes and a catch-composition preservation lemma.
 - [x] Define typed stack-shape effects and example witnesses for the enumerated closed primitive subset.
 - [ ] Confirm all three Agda modules type-check in CI using Agda itself with `--no-libraries`.
-- [ ] Give each emitted primitive a complete stack/mode/resource signature and derive permitted compositions.
+- [x] Give the enumerated closed-core primitives stack/mode/resource signatures and witnesses for arithmetic, conditionals, constructor/matcher schemas, result movement, and observation.
 - [ ] Route every supported generated literal, constructor, application, force, conditional and primitive through the checked ABI.
 - [ ] Replace caller-asserted XT safety with compiler/loader-generated code-class derivations tied to the closed core IR.
 - [ ] Prove actual Forth word implementations preserve `WellFormed`, including every exceptional path.
 - [ ] Prove compiler-to-core and core-to-Gforth correspondence for the supported subset.
 - [x] Add a compiler-output regression fixture recording the unchanged unsupported-literal diagnostic and legacy `BYE` output.
 - [ ] Route unsupported compiler cases through a catchable boundary without modifying the Haskell backend; this requires a verified, compatibility-preserving checked loader or runtime interception.
-- [ ] Run positive and negative Gforth tests, plus compatibility regression tests for legacy words.
+- [x] Exercise the opt-in checked scalar bridge and preserve legacy operator behavior when the gate is off.
+- [ ] Prove the concrete constructor/matcher/array/closure implementations refine their Agda effects for all compiler-emitted programs.
 
 Until those last obligations pass, the only justified claim is runtime hardening for explicitly managed handles—not complete end-to-end linear/modal safety.
 

@@ -1112,4 +1112,122 @@ variable pointer
 : fastSort ( array len -- )
   dup 2 < if 2drop exit then
   1- cells over + fastQsort ;
-  
+
+\ Optional checked scalar gate for audited, zero-argument generated entrypoints.
+\ The default remains legacy-compatible. Only the dynamic operators compiled into
+\ a generated word are redirected while ABI-CHECKED-MODE is nonzero.
+variable ABI-CHECKED-MODE
+0 ABI-CHECKED-MODE !
+
+s" checked entrypoint returned a non-scalar ABI value" exception constant ABI-ERR-CHECKED-RESULT
+s" checked entrypoint must return exactly one value" exception constant ABI-ERR-CHECKED-STACK
+s" checked conditional requires a canonical boolean" exception constant ABI-ERR-CHECKED-CONDITION
+
+\ Save original operators before installing opt-in dispatchers. Runtime
+\ implementation words above this block have already compiled against these.
+: ABI-LEGACY-PLUS + ;
+: ABI-LEGACY-MINUS - ;
+: ABI-LEGACY-STAR * ;
+: ABI-LEGACY-SLASH / ;
+: ABI-LEGACY-MOD mod ;
+: ABI-LEGACY-EQUAL = ;
+: ABI-LEGACY-GE >= ;
+: ABI-LEGACY-LT < ;
+
+\ In the checked scalar profile, raw cells reaching a Nat primitive are the
+\ source backend's unboxed Nat literals and are conservatively boxed as modal
+\ immutable scalars. Existing checked handles retain their explicit mode.
+\ This helper does not classify arbitrary Forth addresses as safe values; the
+\ caller must provide an audited, well-typed generated entrypoint.
+: ABI-CHECKED? ( -- flag ) ABI-CHECKED-MODE @ 0<> ;
+
+: ABI-COERCE-NAT { value -- handle }
+    value metadata@ { meta }
+    meta 0<> IF
+        value ABI-SCALAR-INFO DROP DROP DROP
+        value EXIT
+    THEN
+    value 0< IF ABI-ERR-NAT-NEGATIVE THROW THEN
+    value ABI-MAX-NAT > IF ABI-ERR-NAT-OVERFLOW THROW THEN
+    value MODE-MODAL ABI-MAKE-SCALAR
+;
+
+: ABI-CHECKED-BINARY { left right checked legacy -- result }
+    ABI-CHECKED? 0= IF
+        left right legacy EXECUTE EXIT
+    THEN
+    left ABI-COERCE-NAT { leftHandle }
+    right ABI-COERCE-NAT { rightHandle }
+    leftHandle rightHandle checked EXECUTE
+;
+
+\ These are the operators emitted inside ToForth.hs's generated scalar preamble.
+\ They dispatch only inside an explicit checked run; ordinary Forth keeps the
+\ original cell operators.
+: + { left right -- result }
+    left right ['] ABI-NAT-ADD ['] ABI-LEGACY-PLUS ABI-CHECKED-BINARY
+;
+: - { left right -- result }
+    left right ['] ABI-NAT-SUB ['] ABI-LEGACY-MINUS ABI-CHECKED-BINARY
+;
+: * { left right -- result }
+    left right ['] ABI-NAT-MUL ['] ABI-LEGACY-STAR ABI-CHECKED-BINARY
+;
+: / { left right -- result }
+    left right ['] ABI-NAT-QUOT ['] ABI-LEGACY-SLASH ABI-CHECKED-BINARY
+;
+: mod { left right -- result }
+    left right ['] ABI-NAT-REM ['] ABI-LEGACY-MOD ABI-CHECKED-BINARY
+;
+: = { left right -- result }
+    left right ['] ABI-NAT-EQ ['] ABI-LEGACY-EQUAL ABI-CHECKED-BINARY
+;
+: >= { left right -- result }
+    left right ['] ABI-NAT-GEQ ['] ABI-LEGACY-GE ABI-CHECKED-BINARY
+;
+: < { left right -- result }
+    left right ['] ABI-NAT-LT ['] ABI-LEGACY-LT ABI-CHECKED-BINARY
+;
+
+\ Gforth IF is compile-time control flow. Insert a run-time boolean check before
+\ the original IF action: managed linear booleans are consumed exactly once;
+\ raw compiler true/false literals are accepted only as 0/-1.
+: ABI-CHECKED-IF-FLAG { value -- flag }
+    ABI-CHECKED? 0= IF value EXIT THEN
+    value metadata@ { meta }
+    meta 0= IF
+        value 0= value -1 = OR 0= IF ABI-ERR-CHECKED-CONDITION THROW THEN
+        value EXIT
+    THEN
+    value ABI-BOOL-INFO { flag mode boolMeta }
+    mode MODE-LINEAR = IF OWN-CONSUMED boolMeta META-STATE cells + ! THEN
+    flag
+;
+
+: IF POSTPONE ABI-CHECKED-IF-FLAG POSTPONE IF ; IMMEDIATE
+
+: ABI-CHECKED-EXECUTE { xt -- value }
+    DEPTH { depthBefore }
+    ABI-CHECKED-MODE @ { previousMode }
+    1 ABI-CHECKED-MODE !
+    xt CATCH { status }
+    previousMode ABI-CHECKED-MODE !
+    status 0<> IF status THROW THEN
+    DEPTH depthBefore - 1 <> IF ABI-ERR-CHECKED-STACK THROW THEN
+;
+
+: ABI-CHECKED-RUN-NAT { xt -- handle }
+    xt ABI-CHECKED-EXECUTE { result }
+    result ABI-COERCE-NAT
+;
+
+: ABI-CHECKED-RUN-BOOL { xt -- handle }
+    xt ABI-CHECKED-EXECUTE { result }
+    result metadata@ { meta }
+    meta 0<> IF
+        result ABI-BOOL-INFO DROP DROP DROP
+        result EXIT
+    THEN
+    result 0= result -1 = OR 0= IF ABI-ERR-INVALID-BOOLEAN THROW THEN
+    result MODE-MODAL ABI-MAKE-BOOL
+;

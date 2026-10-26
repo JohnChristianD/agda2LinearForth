@@ -246,4 +246,92 @@ checked-linear-boolean-result-test
 ' print 0<> abi-assert
 ' pass 0<> abi-assert
 ' dethunk 0<> abi-assert
+
+\ These words deliberately use the operator names in the unchanged generated
+\ ToForth backend preamble. ABI-CHECKED-RUN activates the bridge only at runtime.
+: generated-style-add { m n -- result } m deepdethunk n deepdethunk + ;
+: generated-style-sub { m n -- result } m deepdethunk n deepdethunk - ;
+: generated-style-mul { m n -- result } m deepdethunk n deepdethunk * ;
+: generated-style-quot { m n -- result } m deepdethunk n deepdethunk / ;
+: generated-style-rem { m n -- result } m deepdethunk n deepdethunk mod ;
+: generated-style-eq { m n -- result } m deepdethunk n deepdethunk = ;
+: generated-style-geq { m n -- result } m deepdethunk n deepdethunk >= ;
+: generated-style-lt { m n -- result } m deepdethunk n deepdethunk < ;
+: generated-style-if { b x y -- result }
+  b deepdethunk IF x deepdethunk ELSE y deepdethunk THEN
+;
+
+: checked-generated-add-test ( -- )
+  20 5 ' generated-style-add ABI-CHECKED-RUN-NAT
+  ABI-SCALAR-INFO { value mode meta }
+  value 25 = abi-assert
+  mode MODE-MODAL = abi-assert
+;
+checked-generated-add-test
+
+: checked-generated-sub-test ( -- )
+  17 5 ' generated-style-sub ABI-CHECKED-RUN-NAT
+  ABI-SCALAR-INFO { value mode meta }
+  value 12 = abi-assert
+;
+checked-generated-sub-test
+
+: checked-generated-mul-test ( -- )
+  6 7 ' generated-style-mul ABI-CHECKED-RUN-NAT
+  ABI-SCALAR-INFO { value mode meta }
+  value 42 = abi-assert
+;
+checked-generated-mul-test
+
+: checked-generated-quot-test ( -- )
+  21 4 ' generated-style-quot ABI-CHECKED-RUN-NAT
+  ABI-SCALAR-INFO { value mode meta }
+  value 5 = abi-assert
+;
+checked-generated-quot-test
+
+: checked-generated-rem-test ( -- )
+  21 4 ' generated-style-rem ABI-CHECKED-RUN-NAT
+  ABI-SCALAR-INFO { value mode meta }
+  value 1 = abi-assert
+;
+checked-generated-rem-test
+
+: checked-generated-eq-test ( -- )
+  7 7 ' generated-style-eq ABI-CHECKED-RUN-BOOL
+  ABI-BOOL-INFO { value mode meta }
+  value -1 = abi-assert
+  mode MODE-MODAL = abi-assert
+;
+checked-generated-eq-test
+
+: checked-generated-geq-test ( -- )
+  7 8 ' generated-style-geq ABI-CHECKED-RUN-BOOL
+  ABI-BOOL-INFO { value mode meta }
+  value 0 = abi-assert
+;
+checked-generated-geq-test
+
+: checked-generated-lt-test ( -- )
+  7 8 ' generated-style-lt ABI-CHECKED-RUN-BOOL
+  ABI-BOOL-INFO { value mode meta }
+  value -1 = abi-assert
+;
+checked-generated-lt-test
+
+: checked-generated-if-test ( -- )
+  0 44 55 ' generated-style-if ABI-CHECKED-RUN-NAT
+  ABI-SCALAR-INFO { value mode meta }
+  value 55 = abi-assert
+;
+checked-generated-if-test
+
+: generated-style-quot-zero ( -- result ) 10 0 ' generated-style-quot execute ;
+' generated-style-quot-zero ABI-CHECKED-RUN-NAT CATCH
+ABI-ERR-ARITHMETIC-DOMAIN = abi-assert
+ABI-CHECKED-MODE @ 0= abi-assert
+
+\ The opt-in gate is off by default, preserving legacy Forth cell semantics.
+8 9 + 17 = abi-assert
+
 BYE

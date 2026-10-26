@@ -21,6 +21,7 @@ extra-source-files:
     formal/LinearModalABI.agda
     formal/LinearModalStackEffects.agda
     formal/LinearModalExamples.agda
+    formal/LinearModalRuntimeRefinement.agda
 
 executable agda2forth
     main-is:          Main.hs
