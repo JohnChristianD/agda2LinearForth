@@ -9,7 +9,8 @@
 -- establish that arbitrary Haskell or Forth implementations refine it.
 module LinearModalSafety where
 
-open import Agda.Builtin.Nat using (Nat; zero; suc; _+_)\nopen import Agda.Builtin.Bool using (Bool; true; false)
+open import Agda.Builtin.Nat using (Nat; zero; suc; _+_)
+open import Agda.Builtin.Bool using (Bool; true; false)
 open import Agda.Builtin.Equality using (_≡_; refl)
 
 -- ── 1. Descriptor heap, linear/modal invariants, Hoare and separation model ──
@@ -1549,7 +1550,8 @@ modalNaturalPrintEffect :
   StackEffect pPrint (valueItem (!Ty naturalTy) :: [])
     (valueItem (!Ty naturalTy) :: [])
 modalNaturalPrintEffect = printModalEffect
-\n
+
+
 -- ── Scalar bridge correspondence for the opt-in runtime gate ──
 --
 -- The concrete Forth bridge maps a bare Nat cell to a modal scalar and preserves
@@ -1657,7 +1659,8 @@ bridgeTrueSelectsLeft yes no = refl
 bridgeFalseSelectsRight :
   (yes no : BridgeNatCell) → bridgeSelect false yes no ≡ no
 bridgeFalseSelectsRight yes no = refl
-\n-- ── 8. Verification boundary ──
+
+-- ── 8. Verification boundary ──
 --
 -- To close end-to-end refinement, future work must prove that:
 -- (1) each supported compiler translation corresponds to the stated emission;
