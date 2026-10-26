@@ -71,9 +71,6 @@ fthFlags =
 fthPreCompile :: FthOptions -> TCM FthOptions
 fthPreCompile opts = return opts
 
-fthPreCompile :: FthOptions -> TCM FthOptions
-fthPreCompile = return
-
 fthCompileDef :: FthOptions -> () -> IsMain -> Definition -> TCM (Maybe FthForm)
 fthCompileDef opts _ isMain def = runToForthM opts $ toForth def
 
