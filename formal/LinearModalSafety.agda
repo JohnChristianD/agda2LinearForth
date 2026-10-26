@@ -1,12 +1,18 @@
 {-# OPTIONS --safe #-}
 
--- Constructive, standard-library-free contract model for the checked GForth ABI.
--- Imports only Agda's bundled primitive Nat and equality definitions.
--- This file specifies invariants; it is not by itself a refinement proof for FLib.fth.
-module LinearModalABI where
+-- Single-source-of-truth constructive specification for agda2LinearForth.
+--
+-- This module combines the descriptor/ownership model, Hoare and separation
+-- contracts, checked primitive stack effects, concrete witnesses, and a small
+-- semantic mirror of the pinned compiler/runtime boundary. The proof terms
+-- below establish properties of this Agda model. They do not, by themselves,
+-- establish that arbitrary Haskell or Forth implementations refine it.
+module LinearModalSafety where
 
 open import Agda.Builtin.Nat using (Nat; zero; suc)
 open import Agda.Builtin.Equality using (_≡_; refl)
+
+-- ── 1. Descriptor heap, linear/modal invariants, Hoare and separation model ──
 
 data ⊥ : Set where
 
@@ -674,3 +680,634 @@ catchPreserves command handler commandSafe handlerSafe s proof
   with command s | commandSafe s proof
 ... | returned s' | normalProof = normalProof
 ... | thrown s' e | exceptionalProof = handlerSafe e s' exceptionalProof
+
+
+-- ── 2. Closed checked-ABI stack effects ──
+
+infixr 5 _⇒_
+
+data CoreTy : Set where
+  naturalTy booleanTy unitTy : CoreTy
+  _⇒_ : CoreTy → CoreTy → CoreTy
+  !Ty : CoreTy → CoreTy
+
+modeOfTy : CoreTy → SourceMode
+modeOfTy (!Ty A) = modal
+modeOfTy _ = linear
+
+data ModalCoreTy : CoreTy → Set where
+  modalCoreTy : {A : CoreTy} → ModalCoreTy (!Ty A)
+
+data ModalCaptures : List CoreTy → Set where
+  modalCapturesNil : ModalCaptures []
+  modalCapturesCons : {A : CoreTy} {As : List CoreTy} →
+    ModalCoreTy A → ModalCaptures As → ModalCaptures (A :: As)
+
+-- Code signatures belong to the closed, audited vocabulary; they cannot be
+-- invented by asserting an arbitrary GForth execution token is safe.
+codeSignature : CodeClass → CoreTy
+codeSignature codeOpaque = unitTy
+codeSignature codeNatAdd = naturalTy ⇒ naturalTy ⇒ naturalTy
+codeSignature codeNatSub = naturalTy ⇒ naturalTy ⇒ naturalTy
+codeSignature codeNatMul = naturalTy ⇒ naturalTy ⇒ naturalTy
+codeSignature codeNatQuot = naturalTy ⇒ naturalTy ⇒ naturalTy
+codeSignature codeNatRem = naturalTy ⇒ naturalTy ⇒ naturalTy
+codeSignature codeNatEq = naturalTy ⇒ naturalTy ⇒ booleanTy
+codeSignature codeNatGeq = naturalTy ⇒ naturalTy ⇒ booleanTy
+codeSignature codeNatLt = naturalTy ⇒ naturalTy ⇒ booleanTy
+codeSignature codeNatMonus = naturalTy ⇒ naturalTy ⇒ naturalTy
+
+joinSourceMode : SourceMode → SourceMode → SourceMode
+joinSourceMode linear _ = linear
+joinSourceMode _ linear = linear
+joinSourceMode modal modal = modal
+
+naturalTypeFor : SourceMode → CoreTy
+naturalTypeFor linear = naturalTy
+naturalTypeFor modal = !Ty naturalTy
+
+booleanTypeFor : SourceMode → CoreTy
+booleanTypeFor linear = booleanTy
+booleanTypeFor modal = !Ty booleanTy
+
+data NatLike : CoreTy → Set where
+  naturalIsNatural : NatLike naturalTy
+  boxedNaturalIsNatural : NatLike (!Ty naturalTy)
+
+data BoolLike : CoreTy → Set where
+  booleanIsBoolean : BoolLike booleanTy
+  boxedBooleanIsBoolean : BoolLike (!Ty booleanTy)
+
+data LinearCoreTy : CoreTy → Set where
+  linearNatural : LinearCoreTy naturalTy
+  linearBoolean : LinearCoreTy booleanTy
+  linearUnit : LinearCoreTy unitTy
+  linearFunction : {A B : CoreTy} → LinearCoreTy (A ⇒ B)
+
+-- An explicit code-safety witness is required to construct a checked closure.
+-- Opaque arbitrary execution tokens intentionally have no witness.
+data LinearCode : CodeClass → Set where
+  linearNatAdd : LinearCode codeNatAdd
+  linearNatSub : LinearCode codeNatSub
+  linearNatMul : LinearCode codeNatMul
+  linearNatQuot : LinearCode codeNatQuot
+  linearNatRem : LinearCode codeNatRem
+  linearNatEq : LinearCode codeNatEq
+  linearNatGeq : LinearCode codeNatGeq
+  linearNatLt : LinearCode codeNatLt
+  linearNatMonus : LinearCode codeNatMonus
+
+data CodeSafe : SourceMode → CodeClass → Set where
+  linearCodeSafe : {c : CodeClass} → LinearCode c → CodeSafe linear c
+  modalCodeSafe : {c : CodeClass} → ModalCode c → CodeSafe modal c
+
+record ConstructorSignature : Set where
+  constructor constructorSignature
+  field
+    constructorTag : Nat
+    constructorFields : List CoreTy
+    constructorResult : CoreTy
+open ConstructorSignature public
+
+record MatcherSignature : Set where
+  constructor matcherSignature
+  field
+    matcherInput : CoreTy
+    matcherOutput : CoreTy
+open MatcherSignature public
+
+data StackItem : Set where
+  rawNatItem : StackItem
+  rawBoolItem : StackItem
+  modeTokenItem : SourceMode → StackItem
+  valueItem : CoreTy → StackItem
+  thunkItem : SourceMode → CodeClass → List CoreTy → CoreTy → StackItem
+  resultItem : CoreTy → StackItem
+  codeItem : CodeClass → StackItem
+  constructorTokenItem : Nat → StackItem
+  matcherTokenItem : MatcherSignature → StackItem
+  errorTokenItem : RuntimeError → StackItem
+  handlerTokenItem : StackItem
+
+StackShape : Set
+StackShape = List StackItem
+
+valuesOf : List CoreTy → StackShape
+valuesOf [] = []
+valuesOf (A :: As) = valueItem A :: valuesOf As
+
+-- Stack shapes are listed top-first. The state/ownership contracts live in
+-- LinearModalSafety; these effects say which well-typed shapes an operation accepts.
+data StackEffect : Primitive → StackShape → StackShape → Set where
+  natAddEffect : {A B : CoreTy} {tail : StackShape} →
+    NatLike A → NatLike B →
+    StackEffect pNatAdd
+      (valueItem B :: valueItem A :: tail)
+      (valueItem (naturalTypeFor (joinSourceMode (modeOfTy A) (modeOfTy B))) :: tail)
+
+  natSubEffect : {A B : CoreTy} {tail : StackShape} →
+    NatLike A → NatLike B →
+    StackEffect pNatSub
+      (valueItem B :: valueItem A :: tail)
+      (valueItem (naturalTypeFor (joinSourceMode (modeOfTy A) (modeOfTy B))) :: tail)
+
+  natMulEffect : {A B : CoreTy} {tail : StackShape} →
+    NatLike A → NatLike B →
+    StackEffect pNatMul
+      (valueItem B :: valueItem A :: tail)
+      (valueItem (naturalTypeFor (joinSourceMode (modeOfTy A) (modeOfTy B))) :: tail)
+
+  natQuotEffect : {A B : CoreTy} {tail : StackShape} →
+    NatLike A → NatLike B →
+    StackEffect pNatQuot
+      (valueItem B :: valueItem A :: tail)
+      (valueItem (naturalTypeFor (joinSourceMode (modeOfTy A) (modeOfTy B))) :: tail)
+
+  natRemEffect : {A B : CoreTy} {tail : StackShape} →
+    NatLike A → NatLike B →
+    StackEffect pNatRem
+      (valueItem B :: valueItem A :: tail)
+      (valueItem (naturalTypeFor (joinSourceMode (modeOfTy A) (modeOfTy B))) :: tail)
+
+  natEqEffect : {A B : CoreTy} {tail : StackShape} →
+    NatLike A → NatLike B →
+    StackEffect pNatEq
+      (valueItem B :: valueItem A :: tail)
+      (valueItem (booleanTypeFor (joinSourceMode (modeOfTy A) (modeOfTy B))) :: tail)
+
+  natGeqEffect : {A B : CoreTy} {tail : StackShape} →
+    NatLike A → NatLike B →
+    StackEffect pNatGeq
+      (valueItem B :: valueItem A :: tail)
+      (valueItem (booleanTypeFor (joinSourceMode (modeOfTy A) (modeOfTy B))) :: tail)
+
+  natLtEffect : {A B : CoreTy} {tail : StackShape} →
+    NatLike A → NatLike B →
+    StackEffect pNatLt
+      (valueItem B :: valueItem A :: tail)
+      (valueItem (booleanTypeFor (joinSourceMode (modeOfTy A) (modeOfTy B))) :: tail)
+
+  natMonusEffect : {A B : CoreTy} {tail : StackShape} →
+    NatLike A → NatLike B →
+    StackEffect pNatMonus
+      (valueItem B :: valueItem A :: tail)
+      (valueItem (naturalTypeFor (joinSourceMode (modeOfTy A) (modeOfTy B))) :: tail)
+
+  makeScalarEffect : {m : SourceMode} {tail : StackShape} →
+    StackEffect pMakeScalar
+      (modeTokenItem m :: rawNatItem :: tail)
+      (valueItem (naturalTypeFor m) :: tail)
+
+  makeBooleanEffect : {m : SourceMode} {tail : StackShape} →
+    StackEffect pMakeBool
+      (modeTokenItem m :: rawBoolItem :: tail)
+      (valueItem (booleanTypeFor m) :: tail)
+
+  makeLinearThunkEffect : {c : CodeClass} {tail : StackShape} →
+    LinearCode c →
+    StackEffect pMakeThunk
+      (modeTokenItem linear :: codeItem c :: tail)
+      (thunkItem linear c [] (codeSignature c) :: tail)
+
+  makeModalThunkEffect : {c : CodeClass} {tail : StackShape} →
+    ModalCode c →
+    StackEffect pMakeThunk
+      (modeTokenItem modal :: codeItem c :: tail)
+      (thunkItem modal c [] (codeSignature c) :: tail)
+
+  applyLinearEffect : {m : SourceMode} {c : CodeClass}
+    {captures : List CoreTy} {A B : CoreTy} {tail : StackShape} →
+    CodeSafe (joinSourceMode m (modeOfTy A)) c →
+    StackEffect pApply
+      (thunkItem m c captures (A ⇒ B) :: valueItem A :: tail)
+      (thunkItem (joinSourceMode m (modeOfTy A)) c
+        (captures ++ (A :: [])) B :: tail)
+
+  forceLinearEffect : {c : CodeClass} {captures : List CoreTy}
+    {A : CoreTy} {tail : StackShape} →
+    LinearCode c →
+    StackEffect pForce
+      (thunkItem linear c captures A :: tail)
+      (valueItem A :: tail)
+
+  forceModalEffect : {c : CodeClass} {captures : List CoreTy}
+    {A : CoreTy} {tail : StackShape} →
+    ModalCode c →
+    ModalCaptures captures →
+    StackEffect pForce
+      (thunkItem modal c captures A :: tail)
+      (valueItem A :: tail)
+
+  makeResultEffect : {A : CoreTy} {tail : StackShape} →
+    StackEffect pMakeResult
+      (valueItem A :: tail)
+      (resultItem A :: tail)
+
+  unwrapResultEffect : {A : CoreTy} {tail : StackShape} →
+    StackEffect pUnwrapResult
+      (resultItem A :: tail)
+      (valueItem A :: tail)
+
+  promoteModalEffect : {c : CodeClass} {captures : List CoreTy}
+    {A : CoreTy} {tail : StackShape} →
+    ModalCode c →
+    ModalCaptures captures →
+    StackEffect pPromoteModal
+      (thunkItem linear c captures A :: tail)
+      (thunkItem modal c captures A :: tail)
+
+  assertLinearEffect : {c : CodeClass} {captures : List CoreTy}
+    {A : CoreTy} {tail : StackShape} {m : SourceMode} →
+    LinearCode c →
+    StackEffect pAssertLinear
+      (thunkItem m c captures A :: tail)
+      (thunkItem linear c captures A :: tail)
+
+  ifModalBranchesEffect : {C A : CoreTy}
+    {c1 c2 : CodeClass} {captures1 captures2 : List CoreTy}
+    {tail : StackShape} →
+    BoolLike C → ModalCode c1 → ModalCode c2 →
+    ModalCaptures captures1 → ModalCaptures captures2 →
+    StackEffect pIf
+      (thunkItem modal c2 captures2 A ::
+       thunkItem modal c1 captures1 A :: valueItem C :: tail)
+      (valueItem A :: tail)
+
+  constructEffect : (sig : ConstructorSignature) {tail : StackShape} →
+    StackEffect pConstruct
+      (valuesOf (constructorFields sig) ++
+       (constructorTokenItem (constructorTag sig) :: tail))
+      (valueItem (constructorResult sig) :: tail)
+
+  matchEffect : (sig : MatcherSignature) {tail : StackShape} →
+    StackEffect pMatch
+      (matcherTokenItem sig :: valueItem (matcherInput sig) :: tail)
+      (valueItem (matcherOutput sig) :: tail)
+
+  printLinearEffect : {A : CoreTy} {tail : StackShape} →
+    LinearCoreTy A →
+    StackEffect pPrint (valueItem A :: tail) tail
+
+  printModalEffect : {A : CoreTy} {tail : StackShape} →
+    StackEffect pPrint (valueItem (!Ty A) :: tail) (valueItem (!Ty A) :: tail)
+
+-- These are error transitions, not ordinary stack-returning effects. The
+-- state/error payload is modeled by Execution and the Hoare contracts.
+data ErrorEffect : Primitive → StackShape → RuntimeError → Set where
+  throwEffect : {e : RuntimeError} {tail : StackShape} →
+    ErrorEffect pThrow (errorTokenItem e :: tail) e
+
+-- Every primitive with an ordinary return path must have a stack-effect derivation
+-- for the specific input/output shape. Dynamic constructor/matcher effects carry
+-- explicit schemas; throws use ErrorEffect instead.
+
+-- A bare emitted natural literal is not a checked ABI scalar. The only way to
+-- turn a raw natural into a checked scalar is the explicit pMakeScalar effect,
+-- which requires a source-mode token. In particular, raw/raw arithmetic does
+-- not inhabit the checked numeric primitive signature.
+rawLiteralCannotUseCheckedAddition :
+  {tail output : StackShape} →
+  StackEffect pNatAdd
+    (rawNatItem :: rawNatItem :: tail)
+    output →
+  ⊥
+rawLiteralCannotUseCheckedAddition ()
+
+rawLiteralCannotUseCheckedEquality :
+  {tail output : StackShape} →
+  StackEffect pNatEq
+    (rawNatItem :: rawNatItem :: tail)
+    output →
+  ⊥
+rawLiteralCannotUseCheckedEquality ()
+
+-- The checked constructor has the missing witness explicitly: it takes a
+-- runtime mode token and a raw natural, producing a mode-indexed value.
+rawLiteralNeedsModeWitness :
+  {m : SourceMode} {tail : StackShape} →
+  StackEffect pMakeScalar
+    (modeTokenItem m :: rawNatItem :: tail)
+    (valueItem (naturalTypeFor m) :: tail)
+rawLiteralNeedsModeWitness = makeScalarEffect
+
+
+-- ── 3. Concrete witnesses for selected checked-ABI compositions ──
+
+linearNatAddition :
+  {tail : StackShape} →
+  StackEffect pNatAdd
+    (valueItem naturalTy :: valueItem naturalTy :: tail)
+    (valueItem naturalTy :: tail)
+linearNatAddition = natAddEffect naturalIsNatural naturalIsNatural
+
+modalNatAddition :
+  {tail : StackShape} →
+  StackEffect pNatAdd
+    (valueItem (!Ty naturalTy) :: valueItem (!Ty naturalTy) :: tail)
+    (valueItem (!Ty naturalTy) :: tail)
+modalNatAddition = natAddEffect boxedNaturalIsNatural boxedNaturalIsNatural
+
+mixedNatAddition :
+  {tail : StackShape} →
+  StackEffect pNatAdd
+    (valueItem (!Ty naturalTy) :: valueItem naturalTy :: tail)
+    (valueItem naturalTy :: tail)
+mixedNatAddition = natAddEffect naturalIsNatural boxedNaturalIsNatural
+
+linearNatEquality :
+  {tail : StackShape} →
+  StackEffect pNatEq
+    (valueItem naturalTy :: valueItem naturalTy :: tail)
+    (valueItem booleanTy :: tail)
+linearNatEquality = natEqEffect naturalIsNatural naturalIsNatural
+
+modalNatEquality :
+  {tail : StackShape} →
+  StackEffect pNatEq
+    (valueItem (!Ty naturalTy) :: valueItem (!Ty naturalTy) :: tail)
+    (valueItem (!Ty booleanTy) :: tail)
+modalNatEquality = natEqEffect boxedNaturalIsNatural boxedNaturalIsNatural
+
+mixedNatEquality :
+  {tail : StackShape} →
+  StackEffect pNatEq
+    (valueItem (!Ty naturalTy) :: valueItem naturalTy :: tail)
+    (valueItem booleanTy :: tail)
+mixedNatEquality = natEqEffect naturalIsNatural boxedNaturalIsNatural
+
+checkedModalBooleanConstruction :
+  StackEffect pMakeBool
+    (modeTokenItem modal :: rawBoolItem :: [])
+    (valueItem (!Ty booleanTy) :: [])
+checkedModalBooleanConstruction = makeBooleanEffect
+
+checkedModalAddClosure :
+  StackEffect pMakeThunk
+    (modeTokenItem modal :: codeItem codeNatAdd :: [])
+    (thunkItem modal codeNatAdd [] (codeSignature codeNatAdd) :: [])
+checkedModalAddClosure = makeModalThunkEffect modalNatAdd
+
+checkedLinearAddClosure :
+  StackEffect pMakeThunk
+    (modeTokenItem linear :: codeItem codeNatAdd :: [])
+    (thunkItem linear codeNatAdd [] (codeSignature codeNatAdd) :: [])
+checkedLinearAddClosure = makeLinearThunkEffect linearNatAdd
+
+modalPromotionEffect :
+  StackEffect pPromoteModal
+    (thunkItem linear codeNatAdd [] (codeSignature codeNatAdd) :: [])
+    (thunkItem modal codeNatAdd [] (codeSignature codeNatAdd) :: [])
+modalPromotionEffect = promoteModalEffect modalNatAdd modalCapturesNil
+
+
+-- ── 4. Compiler emission boundary mirrored from ToForth.hs ──
+
+data NatExpr : Set where
+  natLiteral : Nat → NatExpr
+  natAddition : NatExpr → NatExpr → NatExpr
+
+-- These constructors distinguish the compiler's legacy/raw representation
+-- from the representation required by the checked ABI. The checked constructors
+-- are included so the predicate below can state, and prove, their absence.
+data EmittedFragment : Set where
+  rawNaturalCell : Nat → EmittedFragment
+  rawTrueCell rawFalseCell : EmittedFragment
+  legacyAddCode : EmittedFragment → EmittedFragment → EmittedFragment
+  checkedScalarCode : SourceMode → Nat → EmittedFragment
+  checkedBooleanCode : SourceMode → EmittedFragment
+
+-- Mirrors ToForth.hs's LitNat and PAdd cases at the value/operator-footprint
+-- level: a numeric literal is a raw cell; integer addition uses legacy "add".
+compileNatFragment : NatExpr → EmittedFragment
+compileNatFragment (natLiteral n) = rawNaturalCell n
+compileNatFragment (natAddition left right) =
+  legacyAddCode (compileNatFragment left) (compileNatFragment right)
+
+NoCheckedRepresentation : EmittedFragment → Set
+NoCheckedRepresentation (rawNaturalCell n) = ⊤
+NoCheckedRepresentation rawTrueCell = ⊤
+NoCheckedRepresentation rawFalseCell = ⊤
+NoCheckedRepresentation (legacyAddCode left right) =
+  NoCheckedRepresentation left × NoCheckedRepresentation right
+NoCheckedRepresentation (checkedScalarCode mode n) = ⊥
+NoCheckedRepresentation (checkedBooleanCode mode) = ⊥
+
+compilerNatFragmentHasNoCheckedRepresentation :
+  (expr : NatExpr) → NoCheckedRepresentation (compileNatFragment expr)
+compilerNatFragmentHasNoCheckedRepresentation (natLiteral n) = tt
+compilerNatFragmentHasNoCheckedRepresentation (natAddition left right) =
+  compilerNatFragmentHasNoCheckedRepresentation left ,
+  compilerNatFragmentHasNoCheckedRepresentation right
+
+-- Literal booleans in the pinned source are output as raw -1/0 cells, not as
+-- ABI boolean handles; the separate constructors record their source meaning,
+-- not runtime type tags.
+data BoolLiteral : Set where
+  trueLiteral falseLiteral : BoolLiteral
+
+compileBoolFragment : BoolLiteral → EmittedFragment
+compileBoolFragment trueLiteral = rawTrueCell
+compileBoolFragment falseLiteral = rawFalseCell
+
+compilerBoolLiteralHasNoCheckedRepresentation :
+  (literal : BoolLiteral) → NoCheckedRepresentation (compileBoolFragment literal)
+compilerBoolLiteralHasNoCheckedRepresentation trueLiteral = tt
+compilerBoolLiteralHasNoCheckedRepresentation falseLiteral = tt
+
+data CheckedABIValue : StackItem → Set where
+  checkedLinearNatural : CheckedABIValue (valueItem naturalTy)
+  checkedModalNatural : CheckedABIValue (valueItem (!Ty naturalTy))
+  checkedLinearBoolean : CheckedABIValue (valueItem booleanTy)
+  checkedModalBoolean : CheckedABIValue (valueItem (!Ty booleanTy))
+
+rawNaturalCannotBeCheckedABIValue :
+  CheckedABIValue rawNatItem → ⊥
+rawNaturalCannotBeCheckedABIValue ()
+
+rawBooleanCannotBeCheckedABIValue :
+  CheckedABIValue rawBoolItem → ⊥
+rawBooleanCannotBeCheckedABIValue ()
+
+-- Every natural-literal/addition expression in this fragment leaves a raw
+-- natural cell as its result. It cannot carry the mode-indexed descriptor
+-- witness required by a checked ABI operand.
+compiledNatResultShape : NatExpr → StackItem
+compiledNatResultShape _ = rawNatItem
+
+compiledNatResultCannotBeChecked :
+  (expr : NatExpr) →
+  CheckedABIValue (compiledNatResultShape expr) → ⊥
+compiledNatResultCannotBeChecked expr = rawNaturalCannotBeCheckedABIValue
+
+compiledBooleanResultShape : BoolLiteral → StackItem
+compiledBooleanResultShape _ = rawBoolItem
+
+compiledBoolResultCannotBeChecked :
+  (literal : BoolLiteral) →
+  CheckedABIValue (compiledBooleanResultShape literal) → ⊥
+compiledBoolResultCannotBeChecked literal = rawBooleanCannotBeCheckedABIValue
+
+-- Import and reuse the closed stack-effect lemmas rather than assuming that
+-- raw output is accepted by checked operations.
+rawCompilerOperandsCannotUseCheckedAddition :
+  {tail output : StackShape} →
+  StackEffect pNatAdd (rawNatItem :: rawNatItem :: tail) output → ⊥
+rawCompilerOperandsCannotUseCheckedAddition =
+  rawLiteralCannotUseCheckedAddition
+
+rawCompilerOperandsCannotUseCheckedEquality :
+  {tail output : StackShape} →
+  StackEffect pNatEq (rawNatItem :: rawNatItem :: tail) output → ⊥
+rawCompilerOperandsCannotUseCheckedEquality =
+  rawLiteralCannotUseCheckedEquality
+
+-- For a checked scalar to be introduced from a raw literal, the compiler must
+-- emit a pMakeScalar effect with a source-mode token. The theorem's type makes
+-- the missing evidence explicit; the upstream lowering above does not supply it.
+checkedScalarRequiresModeWitness :
+  {m : SourceMode} {tail : StackShape} →
+  StackEffect pMakeScalar
+    (modeTokenItem m :: rawNatItem :: tail)
+    (valueItem (naturalTypeFor m) :: tail)
+checkedScalarRequiresModeWitness = rawLiteralNeedsModeWitness
+
+
+-- ── 5. Explicit compiler-emission table ──
+--
+-- This table mirrors the current ToForth.hs TPrim case and literal translation.
+-- The supported primitive vocabulary is narrower than Agda's full primitive
+-- vocabulary. Unsupported operations currently go through fthError, which
+-- emits a diagnostic followed by BYE; that is not a checked THROW boundary.
+--
+-- This is a manually maintained semantic mirror, not a generated proof about
+-- Haskell. The per-file provenance check pins the source; it does not prove
+-- semantic equivalence between this table and the Haskell implementation.
+
+data BackendPrimitive : Set where
+  backendAdd backendSub backendMul backendQuot backendRem : BackendPrimitive
+  backendIf backendIntegerEq backendGeq backendLt : BackendPrimitive
+  backendUnsupported : BackendPrimitive
+
+data BackendEmission : Set where
+  emitLegacyAdd emitLegacySub emitLegacyMul emitLegacyQuot emitLegacyRem : BackendEmission
+  emitLegacyIf emitLegacyEq emitLegacyGeq emitLegacyLt : BackendEmission
+  emitDiagnosticBye : BackendEmission
+
+emitBackendPrimitive : BackendPrimitive → BackendEmission
+emitBackendPrimitive backendAdd = emitLegacyAdd
+emitBackendPrimitive backendSub = emitLegacySub
+emitBackendPrimitive backendMul = emitLegacyMul
+emitBackendPrimitive backendQuot = emitLegacyQuot
+emitBackendPrimitive backendRem = emitLegacyRem
+emitBackendPrimitive backendIf = emitLegacyIf
+emitBackendPrimitive backendIntegerEq = emitLegacyEq
+emitBackendPrimitive backendGeq = emitLegacyGeq
+emitBackendPrimitive backendLt = emitLegacyLt
+emitBackendPrimitive backendUnsupported = emitDiagnosticBye
+
+data LegacyEmission : BackendEmission → Set where
+  legacyAddEmission : LegacyEmission emitLegacyAdd
+  legacySubEmission : LegacyEmission emitLegacySub
+  legacyMulEmission : LegacyEmission emitLegacyMul
+  legacyQuotEmission : LegacyEmission emitLegacyQuot
+  legacyRemEmission : LegacyEmission emitLegacyRem
+  legacyIfEmission : LegacyEmission emitLegacyIf
+  legacyEqEmission : LegacyEmission emitLegacyEq
+  legacyGeqEmission : LegacyEmission emitLegacyGeq
+  legacyLtEmission : LegacyEmission emitLegacyLt
+
+infixr 4 _⊎₀_
+data _⊎₀_ (A B : Set) : Set where
+  inl₀ : A → A ⊎₀ B
+  inr₀ : B → A ⊎₀ B
+
+-- An exhaustive term for every case in the mirrored compiler table. The
+-- right branch marks the one explicitly unsupported case.
+supportedPrimitiveEmissionIsLegacy :
+  (p : BackendPrimitive) → LegacyEmission (emitBackendPrimitive p) ⊎₀ ⊤
+supportedPrimitiveEmissionIsLegacy backendAdd = inl₀ legacyAddEmission
+supportedPrimitiveEmissionIsLegacy backendSub = inl₀ legacySubEmission
+supportedPrimitiveEmissionIsLegacy backendMul = inl₀ legacyMulEmission
+supportedPrimitiveEmissionIsLegacy backendQuot = inl₀ legacyQuotEmission
+supportedPrimitiveEmissionIsLegacy backendRem = inl₀ legacyRemEmission
+supportedPrimitiveEmissionIsLegacy backendIf = inl₀ legacyIfEmission
+supportedPrimitiveEmissionIsLegacy backendIntegerEq = inl₀ legacyEqEmission
+supportedPrimitiveEmissionIsLegacy backendGeq = inl₀ legacyGeqEmission
+supportedPrimitiveEmissionIsLegacy backendLt = inl₀ legacyLtEmission
+supportedPrimitiveEmissionIsLegacy backendUnsupported = inr₀ tt
+
+-- ── 6. Runtime dispatch table mirrored from data/FLib.fth ──
+--
+-- ABI-DISPATCH-BINARY's branch structure is:
+--   * two unregistered cells -> legacy operation;
+--   * two registered scalar handles -> checked operation;
+--   * one registered and one unregistered value -> reject mixed representation;
+--   * two registered values where either is not a scalar -> reject wrong kind.
+--
+-- The Agda function below makes that decision table explicit and proves its
+-- equations. It is a model of inspected Forth behavior, not extraction from it.
+
+data RuntimeOperandClass : Set where
+  rawUnregistered trackedScalar trackedNonScalar : RuntimeOperandClass
+
+data BinaryDispatchRoute : Set where
+  dispatchCheckedABI dispatchLegacy dispatchRejectMixed dispatchRejectWrongKind : BinaryDispatchRoute
+
+runtimeBinaryRoute : RuntimeOperandClass → RuntimeOperandClass → BinaryDispatchRoute
+runtimeBinaryRoute rawUnregistered rawUnregistered = dispatchLegacy
+runtimeBinaryRoute trackedScalar trackedScalar = dispatchCheckedABI
+runtimeBinaryRoute trackedScalar rawUnregistered = dispatchRejectMixed
+runtimeBinaryRoute trackedNonScalar rawUnregistered = dispatchRejectMixed
+runtimeBinaryRoute rawUnregistered trackedScalar = dispatchRejectMixed
+runtimeBinaryRoute rawUnregistered trackedNonScalar = dispatchRejectMixed
+runtimeBinaryRoute trackedNonScalar trackedScalar = dispatchRejectWrongKind
+runtimeBinaryRoute trackedNonScalar trackedNonScalar = dispatchRejectWrongKind
+runtimeBinaryRoute trackedScalar trackedNonScalar = dispatchRejectWrongKind
+
+rawPairUsesLegacyRoute :
+  runtimeBinaryRoute rawUnregistered rawUnregistered ≡ dispatchLegacy
+rawPairUsesLegacyRoute = refl
+
+checkedScalarPairUsesCheckedRoute :
+  runtimeBinaryRoute trackedScalar trackedScalar ≡ dispatchCheckedABI
+checkedScalarPairUsesCheckedRoute = refl
+
+trackedScalarPlusRawFailsClosed :
+  runtimeBinaryRoute trackedScalar rawUnregistered ≡ dispatchRejectMixed
+trackedScalarPlusRawFailsClosed = refl
+
+rawPlusTrackedScalarFailsClosed :
+  runtimeBinaryRoute rawUnregistered trackedScalar ≡ dispatchRejectMixed
+rawPlusTrackedScalarFailsClosed = refl
+
+trackedNonScalarPlusRawFailsClosed :
+  runtimeBinaryRoute trackedNonScalar rawUnregistered ≡ dispatchRejectMixed
+trackedNonScalarPlusRawFailsClosed = refl
+
+rawPlusTrackedNonScalarFailsClosed :
+  runtimeBinaryRoute rawUnregistered trackedNonScalar ≡ dispatchRejectMixed
+rawPlusTrackedNonScalarFailsClosed = refl
+
+trackedNonScalarWithTrackedScalarRejectsWrongKind :
+  runtimeBinaryRoute trackedNonScalar trackedScalar ≡ dispatchRejectWrongKind
+trackedNonScalarWithTrackedScalarRejectsWrongKind = refl
+
+trackedScalarWithTrackedNonScalarRejectsWrongKind :
+  runtimeBinaryRoute trackedScalar trackedNonScalar ≡ dispatchRejectWrongKind
+trackedScalarWithTrackedNonScalarRejectsWrongKind = refl
+
+trackedNonScalarPairRejectsWrongKind :
+  runtimeBinaryRoute trackedNonScalar trackedNonScalar ≡ dispatchRejectWrongKind
+trackedNonScalarPairRejectsWrongKind = refl
+
+-- ── 7. Verification boundary ──
+--
+-- To close end-to-end refinement, future work must prove that:
+-- (1) each supported compiler translation corresponds to the stated emission;
+-- (2) every generated application/closure/constructor/conditional routes through
+--     a specified ABI path;
+-- (3) each concrete Forth word preserves WellFormed on normal and exceptional
+--     exits; and
+-- (4) unsupported cases fail through a specified, catchable error boundary.
+-- These obligations remain open while the Haskell backend emits raw literals
+-- and legacy operator forms.
