@@ -17,8 +17,7 @@ extra-source-files:
     README.md
     test/TriplesFO.agda
     test/UnsupportedLiteral.agda
-    test/gforth/abi-smoke.fs
-    test/gforth/generated-scalar-smoke.fs
+    test/gforth/generated-scalar-integration.fs
     test/CheckedScalar.agda
     formal/LinearModalSafety.agda
 
