@@ -15,6 +15,7 @@ s" arithmetic result exceeds the checked cell range" exception constant ABI-ERR-
 s" linear scalar operand aliases another operand" exception constant ABI-ERR-ALIASED-LINEAR-OPERANDS
 s" cannot mix checked handles with legacy raw values" exception constant ABI-ERR-MIXED-ABI-VALUES
 s" scalar payload is outside the checked natural range" exception constant ABI-ERR-NAT-NEGATIVE
+s" invalid or empty natural literal" exception constant ABI-ERR-NAT-LITERAL
 s" natural division or remainder by zero" exception constant ABI-ERR-ARITHMETIC-DOMAIN
 s" closure has no metadata" exception constant ABI-ERR-CLOSURE-METADATA
 s" cannot move unknown linear representation" exception constant ABI-ERR-UNKNOWN-REPRESENTATION
@@ -462,6 +463,24 @@ s" invalid Agda boolean payload" exception constant ABI-ERR-INVALID-BOOLEAN
     value 0< IF ABI-ERR-NAT-NEGATIVE THROW THEN
     value ABI-MAX-NAT > IF ABI-ERR-NAT-OVERFLOW THROW THEN
     value
+;
+
+\ Parse decimal source literals without asking Gforth to represent an
+\ unbounded decimal token as one or two machine cells first.
+: ABI-PARSE-NAT { addr len -- value }
+    len 0= IF ABI-ERR-NAT-LITERAL THROW THEN
+    0 { acc }
+    0 { index }
+    BEGIN index len < WHILE
+        addr index + c@ [CHAR] 0 - { digit }
+        digit 0< digit 9 > OR IF ABI-ERR-NAT-LITERAL THROW THEN
+        acc ABI-MAX-NAT 10 / > IF ABI-ERR-NAT-OVERFLOW THROW THEN
+        acc 10 * { scaled }
+        scaled ABI-MAX-NAT digit - > IF ABI-ERR-NAT-OVERFLOW THROW THEN
+        scaled digit + TO acc
+        index 1+ TO index
+    REPEAT
+    acc
 ;
 
 : ABI-ADD-RAW { left right -- value }
