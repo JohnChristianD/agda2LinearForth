@@ -11,7 +11,7 @@ The current source baseline pins upstream identities per file:
 - `app/Main.hs` and `src/Agda/Compiler/Erase.hs` match compatible Agda2Scheme revision `6b3d975e9274448c09b5939e637b6718c2cfb10c`.
 - `src/Main.hs` matches Agda2Forth revision `e83f8cc735bf220f80b3655ce2158a23818910fe`; `src/Agda/Compiler/ToForth.hs` is the single explicitly permitted Haskell exception and contains direct lowering for saturated operations plus the curried mapping for under-applied builtin Nat addition.
 - The compiler targets the Agda 2.6.2.x API era and CI installs Agda 2.6.2.2.
-- GitHub Actions checks source provenance, builds the Haskell compiler, runs the checked-ABI Gforth suite, type-checks the safe Agda specification, compiles selected fixtures, and executes compiler-generated scalar programs. Cabal currently reports no package tests to run, so the meaningful executable regressions are the explicit Gforth checks. The Gforth suites assert an empty data stack at completion so a successful `BYE` cannot silently hide leftover test results.
+- GitHub Actions checks source provenance, builds the Haskell compiler, runs the checked-ABI Gforth suite, type-checks the safe Agda specification, compiles selected fixtures, and executes compiler-generated scalar programs. Cabal currently reports no package tests to run, so the meaningful executable regressions are the explicit Gforth checks. The Gforth suites assert an empty data stack before their intentional final exit, so leaked results cannot be hidden by `BYE`.
 - CI pins the inspected `data/FLib.fth` blob (`46ba6a5ab8c657c42c07169cf13c95a5533b41e0`) so the manual Agda dispatch mirror cannot drift silently from the runtime source it describes. Changing the runtime requires an explicit update/review of this pin and the model.
 
 Pinning proves byte-level provenance, not semantic correctness. Only `src/Agda/Compiler/ToForth.hs` may diverge from upstream; other Haskell source files remain pinned.
@@ -28,7 +28,7 @@ The unified module contains:
 - direct weakest-precondition contracts for normal and exceptional outcomes, operational-semantic validity/leastness, sequencing and CATCH; no parallel triple API or generic frame theorem.
 - typed stack-shape effects and constructive examples for selected checked operations;
 - a manual Nat-expression and emitted-fragment interpreter, with an inductive theorem that the modeled literal/add/multiply/monus lowering preserves Nat denotation; plus a separate curried-closure model with application lemmas for addition, monus, and multiplication. These are model-to-model theorems, not extraction from Haskell or proofs about concrete Gforth execution; raw Nat/Bool literals remain unannotated;
-- an explicit table mirroring the supported `TPrim` mappings and unsupported `fthError ... bye` path;
+- an explicit table mirroring the supported `TPrim` mappings and the unsupported `fthError` path, which now throws the catchable `ABI-ERR-COMPILED-UNSUPPORTED` error;
 - a constructive decision table mirroring `ABI-DISPATCH-BINARY` for raw, checked-scalar and other tracked values.
 
 The module imports only Agda's built-in natural numbers and equality, imports no standard library, uses `--safe`, and makes no postulates to assert the missing implementation theorem.
@@ -116,7 +116,7 @@ These are the outstanding obligations, not claims that CI has already discharged
 - **Invariant preservation:** prove `WellFormed` after both normal return and exception for construction, binary operations, moving/capturing handles, result wrapping/unwrapping, force and promotion.
 - **Exceptional behavior:** prove cleanup and rethrow behavior, including failures after state mutation. Gforth's `CATCH`/`THROW` stack restoration does not generically roll back arbitrary metadata or dictionary changes.
 - **Closed-code evidence:** replace caller-asserted `declareModalSafeXT`/`declareLinearSafeXT` declarations with code-class evidence tied to an allowed compiler IR or a verified loader.
-- **Unsupported paths:** the unchanged backend's `fthError` emits a diagnostic followed by `BYE`, while the checked runtime exposes catchable errors. That correspondence is not proved.
+- **Unsupported paths:** `fthError` emits a diagnostic followed by the runtime's catchable `ABI-ERR-COMPILED-UNSUPPORTED` error. String and Float literal regressions exercise this boundary end to end; the Agda mirror remains a manual specification, not an extraction or proof about emitted Haskell.
 - **Operational regression coverage:** exercise all dispatch cases and generated examples against the source semantics, rather than relying only on direct ABI calls.
 
 The WP/separation model is valuable because it makes intended preconditions, normal postconditions, exceptional postconditions and disjoint ownership explicit. It does not substitute for proving the implementation preserves those properties.
@@ -176,12 +176,21 @@ Once a small runtime word has a proved WP contract, connect it to the actual imp
 - M. Anton Ertl, [Memory Safety Without Tagging nor Static Type Checking](https://repositum.tuwien.at/handle/20.500.12708/193614), EuroForth 2022 — a technique to study, not a proof of modal or linear semantics.
 
 
+### Floating-point boundary
+
+Agda 2.6.2 recognizes Agda.Builtin.Float and IEEE-754 binary64 literals, but this backend does **not** currently support them. LitFloat uses the same explicit unsupported-code path as unsupported String literals.
+
+This is intentional rather than an accidental claim that Float is an integer cell. Gforth has a separate floating-point stack and uses words such as F+ for floating-point arithmetic; the current StackEffect model describes the data-stack path and does not model an F-stack. See the [Agda built-ins documentation](https://agda.readthedocs.io/en/v2.6.2/language/built-ins.html#floats), the [Gforth floating-point stack](https://gforth.org/manual/Floating-point-stack.html), and [Gforth floating-point operations](https://gforth.org/manual/Floating-Point.html).
+
+The current change proves only that unsupported Float literals fail through a catchable ABI error. It does not add Float representation, arithmetic, NaN behavior, conversions, or dual-stack simulation. Real Float support requires either a dual-stack state and stack-effect relation or an explicitly specified opaque encoding with conversion laws and executable tests.
+
 ## Gforth end-to-end test inventory
 
 The runtime tests and compiler-generated tests are deliberately separate layers. Both must pass; one cannot substitute for the other.
 
 - `test/gforth/abi-smoke.fs`: raw/raw adapter behavior; checked scalar and boolean results; mode joins; linear consumption and alias rejection; Nat monus saturation; mixed and wrong-kind rejection; division/remainder domain errors; overflow; unsupported-operation errors; identity exhaustion before dictionary/metadata mutation; null execution-token rejection; result wrapping/unwrapping; nested closure capture retirement on exceptions; and final data-stack balance.
 - `test/CheckedScalar.agda` plus `test/gforth/compiler-integration.fs`: compile actual Agda source and execute 23 generated Nat/Bool witnesses: the original 13 saturated-result cases plus 10 extra cases covering a curried builtin addition, `_+_ 5`, partial application of a user definition, partial monus in both operand orders, partial multiplication, equality true/false, and less-than true/false. This tests compiler output rather than manually invoking adapters.
-- `.github/workflows/haskell.yml`: pins upstream source identity and the runtime blob, builds/tests Haskell, runs the ABI suite, checks the `--safe` Agda specification, compiles supported and unsupported fixtures, then runs generated code.
+- `test/UnsupportedLiteral.agda` plus `test/gforth/unsupported-boundary.fs`: compile String and Float literal fixtures, force each generated thunk under `CATCH`, and assert the shared unsupported-code error while checking stack balance.
+- `.github/workflows/haskell.yml`: pins upstream source identity and the runtime blob, builds/tests Haskell, runs the ABI suite, checks the `--safe` Agda specification, compiles and executes the unsupported-literal boundary, then runs supported generated code.
 
 A green workflow certifies only these tested paths and the Agda model's type-check. It does not certify arbitrary Agda programs, all Forth words, or preservation of Girard's linear/exponential rules end to end. That remains an explicit open compiler-refinement obligation.

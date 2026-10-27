@@ -1522,8 +1522,8 @@ checkedScalarRequiresModeWitness = rawLiteralNeedsModeWitness
 --
 -- This table mirrors the current ToForth.hs TPrim case and literal translation.
 -- The supported primitive vocabulary is narrower than Agda's full primitive
--- vocabulary. Unsupported operations currently go through fthError, which
--- emits a diagnostic followed by BYE; that is not a checked THROW boundary.
+-- vocabulary. Unsupported operations go through fthError, which emits a
+-- diagnostic followed by ABI-ERR-COMPILED-UNSUPPORTED (a catchable THROW).
 --
 -- This is a manually maintained semantic mirror, not a generated proof about
 -- Haskell. The per-file provenance check pins the source; it does not prove
@@ -1540,7 +1540,7 @@ data BackendPrimitive : Set where
 data BackendEmission : Set where
   emitBinaryAdapterAdd emitBinaryAdapterSub emitBinaryAdapterMul emitBinaryAdapterQuot emitBinaryAdapterRem : BackendEmission
   emitInlineIf emitBinaryAdapterEq emitBinaryAdapterGeq emitBinaryAdapterLt : BackendEmission
-  emitDiagnosticBye : BackendEmission
+  emitDiagnosticThrow : BackendEmission
 
 emitSupportedPrimitive : SupportedBackendPrimitive → BackendEmission
 emitSupportedPrimitive backendAdd = emitBinaryAdapterAdd
@@ -1555,7 +1555,7 @@ emitSupportedPrimitive backendLt = emitBinaryAdapterLt
 
 emitBackendPrimitive : BackendPrimitive → BackendEmission
 emitBackendPrimitive (backendSupported p) = emitSupportedPrimitive p
-emitBackendPrimitive backendUnsupported = emitDiagnosticBye
+emitBackendPrimitive backendUnsupported = emitDiagnosticThrow
 
 data SupportedEmission : BackendEmission → Set where
   adapterAddEmission : SupportedEmission emitBinaryAdapterAdd
@@ -1581,9 +1581,35 @@ supportedPrimitiveEmissionIsSpecified backendIntegerEq = adapterEqEmission
 supportedPrimitiveEmissionIsSpecified backendGeq = adapterGeqEmission
 supportedPrimitiveEmissionIsSpecified backendLt = adapterLtEmission
 
-unsupportedPrimitiveUsesDiagnosticBye :
-  emitBackendPrimitive backendUnsupported ≡ emitDiagnosticBye
-unsupportedPrimitiveUsesDiagnosticBye = refl
+unsupportedPrimitiveUsesCatchableDiagnostic :
+  emitBackendPrimitive backendUnsupported ≡ emitDiagnosticThrow
+unsupportedPrimitiveUsesCatchableDiagnostic = refl
+
+-- Literal support has an explicit boundary too. Agda Float literals are
+-- recognized by the frontend, but are deliberately rejected by this backend
+-- until a concrete target representation and stack semantics are specified.
+data BackendLiteral : Set where
+  backendNatLiteral : Nat → BackendLiteral
+  backendTrueLiteral backendFalseLiteral : BackendLiteral
+  backendStringLiteral backendFloatLiteral : BackendLiteral
+
+data LiteralEmission : Set where
+  emitNaturalCell emitTrueCell emitFalseCell emitDiagnosticThrow : LiteralEmission
+
+emitBackendLiteral : BackendLiteral → LiteralEmission
+emitBackendLiteral (backendNatLiteral n) = emitNaturalCell
+emitBackendLiteral backendTrueLiteral = emitTrueCell
+emitBackendLiteral backendFalseLiteral = emitFalseCell
+emitBackendLiteral backendStringLiteral = emitDiagnosticThrow
+emitBackendLiteral backendFloatLiteral = emitDiagnosticThrow
+
+unsupportedFloatLiteralUsesCatchableDiagnostic :
+  emitBackendLiteral backendFloatLiteral ≡ emitDiagnosticThrow
+unsupportedFloatLiteralUsesCatchableDiagnostic = refl
+
+unsupportedStringLiteralUsesCatchableDiagnostic :
+  emitBackendLiteral backendStringLiteral ≡ emitDiagnosticThrow
+unsupportedStringLiteralUsesCatchableDiagnostic = refl
 
 -- ── 6. Runtime dispatch table mirrored from data/FLib.fth ──
 --
