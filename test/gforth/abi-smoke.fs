@@ -14,7 +14,7 @@
 VARIABLE modal-payload-handle
 VARIABLE modal-result-handle
 123 MODE-MODAL ABI-MAKE-SCALAR DUP modal-payload-handle !
-ABI-MAKE-RESULT DUP modal-result-handle !
+ABI-MAKE-RESULT modal-result-handle !
 modal-result-handle @ metadata@ META-PAYLOAD cells + @
 modal-payload-handle @ = abi-assert
 modal-result-handle @ assertModalValue DROP
@@ -424,9 +424,6 @@ VARIABLE nested-moved-closure
 VARIABLE nested-linear-leaf
 : nested-fail-after-capture ( x -- ) drop -4333 THROW ;
 ' nested-fail-after-capture declareLinearSafeXT
-: assert-stack-depth ( expected -- )
-  depth <> abort" unexpected data-stack depth"
-;
 : build-nested-linear-closure ( -- )
   depth { initialDepth }
   99 MODE-LINEAR ABI-MAKE-SCALAR DUP nested-linear-input !
