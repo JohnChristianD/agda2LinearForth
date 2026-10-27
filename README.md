@@ -2,7 +2,7 @@
 
 `agda2forth` translates a selected subset of Agda programs to GNU Gforth source. The repository has three distinct artifacts: a Haskell backend, a Forth runtime/ABI, and a manually maintained Agda specification. They are connected by CI checks and selected executable tests, **not by a whole-backend compiler-correctness proof**.
 
-This README documents the implementation that exists today. Proposed target IRs, a universal `APPLY` word, statically erased runtime tags, Float replacements, and future verification milestones are not described as completed features.
+This README documents the implementation that exists today. Proposed target IRs, a universal `APPLY` word, statically erased runtime tags, and future verification milestones are not described as completed features.
 
 ## Architecture and ownership
 
@@ -82,7 +82,7 @@ The integration suite contains **23 expected Nat/Bool results**. Those execution
 - The special Boolean constructors are emitted as raw flags: `-1` for true and `0` for false.
 - Not every source value is wrapped in a managed scalar/Boolean descriptor. Therefore a compiled value is not guaranteed to carry a runtime witness for its source modality.
 - The shared unsupported-output path emits a diagnostic and invokes `ABI-ERROR-COMPILED-UNSUPPORTED`. That runtime word raises a catchable `THROW`; the String-literal fixture checks the error code, verifies the diagnostic, rejects a generated `BYE`, and checks stack balance.
-- The same literal fallback exists for Word64, Float, String, Char, QName, and Meta literals. Only String currently has a dedicated end-to-end unsupported-literal test.
+- The literal fallback rejects kinds outside the directly emitted Nat path. Only String currently has a dedicated end-to-end unsupported-literal test.
 - Do not assume every unknown builtin fails closed. A definition not recognized by the direct/special mapping can fall through to generic name/application handling. An exhaustive checked allowlist for an explicitly supported source subset is still missing.
 
 ## Runtime ABI: `data/FLib.fth`
@@ -172,9 +172,9 @@ A successful CI run means these explicit commands passed at that commit. It is n
 
 ## Numeric scope and possible extension
 
-The currently tested arithmetic core is Nat operations and comparisons with Bool results. Float arithmetic, translation to Gforth's floating-point stack, and fixed-point arithmetic are not implemented.
+The currently tested arithmetic core is Nat operations and comparisons with Bool results. Additional numeric representations and fixed-point arithmetic are not implemented.
 
-Agda exposes a builtin Float type, while Gforth has separate data and floating-point stacks. The current target stack model represents neither a second stack nor a complete Float semantics. Relevant primary references are the [Agda 2.6.2 built-ins documentation](https://agda.readthedocs.io/en/v2.6.2/language/built-ins.html#floats), [Gforth stack manipulation](https://gforth.org/manual/Stack-Manipulation.html), and [Gforth floating-point words](https://gforth.org/manual/Floating-Point.html).
+The current target stack model is restricted to the explicitly modeled Nat and Bool paths. Other source-level numeric representations remain outside that semantics until they have a defined target representation and corresponding machine-checked semantics.
 
 A fixed-point value stored in data-stack cells may be a reasonable future extension; Q32.32 is only a candidate. No choice is implemented or finalized. Before claiming a fixed-point format, specify the machine-cell width and signed representation, scale/range, rounding semantics, multiplication/division behavior, overflow conditions, and a shared Agda/Forth contract. Do not claim native-integer performance or algebraic laws until the concrete representation and its correspondence have been implemented and tested.
 
@@ -194,7 +194,7 @@ A fixed-point value stored in data-stack cells may be a reasonable future extens
 | Concrete runtime refinement of Agda model | Not proved |
 | Whole-backend compiler correctness | Not proved |
 | General linear/modal preservation for compiled Agda | Not proved |
-| Float and fixed-point arithmetic | Not implemented |
+| Additional numeric and fixed-point arithmetic | Not implemented |
 
 ## References and further reading
 
