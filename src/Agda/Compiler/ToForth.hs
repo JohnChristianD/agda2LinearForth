@@ -623,7 +623,10 @@ instance ToForth TPrim FthForm where
 
 instance ToForth Literal FthForm where
   toForth lit = case lit of
-    LitNat    x -> return $ RSAtom (T.pack (show x))
+    -- Keep Nat literals as decimal text until the runtime can validate the
+    -- value against its actual signed-cell bound. Emitting a huge token bare
+    -- can make Gforth push a double-cell value or reject it before ABI checks.
+    LitNat    x -> return $ RSAtom (T.pack ("s\\\" " ++ show x ++ "\\\" ABI-PARSE-NAT"))
     LitWord64 x -> return $ fthError "not yet supported: Word64 literals"
     LitFloat  x -> return $ fthError "not yet supported: Float literals"
     LitString x -> return $ fthError "not yet supported: String literals"
