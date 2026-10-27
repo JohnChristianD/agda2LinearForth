@@ -650,14 +650,17 @@ isSpecialConstructor c = do
 
 isSpecialDefinition :: QName -> ToForthM (Maybe FthForm)
 isSpecialDefinition f = do
+  plusDef <- getBuiltinName builtinNatPlus
   minusDef <- getBuiltinName builtinNatMinus
-  if | Just f == minusDef -> return $ Just $ RSList [RSAtom "monus"]
+  if | Just f == plusDef  -> return $ Just $ RSList [RSAtom "add"]
+     | Just f == minusDef -> return $ Just $ RSList [RSAtom "monus"]
      | otherwise          -> return Nothing
 
 -- The Treeless simplifier may leave Nat addition as the builtin definition
--- rather than a TPrim. Saturated calls must still lower as operations, not be
--- turned into pass/partial-application chains. The Forth adapters select the
--- checked ABI for managed scalar handles and preserve legacy raw/raw calls.
+-- rather than a TPrim. Saturated calls lower as ABI operations; unsaturated
+-- builtin addition maps to the existing curried "add" closure and uses "pass".
+-- The Forth adapters select the checked ABI for managed scalar handles and
+-- preserve legacy raw/raw calls.
 fthDirectDefinition :: QName -> [FthForm] -> ToForthM (Maybe FthForm)
 fthDirectDefinition name [left,right] = do
   plusDef <- getBuiltinName builtinNatPlus
