@@ -1251,11 +1251,11 @@ data EmittedFragment : Set where
   checkedScalarCode : SourceMode → Nat → EmittedFragment
   checkedBooleanCode : SourceMode → EmittedFragment
 
--- Mirrors the selected ToForth.hs emission paths: literals remain raw cells;
--- saturated addition, multiplication, and builtin Nat subtraction use
--- ABI-ADD-OR-LEGACY, ABI-MUL-OR-LEGACY, and ABI-MONUS-OR-LEGACY. With raw
--- literal operands these adapters select raw/raw execution, so this fragment
--- still carries no checked mode evidence.
+-- Mirrors the selected ToForth.hs emission paths: Nat literals are emitted
+-- as decimal text and parsed by ABI-PARSE-NAT into raw cells only when they fit
+-- the target cell bound; saturated addition, multiplication, and builtin Nat
+-- subtraction use ABI-ADD-OR-LEGACY, ABI-MUL-OR-LEGACY, and
+-- ABI-MONUS-OR-LEGACY. The result remains a raw cell without source-mode evidence.
 -- This is a manual semantic mirror, not extraction from the Haskell emitter.
 compileNatFragment : NatExpr → EmittedFragment
 compileNatFragment (natLiteral n) = rawNaturalCell n
