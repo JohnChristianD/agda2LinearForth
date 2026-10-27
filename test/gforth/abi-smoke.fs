@@ -160,6 +160,33 @@ legacy-add-adapter-test
 4 5 ' ABI-LT-OR-LEGACY -1 assert-raw-binary
 5 4 ' ABI-LT-OR-LEGACY 0 assert-raw-binary
 
+\ Raw Nat adapters enforce the finite signed-cell range instead of inheriting
+\ Gforth's wrapping/unchecked native arithmetic behavior.
+: raw-add-overflow-test ( -- )
+  ABI-MAX-NAT 1 ABI-ADD-OR-LEGACY DROP
+;
+' raw-add-overflow-test CATCH ABI-ERR-NAT-OVERFLOW = abi-assert
+
+: raw-multiply-overflow-test ( -- )
+  ABI-MAX-NAT 2 ABI-MUL-OR-LEGACY DROP
+;
+' raw-multiply-overflow-test CATCH ABI-ERR-NAT-OVERFLOW = abi-assert
+
+: raw-add-negative-test ( -- )
+  -1 1 ABI-ADD-OR-LEGACY DROP
+;
+' raw-add-negative-test CATCH ABI-ERR-NAT-NEGATIVE = abi-assert
+
+: raw-monus-negative-test ( -- )
+  -1 3 ABI-MONUS-OR-LEGACY DROP
+;
+' raw-monus-negative-test CATCH ABI-ERR-NAT-NEGATIVE = abi-assert
+
+: raw-quot-zero-test ( -- )
+  10 0 ABI-QUOT-OR-LEGACY DROP
+;
+' raw-quot-zero-test CATCH ABI-ERR-ARITHMETIC-DOMAIN = abi-assert
+
 \ The same matrix through tracked handles exercises checked dispatch and result kinds.
 : assert-checked-scalar { left right operation expected -- }
   left MODE-MODAL ABI-MAKE-SCALAR
