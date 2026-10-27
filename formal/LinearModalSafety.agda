@@ -1334,6 +1334,167 @@ compiledNatFragmentPreservesMeaning (natMonus left right)
   rewrite compiledNatFragmentPreservesMeaning left
         | compiledNatFragmentPreservesMeaning right = refl
 
+-- ── 4a. A bounded forward simulation for the Nat stack-code fragment ──
+--
+-- This target program is a linear sequence of the exact operation classes used
+-- by the current raw-cell path: literal cells followed by ABI-ADD-OR-LEGACY,
+-- ABI-MUL-OR-LEGACY, or ABI-MONUS-OR-LEGACY. The execution relation below
+-- specifies their raw/raw stack behavior, with the top cell first. It is a
+-- target-language specification; it is not an interpreter for arbitrary Forth.
+
+data NatStackInstruction : Set where
+  pushNatCellInstruction : Nat → NatStackInstruction
+  abiAddOrLegacyInstruction : NatStackInstruction
+  abiMulOrLegacyInstruction : NatStackInstruction
+  abiMonusOrLegacyInstruction : NatStackInstruction
+
+NatStackProgram : Set
+NatStackProgram = List NatStackInstruction
+
+compileNatStackProgram : NatExpr → NatStackProgram
+compileNatStackProgram (natLiteral n) = pushNatCellInstruction n :: []
+compileNatStackProgram (natAddition left right) =
+  compileNatStackProgram left ++
+    (compileNatStackProgram right ++ (abiAddOrLegacyInstruction :: []))
+compileNatStackProgram (natMultiplication left right) =
+  compileNatStackProgram left ++
+    (compileNatStackProgram right ++ (abiMulOrLegacyInstruction :: []))
+compileNatStackProgram (natMonus left right) =
+  compileNatStackProgram left ++
+    (compileNatStackProgram right ++ (abiMonusOrLegacyInstruction :: []))
+
+-- A successful execution derivation describes the whole remaining program.
+-- Binary instructions consume right :: left :: tail and push their result.
+-- Consequently the source-to-target theorem also proves that an arbitrary
+-- suffix of the caller's stack is framed unchanged.
+data NatStackExec : NatStackProgram → List Nat → List Nat → Set where
+  natStackDone :
+    {stack : List Nat} →
+    NatStackExec [] stack stack
+  natStackPush :
+    {n : Nat} {program : NatStackProgram}
+    {initial final : List Nat} →
+    NatStackExec program (n :: initial) final →
+    NatStackExec (pushNatCellInstruction n :: program) initial final
+  natStackAdd :
+    {program : NatStackProgram} {left right : Nat}
+    {initial final : List Nat} →
+    NatStackExec program ((left + right) :: initial) final →
+    NatStackExec (abiAddOrLegacyInstruction :: program)
+      (right :: left :: initial) final
+  natStackMultiply :
+    {program : NatStackProgram} {left right : Nat}
+    {initial final : List Nat} →
+    NatStackExec program ((left * right) :: initial) final →
+    NatStackExec (abiMulOrLegacyInstruction :: program)
+      (right :: left :: initial) final
+  natStackMonus :
+    {program : NatStackProgram} {left right : Nat}
+    {initial final : List Nat} →
+    NatStackExec program (modelNatMonus left right :: initial) final →
+    NatStackExec (abiMonusOrLegacyInstruction :: program)
+      (right :: left :: initial) final
+
+-- Append is composition: run the first program, then the second. This lemma is
+-- the sequencing fact used by the compiler simulation, not an assumed axiom.
+natStackExecAppend :
+  {first second : NatStackProgram}
+  {initial middle final : List Nat} →
+  NatStackExec first initial middle →
+  NatStackExec second middle final →
+  NatStackExec (first ++ second) initial final
+natStackExecAppend natStackDone secondRun = secondRun
+natStackExecAppend (natStackPush firstRun) secondRun =
+  natStackPush (natStackExecAppend firstRun secondRun)
+natStackExecAppend (natStackAdd firstRun) secondRun =
+  natStackAdd (natStackExecAppend firstRun secondRun)
+natStackExecAppend (natStackMultiply firstRun) secondRun =
+  natStackMultiply (natStackExecAppend firstRun secondRun)
+natStackExecAppend (natStackMonus firstRun) secondRun =
+  natStackMonus (natStackExecAppend firstRun secondRun)
+
+-- The tree-shaped emission mirror linearizes to exactly the instruction
+-- sequence used above. Unsupported/non-Nat fragments are explicitly outside
+-- this projection instead of being assigned fabricated numeric semantics.
+data NatStackProjection : Set where
+  outsideNatStackProjection : NatStackProjection
+  projectedNatStackProgram : NatStackProgram → NatStackProjection
+
+projectNatStackFragment : EmittedFragment → NatStackProjection
+projectNatStackFragment (rawNaturalCell n) =
+  projectedNatStackProgram (pushNatCellInstruction n :: [])
+projectNatStackFragment rawTrueCell = outsideNatStackProjection
+projectNatStackFragment rawFalseCell = outsideNatStackProjection
+projectNatStackFragment (abiAddAdapterCode left right)
+  with projectNatStackFragment left | projectNatStackFragment right
+... | projectedNatStackProgram leftCode | projectedNatStackProgram rightCode =
+  projectedNatStackProgram
+    (leftCode ++ (rightCode ++ (abiAddOrLegacyInstruction :: [])))
+... | _ | _ = outsideNatStackProjection
+projectNatStackFragment (abiMulAdapterCode left right)
+  with projectNatStackFragment left | projectNatStackFragment right
+... | projectedNatStackProgram leftCode | projectedNatStackProgram rightCode =
+  projectedNatStackProgram
+    (leftCode ++ (rightCode ++ (abiMulOrLegacyInstruction :: [])))
+... | _ | _ = outsideNatStackProjection
+projectNatStackFragment (abiMonusAdapterCode left right)
+  with projectNatStackFragment left | projectNatStackFragment right
+... | projectedNatStackProgram leftCode | projectedNatStackProgram rightCode =
+  projectedNatStackProgram
+    (leftCode ++ (rightCode ++ (abiMonusOrLegacyInstruction :: [])))
+... | _ | _ = outsideNatStackProjection
+projectNatStackFragment (checkedScalarCode mode n) = outsideNatStackProjection
+projectNatStackFragment (checkedBooleanCode mode) = outsideNatStackProjection
+
+emissionTreeAgreesWithStackProgram :
+  (expr : NatExpr) →
+  projectNatStackFragment (compileNatFragment expr) ≡
+    projectedNatStackProgram (compileNatStackProgram expr)
+emissionTreeAgreesWithStackProgram (natLiteral n) = refl
+emissionTreeAgreesWithStackProgram (natAddition left right)
+  rewrite emissionTreeAgreesWithStackProgram left
+        | emissionTreeAgreesWithStackProgram right = refl
+emissionTreeAgreesWithStackProgram (natMultiplication left right)
+  rewrite emissionTreeAgreesWithStackProgram left
+        | emissionTreeAgreesWithStackProgram right = refl
+emissionTreeAgreesWithStackProgram (natMonus left right)
+  rewrite emissionTreeAgreesWithStackProgram left
+        | emissionTreeAgreesWithStackProgram right = refl
+
+-- Forward simulation theorem:
+--   executing compileNatStackProgram e on any tail yields
+--   natExprMeaning e :: tail.
+-- The tail is preserved by every derivation; this rules out modeled stack
+-- underflow for these compiled expressions. The proof covers this explicit
+-- Nat expression grammar, not all Agda terms or concrete Gforth internals.
+natExpressionForwardSimulatesStackProgram :
+  (expr : NatExpr) (tail : List Nat) →
+  NatStackExec (compileNatStackProgram expr) tail
+    (natExprMeaning expr :: tail)
+natExpressionForwardSimulatesStackProgram (natLiteral n) tail =
+  natStackPush natStackDone
+natExpressionForwardSimulatesStackProgram (natAddition left right) tail =
+  natStackExecAppend
+    (natExpressionForwardSimulatesStackProgram left tail)
+    (natStackExecAppend
+      (natExpressionForwardSimulatesStackProgram right
+        (natExprMeaning left :: tail))
+      (natStackAdd natStackDone))
+natExpressionForwardSimulatesStackProgram (natMultiplication left right) tail =
+  natStackExecAppend
+    (natExpressionForwardSimulatesStackProgram left tail)
+    (natStackExecAppend
+      (natExpressionForwardSimulatesStackProgram right
+        (natExprMeaning left :: tail))
+      (natStackMultiply natStackDone))
+natExpressionForwardSimulatesStackProgram (natMonus left right) tail =
+  natStackExecAppend
+    (natExpressionForwardSimulatesStackProgram left tail)
+    (natStackExecAppend
+      (natExpressionForwardSimulatesStackProgram right
+        (natExprMeaning left :: tail))
+      (natStackMonus natStackDone))
+
 -- Model the runtime contract of a curried arithmetic word: the first pass
 -- captures its left operand; the next application supplies the right operand.
 -- The names correspond to the selected Forth preamble words, not extracted code.
