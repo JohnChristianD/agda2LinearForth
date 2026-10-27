@@ -23,6 +23,21 @@ generated-subtract-test
 ;
 generated-subtract-reverse-test
 
+: generated-subtract-equal-test ( -- )
+  scalarSubtractEqualAnswer dethunk 0 expect-natural
+;
+generated-subtract-equal-test
+
+: generated-subtract-zero-left-test ( -- )
+  scalarSubtractZeroLeftAnswer dethunk 0 expect-natural
+;
+generated-subtract-zero-left-test
+
+: generated-subtract-zero-zero-test ( -- )
+  scalarSubtractZeroZeroAnswer dethunk 0 expect-natural
+;
+generated-subtract-zero-zero-test
+
 : generated-multiply-test ( -- )
   scalarMultiplyAnswer dethunk 42 expect-natural
 ;
@@ -58,4 +73,5 @@ generated-less-than-true-test
 ;
 generated-less-than-false-test
 
+depth 0<> abort" compiler integration leaked data-stack values"
 BYE

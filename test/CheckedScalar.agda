@@ -18,6 +18,15 @@ scalarSubtractAnswer = scalarSubtract 20 5
 scalarSubtractReverseAnswer : Nat
 scalarSubtractReverseAnswer = scalarSubtract 5 20
 
+scalarSubtractEqualAnswer : Nat
+scalarSubtractEqualAnswer = scalarSubtract 5 5
+
+scalarSubtractZeroLeftAnswer : Nat
+scalarSubtractZeroLeftAnswer = scalarSubtract 0 5
+
+scalarSubtractZeroZeroAnswer : Nat
+scalarSubtractZeroZeroAnswer = scalarSubtract 0 0
+
 scalarMultiply : Nat → Nat → Nat
 scalarMultiply left right = left * right
 

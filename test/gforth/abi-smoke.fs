@@ -147,6 +147,9 @@ legacy-add-adapter-test
 12 5 ' ABI-SUB-OR-LEGACY 7 assert-raw-binary
 12 5 ' ABI-MONUS-OR-LEGACY 7 assert-raw-binary
 5 12 ' ABI-MONUS-OR-LEGACY 0 assert-raw-binary
+0 0 ' ABI-MONUS-OR-LEGACY 0 assert-raw-binary
+5 5 ' ABI-MONUS-OR-LEGACY 0 assert-raw-binary
+0 5 ' ABI-MONUS-OR-LEGACY 0 assert-raw-binary
 6 7 ' ABI-MUL-OR-LEGACY 42 assert-raw-binary
 21 3 ' ABI-QUOT-OR-LEGACY 7 assert-raw-binary
 22 5 ' ABI-REM-OR-LEGACY 2 assert-raw-binary
@@ -169,6 +172,9 @@ legacy-add-adapter-test
 12 5 ' ABI-SUB-OR-LEGACY 7 assert-checked-scalar
 12 5 ' ABI-MONUS-OR-LEGACY 7 assert-checked-scalar
 5 12 ' ABI-MONUS-OR-LEGACY 0 assert-checked-scalar
+0 0 ' ABI-MONUS-OR-LEGACY 0 assert-checked-scalar
+5 5 ' ABI-MONUS-OR-LEGACY 0 assert-checked-scalar
+0 5 ' ABI-MONUS-OR-LEGACY 0 assert-checked-scalar
 6 7 ' ABI-MUL-OR-LEGACY 42 assert-checked-scalar
 21 3 ' ABI-QUOT-OR-LEGACY 7 assert-checked-scalar
 22 5 ' ABI-REM-OR-LEGACY 2 assert-checked-scalar
@@ -212,6 +218,21 @@ VARIABLE monus-modal-input
   monus-modal-input @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
 ;
 checked-monus-mode-and-saturation-test
+
+\ Successful checked monus must consume both linear operands only after result allocation.
+VARIABLE monus-left-linear
+VARIABLE monus-right-linear
+: checked-monus-consumes-linear-inputs-test ( -- )
+  12 MODE-LINEAR ABI-MAKE-SCALAR DUP monus-left-linear !
+  5 MODE-LINEAR ABI-MAKE-SCALAR DUP monus-right-linear !
+  ABI-MONUS-OR-LEGACY ABI-SCALAR-INFO { value mode meta }
+  value 7 = abi-assert
+  mode MODE-LINEAR = abi-assert
+  monus-left-linear @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+  monus-right-linear @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+;
+checked-monus-consumes-linear-inputs-test
+
 
 : mixed-add-adapter-test ( -- )
   8 MODE-MODAL ABI-MAKE-SCALAR 9 ABI-ADD-OR-LEGACY DROP
@@ -420,4 +441,5 @@ nested-outer-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 nested-moved-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 nested-linear-leaf @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 
+depth 0<> abort" ABI smoke test leaked data-stack values"
 BYE
