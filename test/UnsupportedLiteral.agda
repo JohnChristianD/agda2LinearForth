@@ -1,9 +1,12 @@
 module UnsupportedLiteral where
 
 open import Agda.Builtin.String using (String)
+open import Agda.Builtin.Float using (Float)
 
--- Regression fixture for an unsupported literal. With ToForth.hs unchanged,
--- the current backend emits its legacy diagnostic followed by BYE. This is
--- intentionally not claimed as a catchable checked-ABI boundary.
+-- Both types exist in Agda. This compiler slice explicitly rejects them at
+-- runtime until their target representations and operational semantics are modeled.
 unsupported : String
 unsupported = "not supported by the checked GForth ABI"
+
+unsupportedFloat : Float
+unsupportedFloat = 1.5
