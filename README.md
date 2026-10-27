@@ -35,6 +35,7 @@ GNU Gforth
 | `test/gforth/abi-smoke.fs` | Direct runtime ABI regressions | Executed by CI |
 | `test/UnsupportedLiteral.agda` and `test/gforth/unsupported-boundary.fs` | Unsupported String literal and catchable error path | Compiled and executed by CI |
 | `test/UnsupportedAxiom.agda` and `test/gforth/unsupported-axiom-boundary.fs` | Referenced Agda axiom fails closed through a catchable error | Compiled and executed by CI |
+| `test/gforth/abi-smoke.fs` | Raw Nat literal parsing, cell bounds, arithmetic overflow, and domain errors | Executed by CI |
 
 ### Source-provenance boundary
 
@@ -79,7 +80,7 @@ The integration suite contains **23 expected Nat/Bool results**. Those execution
 
 ### Literals and unsupported terms
 
-- Nat literals are emitted as raw Forth cells.
+- Nat literals are emitted as decimal strings and parsed by `ABI-PARSE-NAT`; parsing produces one raw cell or throws a catchable range/format error.
 - The special Boolean constructors are emitted as raw flags: `-1` for true and `0` for false.
 - Not every source value is wrapped in a managed scalar/Boolean descriptor. Therefore a compiled value is not guaranteed to carry a runtime witness for its source modality.
 - The shared unsupported-output path emits a diagnostic and invokes `ABI-ERROR-COMPILED-UNSUPPORTED`. That runtime word raises a catchable `THROW`; the String-literal fixture checks the error code, verifies the diagnostic, rejects a generated `BYE`, and checks stack balance.
@@ -95,14 +96,14 @@ A managed descriptor tracks identity, kind, mode, life state, execution token, c
 The existing `pass` word handles closure application and checks metadata for managed closures/captures. `makeTHUNK`, `dethunk`, result wrappers, and capture-retirement code support closure execution and ownership transitions. Arithmetic adapters dispatch as follows:
 
 - Two registered scalar handles use the checked operation.
-- Raw Nat adapters validate nonnegativity and use checked finite-cell arithmetic for addition, multiplication, quotient, remainder, equality, greater-or-equal, and less-than; Nat monus uses its saturating raw operation.
+- Raw Nat adapters validate nonnegativity and use checked finite-cell arithmetic for addition, multiplication, quotient, remainder, equality, greater-or-equal, and less-than; Nat monus uses its saturating raw operation. `ABI-PARSE-NAT` validates each decimal digit and bounds the accumulating value before producing a raw cell.
 - Mixing raw and managed operands throws an error.
 - Registered operands of an incompatible managed kind are rejected.
 - `ABI-SUB-OR-LEGACY` remains a separate legacy subtraction path; Nat subtraction is lowered through `ABI-MONUS-OR-LEGACY`.
 
 The runtime tests exercise checked operand/range validation, linear consumption and alias rejection, mode behavior, Nat monus, mixed representations, arithmetic-domain errors, overflow, identity exhaustion and failure atomicity, null execution tokens, result wrapping/unwrapping, and retirement of linear captures when a closure exits exceptionally.
 
-The raw Nat arithmetic adapters now enforce nonnegative-cell inputs and catchable overflow/domain errors for their covered operations. This still does not prove that every generated literal or every source type is in the supported subset, and the runtime cannot validate a mathematical representability witness carried only in Agda. No claim is made that arbitrary Forth is sandboxed or that Girard's structural rules are preserved for every compiled Agda program.
+The raw Nat arithmetic adapters and `ABI-PARSE-NAT` enforce nonnegative-cell inputs, bounded results, and catchable overflow/domain errors for their covered operations. The runtime checks each decimal literal rather than relying on an Agda-only representability witness. This still does not prove that every source type is in the supported subset. No claim is made that arbitrary Forth is sandboxed or that Girard's structural rules are preserved for every compiled Agda program.
 
 ## What `formal/LinearModalSafety.agda` establishes
 
@@ -126,7 +127,7 @@ The historical theorem `historicalGeneratedScalarDoesNotRefineAddition` preserve
 
 ### What remains unproved
 
-This closes the source-expression-to-abstract-stack-program proof obligation for this four-constructor Nat fragment and makes its finite-cell representability precondition explicit. `NatCellRepresentable bound expr` is proof-carrying evidence that each literal and recursive intermediate fits the abstract bound; `bound` must be tied to the concrete runtime's cell limit before using the theorem as a machine-cell argument. The proof does **not** close the concrete implementation bridge. The instruction sequence remains a manually maintained model of the lowering/ABI word classes. The updated raw Nat operations now check their input cells and overflow at runtime, but this does not prove that the Haskell emitter always emits these operations or that all literals are statically representable.
+This closes the source-expression-to-abstract-stack-program proof obligation for this four-constructor Nat fragment and makes its finite-cell representability precondition explicit. `NatCellRepresentable bound expr` is proof-carrying evidence that each literal and recursive intermediate fits the abstract bound; `bound` must be tied to the concrete runtime's cell limit before using the theorem as a machine-cell argument. The proof does **not** close the concrete implementation bridge. The instruction sequence remains a manually maintained model of the lowering/ABI word classes. The updated raw Nat operations and decimal-literal parser check input cells and overflow at runtime, but this does not prove that the Haskell emitter always emits these operations for every term in the supported grammar.
 
 The current Agda file does **not** prove:
 
@@ -193,6 +194,7 @@ A fixed-point value stored in data-stack cells may be a reasonable future extens
 | Agda model | Type-checks under `--safe`; contains no postulates |
 | Modeled Nat-expression-to-stack-code simulation | Proven for literals, addition, multiplication, and monus with stack-tail preservation; finite-cell fit is an explicit proof precondition, not a runtime check |
 | Unsupported String literal and referenced axiom | Catchable errors tested end to end |
+| Nat literal parsing and raw arithmetic | Invalid/oversized decimal, negative input, arithmetic overflow, and zero-divisor cases tested through catchable errors |
 | Exhaustive allowlist for supported source subset | Not implemented |
 | Haskell-emitter correspondence to Agda model | Not proved |
 | Concrete runtime refinement of Agda model | Not proved |
