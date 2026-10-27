@@ -1591,7 +1591,7 @@ unsupportedPrimitiveUsesCatchableDiagnostic = refl
 data BackendLiteral : Set where
   backendNatLiteral : Nat → BackendLiteral
   backendTrueLiteral backendFalseLiteral : BackendLiteral
-  backendStringLiteral backendFloatLiteral : BackendLiteral
+  backendStringLiteral : BackendLiteral
 
 data LiteralEmission : Set where
   emitNaturalCell emitTrueCell emitFalseCell emitLiteralDiagnosticThrow : LiteralEmission
@@ -1601,11 +1601,6 @@ emitBackendLiteral (backendNatLiteral n) = emitNaturalCell
 emitBackendLiteral backendTrueLiteral = emitTrueCell
 emitBackendLiteral backendFalseLiteral = emitFalseCell
 emitBackendLiteral backendStringLiteral = emitLiteralDiagnosticThrow
-emitBackendLiteral backendFloatLiteral = emitLiteralDiagnosticThrow
-
-unsupportedFloatLiteralUsesCatchableDiagnostic :
-  emitBackendLiteral backendFloatLiteral ≡ emitLiteralDiagnosticThrow
-unsupportedFloatLiteralUsesCatchableDiagnostic = refl
 
 unsupportedStringLiteralUsesCatchableDiagnostic :
   emitBackendLiteral backendStringLiteral ≡ emitLiteralDiagnosticThrow

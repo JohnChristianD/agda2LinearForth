@@ -12,16 +12,6 @@
 ;
 ' force-unsupported-string expect-unsupported-error
 
-: force-unsupported-float ( -- )
-  unsupportedFloat dethunk DROP
-;
-' force-unsupported-float expect-unsupported-error
-
-: force-unsupported-float-primitive ( -- )
-  1 2 unsupportedFloatPlus pass pass dethunk DROP
-;
-' force-unsupported-float-primitive expect-unsupported-error
-
 : assert-empty-data-stack ( -- )
   depth 0<> abort" unsupported boundary test leaked data-stack values"
 ;
