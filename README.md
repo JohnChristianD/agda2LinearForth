@@ -187,7 +187,7 @@ A fixed-point value stored in data-stack cells may be a reasonable future extens
 | Selected partial-application cases | Generated-program tests using existing `pass` path |
 | Checked managed ABI | Direct Gforth tests for enumerated cases |
 | Agda model | Type-checks under `--safe`; contains no postulates |
-| Modeled Nat-expression-to-stack-code simulation | Proven for literals, addition, multiplication, and monus with arbitrary stack-tail preservation |
+| Modeled Nat-expression-to-stack-code simulation | Proven for literals, addition, multiplication, and monus with stack-tail preservation; finite-cell fit is an explicit proof precondition, not a runtime check |
 | Unsupported String literal | Catchable error tested end to end |
 | Exhaustive allowlist for supported source subset | Not implemented |
 | Haskell-emitter correspondence to Agda model | Not proved |
