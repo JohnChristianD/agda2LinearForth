@@ -116,12 +116,15 @@ Its theorems concern explicitly defined Agda models. The module includes:
 2. **Weakest-precondition contracts.** Commands produce a normal or exceptional outcome with state. WP uses separate normal and exceptional postconditions and includes sequencing and `CATCH` laws. This finite-outcome model is not a complete semantics for arbitrary divergence.
 3. **Declarative stack effects.** `StackEffect` records allowed stack shapes for selected modeled operations. `stackTailFrame` proves a suffix-preservation property of that relation. It does not prove that the concrete Forth words obey the relation.
 4. **Selected allocation, error, result, and closure contracts.** These are proofs about transitions defined in the Agda model, not automatic proofs about dictionary or metadata mutation in Gforth.
-5. **A manual Nat-emission interpreter.** Its theorem proves meaning preservation for its own modeled literal/add/multiply/monus fragment. Separate lemmas show that the modeled curried addition, monus, and multiplication closures behave correctly when applied.
-6. **Nat/Bool and compiler-boundary models.** Selected arithmetic, comparisons, conditionals, and errors are modeled. The boundary model explicitly represents the fact that raw Nat/Bool outputs lack a runtime mode witness.
+5. **Nat stack-program forward simulation.** The Nat fragment has a linear target-program representation: raw Nat-cell pushes followed by the modeled `ABI-ADD-OR-LEGACY`, `ABI-MUL-OR-LEGACY`, and `ABI-MONUS-OR-LEGACY` operations. An inductive execution relation specifies their raw/raw stack behavior. `natStackExecAppend` proves sequencing, `emissionTreeAgreesWithStackProgram` connects the existing tree-shaped emission mirror to the linear program, and `natExpressionForwardSimulatesStackProgram` proves that compiling any expression in this grammar leaves its denotation on top of an arbitrary unchanged stack tail. This is a genuine forward-simulation theorem for the explicitly modeled fragment.
+6. **Curried closure model.** Separate lemmas show that the modeled curried addition, monus, and multiplication closures preserve their corresponding arithmetic when applied.
+7. **Nat/Bool and compiler-boundary models.** Selected arithmetic, comparisons, conditionals, and errors are modeled. The boundary model explicitly represents the fact that raw Nat/Bool outputs lack a runtime mode witness.
 
 The historical theorem `historicalGeneratedScalarDoesNotRefineAddition` preserves the old fallback-body counterexample as historical context. It is not a claim that the current tested saturated-addition lowering still exhibits that old result.
 
 ### What remains unproved
+
+This closes the source-expression-to-abstract-stack-program proof obligation for this four-constructor Nat fragment. It does **not** close the concrete implementation bridge. The instruction sequence is a manually maintained model of the existing lowering/ABI word classes, and the stack semantics is a specification of their raw/raw behavior.
 
 The current Agda file does **not** prove:
 
@@ -184,6 +187,7 @@ A fixed-point value stored in data-stack cells may be a reasonable future extens
 | Selected partial-application cases | Generated-program tests using existing `pass` path |
 | Checked managed ABI | Direct Gforth tests for enumerated cases |
 | Agda model | Type-checks under `--safe`; contains no postulates |
+| Modeled Nat-expression-to-stack-code simulation | Proven for literals, addition, multiplication, and monus with arbitrary stack-tail preservation |
 | Unsupported String literal | Catchable error tested end to end |
 | Exhaustive allowlist for supported source subset | Not implemented |
 | Haskell-emitter correspondence to Agda model | Not proved |
