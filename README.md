@@ -34,6 +34,7 @@ GNU Gforth
 | `test/gforth/compiler-integration.fs` | Expected results for generated Nat/Bool programs | Executed by CI |
 | `test/gforth/abi-smoke.fs` | Direct runtime ABI regressions | Executed by CI |
 | `test/UnsupportedLiteral.agda` and `test/gforth/unsupported-boundary.fs` | Unsupported String literal and catchable error path | Compiled and executed by CI |
+| `test/UnsupportedAxiom.agda` and `test/gforth/unsupported-axiom-boundary.fs` | Referenced Agda axiom fails closed through a catchable error | Compiled and executed by CI |
 
 ### Source-provenance boundary
 
@@ -42,7 +43,7 @@ CI checks that:
 - `app/Main.hs` and `src/Agda/Compiler/Erase.hs` match Agda2Scheme revision `6b3d975e9274448c09b5939e637b6718c2cfb10c`.
 - `src/Main.hs` matches Agda2Forth revision `e83f8cc735bf220f80b3655ce2158a23818910fe`.
 - `src/Agda/Compiler/ToForth.hs` is the sole Haskell source file permitted to differ from its pinned upstream boundary.
-- `data/FLib.fth` matches the CI-pinned baseline blob `46ba6a5ab8c657c42c07169cf13c95a5533b41e0`.
+- `data/FLib.fth` matches the reviewed runtime blob pinned in CI as `07ee70cb6e8c976c1ee6b8d6e46b3430afdb4ced`.
 
 A hash match establishes byte identity with a reference file. It does not establish semantic correctness. In particular, the Agda model is manually written and maintained; a provenance check does not prove that `ToForth.hs` or `FLib.fth` implements it.
 
@@ -82,7 +83,7 @@ The integration suite contains **23 expected Nat/Bool results**. Those execution
 - The special Boolean constructors are emitted as raw flags: `-1` for true and `0` for false.
 - Not every source value is wrapped in a managed scalar/Boolean descriptor. Therefore a compiled value is not guaranteed to carry a runtime witness for its source modality.
 - The shared unsupported-output path emits a diagnostic and invokes `ABI-ERROR-COMPILED-UNSUPPORTED`. That runtime word raises a catchable `THROW`; the String-literal fixture checks the error code, verifies the diagnostic, rejects a generated `BYE`, and checks stack balance.
-- The literal fallback rejects kinds outside the directly emitted Nat path. Only String currently has a dedicated end-to-end unsupported-literal test.
+- The literal fallback rejects kinds outside the directly emitted Nat path. String literals and referenced axioms now have dedicated catchable-boundary integration tests.
 - Do not assume every unknown builtin fails closed. A definition not recognized by the direct/special mapping can fall through to generic name/application handling. An exhaustive checked allowlist for an explicitly supported source subset is still missing.
 
 ## Runtime ABI: `data/FLib.fth`
@@ -93,14 +94,15 @@ A managed descriptor tracks identity, kind, mode, life state, execution token, c
 
 The existing `pass` word handles closure application and checks metadata for managed closures/captures. `makeTHUNK`, `dethunk`, result wrappers, and capture-retirement code support closure execution and ownership transitions. Arithmetic adapters dispatch as follows:
 
-- Two raw operands use the legacy operation.
 - Two registered scalar handles use the checked operation.
+- Raw Nat adapters validate nonnegativity and use checked finite-cell arithmetic for addition, multiplication, quotient, remainder, equality, greater-or-equal, and less-than; Nat monus uses its saturating raw operation.
 - Mixing raw and managed operands throws an error.
 - Registered operands of an incompatible managed kind are rejected.
+- `ABI-SUB-OR-LEGACY` remains a separate legacy subtraction path; Nat subtraction is lowered through `ABI-MONUS-OR-LEGACY`.
 
 The runtime tests exercise checked operand/range validation, linear consumption and alias rejection, mode behavior, Nat monus, mixed representations, arithmetic-domain errors, overflow, identity exhaustion and failure atomicity, null execution tokens, result wrapping/unwrapping, and retirement of linear captures when a closure exits exceptionally.
 
-These safeguards apply when calls enter the corresponding checked ABI operations. Raw generated values and generic emitted Forth do not automatically inherit those guarantees. No claim is made that arbitrary Forth is sandboxed or that Girard's structural rules are preserved for every compiled Agda program.
+The raw Nat arithmetic adapters now enforce nonnegative-cell inputs and catchable overflow/domain errors for their covered operations. This still does not prove that every generated literal or every source type is in the supported subset, and the runtime cannot validate a mathematical representability witness carried only in Agda. No claim is made that arbitrary Forth is sandboxed or that Girard's structural rules are preserved for every compiled Agda program.
 
 ## What `formal/LinearModalSafety.agda` establishes
 
@@ -124,7 +126,7 @@ The historical theorem `historicalGeneratedScalarDoesNotRefineAddition` preserve
 
 ### What remains unproved
 
-This closes the source-expression-to-abstract-stack-program proof obligation for this four-constructor Nat fragment and makes its finite-cell representability precondition explicit. `NatCellRepresentable bound expr` is proof-carrying evidence that each literal and recursive intermediate fits the abstract bound; `bound` must be tied to the concrete runtime's cell limit before using the theorem as a machine-cell argument. The proof does **not** close the concrete implementation bridge. The instruction sequence is a manually maintained model of the existing lowering/ABI word classes, and the stack semantics specifies abstract raw/raw behavior. The raw runtime path does not dynamically check this proof precondition.
+This closes the source-expression-to-abstract-stack-program proof obligation for this four-constructor Nat fragment and makes its finite-cell representability precondition explicit. `NatCellRepresentable bound expr` is proof-carrying evidence that each literal and recursive intermediate fits the abstract bound; `bound` must be tied to the concrete runtime's cell limit before using the theorem as a machine-cell argument. The proof does **not** close the concrete implementation bridge. The instruction sequence remains a manually maintained model of the lowering/ABI word classes. The updated raw Nat operations now check their input cells and overflow at runtime, but this does not prove that the Haskell emitter always emits these operations or that all literals are statically representable.
 
 The current Agda file does **not** prove:
 
@@ -156,9 +158,11 @@ agda --safe --no-libraries -i formal formal/LinearModalSafety.agda
 cabal run agda2forth -- -i test test/CheckedScalar.agda
 gforth CheckedScalar.fth test/gforth/compiler-integration.fs
 
-# Exercise the unsupported String-literal boundary.
+# Exercise unsupported String literals and axiom references.
 cabal run agda2forth -- -i test test/UnsupportedLiteral.agda
 gforth UnsupportedLiteral.fth test/gforth/unsupported-boundary.fs
+cabal run agda2forth -- -i test test/UnsupportedAxiom.agda
+gforth UnsupportedAxiom.fth test/gforth/unsupported-axiom-boundary.fs
 
 # Compile the first-order triples fixture (CI does not execute it).
 cabal run agda2forth -- -i test test/TriplesFO.agda
@@ -188,7 +192,7 @@ A fixed-point value stored in data-stack cells may be a reasonable future extens
 | Checked managed ABI | Direct Gforth tests for enumerated cases |
 | Agda model | Type-checks under `--safe`; contains no postulates |
 | Modeled Nat-expression-to-stack-code simulation | Proven for literals, addition, multiplication, and monus with stack-tail preservation; finite-cell fit is an explicit proof precondition, not a runtime check |
-| Unsupported String literal | Catchable error tested end to end |
+| Unsupported String literal and referenced axiom | Catchable errors tested end to end |
 | Exhaustive allowlist for supported source subset | Not implemented |
 | Haskell-emitter correspondence to Agda model | Not proved |
 | Concrete runtime refinement of Agda model | Not proved |
