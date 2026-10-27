@@ -514,7 +514,20 @@ instance ToForth TTerm FthForm where
           applyToArgs $ RSAtom name
       TPrim p -> case fthDirectPrimitive p args' of
         Just direct -> return direct
-        Nothing -> toForth p >>= applyToArgs
+        Nothing -> case p of
+          -- These are the only primitives with an implemented curried lowering.
+          -- Retain that path for partial applications; never route an unknown
+          -- primitive through generic pass/closure lowering.
+          PAdd  -> toForth p >>= applyToArgs
+          PSub  -> toForth p >>= applyToArgs
+          PMul  -> toForth p >>= applyToArgs
+          PQuot -> toForth p >>= applyToArgs
+          PRem  -> toForth p >>= applyToArgs
+          PIf   -> toForth p >>= applyToArgs
+          PEqI  -> toForth p >>= applyToArgs
+          PGeq  -> toForth p >>= applyToArgs
+          PLt   -> toForth p >>= applyToArgs
+          _     -> return $ fthError $ T.pack $ "not yet supported: primitive " ++ show p
       TDef d -> do
         direct <- fthDirectDefinition d args'
         case direct of
