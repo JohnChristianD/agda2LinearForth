@@ -91,6 +91,8 @@ jobs:
       - name: Verify unsupported literals fail through the catchable runtime boundary
         run: |
           cabal run agda2forth -- -i test test/UnsupportedLiteral.agda
+          echo "---- emitted unsupported fixture ----"
+          cat UnsupportedLiteral.fth
           grep -Fq 'not yet supported: String literals " ABI-ERROR-COMPILED-UNSUPPORTED' UnsupportedLiteral.fth
           grep -Fq 'not yet supported: Float literals " ABI-ERROR-COMPILED-UNSUPPORTED' UnsupportedLiteral.fth
           grep -Fq 'not yet supported: primitive PFloatPlus " ABI-ERROR-COMPILED-UNSUPPORTED' UnsupportedLiteral.fth
@@ -99,6 +101,8 @@ jobs:
             exit 1
           fi
           gforth UnsupportedLiteral.fth test/gforth/unsupported-boundary.fs > unsupported-boundary.log
+          echo "---- unsupported-boundary runtime log ----"
+          cat unsupported-boundary.log
           grep -Fq 'unsupported-boundary-tests-passed' unsupported-boundary.log
           grep -Fq 'not yet supported: String literals' unsupported-boundary.log
           grep -Fq 'not yet supported: Float literals' unsupported-boundary.log
