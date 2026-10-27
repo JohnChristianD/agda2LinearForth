@@ -242,9 +242,10 @@ fthPatternMatch x cases maybeFallback  = RSList
         , " then "
         ]
       makeForthy arg (other:xs) fallback = T.append
-        (T.pack "ENCOUNTERED UNEXPECTED PATTERN WHEN COMPILING PATTERN MATCHING")
+        (T.pack "ABI-ERROR-COMPILED-UNSUPPORTED ")
         (makeForthy arg xs fallback)
-      makeForthy arg [] fallback = T.concat (map formToAtom (maybeToList fallback))
+      makeForthy arg [] (Just fallback) = formToAtom fallback
+      makeForthy arg [] Nothing = T.pack "ABI-ERROR-UNREACHABLE "
 
 fthUnit :: FthForm
 fthUnit = RSList [RSAtom "0"]
@@ -592,7 +593,7 @@ instance ToForth TTerm FthForm where
                     | c1 == conName falseC = (v2',v1')
                     | otherwise            = __IMPOSSIBLE__
               applyToArgs $ RSList [x, RSAtom "if", thenBranch, RSAtom "else", elseBranch, RSAtom "then"]
-            _ -> return $ RSAtom "ERRONEOUS BOOLCASE DURING CASE MATCHING"
+            _ -> return $ fthError "unsupported Bool case shape"
 
       TUnit -> do
         unless (null args) __IMPOSSIBLE__
