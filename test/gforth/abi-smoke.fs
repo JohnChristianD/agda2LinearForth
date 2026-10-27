@@ -26,7 +26,7 @@ VARIABLE linear-result-wrapper
 VARIABLE moved-linear-payload
 : linear-result-move-test ( -- )
   77 MODE-LINEAR ABI-MAKE-SCALAR DUP original-linear-payload !
-  ABI-MAKE-RESULT DUP linear-result-wrapper !
+  ABI-MAKE-RESULT linear-result-wrapper !
   original-linear-payload @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
   linear-result-wrapper @ cell+ @ DUP moved-linear-payload !
   original-linear-payload @ <> abi-assert
