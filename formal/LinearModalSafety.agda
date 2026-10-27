@@ -1334,7 +1334,7 @@ compiledNatFragmentPreservesMeaning (natMonus left right)
   rewrite compiledNatFragmentPreservesMeaning left
         | compiledNatFragmentPreservesMeaning right = refl
 
--- ── 4a. A bounded forward simulation for the Nat stack-code fragment ──
+-- ── 4a. Forward simulation for the Nat stack-code fragment ──
 --
 -- This target program is a linear sequence of the exact operation classes used
 -- by the current raw-cell path: literal cells followed by ABI-ADD-OR-LEGACY,
@@ -1494,6 +1494,57 @@ natExpressionForwardSimulatesStackProgram (natMonus left right) tail =
       (natExpressionForwardSimulatesStackProgram right
         (natExprMeaning left :: tail))
       (natStackMonus natStackDone))
+
+-- A raw Gforth cell is finite, unlike Agda's mathematical Nat. Representability
+-- therefore belongs in the theorem's input contract, not hidden in a claim that
+-- arbitrary natural-number arithmetic is machine arithmetic. The bound is a
+-- parameter: a concrete bridge must instantiate it from the selected runtime.
+-- Every literal and every recursively computed intermediate result must fit.
+data NatCellRepresentable (bound : Nat) : NatExpr → Set where
+  natLiteralCellFits : {n : Nat} →
+    n < suc bound →
+    NatCellRepresentable bound (natLiteral n)
+  natAdditionCellFits : {left right : NatExpr} →
+    NatCellRepresentable bound left →
+    NatCellRepresentable bound right →
+    (natExprMeaning left + natExprMeaning right) < suc bound →
+    NatCellRepresentable bound (natAddition left right)
+  natMultiplicationCellFits : {left right : NatExpr} →
+    NatCellRepresentable bound left →
+    NatCellRepresentable bound right →
+    (natExprMeaning left * natExprMeaning right) < suc bound →
+    NatCellRepresentable bound (natMultiplication left right)
+  natMonusCellFits : {left right : NatExpr} →
+    NatCellRepresentable bound left →
+    NatCellRepresentable bound right →
+    modelNatMonus (natExprMeaning left) (natExprMeaning right) < suc bound →
+    NatCellRepresentable bound (natMonus left right)
+
+natExprValueFitsCellBound :
+  (bound : Nat) (expr : NatExpr) →
+  NatCellRepresentable bound expr →
+  natExprMeaning expr < suc bound
+natExprValueFitsCellBound bound (natLiteral n) (natLiteralCellFits fits) = fits
+natExprValueFitsCellBound bound (natAddition left right)
+  (natAdditionCellFits leftFits rightFits resultFits) = resultFits
+natExprValueFitsCellBound bound (natMultiplication left right)
+  (natMultiplicationCellFits leftFits rightFits resultFits) = resultFits
+natExprValueFitsCellBound bound (natMonus left right)
+  (natMonusCellFits leftFits rightFits resultFits) = resultFits
+
+-- The pair theorem makes the machine-cell side condition visible at the same
+-- call site as source-to-target simulation. The recursive witness carries the
+-- bound for every intermediate node, while the stack theorem preserves any tail.
+-- This remains a parameterized mathematical model, not an overflow check in Forth.
+natExpressionBoundedForwardSimulatesStackProgram :
+  (bound : Nat) (expr : NatExpr) (tail : List Nat) →
+  NatCellRepresentable bound expr →
+  NatStackExec (compileNatStackProgram expr) tail
+    (natExprMeaning expr :: tail) ×
+  (natExprMeaning expr < suc bound)
+natExpressionBoundedForwardSimulatesStackProgram bound expr tail representable =
+  natExpressionForwardSimulatesStackProgram expr tail ,
+  natExprValueFitsCellBound bound expr representable
 
 -- Model the runtime contract of a curried arithmetic word: the first pass
 -- captures its left operand; the next application supplies the right operand.
