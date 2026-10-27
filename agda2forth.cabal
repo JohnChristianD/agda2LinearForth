@@ -17,9 +17,11 @@ extra-source-files:
     README.md
     test/TriplesFO.agda
     test/UnsupportedLiteral.agda
+    test/UnsupportedAxiom.agda
     test/CheckedScalar.agda
     test/gforth/abi-smoke.fs
     test/gforth/compiler-integration.fs
+    test/gforth/unsupported-axiom-boundary.fs
     formal/LinearModalABI.agda
     formal/LinearModalStackEffects.agda
     formal/CompilerRuntimeBoundary.agda
