@@ -1585,9 +1585,9 @@ unsupportedPrimitiveUsesCatchableDiagnostic :
   emitBackendPrimitive backendUnsupported ≡ emitDiagnosticThrow
 unsupportedPrimitiveUsesCatchableDiagnostic = refl
 
--- Literal support has an explicit boundary too. Agda Float literals are
--- recognized by the frontend, but are deliberately rejected by this backend
--- until a concrete target representation and stack semantics are specified.
+-- Literal support has an explicit boundary in the semantic mirror too. Nat
+-- and Boolean literals have raw-cell constructors; String literals use the
+-- catchable unsupported-literal diagnostic.
 data BackendLiteral : Set where
   backendNatLiteral : Nat → BackendLiteral
   backendTrueLiteral backendFalseLiteral : BackendLiteral
