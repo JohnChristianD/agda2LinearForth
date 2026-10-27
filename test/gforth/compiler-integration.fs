@@ -76,5 +76,5 @@ generated-less-than-false-test
 : assert-empty-data-stack ( -- )
   depth 0<> abort" compiler integration leaked data-stack values"
 ;
-assert-empty-data-stack"
+assert-empty-data-stack
 BYE
