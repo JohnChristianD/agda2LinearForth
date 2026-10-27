@@ -472,7 +472,8 @@ instance ToForth Definition (Maybe FthForm) where
     let f = defName def
     case theDef def of
       Axiom{} -> do
-        return $ Just $ RSAtom ""
+        f' <- toForth f
+        return $ Just $ fthAxiom f'
       GeneralizableVar{} -> return Nothing
       d@Function{} | d ^. funInline -> return Nothing
       Function{} -> do
