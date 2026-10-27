@@ -433,10 +433,16 @@ VARIABLE nested-linear-leaf
   nested-outer-closure @ metadata@ META-ENV cells + @ @ nested-moved-closure !
 ;
 build-nested-linear-closure
-depth 0<> abort" nested closure build leaked data stack"
+: assert-nested-build-stack ( -- )
+  depth 0<> abort" nested closure build leaked data stack"
+;
+assert-nested-build-stack
 : force-nested-linear-closure ( -- ) nested-outer-closure @ dethunk DROP ;
 ' force-nested-linear-closure CATCH -4333 = abi-assert
-depth 0<> abort" nested force failure leaked data stack"
+: assert-nested-force-stack ( -- )
+  depth 0<> abort" nested force failure leaked data stack"
+;
+assert-nested-force-stack
 nested-linear-input @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 nested-first-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 nested-outer-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
