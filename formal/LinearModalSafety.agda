@@ -1038,6 +1038,90 @@ data StackEffect : Primitive → StackShape → StackShape → Set where
   printModalEffect : {A : CoreTy} {tail : StackShape} →
     StackEffect pPrint (valueItem (!Ty A) :: tail) (valueItem (!Ty A) :: tail)
 
+-- A stack-tail frame law for the declarative stack-effect semantics.
+-- It is stronger than testing a primitive at an empty stack: any framed suffix
+-- remains unchanged by the specified effect. This is a theorem about StackEffect,
+-- not yet the implementation-correspondence theorem for the Forth word.
+stackAppendAssoc :
+  {A : Set} (xs ys zs : List A) →
+  ((xs ++ ys) ++ zs) ≡ (xs ++ (ys ++ zs))
+stackAppendAssoc [] ys zs = refl
+stackAppendAssoc (x :: xs) ys zs rewrite stackAppendAssoc xs ys zs = refl
+
+stackTailFrame :
+  {p : Primitive} {input output : StackShape} →
+  StackEffect p input output →
+  (frame : StackShape) →
+  StackEffect p (input ++ frame) (output ++ frame)
+stackTailFrame (natAddEffect {A = A} {B = B} {tail = tail} leftNat rightNat) frame =
+  natAddEffect {A = A} {B = B} {tail = tail ++ frame} leftNat rightNat
+stackTailFrame (natSubEffect {A = A} {B = B} {tail = tail} leftNat rightNat) frame =
+  natSubEffect {A = A} {B = B} {tail = tail ++ frame} leftNat rightNat
+stackTailFrame (natMulEffect {A = A} {B = B} {tail = tail} leftNat rightNat) frame =
+  natMulEffect {A = A} {B = B} {tail = tail ++ frame} leftNat rightNat
+stackTailFrame (natQuotEffect {A = A} {B = B} {tail = tail} leftNat rightNat) frame =
+  natQuotEffect {A = A} {B = B} {tail = tail ++ frame} leftNat rightNat
+stackTailFrame (natRemEffect {A = A} {B = B} {tail = tail} leftNat rightNat) frame =
+  natRemEffect {A = A} {B = B} {tail = tail ++ frame} leftNat rightNat
+stackTailFrame (natEqEffect {A = A} {B = B} {tail = tail} leftNat rightNat) frame =
+  natEqEffect {A = A} {B = B} {tail = tail ++ frame} leftNat rightNat
+stackTailFrame (natGeqEffect {A = A} {B = B} {tail = tail} leftNat rightNat) frame =
+  natGeqEffect {A = A} {B = B} {tail = tail ++ frame} leftNat rightNat
+stackTailFrame (natLtEffect {A = A} {B = B} {tail = tail} leftNat rightNat) frame =
+  natLtEffect {A = A} {B = B} {tail = tail ++ frame} leftNat rightNat
+stackTailFrame (natMonusEffect {A = A} {B = B} {tail = tail} leftNat rightNat) frame =
+  natMonusEffect {A = A} {B = B} {tail = tail ++ frame} leftNat rightNat
+stackTailFrame (makeScalarEffect {m = m} {tail = tail}) frame =
+  makeScalarEffect {m = m} {tail = tail ++ frame}
+stackTailFrame (makeBooleanEffect {m = m} {tail = tail}) frame =
+  makeBooleanEffect {m = m} {tail = tail ++ frame}
+stackTailFrame (makeLinearThunkEffect {c = c} {tail = tail} safeCode) frame =
+  makeLinearThunkEffect {c = c} {tail = tail ++ frame} safeCode
+stackTailFrame (makeModalThunkEffect {c = c} {tail = tail} safeCode) frame =
+  makeModalThunkEffect {c = c} {tail = tail ++ frame} safeCode
+stackTailFrame (applyLinearEffect {m = m} {c = c} {captures = captures}
+  {A = A} {B = B} {tail = tail} safeCode) frame =
+  applyLinearEffect {m = m} {c = c} {captures = captures} {A = A} {B = B}
+    {tail = tail ++ frame} safeCode
+stackTailFrame (forceLinearEffect {c = c} {captures = captures}
+  {A = A} {tail = tail} safeCode) frame =
+  forceLinearEffect {c = c} {captures = captures} {A = A} {tail = tail ++ frame} safeCode
+stackTailFrame (forceModalEffect {c = c} {captures = captures}
+  {A = A} {tail = tail} safeCode modalCaptures) frame =
+  forceModalEffect {c = c} {captures = captures} {A = A} {tail = tail ++ frame}
+    safeCode modalCaptures
+stackTailFrame (makeResultEffect {A = A} {tail = tail}) frame =
+  makeResultEffect {A = A} {tail = tail ++ frame}
+stackTailFrame (unwrapResultEffect {A = A} {tail = tail}) frame =
+  unwrapResultEffect {A = A} {tail = tail ++ frame}
+stackTailFrame (promoteModalEffect {c = c} {captures = captures}
+  {A = A} {tail = tail} safeCode modalCaptures) frame =
+  promoteModalEffect {c = c} {captures = captures} {A = A} {tail = tail ++ frame}
+    safeCode modalCaptures
+stackTailFrame (assertLinearEffect {c = c} {captures = captures}
+  {A = A} {tail = tail} {m = m} safeCode) frame =
+  assertLinearEffect {c = c} {captures = captures} {A = A}
+    {tail = tail ++ frame} {m = m} safeCode
+stackTailFrame (ifModalBranchesEffect {C = C} {A = A} {c1 = c1} {c2 = c2}
+  {captures1 = captures1} {captures2 = captures2} {tail = tail}
+  condition modalCode1 modalCode2 capturesSafe1 capturesSafe2) frame =
+  ifModalBranchesEffect {C = C} {A = A} {c1 = c1} {c2 = c2}
+    {captures1 = captures1} {captures2 = captures2} {tail = tail ++ frame}
+    condition modalCode1 modalCode2 capturesSafe1 capturesSafe2
+stackTailFrame (constructEffect sig {tail = tail}) frame =
+  subst
+    {P = λ input → StackEffect pConstruct input
+      (valueItem (constructorResult sig) :: (tail ++ frame))}
+    (symEq (stackAppendAssoc (valuesOf (constructorFields sig))
+      (constructorTokenItem (constructorTag sig) :: tail) frame))
+    (constructEffect sig {tail = tail ++ frame})
+stackTailFrame (matchEffect sig {tail = tail}) frame =
+  matchEffect sig {tail = tail ++ frame}
+stackTailFrame (printLinearEffect {A = A} {tail = tail} linearTy) frame =
+  printLinearEffect {A = A} {tail = tail ++ frame} linearTy
+stackTailFrame (printModalEffect {A = A} {tail = tail}) frame =
+  printModalEffect {A = A} {tail = tail ++ frame}
+
 -- These are error transitions, not ordinary stack-returning effects. The
 -- state/error payload is modeled by Execution and the WP contracts.
 data ErrorEffect : Primitive → StackShape → RuntimeError → Set where
@@ -1152,6 +1236,8 @@ modalPromotionEffect = promoteModalEffect modalNatAdd modalCapturesNil
 data NatExpr : Set where
   natLiteral : Nat → NatExpr
   natAddition : NatExpr → NatExpr → NatExpr
+  natMultiplication : NatExpr → NatExpr → NatExpr
+  natMonus : NatExpr → NatExpr → NatExpr
 
 -- These constructors distinguish raw literals, saturated primitive calls routed
 -- through the checked-or-legacy ABI adapters, and checked result constructors.
@@ -1160,16 +1246,37 @@ data EmittedFragment : Set where
   rawNaturalCell : Nat → EmittedFragment
   rawTrueCell rawFalseCell : EmittedFragment
   abiAddAdapterCode : EmittedFragment → EmittedFragment → EmittedFragment
+  abiMulAdapterCode : EmittedFragment → EmittedFragment → EmittedFragment
+  abiMonusAdapterCode : EmittedFragment → EmittedFragment → EmittedFragment
   checkedScalarCode : SourceMode → Nat → EmittedFragment
   checkedBooleanCode : SourceMode → EmittedFragment
 
--- Mirrors ToForth.hs's LitNat and saturated addition lowering: literals remain
--- raw cells; addition is emitted via ABI-ADD-OR-LEGACY, which selects the legacy
--- raw operation for raw/raw inputs and checked ABI for tracked scalar handles.
+-- Mirrors the selected ToForth.hs emission paths: literals remain raw cells;
+-- saturated addition, multiplication, and builtin Nat subtraction use
+-- ABI-ADD-OR-LEGACY, ABI-MUL-OR-LEGACY, and ABI-MONUS-OR-LEGACY. With raw
+-- literal operands these adapters select raw/raw execution, so this fragment
+-- still carries no checked mode evidence.
+-- This is a manual semantic mirror, not extraction from the Haskell emitter.
 compileNatFragment : NatExpr → EmittedFragment
 compileNatFragment (natLiteral n) = rawNaturalCell n
 compileNatFragment (natAddition left right) =
   abiAddAdapterCode (compileNatFragment left) (compileNatFragment right)
+compileNatFragment (natMultiplication left right) =
+  abiMulAdapterCode (compileNatFragment left) (compileNatFragment right)
+compileNatFragment (natMonus left right) =
+  abiMonusAdapterCode (compileNatFragment left) (compileNatFragment right)
+
+compiledNatMultiplicationUsesAdapter :
+  (left right : NatExpr) →
+  compileNatFragment (natMultiplication left right) ≡
+    abiMulAdapterCode (compileNatFragment left) (compileNatFragment right)
+compiledNatMultiplicationUsesAdapter left right = refl
+
+compiledNatMonusUsesAdapter :
+  (left right : NatExpr) →
+  compileNatFragment (natMonus left right) ≡
+    abiMonusAdapterCode (compileNatFragment left) (compileNatFragment right)
+compiledNatMonusUsesAdapter left right = refl
 
 -- Historical counterexample for the pre-fix curried-application path. The
 -- earlier generated fixture emitted a lambda body `a c pass`; the raw/non-thunk
@@ -1221,6 +1328,10 @@ NoCheckedRepresentation rawTrueCell = ⊤
 NoCheckedRepresentation rawFalseCell = ⊤
 NoCheckedRepresentation (abiAddAdapterCode left right) =
   NoCheckedRepresentation left × NoCheckedRepresentation right
+NoCheckedRepresentation (abiMulAdapterCode left right) =
+  NoCheckedRepresentation left × NoCheckedRepresentation right
+NoCheckedRepresentation (abiMonusAdapterCode left right) =
+  NoCheckedRepresentation left × NoCheckedRepresentation right
 NoCheckedRepresentation (checkedScalarCode mode n) = ⊥
 NoCheckedRepresentation (checkedBooleanCode mode) = ⊥
 
@@ -1228,6 +1339,12 @@ compilerNatFragmentHasNoCheckedRepresentation :
   (expr : NatExpr) → NoCheckedRepresentation (compileNatFragment expr)
 compilerNatFragmentHasNoCheckedRepresentation (natLiteral n) = tt
 compilerNatFragmentHasNoCheckedRepresentation (natAddition left right) =
+  compilerNatFragmentHasNoCheckedRepresentation left ,
+  compilerNatFragmentHasNoCheckedRepresentation right
+compilerNatFragmentHasNoCheckedRepresentation (natMultiplication left right) =
+  compilerNatFragmentHasNoCheckedRepresentation left ,
+  compilerNatFragmentHasNoCheckedRepresentation right
+compilerNatFragmentHasNoCheckedRepresentation (natMonus left right) =
   compilerNatFragmentHasNoCheckedRepresentation left ,
   compilerNatFragmentHasNoCheckedRepresentation right
 
@@ -1630,9 +1747,15 @@ modalInputRemainsLiveOnSuccessfulCommit = refl
 
 -- ── Scalar bridge correspondence for the opt-in runtime gate ──
 --
--- The concrete Forth bridge maps a bare Nat cell to a modal scalar and preserves
--- an explicitly checked handle's mode. The source compiler's erased boolean/Nat
--- overlap at raw 0 is handled by a caller-selected Nat/Bool result adapter.
+-- This bridge has two deliberately distinct views:
+--   * bridgeNormalizeNat/Bool are source-semantic views; a closed literal has a
+--     modal interpretation because it has no linear dependencies.
+--   * bridgeRuntimeModeNat/Bool model the actual representation boundary:
+--     FLib.fth's raw/raw dispatch leaves raw cells unannotated, while only checked
+--     handles carry MODE-LINEAR or MODE-MODAL metadata.
+-- Thus source-level modal interpretation is NOT itself evidence of a runtime !.
+-- This mismatch is a proved limitation of the current emitter, not a hidden
+-- assumption in the Girard-preservation claim.
 data BridgeNatCell : Set where
   bridgeRawNat : Nat → BridgeNatCell
   bridgeCheckedNat : Nat → SourceMode → BridgeNatCell
@@ -1659,6 +1782,37 @@ bridgeCheckedModePreserved :
   snd (bridgeNormalizeNat (bridgeCheckedNat n m)) ≡ m
 bridgeCheckedModePreserved n m = refl
 
+-- Runtime tags are distinct from the logical source interpretation above.
+-- Raw Nat cells emitted by ToForth.hs contain no descriptor/mode witness.
+bridgeRuntimeModeNat : BridgeNatCell → RuntimeMode
+bridgeRuntimeModeNat (bridgeRawNat n) = unannotated
+bridgeRuntimeModeNat (bridgeCheckedNat n m) = sourceMode m
+
+rawNatRuntimeModeIsUnannotated :
+  (n : Nat) → bridgeRuntimeModeNat (bridgeRawNat n) ≡ unannotated
+rawNatRuntimeModeIsUnannotated n = refl
+
+checkedNatRuntimeModePreserved :
+  (n : Nat) (m : SourceMode) →
+  bridgeRuntimeModeNat (bridgeCheckedNat n m) ≡ sourceMode m
+checkedNatRuntimeModePreserved n m = refl
+
+unannotatedCannotBeModal : unannotated ≡ modalMode → ⊥
+unannotatedCannotBeModal ()
+
+unannotatedCannotBeLinear : unannotated ≡ linearMode → ⊥
+unannotatedCannotBeLinear ()
+
+rawNatCannotEstablishModalSourceMode :
+  (n : Nat) →
+  bridgeRuntimeModeNat (bridgeRawNat n) ≡ sourceMode modal → ⊥
+rawNatCannotEstablishModalSourceMode n ()
+
+rawNatCannotEstablishLinearSourceMode :
+  (n : Nat) →
+  bridgeRuntimeModeNat (bridgeRawNat n) ≡ sourceMode linear → ⊥
+rawNatCannotEstablishLinearSourceMode n ()
+
 data BridgeBoolCell : Set where
   bridgeRawBool : Bool → BridgeBoolCell
   bridgeCheckedBool : Bool → SourceMode → BridgeBoolCell
@@ -1679,6 +1833,29 @@ bridgeBoolPayloadPreserved (bridgeCheckedBool b m) = refl
 bridgeRawBoolIsModal :
   (b : Bool) → snd (bridgeNormalizeBool (bridgeRawBool b)) ≡ modal
 bridgeRawBoolIsModal b = refl
+
+bridgeRuntimeModeBool : BridgeBoolCell → RuntimeMode
+bridgeRuntimeModeBool (bridgeRawBool b) = unannotated
+bridgeRuntimeModeBool (bridgeCheckedBool b m) = sourceMode m
+
+rawBoolRuntimeModeIsUnannotated :
+  (b : Bool) → bridgeRuntimeModeBool (bridgeRawBool b) ≡ unannotated
+rawBoolRuntimeModeIsUnannotated b = refl
+
+checkedBoolRuntimeModePreserved :
+  (b : Bool) (m : SourceMode) →
+  bridgeRuntimeModeBool (bridgeCheckedBool b m) ≡ sourceMode m
+checkedBoolRuntimeModePreserved b m = refl
+
+rawBoolCannotEstablishModalSourceMode :
+  (b : Bool) →
+  bridgeRuntimeModeBool (bridgeRawBool b) ≡ sourceMode modal → ⊥
+rawBoolCannotEstablishModalSourceMode b ()
+
+rawBoolCannotEstablishLinearSourceMode :
+  (b : Bool) →
+  bridgeRuntimeModeBool (bridgeRawBool b) ≡ sourceMode linear → ⊥
+rawBoolCannotEstablishLinearSourceMode b ()
 
 bridgeNatSub : Nat → Nat → Nat
 bridgeNatSub n zero = n

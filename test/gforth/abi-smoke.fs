@@ -14,7 +14,7 @@
 VARIABLE modal-payload-handle
 VARIABLE modal-result-handle
 123 MODE-MODAL ABI-MAKE-SCALAR DUP modal-payload-handle !
-ABI-MAKE-RESULT DUP modal-result-handle !
+ABI-MAKE-RESULT modal-result-handle !
 modal-result-handle @ metadata@ META-PAYLOAD cells + @
 modal-payload-handle @ = abi-assert
 modal-result-handle @ assertModalValue DROP
@@ -26,7 +26,7 @@ VARIABLE linear-result-wrapper
 VARIABLE moved-linear-payload
 : linear-result-move-test ( -- )
   77 MODE-LINEAR ABI-MAKE-SCALAR DUP original-linear-payload !
-  ABI-MAKE-RESULT DUP linear-result-wrapper !
+  ABI-MAKE-RESULT linear-result-wrapper !
   original-linear-payload @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
   linear-result-wrapper @ cell+ @ DUP moved-linear-payload !
   original-linear-payload @ <> abi-assert
@@ -139,6 +139,101 @@ checked-add-adapter-test
 ;
 legacy-add-adapter-test
 
+\ Raw/raw adapter matrix: keep the untracked compatibility path explicit.
+: assert-raw-binary { left right operation expected -- }
+  left right operation EXECUTE expected = abi-assert
+;
+12 5 ' ABI-ADD-OR-LEGACY 17 assert-raw-binary
+12 5 ' ABI-SUB-OR-LEGACY 7 assert-raw-binary
+12 5 ' ABI-MONUS-OR-LEGACY 7 assert-raw-binary
+5 12 ' ABI-MONUS-OR-LEGACY 0 assert-raw-binary
+0 0 ' ABI-MONUS-OR-LEGACY 0 assert-raw-binary
+5 5 ' ABI-MONUS-OR-LEGACY 0 assert-raw-binary
+0 5 ' ABI-MONUS-OR-LEGACY 0 assert-raw-binary
+6 7 ' ABI-MUL-OR-LEGACY 42 assert-raw-binary
+21 3 ' ABI-QUOT-OR-LEGACY 7 assert-raw-binary
+22 5 ' ABI-REM-OR-LEGACY 2 assert-raw-binary
+4 4 ' ABI-EQ-OR-LEGACY -1 assert-raw-binary
+4 5 ' ABI-EQ-OR-LEGACY 0 assert-raw-binary
+5 4 ' ABI-GEQ-OR-LEGACY -1 assert-raw-binary
+4 5 ' ABI-GEQ-OR-LEGACY 0 assert-raw-binary
+4 5 ' ABI-LT-OR-LEGACY -1 assert-raw-binary
+5 4 ' ABI-LT-OR-LEGACY 0 assert-raw-binary
+
+\ The same matrix through tracked handles exercises checked dispatch and result kinds.
+: assert-checked-scalar { left right operation expected -- }
+  left MODE-MODAL ABI-MAKE-SCALAR
+  right MODE-MODAL ABI-MAKE-SCALAR
+  operation EXECUTE ABI-SCALAR-INFO { value mode meta }
+  value expected = abi-assert
+  mode MODE-MODAL = abi-assert
+;
+12 5 ' ABI-ADD-OR-LEGACY 17 assert-checked-scalar
+12 5 ' ABI-SUB-OR-LEGACY 7 assert-checked-scalar
+12 5 ' ABI-MONUS-OR-LEGACY 7 assert-checked-scalar
+5 12 ' ABI-MONUS-OR-LEGACY 0 assert-checked-scalar
+0 0 ' ABI-MONUS-OR-LEGACY 0 assert-checked-scalar
+5 5 ' ABI-MONUS-OR-LEGACY 0 assert-checked-scalar
+0 5 ' ABI-MONUS-OR-LEGACY 0 assert-checked-scalar
+6 7 ' ABI-MUL-OR-LEGACY 42 assert-checked-scalar
+21 3 ' ABI-QUOT-OR-LEGACY 7 assert-checked-scalar
+22 5 ' ABI-REM-OR-LEGACY 2 assert-checked-scalar
+
+: assert-checked-boolean { left right operation expected -- }
+  left MODE-MODAL ABI-MAKE-SCALAR
+  right MODE-MODAL ABI-MAKE-SCALAR
+  operation EXECUTE ABI-BOOL-INFO { value mode meta }
+  value expected = abi-assert
+  mode MODE-MODAL = abi-assert
+;
+4 4 ' ABI-EQ-OR-LEGACY -1 assert-checked-boolean
+4 5 ' ABI-EQ-OR-LEGACY 0 assert-checked-boolean
+5 4 ' ABI-GEQ-OR-LEGACY -1 assert-checked-boolean
+4 5 ' ABI-GEQ-OR-LEGACY 0 assert-checked-boolean
+4 5 ' ABI-LT-OR-LEGACY -1 assert-checked-boolean
+5 4 ' ABI-LT-OR-LEGACY 0 assert-checked-boolean
+
+\ Mixed and wrong-kind values must fail closed instead of guessing a representation.
+: mixed-sub-adapter-test ( -- )
+  8 MODE-MODAL ABI-MAKE-SCALAR 9 ABI-SUB-OR-LEGACY DROP
+;
+' mixed-sub-adapter-test CATCH ABI-ERR-MIXED-ABI-VALUES = abi-assert
+: wrong-kind-adapter-test ( -- )
+  8 MODE-MODAL ABI-MAKE-SCALAR
+  9 MODE-MODAL ABI-MAKE-SCALAR ABI-MAKE-RESULT
+  ABI-ADD-OR-LEGACY DROP
+;
+' wrong-kind-adapter-test CATCH ABI-ERR-EXPECTED-SCALAR = abi-assert
+
+\ Nat monus must saturate, propagate the mode join, and consume only linear inputs.
+VARIABLE monus-linear-input
+VARIABLE monus-modal-input
+: checked-monus-mode-and-saturation-test ( -- )
+  5 MODE-LINEAR ABI-MAKE-SCALAR DUP monus-linear-input !
+  12 MODE-MODAL ABI-MAKE-SCALAR DUP monus-modal-input !
+  ABI-MONUS-OR-LEGACY ABI-SCALAR-INFO { value mode meta }
+  value 0 = abi-assert
+  mode MODE-LINEAR = abi-assert
+  monus-linear-input @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+  monus-modal-input @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
+;
+checked-monus-mode-and-saturation-test
+
+\ Successful checked monus must consume both linear operands only after result allocation.
+VARIABLE monus-left-linear
+VARIABLE monus-right-linear
+: checked-monus-consumes-linear-inputs-test ( -- )
+  12 MODE-LINEAR ABI-MAKE-SCALAR DUP monus-left-linear !
+  5 MODE-LINEAR ABI-MAKE-SCALAR DUP monus-right-linear !
+  ABI-MONUS-OR-LEGACY ABI-SCALAR-INFO { value mode meta }
+  value 7 = abi-assert
+  mode MODE-LINEAR = abi-assert
+  monus-left-linear @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+  monus-right-linear @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
+;
+checked-monus-consumes-linear-inputs-test
+
+
 : mixed-add-adapter-test ( -- )
   8 MODE-MODAL ABI-MAKE-SCALAR 9 ABI-ADD-OR-LEGACY DROP
 ;
@@ -201,6 +296,7 @@ checked-lt-test
   movedBool ABI-BOOL-INFO { movedValue movedMode movedMeta }
   movedValue -1 = abi-assert
   movedMode MODE-LINEAR = abi-assert
+  DROP
 ;
 checked-linear-boolean-result-test
 
@@ -330,20 +426,43 @@ VARIABLE nested-linear-leaf
 : nested-fail-after-capture ( x -- ) drop -4333 THROW ;
 ' nested-fail-after-capture declareLinearSafeXT
 : build-nested-linear-closure ( -- )
+  depth { initialDepth }
   99 MODE-LINEAR ABI-MAKE-SCALAR DUP nested-linear-input !
+  depth initialDepth 1+ <> abort" scalar setup stack effect mismatch"
   ['] identity-body makeTHUNK assertLinear pass nested-first-closure !
+  depth initialDepth <> abort" first closure stack effect mismatch"
   nested-first-closure @ metadata@ META-ENV cells + @ @ nested-linear-leaf !
+  depth initialDepth <> abort" leaf lookup stack effect mismatch"
   ['] nested-fail-after-capture makeTHUNK assertLinear
+  depth initialDepth 1+ <> abort" outer code setup stack effect mismatch"
   nested-first-closure @ swap pass nested-outer-closure !
+  depth initialDepth <> abort" outer closure stack effect mismatch"
   nested-outer-closure @ metadata@ META-ENV cells + @ @ nested-moved-closure !
+  depth initialDepth <> abort" moved closure lookup stack effect mismatch"
 ;
+: assert-empty-before-nested-build ( -- )
+  depth 0<> abort" data stack was already dirty before nested closure build"
+;
+assert-empty-before-nested-build
 build-nested-linear-closure
+: assert-nested-build-stack ( -- )
+  depth 0<> abort" nested closure build leaked data stack"
+;
+assert-nested-build-stack
 : force-nested-linear-closure ( -- ) nested-outer-closure @ dethunk DROP ;
 ' force-nested-linear-closure CATCH -4333 = abi-assert
+: assert-nested-force-stack ( -- )
+  depth 0<> abort" nested force failure leaked data stack"
+;
+assert-nested-force-stack
 nested-linear-input @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 nested-first-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 nested-outer-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 nested-moved-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 nested-linear-leaf @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 
+: assert-empty-data-stack ( -- )
+  depth 0<> abort" ABI smoke test leaked data-stack values"
+;
+assert-empty-data-stack
 BYE
