@@ -73,6 +73,56 @@ generated-less-than-true-test
 ;
 generated-less-than-false-test
 
+: generated-curried-builtin-add-test ( -- )
+  scalarCurriedAddAnswer dethunk 25 expect-natural
+;
+generated-curried-builtin-add-test
+
+: generated-partial-builtin-add-test ( -- )
+  scalarAddFiveAnswer dethunk 25 expect-natural
+;
+generated-partial-builtin-add-test
+
+: generated-partial-user-function-test ( -- )
+  scalarAddThroughClosureAnswer dethunk 25 expect-natural
+;
+generated-partial-user-function-test
+
+: generated-partial-monus-twenty-test ( -- )
+  scalarSubtractTwentyAnswer dethunk 15 expect-natural
+;
+generated-partial-monus-twenty-test
+
+: generated-partial-monus-five-test ( -- )
+  scalarSubtractFiveAnswer dethunk 0 expect-natural
+;
+generated-partial-monus-five-test
+
+: generated-partial-multiply-test ( -- )
+  scalarMultiplySevenAnswer dethunk 42 expect-natural
+;
+generated-partial-multiply-test
+
+: generated-partial-equality-true-test ( -- )
+  scalarEqualFiveTrueAnswer dethunk -1 expect-natural
+;
+generated-partial-equality-true-test
+
+: generated-partial-equality-false-test ( -- )
+  scalarEqualFiveFalseAnswer dethunk 0 expect-natural
+;
+generated-partial-equality-false-test
+
+: generated-partial-less-than-true-test ( -- )
+  scalarLessThanFiveTrueAnswer dethunk -1 expect-natural
+;
+generated-partial-less-than-true-test
+
+: generated-partial-less-than-false-test ( -- )
+  scalarLessThanFiveFalseAnswer dethunk 0 expect-natural
+;
+generated-partial-less-than-false-test
+
 : assert-empty-data-stack ( -- )
   depth 0<> abort" compiler integration leaked data-stack values"
 ;

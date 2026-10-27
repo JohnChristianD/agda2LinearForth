@@ -60,3 +60,60 @@ scalarLessThanTrueAnswer = scalarLessThan 5 20
 
 scalarLessThanFalseAnswer : Bool
 scalarLessThanFalseAnswer = scalarLessThan 20 5
+
+-- These values deliberately keep builtins under-applied across a function boundary.
+-- The emitter must preserve their curried meaning, not treat a primitive as a result.
+scalarCurriedAdd : Nat → Nat → Nat
+scalarCurriedAdd = _+_
+
+scalarCurriedAddAnswer : Nat
+scalarCurriedAddAnswer = scalarCurriedAdd 20 5
+
+scalarAddFive : Nat → Nat
+scalarAddFive = _+_ 5
+
+scalarAddFiveAnswer : Nat
+scalarAddFiveAnswer = scalarAddFive 20
+
+-- Partial application of a user definition exercises the ordinary closure path too.
+scalarAddThroughClosure : Nat → Nat
+scalarAddThroughClosure = scalarAdd 5
+
+scalarAddThroughClosureAnswer : Nat
+scalarAddThroughClosureAnswer = scalarAddThroughClosure 20
+
+scalarSubtractTwenty : Nat → Nat
+scalarSubtractTwenty = _-_ 20
+
+scalarSubtractTwentyAnswer : Nat
+scalarSubtractTwentyAnswer = scalarSubtractTwenty 5
+
+scalarSubtractFive : Nat → Nat
+scalarSubtractFive = _-_ 5
+
+scalarSubtractFiveAnswer : Nat
+scalarSubtractFiveAnswer = scalarSubtractFive 20
+
+scalarMultiplySeven : Nat → Nat
+scalarMultiplySeven = _*_ 7
+
+scalarMultiplySevenAnswer : Nat
+scalarMultiplySevenAnswer = scalarMultiplySeven 6
+
+scalarEqualFive : Nat → Bool
+scalarEqualFive = _==_ 5
+
+scalarEqualFiveTrueAnswer : Bool
+scalarEqualFiveTrueAnswer = scalarEqualFive 5
+
+scalarEqualFiveFalseAnswer : Bool
+scalarEqualFiveFalseAnswer = scalarEqualFive 6
+
+scalarLessThanFive : Nat → Bool
+scalarLessThanFive = _<_ 5
+
+scalarLessThanFiveTrueAnswer : Bool
+scalarLessThanFiveTrueAnswer = scalarLessThanFive 20
+
+scalarLessThanFiveFalseAnswer : Bool
+scalarLessThanFiveFalseAnswer = scalarLessThanFive 4
