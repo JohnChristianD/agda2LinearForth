@@ -296,6 +296,7 @@ checked-lt-test
   movedBool ABI-BOOL-INFO { movedValue movedMode movedMeta }
   movedValue -1 = abi-assert
   movedMode MODE-LINEAR = abi-assert
+  DROP
 ;
 checked-linear-boolean-result-test
 
