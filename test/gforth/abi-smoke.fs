@@ -160,6 +160,28 @@ legacy-add-adapter-test
 4 5 ' ABI-LT-OR-LEGACY -1 assert-raw-binary
 5 4 ' ABI-LT-OR-LEGACY 0 assert-raw-binary
 
+\ Decimal literals are parsed before becoming raw cells, so oversized
+\ source literals fail by THROW instead of becoming double-cell stack garbage.
+: parse-natural-literal-test ( -- )
+  s" 25" ABI-PARSE-NAT 25 = abi-assert
+;
+parse-natural-literal-test
+
+: parse-natural-empty-test ( -- )
+  s" " ABI-PARSE-NAT DROP
+;
+' parse-natural-empty-test CATCH ABI-ERR-NAT-LITERAL = abi-assert
+
+: parse-natural-invalid-digit-test ( -- )
+  s" 12x" ABI-PARSE-NAT DROP
+;
+' parse-natural-invalid-digit-test CATCH ABI-ERR-NAT-LITERAL = abi-assert
+
+: parse-natural-overflow-test ( -- )
+  s" 9999999999999999999999999999999999999999" ABI-PARSE-NAT DROP
+;
+' parse-natural-overflow-test CATCH ABI-ERR-NAT-OVERFLOW = abi-assert
+
 \ Raw Nat adapters enforce the finite signed-cell range instead of inheriting
 \ Gforth's wrapping/unchecked native arithmetic behavior.
 : raw-add-overflow-test ( -- )
