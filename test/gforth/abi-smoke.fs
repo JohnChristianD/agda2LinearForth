@@ -392,6 +392,11 @@ retained-divisor @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
 ;
 ' unknown-handle-test CATCH ABI-ERR-UNKNOWN-HANDLE = abi-assert
 
+: unreachable-boundary-test ( -- )
+  ABI-ERROR-UNREACHABLE
+;
+' unreachable-boundary-test CATCH ABI-ERR-UNREACHABLE = abi-assert
+
 : unsupported-boundary-test ( -- )
   ABI-ERROR-COMPILED-UNSUPPORTED
 ;
