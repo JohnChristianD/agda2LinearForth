@@ -91,14 +91,16 @@ jobs:
       - name: Verify unsupported literals fail through the catchable runtime boundary
         run: |
           cabal run agda2forth -- -i test test/UnsupportedLiteral.agda
-          grep -Fq 'not yet supported: String literals' UnsupportedLiteral.fth
-          grep -Fq 'not yet supported: Float literals' UnsupportedLiteral.fth
-          grep -Fq 'ABI-ERROR-COMPILED-UNSUPPORTED' UnsupportedLiteral.fth
+          grep -Fq 'not yet supported: String literals " ABI-ERROR-COMPILED-UNSUPPORTED' UnsupportedLiteral.fth
+          grep -Fq 'not yet supported: Float literals " ABI-ERROR-COMPILED-UNSUPPORTED' UnsupportedLiteral.fth
           if grep -Eq '(^|[[:space:]])bye([[:space:]]|$)' UnsupportedLiteral.fth; then
             echo "unsupported output must throw, not terminate Gforth with BYE"
             exit 1
           fi
-          gforth UnsupportedLiteral.fth test/gforth/unsupported-boundary.fs
+          gforth UnsupportedLiteral.fth test/gforth/unsupported-boundary.fs > unsupported-boundary.log
+          grep -Fq 'unsupported-boundary-tests-passed' unsupported-boundary.log
+          grep -Fq 'not yet supported: String literals' unsupported-boundary.log
+          grep -Fq 'not yet supported: Float literals' unsupported-boundary.log
 
       - name: Compile and execute supported primitive applications end to end
         run: |

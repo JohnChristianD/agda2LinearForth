@@ -1594,21 +1594,21 @@ data BackendLiteral : Set where
   backendStringLiteral backendFloatLiteral : BackendLiteral
 
 data LiteralEmission : Set where
-  emitNaturalCell emitTrueCell emitFalseCell emitDiagnosticThrow : LiteralEmission
+  emitNaturalCell emitTrueCell emitFalseCell emitLiteralDiagnosticThrow : LiteralEmission
 
 emitBackendLiteral : BackendLiteral → LiteralEmission
 emitBackendLiteral (backendNatLiteral n) = emitNaturalCell
 emitBackendLiteral backendTrueLiteral = emitTrueCell
 emitBackendLiteral backendFalseLiteral = emitFalseCell
-emitBackendLiteral backendStringLiteral = emitDiagnosticThrow
-emitBackendLiteral backendFloatLiteral = emitDiagnosticThrow
+emitBackendLiteral backendStringLiteral = emitLiteralDiagnosticThrow
+emitBackendLiteral backendFloatLiteral = emitLiteralDiagnosticThrow
 
 unsupportedFloatLiteralUsesCatchableDiagnostic :
-  emitBackendLiteral backendFloatLiteral ≡ emitDiagnosticThrow
+  emitBackendLiteral backendFloatLiteral ≡ emitLiteralDiagnosticThrow
 unsupportedFloatLiteralUsesCatchableDiagnostic = refl
 
 unsupportedStringLiteralUsesCatchableDiagnostic :
-  emitBackendLiteral backendStringLiteral ≡ emitDiagnosticThrow
+  emitBackendLiteral backendStringLiteral ≡ emitLiteralDiagnosticThrow
 unsupportedStringLiteralUsesCatchableDiagnostic = refl
 
 -- ── 6. Runtime dispatch table mirrored from data/FLib.fth ──
