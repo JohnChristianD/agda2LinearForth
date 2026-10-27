@@ -444,5 +444,5 @@ nested-linear-leaf @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 : assert-empty-data-stack ( -- )
   depth 0<> abort" ABI smoke test leaked data-stack values"
 ;
-assert-empty-data-stack"
+assert-empty-data-stack
 BYE
