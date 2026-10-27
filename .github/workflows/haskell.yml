@@ -88,6 +88,17 @@ jobs:
         run: |
           "$HOME/.local/bin/agda" --safe --no-libraries -i formal formal/LinearModalSafety.agda
 
+      - name: Verify oversized Nat literals fail through the bounded runtime parser
+        run: |
+          cabal run agda2forth -- -i test test/UnsupportedNatLiteral.agda
+          grep -Fq 'ABI-PARSE-NAT' UnsupportedNatLiteral.fth
+          if grep -Eq '(^|[[:space:]])bye([[:space:]]|$)' UnsupportedNatLiteral.fth; then
+            echo "oversized Nat output must throw, not terminate Gforth with BYE"
+            exit 1
+          fi
+          gforth UnsupportedNatLiteral.fth test/gforth/unsupported-nat-literal.fs > unsupported-nat-literal.log
+          grep -Fq 'oversized-nat-literal-tests-passed' unsupported-nat-literal.log
+
       - name: Verify unsupported string literals fail through the catchable runtime boundary
         run: |
           cabal run agda2forth -- -i test test/UnsupportedLiteral.agda
