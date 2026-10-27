@@ -455,16 +455,31 @@ s" invalid Agda boolean payload" exception constant ABI-ERR-INVALID-BOOLEAN
     value mode meta
 ;
 
+\ Validate the raw-cell boundary before performing Agda Nat operations.
+\ Since Gforth cells are signed, negative values are not Nat values. The
+\ upper bound is ABI-MAX-NAT, the largest nonnegative signed cell.
+: requireNatCell { value -- value }
+    value 0< IF ABI-ERR-NAT-NEGATIVE THROW THEN
+    value ABI-MAX-NAT > IF ABI-ERR-NAT-OVERFLOW THROW THEN
+    value
+;
+
 : ABI-ADD-RAW { left right -- value }
+    left requireNatCell DROP
+    right requireNatCell DROP
     left ABI-MAX-NAT right - > IF ABI-ERR-NAT-OVERFLOW THROW THEN
     left right +
 ;
 
 : ABI-SUB-RAW { left right -- value }
+    left requireNatCell DROP
+    right requireNatCell DROP
     left right < IF 0 ELSE left right - THEN
 ;
 
 : ABI-MUL-RAW { left right -- value }
+    left requireNatCell DROP
+    right requireNatCell DROP
     right 0<> IF
         left ABI-MAX-NAT right / > IF ABI-ERR-NAT-OVERFLOW THROW THEN
     THEN
@@ -472,24 +487,34 @@ s" invalid Agda boolean payload" exception constant ABI-ERR-INVALID-BOOLEAN
 ;
 
 : ABI-QUOT-RAW { left right -- value }
+    left requireNatCell DROP
+    right requireNatCell DROP
     right 0= IF ABI-ERR-ARITHMETIC-DOMAIN THROW THEN
     left right /
 ;
 
 : ABI-REM-RAW { left right -- value }
+    left requireNatCell DROP
+    right requireNatCell DROP
     right 0= IF ABI-ERR-ARITHMETIC-DOMAIN THROW THEN
     left right mod
 ;
 
 : ABI-EQ-RAW { left right -- value }
+    left requireNatCell DROP
+    right requireNatCell DROP
     left right = IF -1 ELSE 0 THEN
 ;
 
 : ABI-GEQ-RAW { left right -- value }
+    left requireNatCell DROP
+    right requireNatCell DROP
     left right >= IF -1 ELSE 0 THEN
 ;
 
 : ABI-LT-RAW { left right -- value }
+    left requireNatCell DROP
+    right requireNatCell DROP
     left right < IF -1 ELSE 0 THEN
 ;
 
@@ -560,7 +585,7 @@ s" invalid Agda boolean payload" exception constant ABI-ERR-INVALID-BOOLEAN
 ;
 
 : ABI-ADD-OR-LEGACY ( left right -- result )
-    ['] ABI-NAT-ADD ['] + ABI-DISPATCH-BINARY
+    ['] ABI-NAT-ADD ['] ABI-ADD-RAW ABI-DISPATCH-BINARY
 ;
 : ABI-SUB-OR-LEGACY ( left right -- result )
     ['] ABI-NAT-SUB ['] - ABI-DISPATCH-BINARY
@@ -570,22 +595,22 @@ s" invalid Agda boolean payload" exception constant ABI-ERR-INVALID-BOOLEAN
     ['] ABI-NAT-MONUS ['] ABI-SUB-RAW ABI-DISPATCH-BINARY
 ;
 : ABI-MUL-OR-LEGACY ( left right -- result )
-    ['] ABI-NAT-MUL ['] * ABI-DISPATCH-BINARY
+    ['] ABI-NAT-MUL ['] ABI-MUL-RAW ABI-DISPATCH-BINARY
 ;
 : ABI-QUOT-OR-LEGACY ( left right -- result )
-    ['] ABI-NAT-QUOT ['] / ABI-DISPATCH-BINARY
+    ['] ABI-NAT-QUOT ['] ABI-QUOT-RAW ABI-DISPATCH-BINARY
 ;
 : ABI-REM-OR-LEGACY ( left right -- result )
-    ['] ABI-NAT-REM ['] mod ABI-DISPATCH-BINARY
+    ['] ABI-NAT-REM ['] ABI-REM-RAW ABI-DISPATCH-BINARY
 ;
 : ABI-EQ-OR-LEGACY ( left right -- result )
-    ['] ABI-NAT-EQ ['] = ABI-DISPATCH-BINARY
+    ['] ABI-NAT-EQ ['] ABI-EQ-RAW ABI-DISPATCH-BINARY
 ;
 : ABI-GEQ-OR-LEGACY ( left right -- result )
-    ['] ABI-NAT-GEQ ['] >= ABI-DISPATCH-BINARY
+    ['] ABI-NAT-GEQ ['] ABI-GEQ-RAW ABI-DISPATCH-BINARY
 ;
 : ABI-LT-OR-LEGACY ( left right -- result )
-    ['] ABI-NAT-LT ['] < ABI-DISPATCH-BINARY
+    ['] ABI-NAT-LT ['] ABI-LT-RAW ABI-DISPATCH-BINARY
 ;
 
 : assertModalValue { handle -- handle }
