@@ -424,14 +424,28 @@ VARIABLE nested-moved-closure
 VARIABLE nested-linear-leaf
 : nested-fail-after-capture ( x -- ) drop -4333 THROW ;
 ' nested-fail-after-capture declareLinearSafeXT
-: build-nested-linear-closure ( -- )
-  99 MODE-LINEAR ABI-MAKE-SCALAR DUP nested-linear-input !
-  ['] identity-body makeTHUNK assertLinear pass nested-first-closure !
-  nested-first-closure @ metadata@ META-ENV cells + @ @ nested-linear-leaf !
-  ['] nested-fail-after-capture makeTHUNK assertLinear
-  nested-first-closure @ swap pass nested-outer-closure !
-  nested-outer-closure @ metadata@ META-ENV cells + @ @ nested-moved-closure !
+: assert-stack-depth ( expected -- )
+  depth <> abort" unexpected data-stack depth"
 ;
+: build-nested-linear-closure ( -- )
+  depth { initialDepth }
+  99 MODE-LINEAR ABI-MAKE-SCALAR DUP nested-linear-input !
+  depth initialDepth 1+ <> abort" scalar setup stack effect mismatch"
+  ['] identity-body makeTHUNK assertLinear pass nested-first-closure !
+  depth initialDepth <> abort" first closure stack effect mismatch"
+  nested-first-closure @ metadata@ META-ENV cells + @ @ nested-linear-leaf !
+  depth initialDepth <> abort" leaf lookup stack effect mismatch"
+  ['] nested-fail-after-capture makeTHUNK assertLinear
+  depth initialDepth 1+ <> abort" outer code setup stack effect mismatch"
+  nested-first-closure @ swap pass nested-outer-closure !
+  depth initialDepth <> abort" outer closure stack effect mismatch"
+  nested-outer-closure @ metadata@ META-ENV cells + @ @ nested-moved-closure !
+  depth initialDepth <> abort" moved closure lookup stack effect mismatch"
+;
+: assert-empty-before-nested-build ( -- )
+  depth 0<> abort" data stack was already dirty before nested closure build"
+;
+assert-empty-before-nested-build
 build-nested-linear-closure
 : assert-nested-build-stack ( -- )
   depth 0<> abort" nested closure build leaked data stack"
