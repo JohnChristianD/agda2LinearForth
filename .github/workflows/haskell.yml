@@ -100,6 +100,18 @@ jobs:
           grep -Fq 'unsupported-boundary-tests-passed' unsupported-boundary.log
           grep -Fq 'not yet supported: String literals' unsupported-boundary.log
 
+      - name: Verify unsupported axioms fail through the catchable runtime boundary
+        run: |
+          cabal run agda2forth -- -i test test/UnsupportedAxiom.agda
+          grep -Fq 'encountered axiom: unknownNat' UnsupportedAxiom.fth
+          if grep -Eq '(^|[[:space:]])bye([[:space:]]|$)' UnsupportedAxiom.fth; then
+            echo "unsupported axiom output must throw, not terminate Gforth with BYE"
+            exit 1
+          fi
+          gforth UnsupportedAxiom.fth test/gforth/unsupported-axiom-boundary.fs > unsupported-axiom-boundary.log
+          grep -Fq 'unsupported-axiom-tests-passed' unsupported-axiom-boundary.log
+          grep -Fq 'encountered axiom: unknownNat' unsupported-axiom-boundary.log
+
       - name: Compile and execute supported primitive applications end to end
         run: |
           cabal run agda2forth -- -i test test/CheckedScalar.agda
