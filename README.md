@@ -36,7 +36,7 @@ GNU Gforth
 | `test/UnsupportedLiteral.agda` and `test/gforth/unsupported-boundary.fs` | Unsupported String literal and catchable error path | Compiled and executed by CI |
 | `test/UnsupportedAxiom.agda` and `test/gforth/unsupported-axiom-boundary.fs` | Referenced Agda axiom fails closed through a catchable error | Compiled and executed by CI |
 | `test/UnsupportedNatLiteral.agda` and `test/gforth/unsupported-nat-literal.fs` | Oversized Nat literal throws from generated Forth | Compiled and executed by CI |
-| `test/gforth/abi-smoke.fs` | Raw Nat literal parsing, cell bounds, arithmetic overflow, and domain errors | Executed by CI |
+| `test/gforth/abi-smoke.fs` | Raw Nat literal parsing, cell bounds, arithmetic overflow/domain errors, and catchable unreachable-branch boundary | Executed by CI |
 
 ### Source-provenance boundary
 
@@ -84,7 +84,7 @@ The integration suite contains **23 expected Nat/Bool results**. Those execution
 - Nat literals are emitted as decimal strings and parsed by `ABI-PARSE-NAT`; parsing produces one raw cell or throws a catchable range/format error.
 - The special Boolean constructors are emitted as raw flags: `-1` for true and `0` for false.
 - Not every source value is wrapped in a managed scalar/Boolean descriptor. Therefore a compiled value is not guaranteed to carry a runtime witness for its source modality.
-- The shared unsupported-output path emits a diagnostic and invokes `ABI-ERROR-COMPILED-UNSUPPORTED`. That runtime word raises a catchable `THROW`; the String-literal fixture checks the error code, verifies the diagnostic, rejects a generated `BYE`, and checks stack balance.
+- The shared unsupported-output path emits a diagnostic and invokes `ABI-ERROR-COMPILED-UNSUPPORTED`. That runtime word raises a catchable `THROW`; String-literal and referenced-axiom fixtures check the error code and stack balance. Unsupported primitives no longer fall through to generic closure application, malformed Bool cases fail closed, and unmatched unreachable pattern branches invoke the catchable `ABI-ERROR-UNREACHABLE` path.
 - The literal fallback rejects kinds outside the directly emitted Nat path. String literals and referenced axioms now have dedicated catchable-boundary integration tests.
 - Do not assume every unknown builtin fails closed. A definition not recognized by the direct/special mapping can fall through to generic name/application handling. An exhaustive checked allowlist for an explicitly supported source subset is still missing.
 
