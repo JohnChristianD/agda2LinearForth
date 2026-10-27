@@ -1048,10 +1048,6 @@ stackAppendAssoc :
 stackAppendAssoc [] ys zs = refl
 stackAppendAssoc (x :: xs) ys zs rewrite stackAppendAssoc xs ys zs = refl
 
-symEq :
-  {A : Set} {x y : A} → x ≡ y → y ≡ x
-symEq refl = refl
-
 stackTailFrame :
   {p : Primitive} {input output : StackShape} →
   StackEffect p input output →
