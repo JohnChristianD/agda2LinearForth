@@ -1038,6 +1038,94 @@ data StackEffect : Primitive → StackShape → StackShape → Set where
   printModalEffect : {A : CoreTy} {tail : StackShape} →
     StackEffect pPrint (valueItem (!Ty A) :: tail) (valueItem (!Ty A) :: tail)
 
+-- A stack-tail frame law for the declarative stack-effect semantics.
+-- It is stronger than testing a primitive at an empty stack: any framed suffix
+-- remains unchanged by the specified effect. This is a theorem about StackEffect,
+-- not yet the implementation-correspondence theorem for the Forth word.
+stackAppendAssoc :
+  {A : Set} (xs ys zs : List A) →
+  ((xs ++ ys) ++ zs) ≡ (xs ++ (ys ++ zs))
+stackAppendAssoc [] ys zs = refl
+stackAppendAssoc (x :: xs) ys zs rewrite stackAppendAssoc xs ys zs = refl
+
+symEq :
+  {A : Set} {x y : A} → x ≡ y → y ≡ x
+symEq refl = refl
+
+stackTailFrame :
+  {p : Primitive} {input output : StackShape} →
+  StackEffect p input output →
+  (frame : StackShape) →
+  StackEffect p (input ++ frame) (output ++ frame)
+stackTailFrame (natAddEffect {A = A} {B = B} {tail = tail} leftNat rightNat) frame =
+  natAddEffect {A = A} {B = B} {tail = tail ++ frame} leftNat rightNat
+stackTailFrame (natSubEffect {A = A} {B = B} {tail = tail} leftNat rightNat) frame =
+  natSubEffect {A = A} {B = B} {tail = tail ++ frame} leftNat rightNat
+stackTailFrame (natMulEffect {A = A} {B = B} {tail = tail} leftNat rightNat) frame =
+  natMulEffect {A = A} {B = B} {tail = tail ++ frame} leftNat rightNat
+stackTailFrame (natQuotEffect {A = A} {B = B} {tail = tail} leftNat rightNat) frame =
+  natQuotEffect {A = A} {B = B} {tail = tail ++ frame} leftNat rightNat
+stackTailFrame (natRemEffect {A = A} {B = B} {tail = tail} leftNat rightNat) frame =
+  natRemEffect {A = A} {B = B} {tail = tail ++ frame} leftNat rightNat
+stackTailFrame (natEqEffect {A = A} {B = B} {tail = tail} leftNat rightNat) frame =
+  natEqEffect {A = A} {B = B} {tail = tail ++ frame} leftNat rightNat
+stackTailFrame (natGeqEffect {A = A} {B = B} {tail = tail} leftNat rightNat) frame =
+  natGeqEffect {A = A} {B = B} {tail = tail ++ frame} leftNat rightNat
+stackTailFrame (natLtEffect {A = A} {B = B} {tail = tail} leftNat rightNat) frame =
+  natLtEffect {A = A} {B = B} {tail = tail ++ frame} leftNat rightNat
+stackTailFrame (natMonusEffect {A = A} {B = B} {tail = tail} leftNat rightNat) frame =
+  natMonusEffect {A = A} {B = B} {tail = tail ++ frame} leftNat rightNat
+stackTailFrame (makeScalarEffect {m = m} {tail = tail}) frame =
+  makeScalarEffect {m = m} {tail = tail ++ frame}
+stackTailFrame (makeBooleanEffect {m = m} {tail = tail}) frame =
+  makeBooleanEffect {m = m} {tail = tail ++ frame}
+stackTailFrame (makeLinearThunkEffect {c = c} {tail = tail} safeCode) frame =
+  makeLinearThunkEffect {c = c} {tail = tail ++ frame} safeCode
+stackTailFrame (makeModalThunkEffect {c = c} {tail = tail} safeCode) frame =
+  makeModalThunkEffect {c = c} {tail = tail ++ frame} safeCode
+stackTailFrame (applyLinearEffect {m = m} {c = c} {captures = captures}
+  {A = A} {B = B} {tail = tail} safeCode) frame =
+  applyLinearEffect {m = m} {c = c} {captures = captures} {A = A} {B = B}
+    {tail = tail ++ frame} safeCode
+stackTailFrame (forceLinearEffect {c = c} {captures = captures}
+  {A = A} {tail = tail} safeCode) frame =
+  forceLinearEffect {c = c} {captures = captures} {A = A} {tail = tail ++ frame} safeCode
+stackTailFrame (forceModalEffect {c = c} {captures = captures}
+  {A = A} {tail = tail} safeCode modalCaptures) frame =
+  forceModalEffect {c = c} {captures = captures} {A = A} {tail = tail ++ frame}
+    safeCode modalCaptures
+stackTailFrame (makeResultEffect {A = A} {tail = tail}) frame =
+  makeResultEffect {A = A} {tail = tail ++ frame}
+stackTailFrame (unwrapResultEffect {A = A} {tail = tail}) frame =
+  unwrapResultEffect {A = A} {tail = tail ++ frame}
+stackTailFrame (promoteModalEffect {c = c} {captures = captures}
+  {A = A} {tail = tail} safeCode modalCaptures) frame =
+  promoteModalEffect {c = c} {captures = captures} {A = A} {tail = tail ++ frame}
+    safeCode modalCaptures
+stackTailFrame (assertLinearEffect {c = c} {captures = captures}
+  {A = A} {tail = tail} {m = m} safeCode) frame =
+  assertLinearEffect {c = c} {captures = captures} {A = A}
+    {tail = tail ++ frame} {m = m} safeCode
+stackTailFrame (ifModalBranchesEffect {C = C} {A = A} {c1 = c1} {c2 = c2}
+  {captures1 = captures1} {captures2 = captures2} {tail = tail}
+  condition modalCode1 modalCode2 capturesSafe1 capturesSafe2) frame =
+  ifModalBranchesEffect {C = C} {A = A} {c1 = c1} {c2 = c2}
+    {captures1 = captures1} {captures2 = captures2} {tail = tail ++ frame}
+    condition modalCode1 modalCode2 capturesSafe1 capturesSafe2
+stackTailFrame (constructEffect sig {tail = tail}) frame =
+  subst
+    {P = λ input → StackEffect pConstruct input
+      (valueItem (constructorResult sig) :: (tail ++ frame))}
+    (symEq (stackAppendAssoc (valuesOf (constructorFields sig))
+      (constructorTokenItem (constructorTag sig) :: tail) frame))
+    (constructEffect sig {tail = tail ++ frame})
+stackTailFrame (matchEffect sig {tail = tail}) frame =
+  matchEffect sig {tail = tail ++ frame}
+stackTailFrame (printLinearEffect {A = A} {tail = tail} linearTy) frame =
+  printLinearEffect {A = A} {tail = tail ++ frame} linearTy
+stackTailFrame (printModalEffect {A = A} {tail = tail}) frame =
+  printModalEffect {A = A} {tail = tail ++ frame}
+
 -- These are error transitions, not ordinary stack-returning effects. The
 -- state/error payload is modeled by Execution and the WP contracts.
 data ErrorEffect : Primitive → StackShape → RuntimeError → Set where
