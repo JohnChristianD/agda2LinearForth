@@ -441,5 +441,8 @@ nested-outer-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 nested-moved-closure @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 nested-linear-leaf @ metadata@ META-STATE cells + @ OWN-CONSUMED = abi-assert
 
-depth 0<> abort" ABI smoke test leaked data-stack values"
+: assert-empty-data-stack ( -- )
+  depth 0<> abort" ABI smoke test leaked data-stack values"
+;
+assert-empty-data-stack"
 BYE
