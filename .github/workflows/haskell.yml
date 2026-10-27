@@ -13,7 +13,7 @@ jobs:
         env:
           SCHEME_UPSTREAM_SHA: 6b3d975e9274448c09b5939e637b6718c2cfb10c
           FORTH_UPSTREAM_SHA: e83f8cc735bf220f80b3655ce2158a23818910fe
-          FLIB_BASELINE_BLOB: 46ba6a5ab8c657c42c07169cf13c95a5533b41e0
+          FLIB_EXPECTED_BLOB: 30477369597107b579ffac29735c42b6e326b0d0
         run: |
           git fetch --no-tags --depth=1 https://github.com/jespercockx/agda2scheme.git "$SCHEME_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$SCHEME_UPSTREAM_SHA"
@@ -24,8 +24,8 @@ jobs:
           # ToForth.hs is the one explicitly permitted Haskell exception; keep Main.hs pinned.
           git diff --exit-code "$FORTH_UPSTREAM_SHA" HEAD -- src/Main.hs
 
-          # The runtime dispatch table in LinearModalSafety.agda mirrors this exact baseline.
-          test "$(git hash-object data/FLib.fth)" = "$FLIB_BASELINE_BLOB"
+          # Pin the reviewed runtime implementation while allowing only ToForth.hs among Haskell files.
+          test "$(git hash-object data/FLib.fth)" = "$FLIB_EXPECTED_BLOB"
 
       - name: Set up GHC
         uses: haskell-actions/setup@v2
@@ -88,6 +88,17 @@ jobs:
         run: |
           "$HOME/.local/bin/agda" --safe --no-libraries -i formal formal/LinearModalSafety.agda
 
+      - name: Verify oversized Nat literals fail through the bounded runtime parser
+        run: |
+          cabal run agda2forth -- -i test test/UnsupportedNatLiteral.agda
+          grep -Fq 'ABI-PARSE-NAT' UnsupportedNatLiteral.fth
+          if grep -Eq '(^|[[:space:]])bye([[:space:]]|$)' UnsupportedNatLiteral.fth; then
+            echo "oversized Nat output must throw, not terminate Gforth with BYE"
+            exit 1
+          fi
+          gforth UnsupportedNatLiteral.fth test/gforth/unsupported-nat-literal.fs > unsupported-nat-literal.log
+          grep -Fq 'oversized-nat-literal-tests-passed' unsupported-nat-literal.log
+
       - name: Verify unsupported string literals fail through the catchable runtime boundary
         run: |
           cabal run agda2forth -- -i test test/UnsupportedLiteral.agda
@@ -100,9 +111,22 @@ jobs:
           grep -Fq 'unsupported-boundary-tests-passed' unsupported-boundary.log
           grep -Fq 'not yet supported: String literals' unsupported-boundary.log
 
+      - name: Verify unsupported axioms fail through the catchable runtime boundary
+        run: |
+          cabal run agda2forth -- -i test test/UnsupportedAxiom.agda
+          grep -Fq 'encountered axiom: unknownNat' UnsupportedAxiom.fth
+          if grep -Eq '(^|[[:space:]])bye([[:space:]]|$)' UnsupportedAxiom.fth; then
+            echo "unsupported axiom output must throw, not terminate Gforth with BYE"
+            exit 1
+          fi
+          gforth UnsupportedAxiom.fth test/gforth/unsupported-axiom-boundary.fs > unsupported-axiom-boundary.log
+          grep -Fq 'unsupported-axiom-tests-passed' unsupported-axiom-boundary.log
+          grep -Fq 'encountered axiom: unknownNat' unsupported-axiom-boundary.log
+
       - name: Compile and execute supported primitive applications end to end
         run: |
           cabal run agda2forth -- -i test test/CheckedScalar.agda
+          grep -Eq 's" [0-9]+[[:space:]]*" ABI-PARSE-NAT' CheckedScalar.fth
           echo "---- emitted CheckedScalar.fth ----"
           cat CheckedScalar.fth
           echo "---- generated primitive execution ----"

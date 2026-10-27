@@ -160,6 +160,55 @@ legacy-add-adapter-test
 4 5 ' ABI-LT-OR-LEGACY -1 assert-raw-binary
 5 4 ' ABI-LT-OR-LEGACY 0 assert-raw-binary
 
+\ Decimal literals are parsed before becoming raw cells, so oversized
+\ source literals fail by THROW instead of becoming double-cell stack garbage.
+: parse-natural-literal-test ( -- )
+  s" 25" ABI-PARSE-NAT 25 = abi-assert
+;
+parse-natural-literal-test
+
+: parse-natural-empty-test ( -- )
+  s" " ABI-PARSE-NAT DROP
+;
+' parse-natural-empty-test CATCH ABI-ERR-NAT-LITERAL = abi-assert
+
+: parse-natural-invalid-digit-test ( -- )
+  s" 12x" ABI-PARSE-NAT DROP
+;
+' parse-natural-invalid-digit-test CATCH ABI-ERR-NAT-LITERAL = abi-assert
+
+: parse-natural-overflow-test ( -- )
+  s" 9999999999999999999999999999999999999999" ABI-PARSE-NAT DROP
+;
+' parse-natural-overflow-test CATCH ABI-ERR-NAT-OVERFLOW = abi-assert
+
+\ Raw Nat adapters enforce the finite signed-cell range instead of inheriting
+\ Gforth's wrapping/unchecked native arithmetic behavior.
+: raw-add-overflow-test ( -- )
+  ABI-MAX-NAT 1 ABI-ADD-OR-LEGACY DROP
+;
+' raw-add-overflow-test CATCH ABI-ERR-NAT-OVERFLOW = abi-assert
+
+: raw-multiply-overflow-test ( -- )
+  ABI-MAX-NAT 2 ABI-MUL-OR-LEGACY DROP
+;
+' raw-multiply-overflow-test CATCH ABI-ERR-NAT-OVERFLOW = abi-assert
+
+: raw-add-negative-test ( -- )
+  -1 1 ABI-ADD-OR-LEGACY DROP
+;
+' raw-add-negative-test CATCH ABI-ERR-NAT-NEGATIVE = abi-assert
+
+: raw-monus-negative-test ( -- )
+  -1 3 ABI-MONUS-OR-LEGACY DROP
+;
+' raw-monus-negative-test CATCH ABI-ERR-NAT-NEGATIVE = abi-assert
+
+: raw-quot-zero-test ( -- )
+  10 0 ABI-QUOT-OR-LEGACY DROP
+;
+' raw-quot-zero-test CATCH ABI-ERR-ARITHMETIC-DOMAIN = abi-assert
+
 \ The same matrix through tracked handles exercises checked dispatch and result kinds.
 : assert-checked-scalar { left right operation expected -- }
   left MODE-MODAL ABI-MAKE-SCALAR
@@ -342,6 +391,11 @@ retained-divisor @ metadata@ META-STATE cells + @ OWN-LIVE = abi-assert
   123 assertLinear DROP
 ;
 ' unknown-handle-test CATCH ABI-ERR-UNKNOWN-HANDLE = abi-assert
+
+: unreachable-boundary-test ( -- )
+  ABI-ERROR-UNREACHABLE
+;
+' unreachable-boundary-test CATCH ABI-ERR-UNREACHABLE = abi-assert
 
 : unsupported-boundary-test ( -- )
   ABI-ERROR-COMPILED-UNSUPPORTED

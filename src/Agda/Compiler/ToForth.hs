@@ -242,9 +242,10 @@ fthPatternMatch x cases maybeFallback  = RSList
         , " then "
         ]
       makeForthy arg (other:xs) fallback = T.append
-        (T.pack "ENCOUNTERED UNEXPECTED PATTERN WHEN COMPILING PATTERN MATCHING")
+        (T.pack "ABI-ERROR-COMPILED-UNSUPPORTED ")
         (makeForthy arg xs fallback)
-      makeForthy arg [] fallback = T.concat (map formToAtom (maybeToList fallback))
+      makeForthy arg [] (Just fallback) = formToAtom fallback
+      makeForthy arg [] Nothing = T.pack "ABI-ERROR-UNREACHABLE "
 
 fthUnit :: FthForm
 fthUnit = RSList [RSAtom "0"]
@@ -472,7 +473,8 @@ instance ToForth Definition (Maybe FthForm) where
     let f = defName def
     case theDef def of
       Axiom{} -> do
-        return $ Just $ RSAtom ""
+        f' <- toForth f
+        return $ Just $ fthAxiom f'
       GeneralizableVar{} -> return Nothing
       d@Function{} | d ^. funInline -> return Nothing
       Function{} -> do
@@ -513,7 +515,20 @@ instance ToForth TTerm FthForm where
           applyToArgs $ RSAtom name
       TPrim p -> case fthDirectPrimitive p args' of
         Just direct -> return direct
-        Nothing -> toForth p >>= applyToArgs
+        Nothing -> case p of
+          -- These are the only primitives with an implemented curried lowering.
+          -- Retain that path for partial applications; never route an unknown
+          -- primitive through generic pass/closure lowering.
+          PAdd  -> toForth p >>= applyToArgs
+          PSub  -> toForth p >>= applyToArgs
+          PMul  -> toForth p >>= applyToArgs
+          PQuot -> toForth p >>= applyToArgs
+          PRem  -> toForth p >>= applyToArgs
+          PIf   -> toForth p >>= applyToArgs
+          PEqI  -> toForth p >>= applyToArgs
+          PGeq  -> toForth p >>= applyToArgs
+          PLt   -> toForth p >>= applyToArgs
+          _     -> return $ fthError $ T.pack $ "not yet supported: primitive " ++ show p
       TDef d -> do
         direct <- fthDirectDefinition d args'
         case direct of
@@ -578,7 +593,7 @@ instance ToForth TTerm FthForm where
                     | c1 == conName falseC = (v2',v1')
                     | otherwise            = __IMPOSSIBLE__
               applyToArgs $ RSList [x, RSAtom "if", thenBranch, RSAtom "else", elseBranch, RSAtom "then"]
-            _ -> return $ RSAtom "ERRONEOUS BOOLCASE DURING CASE MATCHING"
+            _ -> return $ fthError "unsupported Bool case shape"
 
       TUnit -> do
         unless (null args) __IMPOSSIBLE__
@@ -609,7 +624,10 @@ instance ToForth TPrim FthForm where
 
 instance ToForth Literal FthForm where
   toForth lit = case lit of
-    LitNat    x -> return $ RSAtom (T.pack (show x))
+    -- Keep Nat literals as decimal text until the runtime can validate the
+    -- value against its actual signed-cell bound. Emitting a huge token bare
+    -- can make Gforth push a double-cell value or reject it before ABI checks.
+    LitNat    x -> return $ RSAtom (T.pack ("s\" " ++ show x ++ "\" ABI-PARSE-NAT"))
     LitWord64 x -> return $ fthError "not yet supported: Word64 literals"
     LitFloat  x -> return $ fthError "not yet supported: Float literals"
     LitString x -> return $ fthError "not yet supported: String literals"
