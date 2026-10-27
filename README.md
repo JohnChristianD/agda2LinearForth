@@ -35,6 +35,7 @@ GNU Gforth
 | `test/gforth/abi-smoke.fs` | Direct runtime ABI regressions | Executed by CI |
 | `test/UnsupportedLiteral.agda` and `test/gforth/unsupported-boundary.fs` | Unsupported String literal and catchable error path | Compiled and executed by CI |
 | `test/UnsupportedAxiom.agda` and `test/gforth/unsupported-axiom-boundary.fs` | Referenced Agda axiom fails closed through a catchable error | Compiled and executed by CI |
+| `test/UnsupportedNatLiteral.agda` and `test/gforth/unsupported-nat-literal.fs` | Oversized Nat literal throws from generated Forth | Compiled and executed by CI |
 | `test/gforth/abi-smoke.fs` | Raw Nat literal parsing, cell bounds, arithmetic overflow, and domain errors | Executed by CI |
 
 ### Source-provenance boundary
@@ -119,7 +120,7 @@ Its theorems concern explicitly defined Agda models. The module includes:
 2. **Weakest-precondition contracts.** Commands produce a normal or exceptional outcome with state. WP uses separate normal and exceptional postconditions and includes sequencing and `CATCH` laws. This finite-outcome model is not a complete semantics for arbitrary divergence.
 3. **Declarative stack effects.** `StackEffect` records allowed stack shapes for selected modeled operations. `stackTailFrame` proves a suffix-preservation property of that relation. It does not prove that the concrete Forth words obey the relation.
 4. **Selected allocation, error, result, and closure contracts.** These are proofs about transitions defined in the Agda model, not automatic proofs about dictionary or metadata mutation in Gforth.
-5. **Nat stack-program forward simulation and cell-bound contract.** The Nat fragment has a linear target-program representation: raw Nat-cell pushes followed by modeled `ABI-ADD-OR-LEGACY`, `ABI-MUL-OR-LEGACY`, and `ABI-MONUS-OR-LEGACY` instructions. An inductive execution relation specifies their abstract raw/raw stack behavior. `natStackExecAppend` proves sequencing, and `emissionTreeAgreesWithStackProgram` connects the tree-shaped emission mirror to the linear program. `natExpressionForwardSimulatesStackProgram` proves the expression denotation is placed above an arbitrary unchanged stack tail. Because Agda `Nat` is unbounded but a concrete Gforth cell is finite, `NatCellRepresentable` additionally requires every literal and intermediate result to fit a supplied bound. `natExpressionBoundedForwardSimulatesStackProgram` combines that witness with the stack simulation. This is an explicit precondition in the model, not an emitted runtime check; choosing the concrete ABI bound and proving the emitter/runtime bridge remain separate obligations.
+5. **Nat stack-program forward simulation and cell-bound contract.** The Nat fragment has a linear target-program representation: raw Nat-cell pushes followed by modeled `ABI-ADD-OR-LEGACY`, `ABI-MUL-OR-LEGACY`, and `ABI-MONUS-OR-LEGACY` instructions. An inductive execution relation specifies their abstract raw/raw stack behavior. `natStackExecAppend` proves sequencing, and `emissionTreeAgreesWithStackProgram` connects the tree-shaped emission mirror to the linear program. `natExpressionForwardSimulatesStackProgram` proves the expression denotation is placed above an arbitrary unchanged stack tail. Because Agda `Nat` is unbounded but a concrete Gforth cell is finite, `NatCellRepresentable` additionally requires every literal and intermediate result to fit a supplied bound. `natExpressionBoundedForwardSimulatesStackProgram` combines that witness with the stack simulation. This is an explicit proof precondition rather than an emitted proof witness; the decimal parser and raw arithmetic adapters dynamically enforce finite-cell bounds. Choosing the model bound equal to the concrete `ABI-MAX-NAT` and proving the emitter/runtime bridge remain separate obligations.
 6. **Curried closure model.** Separate lemmas show that the modeled curried addition, monus, and multiplication closures preserve their corresponding arithmetic when applied.
 7. **Nat/Bool and compiler-boundary models.** Selected arithmetic, comparisons, conditionals, and errors are modeled. The boundary model explicitly represents the fact that raw Nat/Bool outputs lack a runtime mode witness.
 
@@ -159,7 +160,9 @@ agda --safe --no-libraries -i formal formal/LinearModalSafety.agda
 cabal run agda2forth -- -i test test/CheckedScalar.agda
 gforth CheckedScalar.fth test/gforth/compiler-integration.fs
 
-# Exercise unsupported String literals and axiom references.
+# Exercise oversized Nat literals, unsupported String literals, and axioms.
+cabal run agda2forth -- -i test test/UnsupportedNatLiteral.agda
+gforth UnsupportedNatLiteral.fth test/gforth/unsupported-nat-literal.fs
 cabal run agda2forth -- -i test test/UnsupportedLiteral.agda
 gforth UnsupportedLiteral.fth test/gforth/unsupported-boundary.fs
 cabal run agda2forth -- -i test test/UnsupportedAxiom.agda
@@ -193,6 +196,7 @@ A fixed-point value stored in data-stack cells may be a reasonable future extens
 | Checked managed ABI | Direct Gforth tests for enumerated cases |
 | Agda model | Type-checks under `--safe`; contains no postulates |
 | Modeled Nat-expression-to-stack-code simulation | Proven for literals, addition, multiplication, and monus with stack-tail preservation; finite-cell fit is an explicit proof precondition, not a runtime check |
+| Oversized Nat literal | Generated decimal string is parsed and overflow is caught end to end |
 | Unsupported String literal and referenced axiom | Catchable errors tested end to end |
 | Nat literal parsing and raw arithmetic | Invalid/oversized decimal, negative input, arithmetic overflow, and zero-divisor cases tested through catchable errors |
 | Exhaustive allowlist for supported source subset | Not implemented |
