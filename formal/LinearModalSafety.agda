@@ -1278,6 +1278,103 @@ compiledNatMonusUsesAdapter :
     abiMonusAdapterCode (compileNatFragment left) (compileNatFragment right)
 compiledNatMonusUsesAdapter left right = refl
 
+-- A small interpreter for the selected emitted Nat fragment. It deliberately
+-- treats booleans and checked handles as outside this Nat-only observation model.
+data NatFragmentObservation : Set where
+  observedNat : Nat → NatFragmentObservation
+  notObservedNat : NatFragmentObservation
+
+modelNatMonus : Nat → Nat → Nat
+modelNatMonus n zero = n
+modelNatMonus zero (suc m) = zero
+modelNatMonus (suc n) (suc m) = modelNatMonus n m
+
+natExprMeaning : NatExpr → Nat
+natExprMeaning (natLiteral n) = n
+natExprMeaning (natAddition left right) =
+  natExprMeaning left + natExprMeaning right
+natExprMeaning (natMultiplication left right) =
+  natExprMeaning left * natExprMeaning right
+natExprMeaning (natMonus left right) =
+  modelNatMonus (natExprMeaning left) (natExprMeaning right)
+
+observeNatFragment : EmittedFragment → NatFragmentObservation
+observeNatFragment (rawNaturalCell n) = observedNat n
+observeNatFragment rawTrueCell = notObservedNat
+observeNatFragment rawFalseCell = notObservedNat
+observeNatFragment (abiAddAdapterCode left right)
+  with observeNatFragment left | observeNatFragment right
+... | observedNat x | observedNat y = observedNat (x + y)
+... | _ | _ = notObservedNat
+observeNatFragment (abiMulAdapterCode left right)
+  with observeNatFragment left | observeNatFragment right
+... | observedNat x | observedNat y = observedNat (x * y)
+... | _ | _ = notObservedNat
+observeNatFragment (abiMonusAdapterCode left right)
+  with observeNatFragment left | observeNatFragment right
+... | observedNat x | observedNat y = observedNat (modelNatMonus x y)
+... | _ | _ = notObservedNat
+observeNatFragment (checkedScalarCode mode n) = notObservedNat
+observeNatFragment (checkedBooleanCode mode) = notObservedNat
+
+-- This is an induction theorem about the two explicit ASTs above. It does not
+-- infer anything about the Haskell emitter or the concrete Gforth interpreter.
+compiledNatFragmentPreservesMeaning :
+  (expr : NatExpr) →
+  observeNatFragment (compileNatFragment expr) ≡
+    observedNat (natExprMeaning expr)
+compiledNatFragmentPreservesMeaning (natLiteral n) = refl
+compiledNatFragmentPreservesMeaning (natAddition left right)
+  rewrite compiledNatFragmentPreservesMeaning left
+        | compiledNatFragmentPreservesMeaning right = refl
+compiledNatFragmentPreservesMeaning (natMultiplication left right)
+  rewrite compiledNatFragmentPreservesMeaning left
+        | compiledNatFragmentPreservesMeaning right = refl
+compiledNatFragmentPreservesMeaning (natMonus left right)
+  rewrite compiledNatFragmentPreservesMeaning left
+        | compiledNatFragmentPreservesMeaning right = refl
+
+-- Model the runtime contract of a curried arithmetic word: the first pass
+-- captures its left operand; the next application supplies the right operand.
+-- The names correspond to the selected Forth preamble words, not extracted code.
+data CurriedNatWord : Set where
+  natAddWord natMonusWord natMultiplyWord : CurriedNatWord
+
+data CurriedNatClosure : Set where
+  pendingNatClosure : CurriedNatWord → Nat → CurriedNatClosure
+
+lowerPartialNatAddition : Nat → CurriedNatClosure
+lowerPartialNatAddition left = pendingNatClosure natAddWord left
+
+lowerPartialNatMonus : Nat → CurriedNatClosure
+lowerPartialNatMonus left = pendingNatClosure natMonusWord left
+
+lowerPartialNatMultiplication : Nat → CurriedNatClosure
+lowerPartialNatMultiplication left = pendingNatClosure natMultiplyWord left
+
+applyCurriedNatClosure : CurriedNatClosure → Nat → Nat
+applyCurriedNatClosure (pendingNatClosure natAddWord left) right = left + right
+applyCurriedNatClosure (pendingNatClosure natMonusWord left) right =
+  modelNatMonus left right
+applyCurriedNatClosure (pendingNatClosure natMultiplyWord left) right =
+  left * right
+
+curriedNatAdditionPreservesMeaning :
+  (left right : Nat) →
+  applyCurriedNatClosure (lowerPartialNatAddition left) right ≡ left + right
+curriedNatAdditionPreservesMeaning left right = refl
+
+curriedNatMonusPreservesMeaning :
+  (left right : Nat) →
+  applyCurriedNatClosure (lowerPartialNatMonus left) right ≡
+    modelNatMonus left right
+curriedNatMonusPreservesMeaning left right = refl
+
+curriedNatMultiplicationPreservesMeaning :
+  (left right : Nat) →
+  applyCurriedNatClosure (lowerPartialNatMultiplication left) right ≡ left * right
+curriedNatMultiplicationPreservesMeaning left right = refl
+
 -- Historical counterexample for the pre-fix curried-application path. The
 -- earlier generated fixture emitted a lambda body `a c pass`; the raw/non-thunk
 -- branch of `pass { x h -- result }` returns h unchanged. This witness is kept

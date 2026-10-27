@@ -27,7 +27,7 @@ The unified module contains:
 - a complete-state WP model whose state includes descriptor heap, root references, identity counter, ownership modes and exceptions;
 - direct weakest-precondition contracts for normal and exceptional outcomes, operational-semantic validity/leastness, sequencing and CATCH; no parallel triple API or generic frame theorem.
 - typed stack-shape effects and constructive examples for selected checked operations;
-- a model of raw Nat literals plus the emitter's direct ABI adapters for saturated primitive operations and builtin Nat subtraction; raw Nat/Bool literals remain unannotated, and the runtime adapters route raw operands through compatibility operations (with Nat monus using a zero-floor subtraction helper);
+- a manual Nat-expression and emitted-fragment interpreter, with an inductive theorem that the modeled literal/add/multiply/monus lowering preserves Nat denotation; plus a separate curried-closure model with application lemmas for addition, monus, and multiplication. These are model-to-model theorems, not extraction from Haskell or proofs about concrete Gforth execution; raw Nat/Bool literals remain unannotated;
 - an explicit table mirroring the supported `TPrim` mappings and unsupported `fthError ... bye` path;
 - a constructive decision table mirroring `ABI-DISPATCH-BINARY` for raw, checked-scalar and other tracked values.
 
@@ -43,6 +43,7 @@ The constructive lemmas establish properties of the formal model:
 4. The checked stack signatures cannot accept raw/raw operands for checked addition or equality.
 5. The compiler boundary model emits natural literals as raw cells and boolean literals as raw `-1/0` cells. Compiler-generated regression witnesses cover addition, multiplication, Nat monus (ordinary, equal, zero and underflow cases), equality, less-than, and both Boolean branches. The independent Gforth ABI matrix covers raw/raw and checked-handle arithmetic, comparisons, boolean result kinds, mode propagation, linear consumption, mixed/wrong-kind rejection, division/remainder by zero, overflow, identity exhaustion and failure atomicity. Raw literals still lack checked mode evidence; a raw cell cannot satisfy the checked-value precondition.
 6. The runtime-dispatch model routes raw/raw to the legacy path, two tracked scalar handles to the checked path, and mixed or wrong-kind tracked values to rejection.
+7. The Nat-emission AST's interpreter theorem proves preservation of the specification's denotation across the modeled literal/add/multiply/monus fragment. Separate lemmas prove the modeled curried add/monus/multiply closures preserve arithmetic when applied. These results strengthen the model; they do not establish that the Haskell emitter or Gforth runtime implements it.
 
 Items 5 and 6 are explicitly models of source behavior inspected in `ToForth.hs` and `FLib.fth`, not machine-generated proofs of those files. A source hash does not establish semantic equivalence. The concrete runtime-preservation proof remains open.
 
