@@ -88,11 +88,17 @@ jobs:
         run: |
           "$HOME/.local/bin/agda" --safe --no-libraries -i formal formal/LinearModalSafety.agda
 
-      - name: Verify unsupported-literal output preserves the unchanged compiler boundary
+      - name: Verify unsupported string literals fail through the catchable runtime boundary
         run: |
           cabal run agda2forth -- -i test test/UnsupportedLiteral.agda
-          grep -Fq 'not yet supported: String literals' UnsupportedLiteral.fth
-          grep -Eq '(^|[[:space:]])bye([[:space:]]|$)' UnsupportedLiteral.fth
+          grep -Fq 'not yet supported: String literals " ABI-ERROR-COMPILED-UNSUPPORTED' UnsupportedLiteral.fth
+          if grep -Eq '(^|[[:space:]])bye([[:space:]]|$)' UnsupportedLiteral.fth; then
+            echo "unsupported output must throw, not terminate Gforth with BYE"
+            exit 1
+          fi
+          gforth UnsupportedLiteral.fth test/gforth/unsupported-boundary.fs > unsupported-boundary.log
+          grep -Fq 'unsupported-boundary-tests-passed' unsupported-boundary.log
+          grep -Fq 'not yet supported: String literals' unsupported-boundary.log
 
       - name: Compile and execute supported primitive applications end to end
         run: |

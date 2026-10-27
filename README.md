@@ -1,187 +1,184 @@
-# agda2LinearForth — linear/modal runtime ABI specification
+# agda2LinearForth
 
-`agda2forth` compiles Agda programs into GNU Gforth source. This repository combines a legacy Forth compiler with a checked linear/modal ABI. The emitter directly lowers saturated primitives and Nat addition/subtraction to ABI adapters. It also maps under-applied builtin Nat addition to the existing curried `add` closure, so a function such as `_+_ 5` can flow through the runtime's generic `pass` application path. The README distinguishes (1) executable behavior, (2) a formal model, and (3) a proof that the implementation refines that model.
+`agda2forth` translates selected Agda programs to GNU Gforth source. The repository contains an Agda formal model, a Haskell code generator, and a checked linear/modal runtime ABI. These parts are tested together, but they are **not yet connected by a whole-backend compiler-correctness proof**.
 
-> **Whole-backend compiler/runtime refinement: NOT COMPLETE.** The compiler still emits raw Nat and Bool values in many contexts, so the generated program does not carry Girard modality evidence end to end. The checked ABI enforces mode/ownership rules when values are tracked handles, but the emitter does not yet establish that every source linear/modal value is represented by such a handle. Current CI tests selected generated arithmetic/comparison, partial-application cases, and direct ABI cases, not the whole backend.
+The distinction matters: an Agda theorem proves a property of the Agda model. A Gforth integration test checks a concrete generated program. Neither one alone proves that every generated Forth program preserves the source program's meaning.
 
-## Source provenance and CI
+## Pipeline and ownership
 
-The current source baseline pins upstream identities per file:
+```text
+Agda source
+    |
+    v
+Agda 2.6.2.2 type checking and erasure
+    |
+    v
+src/Agda/Compiler/ToForth.hs
+    |
+    v
+generated .fth = data/FLib.fth + compiler preamble + generated definitions
+    |
+    v
+GNU Gforth
+```
 
-- `app/Main.hs` and `src/Agda/Compiler/Erase.hs` match compatible Agda2Scheme revision `6b3d975e9274448c09b5939e637b6718c2cfb10c`.
-- `src/Main.hs` matches Agda2Forth revision `e83f8cc735bf220f80b3655ce2158a23818910fe`; `src/Agda/Compiler/ToForth.hs` is the single explicitly permitted Haskell exception and contains direct lowering for saturated operations plus the curried mapping for under-applied builtin Nat addition.
-- The compiler targets the Agda 2.6.2.x API era and CI installs Agda 2.6.2.2.
-- GitHub Actions checks source provenance, builds the Haskell compiler, runs the checked-ABI Gforth suite, type-checks the safe Agda specification, compiles selected fixtures, and executes compiler-generated scalar programs. Cabal currently reports no package tests to run, so the meaningful executable regressions are the explicit Gforth checks. The Gforth suites assert an empty data stack at completion so a successful `BYE` cannot silently hide leftover test results.
-- CI pins the inspected `data/FLib.fth` blob (`46ba6a5ab8c657c42c07169cf13c95a5533b41e0`) so the manual Agda dispatch mirror cannot drift silently from the runtime source it describes. Changing the runtime requires an explicit update/review of this pin and the model.
+| File | Responsibility | Verification status |
+| --- | --- | --- |
+| `app/Main.hs` | Executable entry point inherited from upstream Agda2Scheme | Pinned by CI |
+| `src/Agda/Compiler/Erase.hs` | Erasure implementation inherited from upstream Agda2Scheme | Pinned by CI |
+| `src/Main.hs` | Agda backend integration inherited from upstream Agda2Forth | Pinned by CI |
+| `src/Agda/Compiler/ToForth.hs` | Maps the erased Agda terms to Forth words and definitions | Haskell build and selected generated-program tests; no Agda proof of this implementation |
+| `data/FLib.fth` | Checked handle ABI, descriptor metadata, closure application, and compatibility arithmetic words | Direct Gforth tests plus a manually maintained Agda model |
+| `formal/LinearModalSafety.agda` | Constructive model, stack effects, weakest-precondition contracts, and selected denotational results | Type-checks with `--safe`; does not inspect or extract the Haskell or Forth implementation |
+| `test/CheckedScalar.agda` | Nat and Bool regression programs | Compiled and executed by CI |
+| `test/gforth/abi-smoke.fs` | Direct tests of runtime ABI behavior | Executed by CI |
+| `test/gforth/compiler-integration.fs` | Assertions against compiler-generated Nat and Bool values | Executed by CI |
+| `test/UnsupportedLiteral.agda` | Unsupported String-literal regression | Compiled and forced under Gforth `CATCH` by CI |
 
-Pinning proves byte-level provenance, not semantic correctness. Only `src/Agda/Compiler/ToForth.hs` may diverge from upstream; other Haskell source files remain pinned.
+### Source provenance
 
-## One authoritative Agda specification
+CI checks these exact upstream revisions:
 
-The proof source is consolidated into [`formal/LinearModalSafety.agda`](formal/LinearModalSafety.agda). The former four files have been merged into this single source of truth so CI checks one coherent specification rather than four modules that can drift apart.
+- `app/Main.hs` and `src/Agda/Compiler/Erase.hs` must match Agda2Scheme revision `6b3d975e9274448c09b5939e637b6718c2cfb10c`.
+- `src/Main.hs` must match Agda2Forth revision `e83f8cc735bf220f80b3655ce2158a23818910fe`.
+- `src/Agda/Compiler/ToForth.hs` is the sole allowed Haskell-file exception.
+- CI checks that `data/FLib.fth` has baseline blob `46ba6a5ab8c657c42c07169cf13c95a5533b41e0`.
 
-The unified module contains:
+A matching hash establishes source identity, not semantic equivalence between the source and the Agda model.
 
-- a descriptor heap and identity model, root/capture/payload invariants, freshness and uniqueness conditions;
-- evidence-gated copy/discard, linear ownership, and modal-promotion preconditions;
-- a complete-state WP model whose state includes descriptor heap, root references, identity counter, ownership modes and exceptions;
-- direct weakest-precondition contracts for normal and exceptional outcomes, operational-semantic validity/leastness, sequencing and CATCH; no parallel triple API or generic frame theorem.
-- typed stack-shape effects and constructive examples for selected checked operations;
-- a manual Nat-expression and emitted-fragment interpreter, with an inductive theorem that the modeled literal/add/multiply/monus lowering preserves Nat denotation; plus a separate curried-closure model with application lemmas for addition, monus, and multiplication. These are model-to-model theorems, not extraction from Haskell or proofs about concrete Gforth execution; raw Nat/Bool literals remain unannotated;
-- an explicit table mirroring the supported `TPrim` mappings and unsupported `fthError ... bye` path;
-- a constructive decision table mirroring `ABI-DISPATCH-BINARY` for raw, checked-scalar and other tracked values.
+## Compiler lowering contract
 
-The module imports only Agda's built-in natural numbers and equality, imports no standard library, uses `--safe`, and makes no postulates to assert the missing implementation theorem.
+The backend receives Agda's treeless terms and converts them to Forth forms. It does not currently compile through an Agda-defined target instruction language.
 
-## What the current proofs establish
+### Saturated primitives
 
-The constructive lemmas establish properties of the formal model:
+For the exact argument shapes below, `fthDirectPrimitive` emits direct target operations rather than applying a primitive as though it were an ordinary closure.
 
-1. A well-formed heap cannot contain duplicate descriptor identities.
-2. The no-linear-aliasing invariant rejects aliased live linear operands under the checked arithmetic precondition.
-3. A valid modal-promotion precondition excludes live linear captures and opaque-code witnesses.
-4. The checked stack signatures cannot accept raw/raw operands for checked addition or equality.
-5. The compiler boundary model emits natural literals as raw cells and boolean literals as raw `-1/0` cells. Compiler-generated regression witnesses cover addition, multiplication, Nat monus (ordinary, equal, zero and underflow cases), equality, less-than, and both Boolean branches. The independent Gforth ABI matrix covers raw/raw and checked-handle arithmetic, comparisons, boolean result kinds, mode propagation, linear consumption, mixed/wrong-kind rejection, division/remainder by zero, overflow, identity exhaustion and failure atomicity. Raw literals still lack checked mode evidence; a raw cell cannot satisfy the checked-value precondition.
-6. The runtime-dispatch model routes raw/raw to the legacy path, two tracked scalar handles to the checked path, and mixed or wrong-kind tracked values to rejection.
-7. The Nat-emission AST's interpreter theorem proves preservation of the specification's denotation across the modeled literal/add/multiply/monus fragment. Separate lemmas prove the modeled curried add/monus/multiply closures preserve arithmetic when applied. These results strengthen the model; they do not establish that the Haskell emitter or Gforth runtime implements it.
+| Agda treeless primitive | Generated Forth operation |
+| --- | --- |
+| `PAdd` | `ABI-ADD-OR-LEGACY` |
+| `PSub` | `ABI-SUB-OR-LEGACY` |
+| `PMul` | `ABI-MUL-OR-LEGACY` |
+| `PQuot` | `ABI-QUOT-OR-LEGACY` |
+| `PRem` | `ABI-REM-OR-LEGACY` |
+| `PEqI` | `ABI-EQ-OR-LEGACY` |
+| `PGeq` | `ABI-GEQ-OR-LEGACY` |
+| `PLt` | `ABI-LT-OR-LEGACY` |
+| `PIf` with three arguments | Inline `if ... else ... then` |
 
-Items 5 and 6 are explicitly models of source behavior inspected in `ToForth.hs` and `FLib.fth`, not machine-generated proofs of those files. A source hash does not establish semantic equivalence. The concrete runtime-preservation proof remains open.
+The builtin definitions for Nat addition and subtraction also have exact-arity paths. Saturated addition uses `ABI-ADD-OR-LEGACY`; saturated Nat subtraction uses `ABI-MONUS-OR-LEGACY`, which preserves zero-floor subtraction on its raw-cell path as well as on the checked path.
 
-## Can the end-to-end bug be fixed by changing only `.fth` files?
+### Partial application and ordinary functions
 
-**Not completely, not while preserving source-level linear/modal semantics.** Forth can add runtime checks and fail-closed adapters. But the current compiler emits a literal such as `5` as a raw machine cell and emits ordinary operator names. It does not attach the source modality to that literal. After erasure, the runtime cannot reliably reconstruct whether an arbitrary unregistered cell is an Agda literal, an ordinary unmanaged value, or pointer-like data by inspecting its magnitude. Guessing would undermine the identity/representation boundary.
+Agda terms with ordinary function applications use the existing `pass` path. The compiler builds closures with the generated `makeTHUNK` protocol and the runtime stores closure metadata and captured arguments. This is not a separate word named `APPLY`; the runtime's application word is `pass`.
 
-A Forth-only patch cannot establish full source-semantic refinement while compiler output omits required mode and value-construction evidence. A historical generated-scalar CI run emitted a body resembling `:noname { a c } a c pass ;` and returned `5`, not `25`, for `scalarAdd 20 5`. That was a real counterexample to the prior application-lowering path.
+The backend maps under-applied builtin Nat addition to the curried `add` word and under-applied builtin Nat subtraction to `monus`. CI exercises those cases, partial multiplication, partial equality, partial less-than, and partial application of a user-defined function. These results cover those examples only. They do not establish the correctness of every higher-order function, closure, constructor, or pattern match.
 
-The compiler-side fix is present in `src/Agda/Compiler/ToForth.hs`: saturated `TPrim` operations and builtin Nat addition/subtraction are lowered directly to `ABI-*-OR-LEGACY` adapters. The additional under-applied builtin Nat addition case now maps the builtin definition to the existing curried `add` word, which is then applied by the existing `pass` closure path. This repairs a missing representation case rather than introducing another runtime adapter or a second application mechanism. A previous checkpoint at commit `6a7b474bcf25620bc1f30d90de0c661c95a12676` passed both push and pull-request CI, including compiler-generated execution of `test/CheckedScalar.agda`. That is historical evidence only; consult the branch's current Actions runs for the status of subsequent changes. Generated bodies use `ABI-ADD-OR-LEGACY`, `ABI-MONUS-OR-LEGACY`, `ABI-MUL-OR-LEGACY`, `ABI-EQ-OR-LEGACY`, and `ABI-LT-OR-LEGACY`; `scalarAddAnswer` still uses `pass pass` to apply the actual function closure. That `pass pass` sequence is generic application and is not itself erroneous. This corrects the observed addition counterexample on the tested path, but does not prove the entire emitter or its mode/ownership behavior. The formal module preserves `historicalGeneratedScalarDoesNotRefineAddition` as a historical counterexample model, not a claim about the current output.
+### Literal and unsupported-operation boundary
 
-The compiler-generated Nat-subtraction witnesses check `20 - 5 = 15`, `5 - 20 = 0`, equal operands, zero-left, and zero-zero. They exposed a Forth adapter issue: `ABI-MONUS-OR-LEGACY` used signed subtraction for raw operands. It now uses `ABI-SUB-RAW`, whose zero-floor behavior matches Agda Nat subtraction. CI pins the runtime blob. These tests add executable evidence for the scalar fragment, not a whole-backend refinement theorem.
+`LitNat` is emitted as a raw Forth cell. The special Boolean constructors are emitted as raw Forth flags (`-1` for true and `0` for false). The current emitter does **not** wrap every source value in a checked scalar or Boolean handle.
 
-The generated partial-application regressions now cover selected Nat/Bool shapes, using the existing `pass` closure mechanism. They do not establish that all higher-order, under-applied, constructor, or pattern-matching cases are correct. The sound path to whole-backend refinement remains a source-aware translation relation and a forward-simulation proof linking supported source terms, emitted Forth, and runtime states. Unsupported forms must fail through a documented boundary, not silently use legacy operations or terminate via `BYE`.
+The shared `fthError` path emits a diagnostic and calls `ABI-ERROR-COMPILED-UNSUPPORTED`. The runtime word throws `ABI-ERR-COMPILED-UNSUPPORTED`, which callers can catch. The String-literal integration test verifies that path end to end. The same literal fallback is present for Word64, Float, String, Char, QName, and Meta literals; only String currently has a dedicated integration test.
 
+Do not assume that every unknown Agda builtin is rejected through `fthError`. A `TDef` that is not in the small direct/special-definition mappings can fall through to the generic name-and-`pass` route. An exhaustive allowlist for the supported source subset, enforced before emission, remains an open boundary task.
 
-## Preserved weakest-precondition and denotational semantics
+## Runtime ABI in `data/FLib.fth`
 
-This branch continues the merged WP model, co-adjusting formal/LinearModalSafety.agda with data/FLib.fth and the permitted ToForth.hs lowering exception. The WP-only model covers the operation-level contracts; generated-code tests cover selected scalar operations. The remaining compiler/runtime relation is still only partially established.
+The runtime supports raw legacy cells and a managed representation for values that carry descriptor metadata.
 
-The primary contract interface is the WP transformer, taking a command, normal postcondition, exceptional postcondition, and the full abstract state. Sequential composition and CATCH have WP equations. SemanticTriple states correctness directly from Execution; wpSemanticallyAdmissible and wpLeastnessFromOperationalSemantics establish validity and leastness for this finite-outcome model. wpCatchPreserves is stated directly in WP. The new `stackTailFrame` theorem is a separate, constructive stack-shape law: any declared `StackEffect` remains valid when the same arbitrary suffix is framed onto its input and output. The constructor case uses append associativity rather than assuming the suffix untouched by definition. This proves locality of the *specification relation*, not yet that a concrete Forth word leaves the suffix unchanged. The earlier generic heap-frame theorem was removed because its unrelated frame value was untouched by construction; it did not prove any runtime word's reads/writes. Full-state WP is enough to define correctness when the stack, heap, code pointers, identity counter, roots and exceptions are all modelled in the state. A heap/separation-logic frame rule is still useful for reuse, but must be derived from real read/write-footprint evidence for each concrete ABI operation, including exception paths. These lemmas do not establish domain-theoretic admissibility over a Scott domain, and `Execution` does not yet model divergence.
+- A managed descriptor records its identity, kind, mode, life state, code reference, captures, and optional result payload.
+- The managed kinds include `THUNK`, `RESULT`, `SCALAR`, and `BOOLEAN`.
+- Runtime modes are `MODE-UNANNOTATED`, `MODE-LINEAR`, and `MODE-MODAL`. Unannotated is an internal boundary state, not a third Agda source modality.
+- Linear handles have one live identity and can be consumed. Modal handles may be reused only where the runtime checks permit it.
+- `pass` checks managed closure and capture metadata. `makeTHUNK`, `dethunk`, result wrappers, and capture-retirement logic manage closure execution and ownership.
+- The arithmetic adapters use a dual-entry policy. Two raw operands use the legacy word. Two registered scalar handles use the checked operation. Mixing raw and managed operands throws, and registered non-scalar operands are rejected.
+- Checked operations validate operands and ranges before consuming linear inputs. Runtime tests include arithmetic-domain errors, overflow, identity exhaustion, null execution tokens, result wrapping/unwrapping, and cleanup of linear captures after exceptional closure exit.
 
-This follows UPenn Software Foundations, where WP is characterized from operational evaluation and weakest-precondition validity; see https://softwarefoundations.cis.upenn.edu/current/current/slf-current/WPsem.html.
+The managed ABI is not automatically established for every compiler-generated value. Because many generated Nat and Bool values remain raw cells, this runtime alone does not prove preservation of Girard's linear and modal rules for arbitrary Agda source programs.
 
-**Terminology warning:** the code's WP *admissibility/validity* lemma means that WP itself is a valid precondition. It does **not** establish domain-theoretic admissibility (closure under suprema of increasing chains). The latter requires an ordered semantic domain and an appropriate continuity/admissibility development, which this finite state/outcome model does not yet define.
+## What the Agda model proves
 
-The unified Agda file contains three semantic layers: a finite scalar fragment with explicit errors and mode propagation; CoreDenotation, a fuel-bounded compositional model of variables, closures, application, constructors, matching, result wrappers, exceptions and print traces; and ScottScalarDenotation, which separates divergence (bottom), normal returns and exceptions. It also retains normal/exceptional frame-contract lemmas and disjoint-update commutation. These are properties of the Agda models. They are **not yet** a compiler-correctness theorem or a proof that the unchanged Haskell emitter and existing Forth runtime implement every modeled transition.
+`formal/LinearModalSafety.agda` starts with `{-# OPTIONS --safe #-}` and contains no postulates. CI checks it with:
 
-### Where Kleene's first and second algebras fit
+```sh
+agda --safe --no-libraries -i formal formal/LinearModalSafety.agda
+```
 
-The nLab entries on [Kleene's first algebra](https://ncatlab.org/nlab/show/Kleene%27s%2Bfirst%2Balgebra), [Kleene's second algebra](https://ncatlab.org/nlab/show/Kleene%27s%2Bsecond%2Balgebra), and [partial combinatory algebras](https://ncatlab.org/nlab/show/partial%2Bcombinatory%2Balgebra) are useful, but for a different layer than WP itself.
+The module defines several related models. They are explicit specifications, not code extracted from `ToForth.hs` or `FLib.fth`.
 
-- **Kleene's first algebra (K1)** models partial recursive computation through number-coded programs and application. It is the natural realizability reference for the Richman/RUSS and parametric-enumerability part of this project: a computational interpretation of propositions and effective program witnesses.
-- **Kleene's second algebra (K2)** uses Baire-space functions and models function realizability / type-two computability. It becomes relevant if the denotational domain explicitly includes infinite streams, choice sequences, or computable analysis. It is not needed just to model finite Forth stacks and natural-number primitives.
-- **Neither algebra automatically supplies** the Scott domain for this language, an end-to-end Forth refinement, or weakest-precondition leastness/admissibility proofs. A PCA provides an applicative/computability model; the compiler proof still needs a relation between source terms, emitted Forth, runtime states, and observations.
-- **WP leastness** is an order-theoretic fact about predicates: the semantic WP is valid, and every other valid precondition entails it. **Domain-theoretic admissibility** is a separate question about predicates over a domain, typically closure under limits of increasing chains. The current state model uses finite execution outcomes and does not yet define a Scott domain/order for the full Forth state space, so it cannot claim that stronger admissibility property.
+1. **Descriptor and ownership model.** A machine state includes a descriptor heap, roots, and a fresh-identity counter. The well-formedness predicate records uniqueness, registered references, live captures and payloads, ownership of linear resources, and checked modes.
+2. **Weakest-precondition semantics.** Commands return a state or throw an error with a state. The WP interface includes normal and exceptional postconditions, with laws for sequencing and `CATCH`. This finite outcome type does not model arbitrary divergence as success.
+3. **Typed stack effects.** A declarative `StackEffect` relation describes accepted and produced stack shapes for the selected checked primitives and ABI operations. `stackTailFrame` preserves a suffix in this declarative relation. It is not a theorem that the corresponding Forth word has the same behavior.
+4. **Failure and allocation contracts.** The model proves selected precondition, failure-atomicity, identity, result-payload, and closure-capture properties for its specified state transitions.
+5. **Manual compiler-emission mirror.** The Nat fragment interpreter proves that its own literal, addition, multiplication, and monus AST translation preserves the Nat denotation. Separate lemmas prove application behavior for modeled curried arithmetic closures.
+6. **Nat/Bool denotation and bridge models.** The closed scalar fragment models selected arithmetic, comparisons, conditional expressions, and errors. The bridge model explicitly records that raw compiler-emitted Nat and Bool cells have no runtime mode witness.
 
-A sensible follow-on is to formalize the computability interpretation separately from the runtime WP core: first define the chosen K1/partial-recursive representation and the exact parametric-enumerability assumption; then prove the specific Rice-style result with its extensionality and coding hypotheses; only afterwards connect that result to the supported compiler fragment. Keep K2 optional unless the project adds genuinely type-two/infinite-input semantics. This follows the modular style demonstrated by [XDS-Agda](https://pdmosses.github.io/xds-agda/) without importing its domain postulates into the current safe file.
+The historical `historicalGeneratedScalarDoesNotRefineAddition` theorem describes the old generated-body counterexample in the formal model. It is a historical witness, not a claim that the current saturated-addition path still returns the right operand.
 
-### Axiom and rewrite discipline
+### Proof boundary
 
-Keep parametric enumerability in a separate, explicitly assumed Richman/RUSS module. Do not silently conflate it with countable choice; derive any choice principle required by the exact PE formulation or state it separately. Do not combine full univalence with global K/UIP (Agda's with-K mode); an optional univalent synthetic-computability development belongs in a separate Cubical Agda / without-K track. The compiler/runtime WP model does not need RUSS axioms.
+The module does **not** prove any of the following:
 
-There are currently no custom Agda rewrite rules in this core. The confluence checker becomes relevant when actual rewrite rules are introduced, not just because postulates exist. Agda's checker addresses overlaps and the triangle property for rewrite rules; keep any such experiment isolated and run the checker after each rule-set change: https://agda.readthedocs.io/en/latest/language/rewriting.html.
+- that Haskell's `ToForth.hs` implements the manually defined emission relation;
+- that the concrete `data/FLib.fth` implementation refines every modeled state transition;
+- that the generated output of arbitrary Agda programs preserves source denotation;
+- that all source linear/modal values acquire managed runtime evidence;
+- that arbitrary Forth words preserve stack shape or ownership;
+- that the compiler handles every Agda builtin, literal, datatype, or higher-order term.
 
+A whole-backend result needs an explicit supported source subset, a target instruction or emission relation that both the proof and implementation follow, and a forward-simulation argument connected to the emitted program and runtime behavior.
 
+## Numeric support
 
-### Linear logic, realizability, and concatenative semantics
+The tested numeric core is Nat arithmetic and comparison, with Bool results and selected partial applications. The project does not implement Float arithmetic, a Gforth floating-point-stack translation, or a fixed-point format.
 
-Girard's exponential modality is not merely a “linear/modal” tag: the structural rules for weakening and contraction are controlled by the !-modality, and promotion has a restricted context. The current runtime mode fields and promotion preconditions are an operational proposal inspired by that discipline, not a complete formalization of Girard's proof rules. See [nLab's !-modality](https://ncatlab.org/nlab/show/%21-modality) and [linear logic](https://ncatlab.org/nlab/show/linear%2Blogic); the [Stanford Encyclopedia's linear logic entry](https://plato.stanford.edu/entries/logic-linear/) gives a second account.
+Agda has a builtin Float type and primitive operations, while Gforth maintains a separate floating-point stack. This repository's target stack-effect model does not include that second stack. See the [Agda 2.6.2 built-ins reference](https://agda.readthedocs.io/en/v2.6.2/language/built-ins.html#floats), the [Gforth stack model](https://gforth.org/manual/Stack-Manipulation.html), and [Gforth floating-point operations](https://gforth.org/manual/Floating-Point.html).
 
-Henry Baker's [Linear Logic and Permutation Stacks—The Forth Shall Be First](https://dcreager.net/papers/Baker1994/) motivates relating linear resource use to stack-machine operations, but it does not establish that this legacy Forth backend preserves linear use. Brent Kerby's [Theory of Concatenative Combinators](https://nsl.com/misc/papers/The%20Theory%20of%20Concatenative%20Combinators.htm) and the [Joy language reference](https://hypercubed.github.io/joy/joy.html) are useful for treating Forth-like composition and multiple return values as language semantics. They should inform the target-language denotation, not be cited as proofs about this implementation.
+For future fractional arithmetic, a fixed-point representation on the data stack is a plausible fit for the single-data-stack model. Q32.32 with native Forth integer operations such as `*/` is a candidate, not a current feature or an agreed numeric specification. Before adding it, define the cell-width assumption, scale, range, rounding rule, multiplication and division semantics, overflow behavior, and the Agda-to-Forth correspondence. The compiler, runtime, tests, and proof model must all adopt the same contract.
 
-For computability foundations, [nLab's Kleene first algebra](https://ncatlab.org/nlab/show/Kleene%27s%2Bfirst%2Balgebra) is the type-one partial-recursive model relevant to RUSS/PE, while [Kleene's second algebra](https://ncatlab.org/nlab/show/Kleene%27s%2Bsecond%2Balgebra) is based on Baire-space functions and is more relevant to type-two or infinite-input computation. Richman's CPF-style axiom is described in the [Stanford Encyclopedia entry on constructive mathematics](https://plato.stanford.edu/entries/mathematics-constructive/). These computability models are separate from the concrete Forth/compiler refinement theorem.
+## Build and test
 
-## Paired WP/runtime allocation-refinement step
+CI currently runs with GHC 9.0.2 and Agda 2.6.2.2, installs Gforth, and executes the following checks:
 
-ABIAllocationWP models the checked allocator's identity-exhaustion boundary. If an allocation group would exceed the identity bound, the Agda outcome is allocationFailed identityOverflowError state, preserving the arena cursor, identity counter and metadata count. Its WP theorem proves the specified exceptional postcondition for the unchanged state.
+```sh
+# Build and run Cabal's configured test command.
+cabal build all
+cabal test all
 
-In data/FLib.fth, capacity is now checked before allocating handle/environment/metadata cells on scalar, boolean, thunk, legacy-result, linear-move and partial-application paths. test/gforth/abi-smoke.fs forces identity exhaustion in the real runtime and checks that HERE, HANDLE-META-HEAD and NEXT-HANDLE-ID remain unchanged while the operation throws ABI-ERR-ID-OVERFLOW. The CI workflow pins the revised runtime blob so the Agda model and Forth implementation cannot drift unnoticed.
+# Check the runtime ABI.
+gforth -e 'include data/FLib.fth' -e 'include test/gforth/abi-smoke.fs'
 
-This remains an operation-level refinement result under a non-interleaved, single-threaded mutation assumption, not the full compiler/runtime theorem. The scalar `20 + 5` mismatch was repaired on the tested generated path by direct compiler lowering. Current CI also checks `20 ∸ 5 = 15` and `5 ∸ 20 = 0`, including the raw/raw monus adapter fix. Generated application outside this primitive fragment, raw value modalities, constructors, pattern matching, linear capture accounting, and all exceptional paths still require source-to-Forth simulation proofs. The checked-binary regressions additionally verify that arithmetic and result-allocation failures leave both inputs live, matching the Agda WP contract and the implementation's final ownership-commit writes.
+# Check the Agda model.
+agda --safe --no-libraries -i formal formal/LinearModalSafety.agda
 
-## What remains unproved
+# Compile and execute the Nat/Bool integration fixture.
+cabal run agda2forth -- -i test test/CheckedScalar.agda
+gforth CheckedScalar.fth test/gforth/compiler-integration.fs
 
-These are the outstanding obligations, not claims that CI has already discharged them:
+# Compile the unsupported String-literal fixture and run its CATCH test.
+cabal run agda2forth -- -i test test/UnsupportedLiteral.agda
+gforth UnsupportedLiteral.fth test/gforth/unsupported-boundary.fs
 
-- **Compiler completeness and soundness:** relate the supported Agda/Treeless fragment to emitted Forth, covering literals, booleans, primitives, constructors, matching, applications, closures and locals.
-- **Runtime refinement:** prove operation by operation that actual Forth ABI words implement their Agda contracts.
-- **Invariant preservation:** prove `WellFormed` after both normal return and exception for construction, binary operations, moving/capturing handles, result wrapping/unwrapping, force and promotion.
-- **Exceptional behavior:** prove cleanup and rethrow behavior, including failures after state mutation. Gforth's `CATCH`/`THROW` stack restoration does not generically roll back arbitrary metadata or dictionary changes.
-- **Closed-code evidence:** replace caller-asserted `declareModalSafeXT`/`declareLinearSafeXT` declarations with code-class evidence tied to an allowed compiler IR or a verified loader.
-- **Unsupported paths:** the unchanged backend's `fthError` emits a diagnostic followed by `BYE`, while the checked runtime exposes catchable errors. That correspondence is not proved.
-- **Operational regression coverage:** exercise all dispatch cases and generated examples against the source semantics, rather than relying only on direct ABI calls.
+# Compile the first-order triples fixture.
+cabal run agda2forth -- -i test test/TriplesFO.agda
+```
 
-The WP/separation model is valuable because it makes intended preconditions, normal postconditions, exceptional postconditions and disjoint ownership explicit. It does not substitute for proving the implementation preserves those properties.
+`cabal test all` currently reports no package tests to run. The meaningful executable regressions are the explicit Gforth tests and compiler-generated integration fixture.
 
-## Beginner's learning path
+The 23 generated Nat/Bool witnesses cover the original saturated-result cases plus a curried builtin addition, `_+_ 5`, partial application of a user function, partial monus in both operand orders, partial multiplication, and partial equality and less-than. The ABI smoke suite separately exercises raw and checked arithmetic, mode propagation, linear consumption and alias rejection, mixed representations, division and remainder by zero, overflow, identity exhaustion, null execution tokens, result ownership, exceptional closure cleanup, and final stack balance. The first-order triples fixture is compiled as a smoke test; CI does not claim to execute it.
 
-The aim is to learn enough vocabulary to read and extend this proof—not to prove the whole compiler as your first exercise.
+## Design status
 
-### 1. Propositions as types and constructive proof
-
-Start with the [Agda documentation's introduction to dependent types](https://agda.readthedocs.io/en/latest/getting-started/what-is-agda.html), then the [Stanford Encyclopedia entry on intuitionistic type theory](https://plato.stanford.edu/entries/type-theory-intuitionistic/) and [intuitionistic logic](https://plato.stanford.edu/entries/logic-intuitionistic/). The core idea is that a proposition is represented by a type and a proof is a value of that type. In this repo, `A → B` is implication, `A × B` is conjunction, `⊥` is contradiction, and a function constructing a contradiction proves that the given preconditions cannot all hold.
-
-Useful terms: **proposition-as-type, Curry–Howard, dependent type, inductive family, constructor, pattern matching, empty type, equality elimination/substitution, constructive proof**.
-
-### 2. Learn by reading XDS-Agda examples
-
-Read [XDS-Agda](https://pdmosses.github.io/xds-agda/) and its [GitHub source](https://github.com/pdmosses/xds-agda). It demonstrates how to embed a programming-language semantics in Agda using definitions close to the mathematical notation. Start with a small semantic function and one property about it; do not copy the project's domain-theory postulates into this repository. This repo intentionally makes narrower, postulate-free claims.
-
-Useful terms: **syntax, semantic domain, denotation, semantic function, compositionality, preservation lemma, model, refinement map**.
-
-### 3. Read Gforth semantics before proving Forth behavior
-
-The [GNU Gforth manual](https://gforth.org/manual/) is directly relevant. Focus on [literals](https://gforth.org/manual/Literals.html), [deferred words and name binding](https://gforth.org/manual/Deferred-Words.html), [interpretation and compilation semantics](https://gforth.org/manual/Interpretation-and-Compilation-Semantics.html), and [exception handling](https://gforth.org/manual/Exception-Handling.html). These explain why redefining a word does not retroactively change earlier compiled references, how literals are compiled into code, and how `CATCH`/`THROW` behave.
-
-Useful terms: **data stack, stack effect, execution token (XT), dictionary entry, compile-time semantics, run-time semantics, static binding, literal, normal exit, exceptional exit**.
-
-### 4. Weakest preconditions, derived Hoare triples, and separation reasoning
-
-Dijkstra-style WP is the single contract mechanism: given a complete runtime state, it computes the condition required for normal and exceptional outcomes. The state must include more than the data stack: descriptor metadata, roots, code pointers, allocation counters and ownership modes affect behaviour too. The `WellFormed` predicate tracks identity uniqueness, references, ownership and linear non-aliasing. WP does not require separation logic, but frame reasoning is what lets us reuse a local operation's proof in a larger machine state.
-
-Start with wp, wpSequence, wpCatch, SemanticTriple, wpCatchPreserves, and ABIAllocationWP in [the unified module](formal/LinearModalSafety.agda). The `stackTailFrame` lemma captures a framed suffix for the declarative `StackEffect` relation. It is not a heap frame theorem and does not show that the implementation of a Forth word respects the relation. For concrete runtime reuse, prove each operation's read/write footprint and then derive an appropriate heap/root/stack frame rule; include writes and exceptional behavior, not just its normal stack signature.
-
-Useful terms: **weakest precondition, operational outcome, stack effect, complete state, invariant, allocation footprint, aliasing, ownership transfer, normal/exceptional postcondition**.
-
-### 5. Learn refinement last
-
-Once a small runtime word has a proved WP contract, connect it to the actual implementation. A **refinement theorem** says each concrete execution step matches an abstract specified step. A **simulation** proof relates concrete and abstract states. For this project, the relation must connect generated Forth, the checked runtime representation, and the Agda state model. A green test suite alone cannot establish this for all inputs.
-
-## Research anchors
-
-- [UPenn Software Foundations: WP semantics](https://softwarefoundations.cis.upenn.edu/current/current/slf-current/WPsem.html) — defines WP from operational evaluation, proves validity and leastness, and develops WP-style frame/consequence rules. Use this as the reference for the Agda leastness and admissibility-of-the-precondition lemmas.
-- [UPenn Software Foundations: Separation Logic Foundations](https://softwarefoundations.cis.upenn.edu/current/current/slf-current/) — heap predicates, separating conjunction, and frame rules. A frame proof applies to Forth code only after its actual footprint/locality is established.
-- [XDS-Agda: mechanising denotational semantics](https://pdmosses.github.io/xds-agda/) and [its source](https://github.com/pdmosses/xds-agda) — an exemplary separation of syntax, domains, denotations, laws and examples. Its authors explicitly state that some domain-theory postulates are not classically set-theoretic, so do not copy them into the `--safe` runtime model without a separate consistency argument.
-- [Haskell Wikibooks: Denotational semantics](https://en.wikibooks.org/wiki/Haskell/Denotational_semantics) — introductory Scott–Strachey denotation, partial values and compositional meaning.
-- [nLab: linear logic](https://ncatlab.org/nlab/show/linear%2Blogic) and [!-modality](https://ncatlab.org/nlab/show/%21-modality) — the Girard exponential, restricted weakening/contraction, dereliction and promotion. These are the logic behind the resource discipline, not proof that a runtime mode bit alone implements linear logic.
-- [nLab: Kleene's first algebra](https://ncatlab.org/nlab/show/Kleene%27s%2Bfirst%2Balgebra), [Kleene's second algebra](https://ncatlab.org/nlab/show/Kleene%27s%2Bsecond%2Balgebra), and [partial combinatory algebras](https://ncatlab.org/nlab/show/partial%2Bcombinatory%2Balgebra) — distinguish type-one partial recursive realizability (K1) from Baire-space/type-two computation (K2). Neither is an automatic model of the Forth runtime.
-- [Stanford Encyclopedia: constructive mathematics](https://plato.stanford.edu/entries/mathematics-constructive/) — Richman's CPF-style axiomatization of RUSS and its intuitionistic setting.
-- [Stanford Encyclopedia: linear logic](https://plato.stanford.edu/entries/logic-linear/) — a complementary account of Girard's exponential and its structural rules.
-- [Stanford Encyclopedia: intuitionistic logic](https://plato.stanford.edu/entries/logic-intuitionistic/) and [intuitionistic type theory](https://plato.stanford.edu/entries/type-theory-intuitionistic/) — constructive reasoning and propositions as types.
-- [Agda documentation: rewriting and confluence](https://agda.readthedocs.io/en/latest/language/rewriting.html) — the overlap and triangle conditions checked by `--confluence-check`. The current core has no custom rewrite rules, so there is no rule set to check yet.
-- [Agda documentation: dependent types](https://agda.readthedocs.io/en/latest/getting-started/what-is-agda.html) and [Jesper Cockx: Dependent Types](https://jesper.cx/) — Agda's type discipline and proof-oriented programming context.
-- [Gforth manual](https://gforth.org/manual/) — semantics for the actual target language, especially stack effects, compile-time versus run-time semantics, `CATCH` and `THROW`.
-- [Hoare Type Theory](https://github.com/imdea-software/htt) and [SPLean](https://github.com/verse-lab/splean) — comparative heap-contract and separation-style examples.
-- Henry G. Baker, [Linear Logic and Permutation Stacks—The Forth Shall Be First](https://dcreager.net/papers/Baker1994/) — motivation for connecting linear resource use with stack-machine operations, not a proof that unrestricted Forth enforces linearity.
-- Brent Kerby, [Theory of Concatenative Combinators](https://nsl.com/misc/papers/The%20Theory%20of%20Concatenative%20Combinators.htm), and the [Joy language reference](https://hypercubed.github.io/joy/joy.html) — useful language-level accounts of composition, combinators and multiple return values.
-- M. Anton Ertl and Bernd Paysan, [Closures—The Forth Way](https://www.complang.tuwien.ac.at/papers/ertl%26paysan.pdf), EuroForth 2018 — closure/environment mechanisms, with memory management remaining an implementation concern.
-- M. Anton Ertl, [Memory Safety Without Tagging nor Static Type Checking](https://repositum.tuwien.at/handle/20.500.12708/193614), EuroForth 2022 — a technique to study, not a proof of modal or linear semantics.
-
-
-## Gforth end-to-end test inventory
-
-The runtime tests and compiler-generated tests are deliberately separate layers. Both must pass; one cannot substitute for the other.
-
-- `test/gforth/abi-smoke.fs`: raw/raw adapter behavior; checked scalar and boolean results; mode joins; linear consumption and alias rejection; Nat monus saturation; mixed and wrong-kind rejection; division/remainder domain errors; overflow; unsupported-operation errors; identity exhaustion before dictionary/metadata mutation; null execution-token rejection; result wrapping/unwrapping; nested closure capture retirement on exceptions; and final data-stack balance.
-- `test/CheckedScalar.agda` plus `test/gforth/compiler-integration.fs`: compile actual Agda source and execute 23 generated Nat/Bool witnesses: the original 13 saturated-result cases plus 10 extra cases covering a curried builtin addition, `_+_ 5`, partial application of a user definition, partial monus in both operand orders, partial multiplication, equality true/false, and less-than true/false. This tests compiler output rather than manually invoking adapters.
-- `.github/workflows/haskell.yml`: pins upstream source identity and the runtime blob, builds/tests Haskell, runs the ABI suite, checks the `--safe` Agda specification, compiles supported and unsupported fixtures, then runs generated code.
-
-A green workflow certifies only these tested paths and the Agda model's type-check. It does not certify arbitrary Agda programs, all Forth words, or preservation of Girard's linear/exponential rules end to end. That remains an explicit open compiler-refinement obligation.
+| Area | Status |
+| --- | --- |
+| Upstream erasure and entry-point provenance | Checked by CI |
+| Selected saturated Nat/Bool lowering | Generated-program regressions pass in CI |
+| Selected partial-application paths | Generated-program regressions pass in CI |
+| Checked runtime ABI behavior | Direct Gforth tests pass in CI |
+| Agda formal model | Type-checks with `--safe`, no postulates |
+| Unsupported String-literal failure | Catchable runtime boundary tested in CI |
+| Exhaustive allowlist for all source terms | Not implemented |
+| Haskell-to-Agda compiler-emission correspondence | Not proved |
+| Concrete Gforth-to-Agda runtime refinement | Not proved |
+| Whole-backend compiler correctness | Not proved |
+| Float or fixed-point arithmetic | Not implemented |

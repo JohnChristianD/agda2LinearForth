@@ -91,7 +91,7 @@ fthConstructor f args = formToAtom $ fthSimpleWord f (RSAtom $ T.pack
     ++ show (args + 1) ++ " fillArray here " ++ show (args + 1) ++ " cells allot"))
 
 fthError :: Text -> FthForm
-fthError msg = RSAtom $ T.pack ("cr .\" " ++ T.unpack msg ++ " \" bye")
+fthError msg = RSAtom $ T.pack ("cr .\" " ++ T.unpack msg ++ " \" ABI-ERROR-COMPILED-UNSUPPORTED")
 
 fthAxiom :: FthAtom -> FthForm
 fthAxiom f = fthWord f $ fthError $ "encountered axiom: " <> f
