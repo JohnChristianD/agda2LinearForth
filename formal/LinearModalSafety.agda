@@ -1,4 +1,4 @@
-{-# OPTIONS --rewriting --without-K --exact-split --no-projection-like --confluence-check --guardedness #-}
+{-# OPTIONS --rewriting --without-K --exact-split --no-projection-like --confluence-check #-}
 
 -- Single-source-of-truth constructive specification for agda2LinearForth.
 --
@@ -13,6 +13,11 @@ module LinearModalSafety where
 open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _*_)
 open import Agda.Builtin.Bool using (Bool; true; false)
 open import Agda.Builtin.Equality using (_≡_; refl)
+open import Agda.Builtin.Integer public
+open import Agda.Builtin.Equality.Rewrite public
+open import Agda.Builtin.Reflection public
+open import Agda.Builtin.Coinduction public
+open import Agda.Primitive
 
 -- ── 1. Descriptor heap, linear/modal invariants, and WP model ──
 
