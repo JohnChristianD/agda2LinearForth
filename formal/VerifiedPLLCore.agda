@@ -203,23 +203,42 @@ coNatFiniteObservationCompact p (observationFactor n q factor)
 falseNotTrue : false ≡ true → ⊥
 falseNotTrue ()
 
-finiteMarkov :
-  {X : Set} (enum : Enumeration X) (p : X → Bool) →
+-- The exact constructive implication behind the finite substitute:
+-- a proof of root-or-everywhere-true searchability turns ¬¬root into root.
+markovFromSigmaCompactness :
+  {X : Set} (p : X → Bool) →
+  (Witness (λ x → p x ≡ false) ⊎ ForAll (λ x → p x ≡ true)) →
   ((Witness (λ x → p x ≡ false) → ⊥) → ⊥) →
   Witness (λ x → p x ≡ false)
-finiteMarkov (enumeration xs covers) p doubleNegation
-  with finiteSearch xs p
-... | foundFalse x member evidence = witness x evidence
-... | allTrue allRoots =
+markovFromSigmaCompactness p (inj₁ root) doubleNegation = root
+markovFromSigmaCompactness p (inj₂ allTrue) doubleNegation =
   ⊥-elim
     (doubleNegation
       (λ root →
         falseNotTrue
           (transitivity
             (symmetry (witnessEvidence root))
-            (allRoots
-              (witnessValue root)
-              (covers (witnessValue root))))))
+            (everywhereEvidence allTrue (witnessValue root)))))
+
+-- Bounded Markov elimination for an explicitly enumerated finite type.
+-- It does not assert unbounded Markov's principle for predicates on Nat.
+finiteMarkov :
+  {X : Set} (enum : Enumeration X) (p : X → Bool) →
+  ((Witness (λ x → p x ≡ false) → ⊥) → ⊥) →
+  Witness (λ x → p x ≡ false)
+finiteMarkov enum p doubleNegation =
+  markovFromSigmaCompactness p (finiteSearchCompact enum p) doubleNegation
+
+-- The same bounded substitute holds for conatural predicates that factor
+-- through the finite-depth observation specified by ObservationFactor.
+coNatFiniteObservationMarkov :
+  (p : CoNat → Bool) → (factor : ObservationFactor p) →
+  ((Witness (λ c → p c ≡ false) → ⊥) → ⊥) →
+  Witness (λ c → p c ≡ false)
+coNatFiniteObservationMarkov p factor doubleNegation =
+  markovFromSigmaCompactness p
+    (coNatFiniteObservationCompact p factor)
+    doubleNegation
 
 -- Exact dyadics without normalization. An integer is represented as the
 -- difference of two naturals; this avoids a non-canonical negative-zero
