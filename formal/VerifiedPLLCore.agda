@@ -162,6 +162,30 @@ finiteSearchCompact (enumeration xs covers) p with finiteSearch xs p
 ... | foundFalse x member evidence = inj₁ (witness x evidence)
 ... | allTrue allRoots = inj₂ (forAll (λ x → allRoots x (covers x)))
 
+-- A bounded, constructive Markov principle: on an explicitly finite type,
+-- double-negated existence of a root can be eliminated by finite search.
+-- This does not assert unbounded Markov's principle for predicates on Nat.
+falseNotTrue : false ≡ true → ⊥
+falseNotTrue ()
+
+finiteMarkov :
+  {X : Set} (enum : Enumeration X) (p : X → Bool) →
+  ((Witness (λ x → p x ≡ false) → ⊥) → ⊥) →
+  Witness (λ x → p x ≡ false)
+finiteMarkov (enumeration xs covers) p doubleNegation
+  with finiteSearch xs p
+... | foundFalse x member evidence = witness x evidence
+... | allTrue allRoots =
+  ⊥-elim
+    (doubleNegation
+      (λ root →
+        falseNotTrue
+          (transitivity
+            (symmetry (witnessEvidence root))
+            (allRoots
+              (witnessValue root)
+              (covers (witnessValue root))))))
+
 -- Exact dyadics without normalization. An integer is represented as the
 -- difference of two naturals; this avoids a non-canonical negative-zero
 -- constructor. A dyadic denotes (positivePart - negativePart) / 2^scale.
