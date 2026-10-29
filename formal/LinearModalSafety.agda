@@ -1,4 +1,4 @@
-{-# OPTIONS --rewriting --without-K --exact-split --no-projection-like --confluence-check #-}
+{-# OPTIONS --allow-exec --guardedness --rewriting --without-K --exact-split --no-projection-like --confluence-check #-}
 
 -- Single-source-of-truth constructive specification for agda2LinearForth.
 --
