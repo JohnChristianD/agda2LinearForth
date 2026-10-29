@@ -28,6 +28,8 @@ extra-source-files:
     formal/LinearModalStackEffects.agda
     formal/CompilerRuntimeBoundary.agda
     formal/LinearModalExamples.agda
+    formal/LinearModalSafety.agda
+    formal/VerifiedPLLCore.agda
 
 executable agda2forth
     main-is:          Main.hs
