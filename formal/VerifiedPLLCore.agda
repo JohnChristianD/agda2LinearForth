@@ -211,14 +211,14 @@ markovFromSigmaCompactness :
   ((Witness (λ x → p x ≡ false) → ⊥) → ⊥) →
   Witness (λ x → p x ≡ false)
 markovFromSigmaCompactness p (inj₁ root) doubleNegation = root
-markovFromSigmaCompactness p (inj₂ (forAll allTrue)) doubleNegation =
+markovFromSigmaCompactness p (inj₂ (forAll allAt)) doubleNegation =
   ⊥-elim
     (doubleNegation
       (λ root →
         falseNotTrue
           (transitivity
             (symmetry (witnessEvidence root))
-            (allTrue (witnessValue root)))))
+            (allAt (witnessValue root)))))
 
 -- Bounded Markov elimination for an explicitly enumerated finite type.
 -- It does not assert unbounded Markov's principle for predicates on Nat.
