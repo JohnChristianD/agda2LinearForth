@@ -10,12 +10,15 @@
   THEN
 ;
 
-: expect-core-bool ( handle expected -- )
-  >r ABI-BOOL-INFO drop drop r> expect-core-value
+: expect-core-bool ( actual expected -- )
+  0<> swap 0<> <> IF
+    ." verified core Bool result mismatch" cr
+    -4103 THROW
+  THEN
 ;
 
-: expect-core-scalar ( handle expected -- )
-  >r ABI-SCALAR-INFO drop drop r> expect-core-value
+: expect-core-scalar ( actual expected -- )
+  expect-core-value
 ;
 
 : verified-core-conat-first-observation ( -- )
