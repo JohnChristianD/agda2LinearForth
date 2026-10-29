@@ -1,7 +1,8 @@
 {-# OPTIONS --safe --without-K --guardedness #-}
 
 -- Constructive core for the verified polarized-logic work.
--- No standard library, postulates, classical principles, or rewrite rules.
+-- No project-defined axioms, classical principles, or rewrite rules. The guarded
+-- conatural model uses Agda's trusted builtin coinduction primitives.
 module VerifiedPLLCore where
 
 open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _*_)
