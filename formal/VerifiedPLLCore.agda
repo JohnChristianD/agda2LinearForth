@@ -1,15 +1,13 @@
-{-# OPTIONS --safe --without-K --guardedness #-}
+{-# OPTIONS --safe --without-K #-}
 
 -- Constructive core for the verified polarized-logic work.
--- No project-defined axioms, classical principles, or rewrite rules. The guarded
--- conatural model uses Agda's trusted builtin coinduction primitives.
+-- No project-defined axioms, classical principles, or rewrite rules.
 module VerifiedPLLCore where
 
 open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _*_)
 open import Agda.Builtin.Bool using (Bool; true; false)
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import Agda.Builtin.List using (List; []; _∷_)
-open import Agda.Builtin.Coinduction using (∞; ♯_; ♭)
 open import VerifiedCoreExecutable using (finiteObservation; infiniteObservation; pow2)
 
 -- Small path algebra, kept local so this module has no library dependency.
@@ -68,28 +66,42 @@ hedberg dec {x} {y} p q =
         (choosePathConstant dec p q))
       (symmetry (pathNormalForm dec q)))
 
--- A conatural is a finite chain of successors or an infinite chain.
--- observe c n decides whether c has at least n+1 successors. Any finite
--- observation of the infinite element reduces productively.
-data CoNat : Set where
-  coZero : CoNat
-  coSucc : ∞ CoNat → CoNat
+-- TypeTopology's generic-convergent-sequence representation of ℕ∞:
+-- a decreasing Boolean sequence (the 1s form an initial segment, possibly
+-- infinite). This allows undecided finite-vs-infinite sequences constructively.
+record CoNat : Set where
+  constructor conat
+  field
+    observe : Nat → Bool
+    decreasing : (n : Nat) → observe (suc n) ≡ true → observe n ≡ true
+open CoNat public
+
+coZero : CoNat
+coZero = conat (λ n → false) (λ n ())
+
+successorObservation : CoNat → Nat → Bool
+successorObservation c zero = true
+successorObservation c (suc n) = observe c n
+
+successorObservationDecreasing :
+  (c : CoNat) (n : Nat) →
+  successorObservation c (suc n) ≡ true →
+  successorObservation c n ≡ true
+successorObservationDecreasing c zero p = refl
+successorObservationDecreasing c (suc n) p = decreasing c n p
+
+coSucc : CoNat → CoNat
+coSucc c = conat (successorObservation c) (successorObservationDecreasing c)
 
 coInfinity : CoNat
-coInfinity = coSucc (♯ coInfinity)
+coInfinity = conat (λ n → true) (λ n p → refl)
 
 finiteCoNat : Nat → CoNat
 finiteCoNat zero = coZero
-finiteCoNat (suc n) = coSucc (♯ finiteCoNat n)
-
-observe : CoNat → Nat → Bool
-observe coZero n = false
-observe (coSucc next) zero = true
-observe (coSucc next) (suc n) = observe (♭ next) n
+finiteCoNat (suc n) = coSucc (finiteCoNat n)
 
 coInfinityAtEveryDepth : (n : Nat) → observe coInfinity n ≡ true
-coInfinityAtEveryDepth zero = refl
-coInfinityAtEveryDepth (suc n) = coInfinityAtEveryDepth n
+coInfinityAtEveryDepth n = refl
 
 finiteZeroObservation : observe (finiteCoNat zero) zero ≡ false
 finiteZeroObservation = refl
