@@ -9,6 +9,7 @@ open import Agda.Builtin.Bool using (Bool; true; false)
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import Agda.Builtin.List using (List; []; _∷_)
 open import Agda.Builtin.Coinduction using (∞; ♯_; ♭)
+open import VerifiedCoreExecutable using (finiteObservation; infiniteObservation; pow2)
 
 -- Small path algebra, kept local so this module has no library dependency.
 symmetry : {A : Set} {x y : A} → x ≡ y → y ≡ x
@@ -97,6 +98,19 @@ finiteOneObservation = refl
 
 finiteOneStops : observe (finiteCoNat (suc zero)) (suc zero) ≡ false
 finiteOneStops = refl
+
+-- Correctness of the finite-observation interface used by the Forth slice.
+finiteObservationAgrees :
+  (available depth : Nat) →
+  observe (finiteCoNat available) depth ≡ finiteObservation available depth
+finiteObservationAgrees zero depth = refl
+finiteObservationAgrees (suc available) zero = refl
+finiteObservationAgrees (suc available) (suc depth) =
+  finiteObservationAgrees available depth
+
+infiniteObservationAgrees :
+  (depth : Nat) → observe coInfinity depth ≡ infiniteObservation depth
+infiniteObservationAgrees depth = coInfinityAtEveryDepth depth
 
 -- A finite list is exhaustibly searchable. A negative result carries proof
 -- that every member fails; a positive result carries a member and its proof.
@@ -256,10 +270,6 @@ record Dyad : Set where
     numerator : IntegerPair
     scale : Nat
 open Dyad public
-
-pow2 : Nat → Nat
-pow2 zero = suc zero
-pow2 (suc n) = pow2 n * suc (suc zero)
 
 dyadAdd : Dyad → Dyad → Dyad
 dyadAdd (dyad (integerPair p n) e) (dyad (integerPair q m) f) =
