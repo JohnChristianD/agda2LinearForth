@@ -162,6 +162,41 @@ finiteSearchCompact (enumeration xs covers) p with finiteSearch xs p
 ... | foundFalse x member evidence = inj₁ (witness x evidence)
 ... | allTrue allRoots = inj₂ (forAll (λ x → allRoots x (covers x)))
 
+-- A constructive compactness result for the conatural approximation model:
+-- every predicate that factors through one finite-depth Bool observation has
+-- either an observed root or is true everywhere. This deliberately makes no
+-- claim that arbitrary functions CoNat → Bool are compact/searchable.
+record ObservationFactor (p : CoNat → Bool) : Set where
+  constructor observationFactor
+  field
+    obsDepth : Nat
+    classifier : Bool → Bool
+    factorsAt : (c : CoNat) → p c ≡ classifier (observe c obsDepth)
+open ObservationFactor public
+
+classifierAllTrue :
+  (q : Bool → Bool) → q false ≡ true → q true ≡ true →
+  (b : Bool) → q b ≡ true
+classifierAllTrue q onFalse onTrue false = onFalse
+classifierAllTrue q onFalse onTrue true = onTrue
+
+coNatFiniteObservationCompact :
+  (p : CoNat → Bool) → ObservationFactor p →
+  Witness (λ c → p c ≡ false) ⊎ ForAll (λ c → p c ≡ true)
+coNatFiniteObservationCompact p (observationFactor n q factor)
+  with q false in q0 | q true in q1
+... | false | false =
+  inj₁ (witness coZero (transitivity (factor coZero) q0))
+... | false | true =
+  inj₁ (witness coZero (transitivity (factor coZero) q0))
+... | true | false =
+  inj₁ (witness coInfinity
+    (transitivity (factor coInfinity)
+      (transitivity (congruence q (coInfinityAtEveryDepth n)) q1)))
+... | true | true =
+  inj₂ (forAll (λ c → transitivity (factor c)
+    (classifierAllTrue q q0 q1 (observe c n))))
+
 -- A bounded, constructive Markov principle: on an explicitly finite type,
 -- double-negated existence of a root can be eliminated by finite search.
 -- This does not assert unbounded Markov's principle for predicates on Nat.
