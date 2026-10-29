@@ -102,28 +102,65 @@ finiteOneStops = refl
 -- that every member fails; a positive result carries a member and its proof.
 -- This is a constructive bounded-search substitute, not unbounded Markov
 -- principle for arbitrary predicates over Nat.
-data Member (n : Nat) : List Nat → Set where
-  here  : {xs : List Nat} → Member n (n ∷ xs)
-  there : {x : Nat} {xs : List Nat} → Member n xs → Member n (x ∷ xs)
+data Member {A : Set} (x : A) : List A → Set where
+  here  : {xs : List A} → Member x (x ∷ xs)
+  there : {y : A} {xs : List A} → Member x xs → Member x (y ∷ xs)
 
-data SearchResult (xs : List Nat) (p : Nat → Bool) : Set where
-  absent  : ((n : Nat) → Member n xs → p n ≡ false) → SearchResult xs p
-  present : (n : Nat) → Member n xs → p n ≡ true → SearchResult xs p
+data SearchResult {A : Set} (xs : List A) (p : A → Bool) : Set where
+  absent  : ((x : A) → Member x xs → p x ≡ false) → SearchResult xs p
+  present : (x : A) → Member x xs → p x ≡ true → SearchResult xs p
 
 consAbsent :
-  {xs : List Nat} {p : Nat → Bool} (x : Nat) →
+  {A : Set} {xs : List A} {p : A → Bool} (x : A) →
   p x ≡ false →
-  ((n : Nat) → Member n xs → p n ≡ false) →
-  (n : Nat) → Member n (x ∷ xs) → p n ≡ false
+  ((y : A) → Member y xs → p y ≡ false) →
+  (y : A) → Member y (x ∷ xs) → p y ≡ false
 consAbsent x px rest .x here = px
-consAbsent x px rest n (there member) = rest n member
+consAbsent x px rest y (there member) = rest y member
 
-finiteSearch : (xs : List Nat) (p : Nat → Bool) → SearchResult xs p
-finiteSearch [] p = absent (λ n ())
+finiteSearch : {A : Set} (xs : List A) (p : A → Bool) → SearchResult xs p
+finiteSearch [] p = absent (λ x ())
 finiteSearch (x ∷ xs) p with p x in px | finiteSearch xs p
 ... | true  | rest = present x here px
-... | false | present n member proof = present n (there member) proof
+... | false | present y member proof = present y (there member) proof
 ... | false | absent none = absent (consAbsent x px none)
+
+-- CompactTypes' Σ-compactness, specialized to Bool-valued predicates.
+-- The two branches carry either a root or evidence that the predicate is
+-- true everywhere. This is a definition, not an LPO/MP postulate.
+data _⊎_ (A B : Set) : Set where
+  inj₁ : A → A ⊎ B
+  inj₂ : B → A ⊎ B
+
+record Witness {A : Set} (P : A → Set) : Set where
+  constructor witness
+  field
+    witnessValue : A
+    witnessEvidence : P witnessValue
+open Witness public
+
+record ForAll {A : Set} (P : A → Set) : Set where
+  constructor forAll
+  field
+    everywhereEvidence : (x : A) → P x
+open ForAll public
+
+isSigmaCompact : Set → Set
+isSigmaCompact X =
+  (p : X → Bool) →
+  Witness (λ x → p x ≡ false) ⊎ ForAll (λ x → p x ≡ true)
+
+record Enumeration (X : Set) : Set where
+  constructor enumeration
+  field
+    elements : List X
+    enumerates : (x : X) → Member x elements
+open Enumeration public
+
+finiteSearchCompact : {X : Set} → Enumeration X → isSigmaCompact X
+finiteSearchCompact (enumeration xs covers) p with finiteSearch xs p
+... | present x member evidence = inj₁ (witness x evidence)
+... | absent noRoot = inj₂ (forAll (λ x → noRoot x (covers x)))
 
 -- Exact dyadics without normalization. An integer is represented as the
 -- difference of two naturals; this avoids a non-canonical negative-zero
@@ -169,6 +206,9 @@ dyadEquivalent
   (dyad (integerPair p n) e)
   (dyad (integerPair q m) f) =
   (p * pow2 f + m * pow2 e) ≡ (q * pow2 e + n * pow2 f)
+
+dyadEquivalentRefl : (d : Dyad) → dyadEquivalent d d
+dyadEquivalentRefl (dyad (integerPair p n) e) = refl
 
 -- Minimal cut-free polarized multiplicative fragment:
 -- atomic identity and positive tensor introduction. Contexts are ordered
