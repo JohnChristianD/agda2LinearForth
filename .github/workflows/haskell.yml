@@ -132,5 +132,12 @@ jobs:
           echo "---- generated primitive execution ----"
           gforth CheckedScalar.fth test/gforth/compiler-integration.fs
 
+      - name: Compile and execute the formal core's conatural/dyad examples
+        run: |
+          cabal run agda2forth -- -i formal formal/VerifiedPLLCore.agda
+          cabal run agda2forth -- -i formal -i test test/VerifiedCoreSmoke.agda
+          gforth VerifiedPLLCore.fth VerifiedCoreSmoke.fth test/gforth/verified-core-smoke.fs > verified-core-smoke.log
+          grep -Fq 'verified-core-runtime-tests-passed' verified-core-smoke.log
+
       - name: Compile first-order triples fixture
         run: cabal run agda2forth -- -i test test/TriplesFO.agda
