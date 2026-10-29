@@ -109,7 +109,7 @@ The raw Nat arithmetic adapters and `ABI-PARSE-NAT` enforce nonnegative-cell inp
 
 ## What `formal/LinearModalSafety.agda` establishes
 
-The root module uses Agda builtins rather than the standard library and declares no project-local axioms; the conatural semantics relies on Agda's trusted builtin coinduction primitives. It enables `--guardedness` for the imported conatural model while retaining `--safe`. CI type-checks the root and its imports with one command:
+The root module uses Agda builtins rather than the standard library and declares no project-local axioms; the conatural model is represented as a decreasing Boolean sequence, without coinduction axioms. It enables `--guardedness` for the imported conatural model while retaining `--safe`. CI type-checks the root and its imports with one command:
 
 ```sh
 agda --safe --no-libraries -i formal formal/LinearModalSafety.agda
@@ -144,13 +144,13 @@ A whole-backend proof needs an explicit supported source subset, a target instru
 
 ## Constructive foundations and polarized-logic fragment
 
-The conatural proof model is intentionally separate from the backend-compilable finite-observation interface in `formal/VerifiedCoreExecutable.agda`. That interface contains no coinduction primitives and is connected to the coinductive model by `finiteObservationAgrees` and `infiniteObservationAgrees`; CI compiles its examples to Forth and executes them with Gforth. This test checks the chosen finite ABI projection, not arbitrary conatural programs or whole-backend correctness.
+The conatural proof model follows TypeTopology's generic-convergent-sequence representation: a Boolean sequence with the decreasingness proof that once an observation is false, all later observations remain false. It is intentionally connected to the backend-compilable observation interface in `formal/VerifiedCoreExecutable.agda` by `finiteObservationAgrees` and `infiniteObservationAgrees`; CI compiles examples of that interface to Forth and executes them with Gforth. This tests the finite ABI projection, not arbitrary functions over conaturals or whole-backend correctness.
 
 
 `formal/VerifiedPLLCore.agda` re-expresses a deliberately bounded subset of the ideas in TypeTopology without importing its standard-library-scale dependency graph.
 
 - **CompactTypes/searchability:** `isSigmaCompact` is the root-or-everywhere-true decision shape for Boolean predicates. `finiteSearchCompact` proves it for types supplied with a complete finite enumeration. This is not a claim that all of `Nat` is Σ-compact/LPO.
-- **Conaturals:** `CoNat` has finite successor chains and a guarded infinite chain, with executable finite-depth observations. `coNatFiniteObservationCompact` applies only to predicates explicitly factored through one such observation; it does not prove full TypeTopology `ℕ∞` compactness for arbitrary functions.
+- **Conaturals:** `CoNat` encodes `ℕ∞` as a decreasing Boolean sequence, following `TypeTopology.GenericConvergentSequence`. It permits undecided finite-versus-infinite sequences constructively. The executable ABI exposes finite and infinite observation cases, with correspondence theorems; `coNatFiniteObservationCompact` applies only to predicates explicitly factored through one fixed observation, not arbitrary predicates on `ℕ∞`.
 - **Hedberg:** `hedberg` proves that decidable equality makes identity types propositions, using no `K` postulate.
 - **Markov substitute:** `finiteMarkov` and `coNatFiniteObservationMarkov` eliminate double-negated root existence only when constructive finite/enumerated compactness evidence is available. They are bounded principles, not unbounded Markov's principle for arbitrary predicates on `Nat`.
 - **Dyads:** `Dyad` stores an integer numerator as a pair of naturals plus a denominator exponent, with addition, multiplication, cross-multiplication equivalence, and reflexivity of that equivalence. The encoding is not normalized; ring laws, order, normalization, and their proofs remain incomplete.
