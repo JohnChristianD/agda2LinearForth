@@ -120,10 +120,10 @@ consAbsent x px rest n (there member) = rest n member
 
 finiteSearch : (xs : List Nat) (p : Nat → Bool) → SearchResult xs p
 finiteSearch [] p = absent (λ n ())
-finiteSearch (x ∷ xs) p with p x | finiteSearch xs p
-... | true  | rest = present x here refl
+finiteSearch (x ∷ xs) p with p x in px | finiteSearch xs p
+... | true  | rest = present x here px
 ... | false | present n member proof = present n (there member) proof
-... | false | absent none = absent (consAbsent x refl none)
+... | false | absent none = absent (consAbsent x px none)
 
 -- Exact dyadics without normalization. An integer is represented as the
 -- difference of two naturals; this avoids a non-canonical negative-zero
