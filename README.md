@@ -109,7 +109,7 @@ The raw Nat arithmetic adapters and `ABI-PARSE-NAT` enforce nonnegative-cell inp
 
 ## What `formal/LinearModalSafety.agda` establishes
 
-The root module uses Agda builtins rather than the standard library and declares no project-local axioms; the conatural model is represented as a decreasing Boolean sequence, without coinduction axioms. It enables `--guardedness` for the imported conatural model while retaining `--safe`. CI type-checks the root and its imports with one command:
+The formal modules use Agda builtins rather than the standard library and declare no project-local axioms. The conatural model is a decreasing Boolean sequence, without coinduction axioms. All formal modules use the same `--safe --without-K` profile. CI type-checks the root and all its imports with one canonical command:
 
 ```sh
 agda --safe --no-libraries -i formal formal/LinearModalSafety.agda
@@ -144,8 +144,7 @@ A whole-backend proof needs an explicit supported source subset, a target instru
 
 ## Constructive foundations and polarized-logic fragment
 
-The conatural proof model follows TypeTopology's generic-convergent-sequence representation: a Boolean sequence with the decreasingness proof that once an observation is false, all later observations remain false. It is intentionally connected to the backend-compilable observation interface in `formal/VerifiedCoreExecutable.agda` by `finiteObservationAgrees` and `infiniteObservationAgrees`; CI compiles examples of that interface to Forth and executes them with Gforth. This tests the finite ABI projection, not arbitrary functions over conaturals or whole-backend correctness.
-
+The conatural proof model follows TypeTopology's generic-convergent-sequence representation: a Boolean sequence with the decreasingness proof that once an observation is false, all later observations remain false. It is connected to the backend-compilable observation interface in `formal/VerifiedCoreExecutable.agda` by `finiteObservationAgrees` and `infiniteObservationAgrees`; CI compiles examples of that interface to Forth and executes them with Gforth. This tests the finite ABI projection, not arbitrary functions over conaturals or whole-backend correctness.
 
 `formal/VerifiedPLLCore.agda` re-expresses a deliberately bounded subset of the ideas in TypeTopology without importing its standard-library-scale dependency graph.
 
