@@ -1,17 +1,20 @@
-{-# OPTIONS --safe --guardedness #-}
+{-# OPTIONS --safe #-}
+
 module VerifiedCoreSmoke where
 
 open import Agda.Builtin.Nat using (Nat; zero; suc)
 open import Agda.Builtin.Bool using (Bool)
-open import VerifiedPLLCore using (observe; finiteCoNat; pow2)
+open import VerifiedCoreExecutable using (finiteObservation; infiniteObservation; pow2)
 
--- Executable examples taken directly from the formal conatural/dyad core.
--- Their generated Forth results are checked in the Gforth integration test.
+-- The runtime exports only bounded observations, not an infinite heap object.
 coreCoNatAtZero : Bool
-coreCoNatAtZero = observe (finiteCoNat (suc zero)) zero
+coreCoNatAtZero = finiteObservation (suc zero) zero
 
-coreCoNatAtOne : Bool
-coreCoNatAtOne = observe (finiteCoNat (suc zero)) (suc zero)
+coreCoNatStopsAtOne : Bool
+coreCoNatStopsAtOne = finiteObservation (suc zero) (suc zero)
+
+coreInfinityAtDepthEight : Bool
+coreInfinityAtDepthEight = infiniteObservation (suc (suc (suc (suc (suc (suc (suc (suc zero))))))))
 
 corePow2Zero : Nat
 corePow2Zero = pow2 zero
