@@ -14,6 +14,7 @@ The destination is not “some tests pass.” It is: source calculus, proof rule
 - Avoid importing TypeTopology wholesale. Audit dependencies and assumptions, then adapt only the needed definitions.
 - Compactness/searchability, conatural numbers, and dyadic rationals are distinct concepts; do not collapse them into one feature.
 - Runtime tests are necessary evidence, not substitutes for a refinement theorem.
+- The user explicitly requested implementation, not planning alone. After the blocking source/assumption and calculus decisions are settled, continue with a small vertical slice and its end-to-end refinement proof; do not stop at the roadmap.
 - GitHub Issues are disabled for this repository, so this local Markdown map is the tracker.
 
 ## Decisions so far
