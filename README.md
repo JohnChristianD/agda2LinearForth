@@ -30,6 +30,7 @@ GNU Gforth
 | `src/Agda/Compiler/ToForth.hs` | Converts Agda treeless terms into Forth forms and definitions | Haskell build and selected generated-program tests; no machine-checked proof that this Haskell code implements the Agda model |
 | `data/FLib.fth` | Legacy Forth words, closure application, managed descriptors, checked ABI operations | Executed directly by Gforth tests; described by a separate manual Agda model |
 | `formal/LinearModalSafety.agda` | Root model for ownership/descriptor invariants, weakest preconditions, stack effects, denotations, and modeled compiler/runtime mirrors; imports `VerifiedPLLCore` | One canonical `--safe` CI command type-checks the root and imported core; it does not verify the concrete Haskell/Forth bridge |\n| `formal/VerifiedPLLCore.agda` | Constructive finite-type Σ-compactness/search, bounded Markov substitute, one-depth conatural observations, Hedberg, exact dyad representation, and a small positive-tensor PLL sequent fragment | Type-checks as an import of the root module under the same command; finite observations and a minimal calculus only, no verified Forth lowering |
+| `formal/VerifiedCoreExecutable.agda` | Finite-observation projection and executable `pow2` interface imported by the proof core | Compiled to Forth and run in a small integration slice; proofs relate finite and infinite observations to the coinductive model, but this does not make arbitrary coinductive values executable |
 | `test/CheckedScalar.agda` | Nat/Bool regression source | Compiled and executed by CI |
 | `test/gforth/compiler-integration.fs` | Expected results for generated Nat/Bool programs | Executed by CI |
 | `test/gforth/abi-smoke.fs` | Direct runtime ABI regressions | Executed by CI |
@@ -108,7 +109,7 @@ The raw Nat arithmetic adapters and `ABI-PARSE-NAT` enforce nonnegative-cell inp
 
 ## What `formal/LinearModalSafety.agda` establishes
 
-The root module uses Agda builtins rather than the standard library and contains no postulates. It enables `--guardedness` for the imported conatural model while retaining `--safe`. CI type-checks the root and its imports with one command:
+The root module uses Agda builtins rather than the standard library and declares no project-local axioms; the conatural semantics relies on Agda's trusted builtin coinduction primitives. It enables `--guardedness` for the imported conatural model while retaining `--safe`. CI type-checks the root and its imports with one command:
 
 ```sh
 agda --safe --no-libraries -i formal formal/LinearModalSafety.agda
@@ -142,6 +143,9 @@ The current Agda file does **not** prove:
 A whole-backend proof needs an explicit supported source subset, a target instruction/emission relation shared by the specification and implementation, and a forward simulation that connects source meaning to generated Forth and concrete runtime state. A small Agda model and green regression tests are useful evidence, but they are not a substitute for that bridge.
 
 ## Constructive foundations and polarized-logic fragment
+
+The conatural proof model is intentionally separate from the backend-compilable finite-observation interface in `formal/VerifiedCoreExecutable.agda`. That interface contains no coinduction primitives and is connected to the coinductive model by `finiteObservationAgrees` and `infiniteObservationAgrees`; CI compiles its examples to Forth and executes them with Gforth. This test checks the chosen finite ABI projection, not arbitrary conatural programs or whole-backend correctness.
+
 
 `formal/VerifiedPLLCore.agda` re-expresses a deliberately bounded subset of the ideas in TypeTopology without importing its standard-library-scale dependency graph.
 
@@ -209,7 +213,7 @@ A fixed-point value stored in data-stack cells may be a reasonable future extens
 | Checked managed ABI | Direct Gforth tests for enumerated cases |
 | Agda model | Type-checks under `--safe`; contains no postulates |
 | Finite-type Σ-compactness and bounded Markov substitute | Constructive proofs in `VerifiedPLLCore`; only for an explicit finite enumeration |
-| Hedberg and conatural finite-observation model | Constructive proofs; no claim of arbitrary-function compactness of `ℕ∞` |
+| Hedberg and conatural finite-observation model | Constructive proofs; finite and infinite-observation projection is tested through generated Forth; no claim of arbitrary-function compactness of `ℕ∞` |
 | Dyad laws | Representation/operations and equivalence reflexivity only; full ring laws and normalization are not proved |
 | Laurent polarized logic | Minimal positive-tensor proof-rule fragment only; no full calculus, cut elimination, or Forth bridge |
 | Modeled Nat-expression-to-stack-code simulation | Proven for literals, addition, multiplication, and monus with stack-tail preservation; finite-cell fit is an explicit proof precondition, not a runtime check |
