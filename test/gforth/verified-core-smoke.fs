@@ -13,9 +13,14 @@
 verified-core-conat-first-observation
 
 : verified-core-conat-stops ( -- )
-  coreCoNatAtOne dethunk 0 expect-core-value
+  coreCoNatStopsAtOne dethunk 0 expect-core-value
 ;
 verified-core-conat-stops
+
+: verified-core-infinity-observation ( -- )
+  coreInfinityAtDepthEight dethunk -1 expect-core-value
+;
+verified-core-infinity-observation
 
 : verified-core-dyad-scale-zero ( -- )
   corePow2Zero dethunk 1 expect-core-value
