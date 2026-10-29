@@ -2,22 +2,22 @@
 
 module VerifiedCoreSmoke where
 
-open import Agda.Builtin.Nat using (Nat; zero; suc)
+open import Agda.Builtin.Nat using (Nat)
 open import Agda.Builtin.Bool using (Bool)
 open import VerifiedCoreExecutable using (finiteObservation; infiniteObservation; pow2)
 
 -- The runtime exports only bounded observations, not an infinite heap object.
 coreCoNatAtZero : Bool
-coreCoNatAtZero = finiteObservation (suc zero) zero
+coreCoNatAtZero = finiteObservation 1 0
 
 coreCoNatStopsAtOne : Bool
-coreCoNatStopsAtOne = finiteObservation (suc zero) (suc zero)
+coreCoNatStopsAtOne = finiteObservation 1 1
 
 coreInfinityAtDepthEight : Bool
-coreInfinityAtDepthEight = infiniteObservation (suc (suc (suc (suc (suc (suc (suc (suc zero))))))))
+coreInfinityAtDepthEight = infiniteObservation 8)
 
 corePow2Zero : Nat
-corePow2Zero = pow2 zero
+corePow2Zero = pow2 0
 
 corePow2One : Nat
-corePow2One = pow2 (suc zero)
+corePow2One = pow2 1
