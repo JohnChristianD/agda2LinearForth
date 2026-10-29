@@ -1,9 +1,12 @@
 \ End-to-end smoke tests for executable functions imported from VerifiedPLLCore.
 
 : expect-core-value ( actual expected -- )
-  <> IF
-    ." verified core result mismatch" cr
+  2dup <> IF
+    ." verified core result mismatch; actual=" over . ." expected=" dup . cr
+    2drop
     -4103 THROW
+  ELSE
+    2drop
   THEN
 ;
 
