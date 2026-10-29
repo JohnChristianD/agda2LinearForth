@@ -29,7 +29,7 @@ GNU Gforth
 | `src/Main.hs` | Agda backend integration inherited from Agda2Forth | Exact upstream-source check in CI |
 | `src/Agda/Compiler/ToForth.hs` | Converts Agda treeless terms into Forth forms and definitions | Haskell build and selected generated-program tests; no machine-checked proof that this Haskell code implements the Agda model |
 | `data/FLib.fth` | Legacy Forth words, closure application, managed descriptors, checked ABI operations | Executed directly by Gforth tests; described by a separate manual Agda model |
-| `formal/LinearModalSafety.agda` | Ownership/descriptor invariants, weakest-precondition model, selected stack effects, denotations, and model-level compiler/runtime mirrors | Type-checks with `--safe`; it neither extracts nor verifies the Haskell or Forth implementation |
+| `formal/LinearModalSafety.agda` | Root model for ownership/descriptor invariants, weakest preconditions, stack effects, denotations, and modeled compiler/runtime mirrors; imports `VerifiedPLLCore` | One canonical `--safe` CI command type-checks the root and imported core; it does not verify the concrete Haskell/Forth bridge |\n| `formal/VerifiedPLLCore.agda` | Constructive finite-type Σ-compactness/search, bounded Markov substitute, one-depth conatural observations, Hedberg, exact dyad representation, and a small positive-tensor PLL sequent fragment | Type-checks as an import of the root module under the same command; finite observations and a minimal calculus only, no verified Forth lowering |
 | `test/CheckedScalar.agda` | Nat/Bool regression source | Compiled and executed by CI |
 | `test/gforth/compiler-integration.fs` | Expected results for generated Nat/Bool programs | Executed by CI |
 | `test/gforth/abi-smoke.fs` | Direct runtime ABI regressions | Executed by CI |
@@ -108,7 +108,7 @@ The raw Nat arithmetic adapters and `ABI-PARSE-NAT` enforce nonnegative-cell inp
 
 ## What `formal/LinearModalSafety.agda` establishes
 
-The module begins with `{-# OPTIONS --safe #-}`, imports Agda builtins rather than the standard library, and contains no postulates. CI type-checks it with:
+The root module uses Agda builtins rather than the standard library and contains no postulates. It enables `--guardedness` for the imported conatural model while retaining `--safe`. CI type-checks the root and its imports with one command:
 
 ```sh
 agda --safe --no-libraries -i formal formal/LinearModalSafety.agda
@@ -140,6 +140,19 @@ The current Agda file does **not** prove:
 - that all Agda builtins, literals, data types, higher-order terms, and pattern matches are supported.
 
 A whole-backend proof needs an explicit supported source subset, a target instruction/emission relation shared by the specification and implementation, and a forward simulation that connects source meaning to generated Forth and concrete runtime state. A small Agda model and green regression tests are useful evidence, but they are not a substitute for that bridge.
+
+## Constructive foundations and polarized-logic fragment
+
+`formal/VerifiedPLLCore.agda` re-expresses a deliberately bounded subset of the ideas in TypeTopology without importing its standard-library-scale dependency graph.
+
+- **CompactTypes/searchability:** `isSigmaCompact` is the root-or-everywhere-true decision shape for Boolean predicates. `finiteSearchCompact` proves it for types supplied with a complete finite enumeration. This is not a claim that all of `Nat` is Σ-compact/LPO.
+- **Conaturals:** `CoNat` has finite successor chains and a guarded infinite chain, with executable finite-depth observations. `coNatFiniteObservationCompact` applies only to predicates explicitly factored through one such observation; it does not prove full TypeTopology `ℕ∞` compactness for arbitrary functions.
+- **Hedberg:** `hedberg` proves that decidable equality makes identity types propositions, using no `K` postulate.
+- **Markov substitute:** `finiteMarkov` and `coNatFiniteObservationMarkov` eliminate double-negated root existence only when constructive finite/enumerated compactness evidence is available. They are bounded principles, not unbounded Markov's principle for arbitrary predicates on `Nat`.
+- **Dyads:** `Dyad` stores an integer numerator as a pair of naturals plus a denominator exponent, with addition, multiplication, cross-multiplication equivalence, and reflexivity of that equivalence. The encoding is not normalized; ring laws, order, normalization, and their proofs remain incomplete.
+- **Polarized linear logic:** `PLLFragment` contains atomic identity and positive tensor introduction over ordered contexts. It is only a cut-free typing fragment, not Laurent's full calculus or proof-net normalization.
+
+The requested builtin-reflection ring solver and rewrite-rule configuration is **not enabled**. In this repository's Agda version, `--allow-exec` and `--rewriting` conflict with the existing `--safe` profile. To avoid a second, competing configuration or quietly weaken the trusted base, the PR preserves one canonical safe CI invocation; ring laws must be proved constructively (or the trust/configuration decision must be changed explicitly).
 
 ## Test and CI contract
 
@@ -195,6 +208,10 @@ A fixed-point value stored in data-stack cells may be a reasonable future extens
 | Selected partial-application cases | Generated-program tests using existing `pass` path |
 | Checked managed ABI | Direct Gforth tests for enumerated cases |
 | Agda model | Type-checks under `--safe`; contains no postulates |
+| Finite-type Σ-compactness and bounded Markov substitute | Constructive proofs in `VerifiedPLLCore`; only for an explicit finite enumeration |
+| Hedberg and conatural finite-observation model | Constructive proofs; no claim of arbitrary-function compactness of `ℕ∞` |
+| Dyad laws | Representation/operations and equivalence reflexivity only; full ring laws and normalization are not proved |
+| Laurent polarized logic | Minimal positive-tensor proof-rule fragment only; no full calculus, cut elimination, or Forth bridge |
 | Modeled Nat-expression-to-stack-code simulation | Proven for literals, addition, multiplication, and monus with stack-tail preservation; finite-cell fit is an explicit proof precondition, not a runtime check |
 | Oversized Nat literal | Generated decimal string is parsed and overflow is caught end to end |
 | Unsupported String literal and referenced axiom | Catchable errors tested end to end |
@@ -217,5 +234,6 @@ These sources are background for the model and target language, not claims that 
 - [Haskell Wikibooks: Denotational semantics](https://en.wikibooks.org/wiki/Haskell/Denotational_semantics) for compositional denotational models.
 - [UPenn Software Foundations: Separation Logic Foundations](https://softwarefoundations.cis.upenn.edu/current/current/slf-current/) for heap predicates and frame reasoning. Such reasoning applies to a concrete Forth word only after its footprint and behavior have been established.
 - [Stanford Encyclopedia of Philosophy: Constructive Mathematics](https://plato.stanford.edu/entries/mathematics-constructive/) for the constructive-mathematics context.
+- [TypeTopology source repository](https://github.com/martinescardo/TypeTopology), especially `source/TypeTopology/CompactTypes.lagda`, `source/CoNaturals/Type.lagda`, `source/UF/Hedberg.lagda`, `source/Taboos/MarkovsPrinciple.lagda`, and `source/Dyadics/Type.lagda`. The local module is a dependency-light re-expression of a limited subset, not a wholesale port.
 - [nLab: Linear logic](https://ncatlab.org/nlab/show/linear%2Blogic) and [!-modality](https://ncatlab.org/nlab/show/%21-modality) for the intended logical interpretation of modal structural rules.
 - M. Anton Ertl and Bernd Paysan, [Closures: The Forth Way](https://www.complang.tuwien.ac.at/papers/ertl%26paysan.pdf), EuroForth 2018, for Forth closure/environment design.
