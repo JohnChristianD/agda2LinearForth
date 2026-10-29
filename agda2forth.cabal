@@ -32,6 +32,7 @@ extra-source-files:
     formal/LinearModalExamples.agda
     formal/LinearModalSafety.agda
     formal/VerifiedPLLCore.agda
+    formal/VerifiedCoreExecutable.agda
 
 executable agda2forth
     main-is:          Main.hs
