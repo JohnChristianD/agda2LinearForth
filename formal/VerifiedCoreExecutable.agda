@@ -1,4 +1,4 @@
-{-# OPTIONS --safe --without-K #-}
+{-# OPTIONS --safe --without-K --guardedness #-}
 
 -- Finite-observation interface executable by the existing Forth backend.
 -- A co-natural itself may be genuinely coinductive; only its finite observation
