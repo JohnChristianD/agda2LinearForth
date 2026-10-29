@@ -14,7 +14,7 @@ coreCoNatStopsAtOne : Bool
 coreCoNatStopsAtOne = finiteObservation 1 1
 
 coreInfinityAtDepthEight : Bool
-coreInfinityAtDepthEight = infiniteObservation 8)
+coreInfinityAtDepthEight = infiniteObservation 8
 
 corePow2Zero : Nat
 corePow2Zero = pow2 0
