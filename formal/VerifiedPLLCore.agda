@@ -107,23 +107,23 @@ data Member {A : Set} (x : A) : List A → Set where
   there : {y : A} {xs : List A} → Member x xs → Member x (y ∷ xs)
 
 data SearchResult {A : Set} (xs : List A) (p : A → Bool) : Set where
-  absent  : ((x : A) → Member x xs → p x ≡ false) → SearchResult xs p
-  present : (x : A) → Member x xs → p x ≡ true → SearchResult xs p
+  allTrue : ((x : A) → Member x xs → p x ≡ true) → SearchResult xs p
+  foundFalse : (x : A) → Member x xs → p x ≡ false → SearchResult xs p
 
-consAbsent :
+consAllTrue :
   {A : Set} {xs : List A} {p : A → Bool} (x : A) →
-  p x ≡ false →
-  ((y : A) → Member y xs → p y ≡ false) →
-  (y : A) → Member y (x ∷ xs) → p y ≡ false
-consAbsent x px rest .x here = px
-consAbsent x px rest y (there member) = rest y member
+  p x ≡ true →
+  ((y : A) → Member y xs → p y ≡ true) →
+  (y : A) → Member y (x ∷ xs) → p y ≡ true
+consAllTrue x px rest .x here = px
+consAllTrue x px rest y (there member) = rest y member
 
 finiteSearch : {A : Set} (xs : List A) (p : A → Bool) → SearchResult xs p
-finiteSearch [] p = absent (λ x ())
+finiteSearch [] p = allTrue (λ x ())
 finiteSearch (x ∷ xs) p with p x in px | finiteSearch xs p
-... | true  | rest = present x here px
-... | false | present y member proof = present y (there member) proof
-... | false | absent none = absent (consAbsent x px none)
+... | false | rest = foundFalse x here px
+... | true  | foundFalse y member evidence = foundFalse y (there member) evidence
+... | true  | allTrue everyTail = allTrue (consAllTrue x px everyTail)
 
 -- CompactTypes' Σ-compactness, specialized to Bool-valued predicates.
 -- The two branches carry either a root or evidence that the predicate is
@@ -159,8 +159,8 @@ open Enumeration public
 
 finiteSearchCompact : {X : Set} → Enumeration X → isSigmaCompact X
 finiteSearchCompact (enumeration xs covers) p with finiteSearch xs p
-... | present x member evidence = inj₁ (witness x evidence)
-... | absent noRoot = inj₂ (forAll (λ x → noRoot x (covers x)))
+... | foundFalse x member evidence = inj₁ (witness x evidence)
+... | allTrue allRoots = inj₂ (forAll (λ x → allRoots x (covers x)))
 
 -- Exact dyadics without normalization. An integer is represented as the
 -- difference of two naturals; this avoids a non-canonical negative-zero
