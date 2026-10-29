@@ -1,4 +1,4 @@
-{-# OPTIONS --safe --guardedness #-}
+{-# OPTIONS --safe --without-K --guardedness #-}
 
 -- Single-source-of-truth constructive specification for agda2LinearForth.
 --
