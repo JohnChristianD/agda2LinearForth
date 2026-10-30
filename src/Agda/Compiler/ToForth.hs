@@ -28,7 +28,7 @@ import Control.DeepSeq ( NFData )
 
 import Control.Monad.Except
 import Control.Monad.Reader
-import Control.Monad.State
+import Control.Monad.State (StateT, evalStateT, gets, modify)
 
 import Data.Char
 import Data.SCargot.Repr
