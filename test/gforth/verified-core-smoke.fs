@@ -11,6 +11,7 @@
 ;
 
 : expect-core-bool ( actual expected -- )
+  2dup ." verified core Bool actual/expected: " . . cr
   0<> swap 0<> <> IF
     ." verified core Bool result mismatch" cr
     -4103 THROW
