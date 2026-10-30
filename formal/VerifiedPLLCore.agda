@@ -8,6 +8,11 @@ open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _*_)
 open import Agda.Builtin.Bool using (Bool; true; false)
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import Agda.Builtin.List using (List; []; _∷_)
+open import Agda.Builtin.Unit using (⊤)
+open import Agda.Builtin.Reflection using
+  ( Term ; TC ; Arg ; arg ; arg-info ; visible
+  ; modality ; relevant ; quantity-ω ; def ; unify
+  )
 open import VerifiedCoreExecutable using (finiteObservation; infiniteObservation; pow2)
 
 -- Small path algebra, kept local so this module has no library dependency.
@@ -65,6 +70,34 @@ hedberg dec {x} {y} p q =
         (λ r → transitivity (symmetry (choosePath dec refl)) r)
         (choosePathConstant dec p q))
       (symmetry (pathNormalForm dec q)))
+
+-- Reflection frontend: instantiate the checked Hedberg theorem from an
+-- explicit decidable-equality procedure and two path terms. The macro emits
+-- an ordinary proof term; the kernel still type-checks that term.
+private
+  visibleTerm : Term → Arg Term
+  visibleTerm t = arg (arg-info visible (modality relevant quantity-ω)) t
+
+macro
+  hedbergReflect : Term → Term → Term → Term → TC ⊤
+  hedbergReflect dec p q hole =
+    unify hole
+      (def (quote hedberg)
+        (visibleTerm dec ∷ visibleTerm p ∷ visibleTerm q ∷ []))
+
+-- This fixture exercises the reflected proof path with a concrete decidable
+-- equality instance for Bool.
+boolEqualityDec : (x y : Bool) → Dec (x ≡ y)
+boolEqualityDec false false = yes refl
+boolEqualityDec false true = no (λ ())
+boolEqualityDec true false = no (λ ())
+boolEqualityDec true true = yes refl
+
+reflectedHedbergBool :
+  {x y : Bool} (p q : x ≡ y) → p ≡ q
+reflectedHedbergBool {x} {y} p q =
+  hedbergReflect boolEqualityDec p q
+
 
 -- TypeTopology's generic-convergent-sequence representation of ℕ∞:
 -- a decreasing Boolean sequence (the 1s form an initial segment, possibly
