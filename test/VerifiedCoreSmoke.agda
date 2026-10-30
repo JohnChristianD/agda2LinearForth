@@ -2,7 +2,7 @@
 
 module VerifiedCoreSmoke where
 
-open import Agda.Builtin.Nat using (Nat; zero; suc)
+open import Agda.Builtin.Nat using (Nat; zero; suc; _<_)
 open import Agda.Builtin.Bool using (Bool; true; false)
 open import VerifiedCoreExecutable using (finiteObservation; infiniteObservation; pow2)
 
