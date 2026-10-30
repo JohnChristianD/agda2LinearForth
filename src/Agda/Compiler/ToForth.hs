@@ -594,7 +594,9 @@ instance ToForth TTerm FthForm where
                     | c1 == conName trueC  = (v1',v2')
                     | c1 == conName falseC = (v2',v1')
                     | otherwise            = __IMPOSSIBLE__
-              applyToArgs $ RSList [x, RSAtom "if", thenBranch, RSAtom "else", elseBranch, RSAtom "then"]
+              -- A Bool case may inspect a thunk returned by another function.
+              -- Force it before Forth IF; deepdethunk is identity on raw Bool cells.
+              applyToArgs $ RSList [fthForce x, RSAtom "if", thenBranch, RSAtom "else", elseBranch, RSAtom "then"]
             _ -> return $ fthError "unsupported Bool case shape"
 
       TUnit -> do
