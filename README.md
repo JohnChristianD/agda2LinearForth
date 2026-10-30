@@ -26,10 +26,11 @@ GNU Gforth
 | --- | --- | --- |
 | `app/Main.hs` | Entry point inherited from Agda2Scheme | Exact upstream-source check in CI |
 | `src/Agda/Compiler/Erase.hs` | Upstream erasure implementation | Exact upstream-source check in CI |
-| `src/Main.hs` | Agda backend integration inherited from Agda2Forth | Exact upstream-source check in CI |
+| `src/Main.hs` | Minimal Forth backend driver adapted for Agda 2.8 APIs | Exact driver-blob check in CI |
 | `src/Agda/Compiler/ToForth.hs` | Converts Agda treeless terms into Forth forms and definitions | Haskell build and selected generated-program tests; no machine-checked proof that this Haskell code implements the Agda model |
 | `data/FLib.fth` | Legacy Forth words, closure application, managed descriptors, checked ABI operations | Executed directly by Gforth tests; described by a separate manual Agda model |
-| `formal/LinearModalSafety.agda` | Root model for ownership/descriptor invariants, weakest preconditions, stack effects, denotations, and modeled compiler/runtime mirrors; imports `VerifiedPLLCore` | One canonical `--safe` CI command type-checks the root and imported core; it does not verify the concrete Haskell/Forth bridge |\n| `formal/VerifiedPLLCore.agda` | Constructive finite-type Σ-compactness/search, bounded Markov substitute, one-depth conatural observations, Hedberg, exact dyad representation, and a small positive-tensor PLL sequent fragment | Type-checks as an import of the root module under the same command; finite observations and a minimal calculus only, no verified Forth lowering |
+| `formal/LinearModalSafety.agda` | Root model for ownership/descriptor invariants, weakest preconditions, stack effects, denotations, and selected compiler/runtime behavior; imports `VerifiedPLLCore` | Type-checks with Agda 2.8.0.2 and `--erasure`; it does not prove the concrete Haskell/Forth bridge |
+| `formal/VerifiedPLLCore.agda` | Constructive finite-type search, bounded Markov substitute, conaturals, Hedberg, dyad arithmetic, and a small positive-tensor PLL fragment | Type-checks as an import of the root; its theorem scope remains intentionally limited |
 | `formal/VerifiedCoreExecutable.agda` | Finite-observation projection and executable `pow2` interface imported by the proof core | Compiled to Forth and run in a small integration slice; proofs relate finite and infinite observations to the coinductive model, but this does not make arbitrary coinductive values executable |
 | `test/CheckedScalar.agda` | Nat/Bool regression source | Compiled and executed by CI |
 | `test/gforth/compiler-integration.fs` | Expected results for generated Nat/Bool programs | Executed by CI |
@@ -43,10 +44,10 @@ GNU Gforth
 
 CI checks that:
 
-- `app/Main.hs` and `src/Agda/Compiler/Erase.hs` match Agda2Scheme revision `6b3d975e9274448c09b5939e637b6718c2cfb10c`.
-- `src/Main.hs` matches Agda2Forth revision `e83f8cc735bf220f80b3655ce2158a23818910fe`.
-- `src/Agda/Compiler/ToForth.hs` is the sole Haskell source file permitted to differ from its pinned upstream boundary.
-- `data/FLib.fth` matches the reviewed runtime blob pinned in CI as `07ee70cb6e8c976c1ee6b8d6e46b3430afdb4ced`.
+- `app/Main.hs` and `src/Agda/Compiler/Erase.hs` are byte-identical to Agda2Scheme revision `24e02d9669f17d98ec67b8ad961cf9c3e602bf10` (the Agda 2.8 API update).
+- `src/Main.hs` is the small Forth-specific Agda 2.8 driver adapter, pinned by its exact Git blob `be738fab5d26f009576e6b1a51237d4f7f2f1f9e`.
+- `src/Agda/Compiler/ToForth.hs` is the only Forth-specific compiler translation module; the other shared Haskell source files must remain byte-identical to the Scheme upstream source.
+- `data/FLib.fth` matches the reviewed runtime blob pinned in CI as `30477369597107b579ffac29735c42b6e326b0d0`.
 
 A hash match establishes byte identity with a reference file. It does not establish semantic correctness. In particular, the Agda model is manually written and maintained; a provenance check does not prove that `ToForth.hs` or `FLib.fth` implements it.
 
@@ -109,10 +110,10 @@ The raw Nat arithmetic adapters and `ABI-PARSE-NAT` enforce nonnegative-cell inp
 
 ## What `formal/LinearModalSafety.agda` establishes
 
-The formal modules use Agda builtins rather than the standard library and declare no project-local axioms. The conatural model is a decreasing Boolean sequence, without coinduction axioms. All formal modules use the same `--safe --without-K` profile. CI type-checks the root and all its imports with one canonical command:
+The formal modules use Agda builtins rather than the standard library and declare no project-local axioms. The conatural model is a decreasing Boolean sequence. Formal checking uses Agda 2.8.0.2, `--without-K`, and the project options declared in the modules; `--safe` is intentionally not enabled. CI type-checks the root and its imports with:
 
 ```sh
-agda --safe --no-libraries -i formal formal/LinearModalSafety.agda
+agda --erasure --no-libraries -i formal formal/LinearModalSafety.agda
 ```
 
 Its theorems concern explicitly defined Agda models. The module includes:
@@ -155,7 +156,7 @@ The conatural proof model follows TypeTopology's generic-convergent-sequence rep
 - **Dyads:** `Dyad` stores an integer numerator as a pair of naturals plus a denominator exponent, with addition, multiplication, cross-multiplication equivalence, and reflexivity of that equivalence. The encoding is not normalized; ring laws, order, normalization, and their proofs remain incomplete.
 - **Polarized linear logic:** `PLLFragment` contains atomic identity and positive tensor introduction over ordered contexts. It is only a cut-free typing fragment, not Laurent's full calculus or proof-net normalization.
 
-The requested builtin-reflection ring solver and rewrite-rule configuration is **not enabled**. In this repository's Agda version, `--allow-exec` and `--rewriting` conflict with the existing `--safe` profile. To avoid a second, competing configuration or quietly weaken the trusted base, the PR preserves one canonical safe CI invocation; ring laws must be proved constructively (or the trust/configuration decision must be changed explicitly).
+`hedbergReflect` is a small builtin-reflection macro: it builds a term applying the already type-checked `hedberg` theorem to an explicitly supplied decidable-equality procedure and two equality proofs. The kernel checks the resulting proof term. This is theorem instantiation, not general proof search, a reflection-based ring solver, or an implementation of dyad normalization. Rewrite support is enabled by the root module's declared Agda options; no claim of ring automation is made.
 
 ## Test and CI contract
 
@@ -170,10 +171,10 @@ cabal test all
 gforth -e 'include data/FLib.fth' -e 'include test/gforth/abi-smoke.fs'
 
 # Type-check the Agda model.
-agda --safe --no-libraries -i formal formal/LinearModalSafety.agda
+agda --erasure --no-libraries -i formal formal/LinearModalSafety.agda
 
 # Compile and execute generated Nat/Bool programs.
-cabal run agda2forth -- -i test test/CheckedScalar.agda
+cabal run agda2forth -- --erasure -i test test/CheckedScalar.agda
 gforth CheckedScalar.fth test/gforth/compiler-integration.fs
 
 # Exercise oversized Nat literals, unsupported String literals, and axioms.
@@ -210,7 +211,7 @@ A fixed-point value stored in data-stack cells may be a reasonable future extens
 | Selected saturated Nat/Bool lowering | Generated-program tests |
 | Selected partial-application cases | Generated-program tests using existing `pass` path |
 | Checked managed ABI | Direct Gforth tests for enumerated cases |
-| Agda model | Type-checks under `--safe`; contains no postulates |
+| Agda model | Type-checks with Agda 2.8.0.2 and `--erasure`; no `--safe` claim |
 | Finite-type Σ-compactness and bounded Markov substitute | Constructive proofs in `VerifiedPLLCore`; only for an explicit finite enumeration |
 | Hedberg and conatural finite-observation model | Constructive proofs; finite and infinite-observation projection is tested through generated Forth; no claim of arbitrary-function compactness of `ℕ∞` |
 | Dyad laws | Representation/operations and equivalence reflexivity only; full ring laws and normalization are not proved |
@@ -231,7 +232,7 @@ A fixed-point value stored in data-stack cells may be a reasonable future extens
 These sources are background for the model and target language, not claims that the project has inherited their theorems:
 
 - [GNU Gforth manual](https://gforth.org/manual/) for the concrete target's stack, execution-token, and exception behavior.
-- [Agda documentation](https://agda.readthedocs.io/en/v2.6.2/) for the language and the `--safe` type-checking configuration.
+- [Agda 2.8.0.2 documentation](https://agda.readthedocs.io/en/latest/command-line-options.html) for current compiler options, including erasure checking.
 - Henry G. Baker, [Linear Logic and Permutation Stacks: The Forth Shall Be First](https://dcreager.net/papers/Baker1994/), for the connection between linear resource use and stack permutations.
 - [XDS-Agda](https://pdmosses.github.io/xds-agda/) and its [source repository](https://github.com/pdmosses/xds-agda/) for an example of organizing a language semantics in Agda.
 - [Haskell Wikibooks: Denotational semantics](https://en.wikibooks.org/wiki/Haskell/Denotational_semantics) for compositional denotational models.
