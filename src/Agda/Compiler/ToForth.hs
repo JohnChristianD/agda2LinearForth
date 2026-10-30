@@ -19,7 +19,7 @@ import Agda.Utils.Impossible
 import Agda.Utils.Lens
 import Agda.Utils.List hiding ((!!))
 import Agda.Utils.Maybe
-import Agda.Utils.Monad
+import Agda.Utils.Monad hiding (unless)
 import Agda.Utils.Null
 import Agda.Syntax.Common.Pretty (prettyShow)
 import Agda.Utils.Singleton
