@@ -32,6 +32,7 @@ GNU Gforth
 | `formal/LinearModalSafety.agda` | Root model for ownership/descriptor invariants, weakest preconditions, stack effects, denotations, and selected compiler/runtime behavior; imports `VerifiedPLLCore` | Type-checks with Agda 2.8.0.2 and `--erasure`; it does not prove the concrete Haskell/Forth bridge |
 | `formal/VerifiedPLLCore.agda` | Constructive finite-type search, bounded Markov substitute, conaturals, Hedberg, dyad arithmetic, and a small positive-tensor PLL fragment | Type-checks as an import of the root; its theorem scope remains intentionally limited |
 | `formal/VerifiedCoreExecutable.agda` | Finite-observation projection and executable `pow2` interface imported by the proof core | Compiled to Forth and run in a small integration slice; proofs relate finite and infinite observations to the coinductive model, but this does not make arbitrary coinductive values executable |
+| `test/VerifiedCoreSmoke.agda` and `test/gforth/verified-core-smoke.fs` | Generated conatural observations, dyadic scale examples, and an erased-argument call | Compiled by Agda2Forth and executed by Gforth |
 | `test/CheckedScalar.agda` | Nat/Bool regression source | Compiled and executed by CI |
 | `test/gforth/compiler-integration.fs` | Expected results for generated Nat/Bool programs | Executed by CI |
 | `test/gforth/abi-smoke.fs` | Direct runtime ABI regressions | Executed by CI |
