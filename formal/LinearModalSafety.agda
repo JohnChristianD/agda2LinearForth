@@ -1837,17 +1837,20 @@ unsupportedStringLiteralUsesCatchableDiagnostic = refl
 
 -- The term-level cases below record additional concrete ToForth.hs branches.
 -- Unit, sorts and erased terms emit the Forth zero value; Boolean constructors
--- emit -1/0; Boolean cases become IF/ELSE/THEN; coercions are transparent;
--- unreachable and unsolved-meta terms use the same catchable error boundary.
+-- emit -1/0; Boolean cases become IF/ELSE/THEN; coercions are transparent.
+-- TError TUnreachable and TMeta use fthError (the generic catchable diagnostic),
+-- while a missing fthPatternMatch fallback uses ABI-ERROR-UNREACHABLE.
 data BackendTermCase : Set where
   backendUnitTerm backendSortTerm backendErasedTerm : BackendTermCase
   backendTrueConstructor backendFalseConstructor : BackendTermCase
   backendBooleanCase backendCoerceTerm : BackendTermCase
-  backendUnreachableTerm backendUnsolvedMetaTerm : BackendTermCase
+  backendPanicTerm backendUnsolvedMetaTerm backendUnmatchedPatternFallback
+    : BackendTermCase
 
 data TermEmission : Set where
   emitZeroCell emitTrueFlag emitFalseFlag emitInlineConditional
-    emitTransparentTerm emitUnreachableThrow emitUnsolvedMetaThrow : TermEmission
+    emitTransparentTerm emitDiagnosticThrow emitUnreachableErrorThrow
+    : TermEmission
 
 emitBackendTermCase : BackendTermCase → TermEmission
 emitBackendTermCase backendUnitTerm = emitZeroCell
@@ -1857,16 +1860,22 @@ emitBackendTermCase backendTrueConstructor = emitTrueFlag
 emitBackendTermCase backendFalseConstructor = emitFalseFlag
 emitBackendTermCase backendBooleanCase = emitInlineConditional
 emitBackendTermCase backendCoerceTerm = emitTransparentTerm
-emitBackendTermCase backendUnreachableTerm = emitUnreachableThrow
-emitBackendTermCase backendUnsolvedMetaTerm = emitUnsolvedMetaThrow
+emitBackendTermCase backendPanicTerm = emitDiagnosticThrow
+emitBackendTermCase backendUnsolvedMetaTerm = emitDiagnosticThrow
+emitBackendTermCase backendUnmatchedPatternFallback = emitUnreachableErrorThrow
 
-unreachableTermUsesCatchableThrow :
-  emitBackendTermCase backendUnreachableTerm ≡ emitUnreachableThrow
-unreachableTermUsesCatchableThrow = refl
+panicTermUsesCatchableDiagnostic :
+  emitBackendTermCase backendPanicTerm ≡ emitDiagnosticThrow
+panicTermUsesCatchableDiagnostic = refl
 
-unsolvedMetaUsesCatchableThrow :
-  emitBackendTermCase backendUnsolvedMetaTerm ≡ emitUnsolvedMetaThrow
-unsolvedMetaUsesCatchableThrow = refl
+unsolvedMetaUsesCatchableDiagnostic :
+  emitBackendTermCase backendUnsolvedMetaTerm ≡ emitDiagnosticThrow
+unsolvedMetaUsesCatchableDiagnostic = refl
+
+unmatchedPatternUsesCatchableUnreachableError :
+  emitBackendTermCase backendUnmatchedPatternFallback ≡
+    emitUnreachableErrorThrow
+unmatchedPatternUsesCatchableUnreachableError = refl
 
 -- ── 6. Runtime dispatch table mirrored from data/FLib.fth ──
 --
