@@ -1855,7 +1855,7 @@ data TermEmission : Set where
   emitVariableLookup emitPrimitiveDispatch emitDefinitionDispatch
     emitClosureLambda emitConstructorApplication emitLetBinding emitPatternMatch
     emitZeroCell emitTrueFlag emitFalseFlag emitInlineConditional
-    emitTransparentTerm emitDiagnosticThrow emitUnreachableErrorThrow
+    emitTransparentTerm emitTermDiagnosticThrow emitUnreachableErrorThrow
     emitInternalImpossible : TermEmission
 
 emitBackendTermCase : BackendTermCase → TermEmission
@@ -1873,8 +1873,8 @@ emitBackendTermCase backendTrueConstructor = emitTrueFlag
 emitBackendTermCase backendFalseConstructor = emitFalseFlag
 emitBackendTermCase backendBooleanCase = emitInlineConditional
 emitBackendTermCase backendCoerceTerm = emitTransparentTerm
-emitBackendTermCase backendPanicTerm = emitDiagnosticThrow
-emitBackendTermCase backendUnsolvedMetaTerm = emitDiagnosticThrow
+emitBackendTermCase backendPanicTerm = emitTermDiagnosticThrow
+emitBackendTermCase backendUnsolvedMetaTerm = emitTermDiagnosticThrow
 emitBackendTermCase backendUnmatchedPatternFallback = emitUnreachableErrorThrow
 emitBackendTermCase backendInternalApplicationTerm = emitInternalImpossible
 
@@ -1895,11 +1895,11 @@ emitBackendAlternative backendGuardAlternative = emitGuardAlternative
 emitBackendAlternative backendLiteralAlternative = emitUnsupportedAlternativeThrow
 
 panicTermUsesCatchableDiagnostic :
-  emitBackendTermCase backendPanicTerm ≡ emitDiagnosticThrow
+  emitBackendTermCase backendPanicTerm ≡ emitTermDiagnosticThrow
 panicTermUsesCatchableDiagnostic = refl
 
 unsolvedMetaUsesCatchableDiagnostic :
-  emitBackendTermCase backendUnsolvedMetaTerm ≡ emitDiagnosticThrow
+  emitBackendTermCase backendUnsolvedMetaTerm ≡ emitTermDiagnosticThrow
 unsolvedMetaUsesCatchableDiagnostic = refl
 
 unmatchedPatternUsesCatchableUnreachableError :
