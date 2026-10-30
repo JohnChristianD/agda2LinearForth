@@ -1801,26 +1801,72 @@ unsupportedPrimitiveUsesCatchableDiagnostic :
   emitBackendPrimitive backendUnsupported ≡ emitDiagnosticThrow
 unsupportedPrimitiveUsesCatchableDiagnostic = refl
 
--- Literal support has an explicit boundary in the semantic mirror too. Nat
--- and Boolean literals have raw-cell constructors; String literals use the
--- catchable unsupported-literal diagnostic.
+-- Literal support mirrors ToForth.hs's Literal case. Nat becomes decimal
+-- text consumed by ABI-PARSE-NAT; unsupported literal forms use fthError,
+-- which emits ABI-ERROR-COMPILED-UNSUPPORTED and throws catchably.
+data UnsupportedLiteralKind : Set where
+  unsupportedWord64 unsupportedFloat unsupportedString unsupportedChar
+    unsupportedQName unsupportedMeta : UnsupportedLiteralKind
+
 data BackendLiteral : Set where
   backendNatLiteral : Nat → BackendLiteral
   backendTrueLiteral backendFalseLiteral : BackendLiteral
-  backendStringLiteral : BackendLiteral
+  backendUnsupportedLiteral : UnsupportedLiteralKind → BackendLiteral
 
 data LiteralEmission : Set where
-  emitNaturalCell emitTrueCell emitFalseCell emitLiteralDiagnosticThrow : LiteralEmission
+  emitNaturalCell emitTrueCell emitFalseCell : LiteralEmission
+  emitLiteralDiagnosticThrow : UnsupportedLiteralKind → LiteralEmission
 
 emitBackendLiteral : BackendLiteral → LiteralEmission
 emitBackendLiteral (backendNatLiteral n) = emitNaturalCell
 emitBackendLiteral backendTrueLiteral = emitTrueCell
 emitBackendLiteral backendFalseLiteral = emitFalseCell
-emitBackendLiteral backendStringLiteral = emitLiteralDiagnosticThrow
+emitBackendLiteral (backendUnsupportedLiteral kind) =
+  emitLiteralDiagnosticThrow kind
+
+unsupportedLiteralUsesCatchableDiagnostic :
+  (kind : UnsupportedLiteralKind) →
+  emitBackendLiteral (backendUnsupportedLiteral kind) ≡
+    emitLiteralDiagnosticThrow kind
+unsupportedLiteralUsesCatchableDiagnostic kind = refl
 
 unsupportedStringLiteralUsesCatchableDiagnostic :
-  emitBackendLiteral backendStringLiteral ≡ emitLiteralDiagnosticThrow
+  emitBackendLiteral (backendUnsupportedLiteral unsupportedString) ≡
+    emitLiteralDiagnosticThrow unsupportedString
 unsupportedStringLiteralUsesCatchableDiagnostic = refl
+
+-- The term-level cases below record additional concrete ToForth.hs branches.
+-- Unit, sorts and erased terms emit the Forth zero value; Boolean constructors
+-- emit -1/0; Boolean cases become IF/ELSE/THEN; coercions are transparent;
+-- unreachable and unsolved-meta terms use the same catchable error boundary.
+data BackendTermCase : Set where
+  backendUnitTerm backendSortTerm backendErasedTerm : BackendTermCase
+  backendTrueConstructor backendFalseConstructor : BackendTermCase
+  backendBooleanCase backendCoerceTerm : BackendTermCase
+  backendUnreachableTerm backendUnsolvedMetaTerm : BackendTermCase
+
+data TermEmission : Set where
+  emitZeroCell emitTrueFlag emitFalseFlag emitInlineConditional
+    emitTransparentTerm emitUnreachableThrow emitUnsolvedMetaThrow : TermEmission
+
+emitBackendTermCase : BackendTermCase → TermEmission
+emitBackendTermCase backendUnitTerm = emitZeroCell
+emitBackendTermCase backendSortTerm = emitZeroCell
+emitBackendTermCase backendErasedTerm = emitZeroCell
+emitBackendTermCase backendTrueConstructor = emitTrueFlag
+emitBackendTermCase backendFalseConstructor = emitFalseFlag
+emitBackendTermCase backendBooleanCase = emitInlineConditional
+emitBackendTermCase backendCoerceTerm = emitTransparentTerm
+emitBackendTermCase backendUnreachableTerm = emitUnreachableThrow
+emitBackendTermCase backendUnsolvedMetaTerm = emitUnsolvedMetaThrow
+
+unreachableTermUsesCatchableThrow :
+  emitBackendTermCase backendUnreachableTerm ≡ emitUnreachableThrow
+unreachableTermUsesCatchableThrow = refl
+
+unsolvedMetaUsesCatchableThrow :
+  emitBackendTermCase backendUnsolvedMetaTerm ≡ emitUnsolvedMetaThrow
+unsolvedMetaUsesCatchableThrow = refl
 
 -- ── 6. Runtime dispatch table mirrored from data/FLib.fth ──
 --
