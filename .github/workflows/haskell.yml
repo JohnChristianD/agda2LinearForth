@@ -20,6 +20,16 @@ jobs:
           test "$(git rev-parse FETCH_HEAD)" = "$SCHEME_UPSTREAM_SHA"
           git diff --exit-code "$SCHEME_UPSTREAM_SHA" HEAD -- app/Main.hs src/Agda/Compiler/Erase.hs
 
+          # The only Haskell path changes versus Agda2Scheme are the Forth
+          # translation module, removal of the Scheme translation module, and
+          # the Forth-specific Agda 2.8 driver adapter.
+          actual_hs="$(git diff --name-only "$SCHEME_UPSTREAM_SHA" HEAD -- '*.hs' | sort)"
+          expected_hs="$(printf '%s\\n' \
+            src/Agda/Compiler/ToForth.hs \
+            src/Agda/Compiler/ToScheme.hs \
+            src/Main.hs | sort)"
+          test "$actual_hs" = "$expected_hs"
+
           git fetch --no-tags --depth=1 https://github.com/LMMilliken/agda2Forth.git "$FORTH_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$FORTH_UPSTREAM_SHA"
           # The Forth driver is a minimal Agda 2.8 API adapter, pinned independently.
