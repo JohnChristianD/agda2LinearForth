@@ -67,12 +67,19 @@ jobs:
           key: ${{ env.key }}-plan-${{ hashFiles('**/plan.json') }}
           restore-keys: ${{ env.key }}-
 
-      # Agda 2.8.0.2's setup hook needs the Agda executable while installing
-      # interface files. Install the CLI before Cabal builds library-only deps.
+      # Use the official self-contained Agda 2.8.0.2 Linux binary.
+      # Verify the release asset digest before placing it on PATH.
       - name: Install Agda CLI for formal checks
         run: |
-          mkdir -p "$HOME/.local/bin"
-          cabal install Agda-2.8.0.2 --installdir="$HOME/.local/bin" --overwrite-policy=always
+          mkdir -p "$HOME/.local/bin" "$RUNNER_TEMP/agda"
+          curl --fail --location --retry 3 \
+            https://github.com/agda/agda/releases/download/v2.8.0.2/Agda-v2.8.0.2-linux.tar.xz \
+            --output "$RUNNER_TEMP/Agda-v2.8.0.2-linux.tar.xz"
+          echo "2bcf24bb561b1be859bba841e5d67962d1616b3251bc147f878e4f60a2fbd9f7  $RUNNER_TEMP/Agda-v2.8.0.2-linux.tar.xz" | sha256sum --check
+          tar -xJf "$RUNNER_TEMP/Agda-v2.8.0.2-linux.tar.xz" -C "$RUNNER_TEMP/agda"
+          agda_binary="$(find "$RUNNER_TEMP/agda" -type f -name agda -perm -u+x -print -quit)"
+          test -n "$agda_binary"
+          install "$agda_binary" "$HOME/.local/bin/agda"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/agda" --version
 
