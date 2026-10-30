@@ -1,4 +1,4 @@
-\\ End-to-end smoke tests for executable conatural observations and dyad scale.
+\ End-to-end smoke tests for executable conatural observations and dyad scale.
 
 : expect-core-value ( actual expected -- )
   2dup <> IF
