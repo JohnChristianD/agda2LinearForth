@@ -164,6 +164,10 @@ jobs:
           cabal run agda2forth -- --erasure -i formal formal/VerifiedCoreExecutable.agda
           cabal run agda2forth -- --erasure -i formal -i test test/VerifiedCoreSmoke.agda
           grep -n -E 'finiteObservation|coreCoNatAtZero|coreCoNatStopsAtOne|coreInfinityAtDepthEight|corePow2Zero|corePow2One' VerifiedCoreExecutable.fth VerifiedCoreSmoke.fth || true
+          echo "---- imported finiteObservation definition ----"
+          grep -n -B8 -A2 'create XTfiniteObservation' VerifiedCoreExecutable.fth || true
+          echo "---- localFiniteObservation definition ----"
+          grep -n -B8 -A2 'create XTlocalFiniteObservation' VerifiedCoreSmoke.fth || true
           gforth VerifiedCoreExecutable.fth VerifiedCoreSmoke.fth test/gforth/verified-core-smoke.fs > verified-core-smoke.log || { cat verified-core-smoke.log; exit 1; }
           grep -Fq 'verified-core-runtime-tests-passed' verified-core-smoke.log || { cat verified-core-smoke.log; exit 1; }
 
