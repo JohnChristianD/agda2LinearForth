@@ -1801,6 +1801,69 @@ unsupportedPrimitiveUsesCatchableDiagnostic :
   emitBackendPrimitive backendUnsupported ≡ emitDiagnosticThrow
 unsupportedPrimitiveUsesCatchableDiagnostic = refl
 
+-- Exact-arity TPrim applications bypass generic closure application. Partial,
+-- under-applied, or over-applied calls to these same nine primitives fall back
+-- through the existing curried Forth words and fthApps/pass. Other primitives
+-- fail closed instead of being sent through generic closure application.
+data PrimitiveApplicationArity : Set where
+  primitiveBinaryArity primitiveIfArity primitiveOtherArity
+    : PrimitiveApplicationArity
+
+data PrimitiveApplicationEmission : Set where
+  emitDirectAdd emitDirectSub emitDirectMul emitDirectQuot emitDirectRem
+    emitDirectEqI emitDirectGeq emitDirectLt emitDirectIf
+    emitCurriedAdd emitCurriedSub emitCurriedMul emitCurriedQuot emitCurriedRem
+    emitCurriedEqI emitCurriedGeq emitCurriedLt emitCurriedIf
+    emitUnsupportedPrimitiveApplication : PrimitiveApplicationEmission
+
+emitPrimitiveApplication :
+  SupportedBackendPrimitive → PrimitiveApplicationArity →
+  PrimitiveApplicationEmission
+emitPrimitiveApplication backendAdd primitiveBinaryArity = emitDirectAdd
+emitPrimitiveApplication backendAdd _ = emitCurriedAdd
+emitPrimitiveApplication backendSub primitiveBinaryArity = emitDirectSub
+emitPrimitiveApplication backendSub _ = emitCurriedSub
+emitPrimitiveApplication backendMul primitiveBinaryArity = emitDirectMul
+emitPrimitiveApplication backendMul _ = emitCurriedMul
+emitPrimitiveApplication backendQuot primitiveBinaryArity = emitDirectQuot
+emitPrimitiveApplication backendQuot _ = emitCurriedQuot
+emitPrimitiveApplication backendRem primitiveBinaryArity = emitDirectRem
+emitPrimitiveApplication backendRem _ = emitCurriedRem
+emitPrimitiveApplication backendIf primitiveIfArity = emitDirectIf
+emitPrimitiveApplication backendIf _ = emitCurriedIf
+emitPrimitiveApplication backendIntegerEq primitiveBinaryArity = emitDirectEqI
+emitPrimitiveApplication backendIntegerEq _ = emitCurriedEqI
+emitPrimitiveApplication backendGeq primitiveBinaryArity = emitDirectGeq
+emitPrimitiveApplication backendGeq _ = emitCurriedGeq
+emitPrimitiveApplication backendLt primitiveBinaryArity = emitDirectLt
+emitPrimitiveApplication backendLt _ = emitCurriedLt
+
+-- TDef has a second special lowering: saturated builtin Nat addition and
+-- subtraction use ABI adapters, while partial applications use curried
+-- add/monus; all other definitions use their registered Forth word.
+data BuiltinNatDefinition : Set where
+  builtinNatPlusDefinition builtinNatMinusDefinition : BuiltinNatDefinition
+
+data DefinitionApplicationArity : Set where
+  definitionSaturatedBinary definitionOtherArity : DefinitionApplicationArity
+
+data DefinitionApplicationEmission : Set where
+  emitDirectBuiltinNatAdd emitDirectBuiltinNatMonus
+    emitCurriedBuiltinNatAdd emitCurriedBuiltinNatMonus
+    emitNamedDefinitionApplication : DefinitionApplicationEmission
+
+emitBuiltinNatDefinitionApplication :
+  BuiltinNatDefinition → DefinitionApplicationArity →
+  DefinitionApplicationEmission
+emitBuiltinNatDefinitionApplication builtinNatPlusDefinition
+  definitionSaturatedBinary = emitDirectBuiltinNatAdd
+emitBuiltinNatDefinitionApplication builtinNatPlusDefinition _ =
+  emitCurriedBuiltinNatAdd
+emitBuiltinNatDefinitionApplication builtinNatMinusDefinition
+  definitionSaturatedBinary = emitDirectBuiltinNatMonus
+emitBuiltinNatDefinitionApplication builtinNatMinusDefinition _ =
+  emitCurriedBuiltinNatMonus
+
 -- Literal support mirrors ToForth.hs's Literal case. Nat becomes decimal
 -- text consumed by ABI-PARSE-NAT; Word64/Float/String/Char/QName/Meta use
 -- fthError, which emits ABI-ERROR-COMPILED-UNSUPPORTED and throws catchably.
