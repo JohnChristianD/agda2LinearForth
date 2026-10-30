@@ -1876,21 +1876,26 @@ emitBackendTermCase backendUnsolvedMetaTerm = emitTermDiagnosticThrow
 emitBackendTermCase backendUnmatchedPatternFallback = emitUnreachableErrorThrow
 emitBackendTermCase backendInternalApplicationTerm = emitInternalImpossible
 
--- TAlt is deliberately separate: constructor and guard alternatives have
--- lowering paths in fthPatternMatch; literal alternatives currently fall into
--- its unsupported-alternative diagnostic branch.
+-- TAlt lowering is encoded through an intermediate RichSExpr shape.
+-- Constructor alternatives and literal alternatives both become
+-- [pattern, wildcard-list, body], so fthPatternMatch routes both through its
+-- constructor-pattern branch. A literal is therefore syntactically accepted
+-- by this branch, but the current emitter/runtime does not establish correct
+-- literal-pattern equality semantics. Guard alternatives use a separate
+-- [guard, body] branch; malformed alternative shapes emit a catchable error.
 data BackendAlternativeCase : Set where
-  backendConstructorAlternative backendGuardAlternative
-    backendLiteralAlternative : BackendAlternativeCase
+  backendConstructorAlternative backendLiteralAlternative
+    backendGuardAlternative backendMalformedAlternative : BackendAlternativeCase
 
 data AlternativeEmission : Set where
-  emitConstructorAlternative emitGuardAlternative
+  emitConstructorPatternBranch emitGuardBranch emitLiteralPatternBranch
     emitUnsupportedAlternativeThrow : AlternativeEmission
 
 emitBackendAlternative : BackendAlternativeCase → AlternativeEmission
-emitBackendAlternative backendConstructorAlternative = emitConstructorAlternative
-emitBackendAlternative backendGuardAlternative = emitGuardAlternative
-emitBackendAlternative backendLiteralAlternative = emitUnsupportedAlternativeThrow
+emitBackendAlternative backendConstructorAlternative = emitConstructorPatternBranch
+emitBackendAlternative backendLiteralAlternative = emitLiteralPatternBranch
+emitBackendAlternative backendGuardAlternative = emitGuardBranch
+emitBackendAlternative backendMalformedAlternative = emitUnsupportedAlternativeThrow
 
 panicTermUsesCatchableDiagnostic :
   emitBackendTermCase backendPanicTerm ≡ emitTermDiagnosticThrow
@@ -1905,10 +1910,14 @@ unmatchedPatternUsesCatchableUnreachableError :
     emitUnreachableErrorThrow
 unmatchedPatternUsesCatchableUnreachableError = refl
 
-literalAlternativeFailsClosed :
-  emitBackendAlternative backendLiteralAlternative ≡
+literalAlternativeUsesPatternBranch :
+  emitBackendAlternative backendLiteralAlternative ≡ emitLiteralPatternBranch
+literalAlternativeUsesPatternBranch = refl
+
+malformedAlternativeFailsClosed :
+  emitBackendAlternative backendMalformedAlternative ≡
     emitUnsupportedAlternativeThrow
-literalAlternativeFailsClosed = refl
+malformedAlternativeFailsClosed = refl
 
 -- Definition compilation is a separate ToForth instance. Non-compiling
 -- definitions (including inline functions, generalizable variables, datatype
