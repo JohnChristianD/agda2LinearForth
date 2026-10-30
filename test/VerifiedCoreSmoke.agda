@@ -28,3 +28,10 @@ corePow2Zero = pow2 zero
 
 corePow2One : Nat
 corePow2One = pow2 (suc zero)
+
+-- Erased parameters must be absent from generated runtime code.
+erasedArgument : {@0 ignored : Nat} → Nat
+erasedArgument = suc zero
+
+coreErasedArgument : Nat
+coreErasedArgument = erasedArgument {ignored = suc zero}
