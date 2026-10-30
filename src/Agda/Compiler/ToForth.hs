@@ -291,9 +291,16 @@ getFLib :: String
 getFLib = unsafeLocalState readFLib
 
 readFLib :: IO String
-readFLib = do 
+readFLib = do
   fname <- getDataFileName "FLib.fth"
-  readFile fname
+  runtime <- readFile fname
+  -- Generated modules share one Gforth dictionary. Initialize the stateful
+  -- ABI runtime once so imported closures keep using the same handle tables,
+  -- tags, and runtime words when another generated module is included.
+  return $
+    "[undefined] AGDA2FORTH-RUNTIME-LOADED [if]\n" ++
+    "true constant AGDA2FORTH-RUNTIME-LOADED\n" ++
+    runtime ++ "\n[then]\n"
 
 
 deriving instance Generic EvaluationStrategy
