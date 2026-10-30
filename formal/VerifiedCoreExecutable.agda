@@ -1,3 +1,4 @@
+{ OPTIONS --without-K #-}
 
 
 -- Finite-observation interface executable by the existing Forth backend.
