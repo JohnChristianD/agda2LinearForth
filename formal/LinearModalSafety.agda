@@ -1802,25 +1802,23 @@ unsupportedPrimitiveUsesCatchableDiagnostic :
 unsupportedPrimitiveUsesCatchableDiagnostic = refl
 
 -- Literal support mirrors ToForth.hs's Literal case. Nat becomes decimal
--- text consumed by ABI-PARSE-NAT; unsupported literal forms use fthError,
--- which emits ABI-ERROR-COMPILED-UNSUPPORTED and throws catchably.
+-- text consumed by ABI-PARSE-NAT; Word64/Float/String/Char/QName/Meta use
+-- fthError, which emits ABI-ERROR-COMPILED-UNSUPPORTED and throws catchably.
+-- Boolean flags are constructor cases (TCon), modeled separately below.
 data UnsupportedLiteralKind : Set where
   unsupportedWord64 unsupportedFloat unsupportedString unsupportedChar
     unsupportedQName unsupportedMeta : UnsupportedLiteralKind
 
 data BackendLiteral : Set where
   backendNatLiteral : Nat → BackendLiteral
-  backendTrueLiteral backendFalseLiteral : BackendLiteral
   backendUnsupportedLiteral : UnsupportedLiteralKind → BackendLiteral
 
 data LiteralEmission : Set where
-  emitNaturalCell emitTrueCell emitFalseCell : LiteralEmission
+  emitNaturalCell : LiteralEmission
   emitLiteralDiagnosticThrow : UnsupportedLiteralKind → LiteralEmission
 
 emitBackendLiteral : BackendLiteral → LiteralEmission
 emitBackendLiteral (backendNatLiteral n) = emitNaturalCell
-emitBackendLiteral backendTrueLiteral = emitTrueCell
-emitBackendLiteral backendFalseLiteral = emitFalseCell
 emitBackendLiteral (backendUnsupportedLiteral kind) =
   emitLiteralDiagnosticThrow kind
 
