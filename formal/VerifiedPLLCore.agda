@@ -1,4 +1,4 @@
-{ OPTIONS --without-K #-}
+{-# OPTIONS --without-K #-}
 
 
 -- Constructive core for the verified polarized-logic work.
