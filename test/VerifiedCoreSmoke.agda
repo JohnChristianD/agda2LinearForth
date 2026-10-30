@@ -12,6 +12,17 @@ boolToNat : Bool → Nat
 boolToNat false = zero
 boolToNat true = suc zero
 
+-- Keep the imported Bool result and a same-module definition separate. This
+-- isolates cross-module calls from Bool elimination in the failing boundary.
+coreImportedObservationAtOne : Bool
+coreImportedObservationAtOne = finiteObservation 1 1
+
+localFiniteObservation : Nat → Nat → Bool
+localFiniteObservation available depth = depth < available
+
+coreLocalObservationAtOne : Nat
+coreLocalObservationAtOne = boolToNat (localFiniteObservation 1 1)
+
 -- Executable examples taken directly from the formal conatural/dyad core.
 -- Their generated Forth results are checked in the Gforth integration test.
 coreCoNatAtZero : Nat
