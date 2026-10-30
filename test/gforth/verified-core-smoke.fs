@@ -36,3 +36,8 @@ verified-core-dyad-scale-zero
 verified-core-dyad-scale-one
 
 ." verified-core-runtime-tests-passed" cr
+
+: verified-core-erased-argument ( -- )
+  coreErasedArgument dethunk 1 expect-core-value
+;
+verified-core-erased-argument
