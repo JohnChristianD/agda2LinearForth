@@ -24,7 +24,7 @@ jobs:
           # translation module, removal of the Scheme translation module, and
           # the Forth-specific Agda 2.8 driver adapter.
           actual_hs="$(git diff --name-only "$SCHEME_UPSTREAM_SHA" HEAD -- '*.hs' | sort)"
-          expected_hs="$(printf '%s\\n' \
+          expected_hs="$(printf '%s\n' \
             src/Agda/Compiler/ToForth.hs \
             src/Agda/Compiler/ToScheme.hs \
             src/Main.hs | sort)"
