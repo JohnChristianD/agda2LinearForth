@@ -1,4 +1,4 @@
-{-# OPTIONS --safe --without-K #-}
+
 
 -- Constructive core for the verified polarized-logic work.
 -- No project-defined axioms, classical principles, or rewrite rules.
