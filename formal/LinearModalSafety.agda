@@ -1835,24 +1835,37 @@ unsupportedStringLiteralUsesCatchableDiagnostic :
     emitLiteralDiagnosticThrow unsupportedString
 unsupportedStringLiteralUsesCatchableDiagnostic = refl
 
--- The term-level cases below record additional concrete ToForth.hs branches.
--- Unit, sorts and erased terms emit the Forth zero value; Boolean constructors
--- emit -1/0; Boolean cases become IF/ELSE/THEN; coercions are transparent.
--- TError TUnreachable and TMeta use fthError (the generic catchable diagnostic),
--- while a missing fthPatternMatch fallback uses ABI-ERROR-UNREACHABLE.
+-- The term-level cases classify each TTerm branch in ToForth.hs. Generic
+-- variables, primitives, definitions, lambdas, constructors, lets and cases
+-- take their corresponding backend paths. Unit/sort/erased terms emit zero;
+-- Bool constructors emit -1/0; Bool cases become IF/ELSE/THEN; coercions are
+-- transparent. TError TUnreachable and TMeta use fthError; an absent pattern
+-- fallback uses ABI-ERROR-UNREACHABLE. TApp is an internal invariant failure.
 data BackendTermCase : Set where
+  backendVariableTerm backendPrimitiveApplication backendDefinitionApplication
+    backendLambdaTerm backendConstructorApplication backendLetTerm
+    backendGeneralCase : BackendTermCase
   backendUnitTerm backendSortTerm backendErasedTerm : BackendTermCase
   backendTrueConstructor backendFalseConstructor : BackendTermCase
   backendBooleanCase backendCoerceTerm : BackendTermCase
   backendPanicTerm backendUnsolvedMetaTerm backendUnmatchedPatternFallback
-    : BackendTermCase
+    backendInternalApplicationTerm : BackendTermCase
 
 data TermEmission : Set where
-  emitZeroCell emitTrueFlag emitFalseFlag emitInlineConditional
+  emitVariableLookup emitPrimitiveDispatch emitDefinitionDispatch
+    emitClosureLambda emitConstructorApplication emitLetBinding emitPatternMatch
+    emitZeroCell emitTrueFlag emitFalseFlag emitInlineConditional
     emitTransparentTerm emitDiagnosticThrow emitUnreachableErrorThrow
-    : TermEmission
+    emitInternalImpossible : TermEmission
 
 emitBackendTermCase : BackendTermCase → TermEmission
+emitBackendTermCase backendVariableTerm = emitVariableLookup
+emitBackendTermCase backendPrimitiveApplication = emitPrimitiveDispatch
+emitBackendTermCase backendDefinitionApplication = emitDefinitionDispatch
+emitBackendTermCase backendLambdaTerm = emitClosureLambda
+emitBackendTermCase backendConstructorApplication = emitConstructorApplication
+emitBackendTermCase backendLetTerm = emitLetBinding
+emitBackendTermCase backendGeneralCase = emitPatternMatch
 emitBackendTermCase backendUnitTerm = emitZeroCell
 emitBackendTermCase backendSortTerm = emitZeroCell
 emitBackendTermCase backendErasedTerm = emitZeroCell
@@ -1863,6 +1876,23 @@ emitBackendTermCase backendCoerceTerm = emitTransparentTerm
 emitBackendTermCase backendPanicTerm = emitDiagnosticThrow
 emitBackendTermCase backendUnsolvedMetaTerm = emitDiagnosticThrow
 emitBackendTermCase backendUnmatchedPatternFallback = emitUnreachableErrorThrow
+emitBackendTermCase backendInternalApplicationTerm = emitInternalImpossible
+
+-- TAlt is deliberately separate: constructor and guard alternatives have
+-- lowering paths in fthPatternMatch; literal alternatives currently fall into
+-- its unsupported-alternative diagnostic branch.
+data BackendAlternativeCase : Set where
+  backendConstructorAlternative backendGuardAlternative
+    backendLiteralAlternative : BackendAlternativeCase
+
+data AlternativeEmission : Set where
+  emitConstructorAlternative emitGuardAlternative
+    emitUnsupportedAlternativeThrow : AlternativeEmission
+
+emitBackendAlternative : BackendAlternativeCase → AlternativeEmission
+emitBackendAlternative backendConstructorAlternative = emitConstructorAlternative
+emitBackendAlternative backendGuardAlternative = emitGuardAlternative
+emitBackendAlternative backendLiteralAlternative = emitUnsupportedAlternativeThrow
 
 panicTermUsesCatchableDiagnostic :
   emitBackendTermCase backendPanicTerm ≡ emitDiagnosticThrow
@@ -1876,6 +1906,11 @@ unmatchedPatternUsesCatchableUnreachableError :
   emitBackendTermCase backendUnmatchedPatternFallback ≡
     emitUnreachableErrorThrow
 unmatchedPatternUsesCatchableUnreachableError = refl
+
+literalAlternativeFailsClosed :
+  emitBackendAlternative backendLiteralAlternative ≡
+    emitUnsupportedAlternativeThrow
+literalAlternativeFailsClosed = refl
 
 -- ── 6. Runtime dispatch table mirrored from data/FLib.fth ──
 --
