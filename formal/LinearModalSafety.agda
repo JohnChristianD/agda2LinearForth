@@ -13,6 +13,7 @@ module LinearModalSafety where
 open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _*_)
 open import Agda.Builtin.Bool using (Bool; true; false)
 open import Agda.Builtin.Equality using (_≡_; refl)
+open import Agda.Builtin.Equality.Rewrite
 
 -- Import the verified core under the same single --safe CI invocation.
 import VerifiedPLLCore
