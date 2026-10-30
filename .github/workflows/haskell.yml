@@ -86,7 +86,7 @@ jobs:
 
       - name: Type-check the unified constructive compiler/runtime specification
         run: |
-          "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalSafety.agda
+          "$HOME/.local/bin/agda" -i formal formal/LinearModalSafety.agda
 
       - name: Verify oversized Nat literals fail through the bounded runtime parser
         run: |
