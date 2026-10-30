@@ -11,7 +11,7 @@ jobs:
 
       - name: Verify per-file upstream source identity
         env:
-          SCHEME_UPSTREAM_SHA: 6b3d975e9274448c09b5939e637b6718c2cfb10c
+          SCHEME_UPSTREAM_SHA: 24e02d9669f17d98ec67b8ad961cf9c3e602bf10
           FORTH_UPSTREAM_SHA: e83f8cc735bf220f80b3655ce2158a23818910fe
           FLIB_EXPECTED_BLOB: 30477369597107b579ffac29735c42b6e326b0d0
         run: |
@@ -50,12 +50,12 @@ jobs:
           key: ${{ env.key }}-plan-${{ hashFiles('**/plan.json') }}
           restore-keys: ${{ env.key }}-
 
-      # Agda 2.6.2.2's setup hook needs the Agda executable while installing
+      # Agda 2.8.0.2's setup hook needs the Agda executable while installing
       # interface files. Install the CLI before Cabal builds library-only deps.
       - name: Install Agda CLI for formal checks
         run: |
           mkdir -p "$HOME/.local/bin"
-          cabal install Agda-2.6.2.2 --installdir="$HOME/.local/bin" --overwrite-policy=always
+          cabal install Agda-2.8.0.2 --installdir="$HOME/.local/bin" --overwrite-policy=always
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/agda" --version
 
@@ -90,7 +90,7 @@ jobs:
 
       - name: Verify oversized Nat literals fail through the bounded runtime parser
         run: |
-          cabal run agda2forth -- -i test test/UnsupportedNatLiteral.agda
+          cabal run agda2forth -- --erasure -i test test/UnsupportedNatLiteral.agda
           grep -Fq 'ABI-PARSE-NAT' UnsupportedNatLiteral.fth
           if grep -Eq '(^|[[:space:]])bye([[:space:]]|$)' UnsupportedNatLiteral.fth; then
             echo "oversized Nat output must throw, not terminate Gforth with BYE"
