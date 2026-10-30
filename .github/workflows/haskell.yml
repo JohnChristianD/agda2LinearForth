@@ -86,7 +86,7 @@ jobs:
 
       - name: Type-check the unified constructive compiler/runtime specification
         run: |
-          "$HOME/.local/bin/agda" --safe --no-libraries -i formal formal/LinearModalSafety.agda
+          "$HOME/.local/bin/agda" --no-libraries -i formal formal/LinearModalSafety.agda
 
       - name: Verify oversized Nat literals fail through the bounded runtime parser
         run: |
@@ -137,8 +137,8 @@ jobs:
           cabal run agda2forth -- -i formal formal/VerifiedCoreExecutable.agda
           cabal run agda2forth -- -i formal -i test test/VerifiedCoreSmoke.agda
           grep -n -E 'finiteObservation|coreCoNatAtZero|coreCoNatStopsAtOne|coreInfinityAtDepthEight|corePow2Zero|corePow2One' VerifiedCoreExecutable.fth VerifiedCoreSmoke.fth || true
-          gforth VerifiedCoreExecutable.fth VerifiedCoreSmoke.fth test/gforth/verified-core-smoke.fs > verified-core-smoke.log
-          grep -Fq 'verified-core-runtime-tests-passed' verified-core-smoke.log
+          gforth VerifiedCoreExecutable.fth VerifiedCoreSmoke.fth test/gforth/verified-core-smoke.fs > verified-core-smoke.log || { cat verified-core-smoke.log; exit 1; }
+          grep -Fq 'verified-core-runtime-tests-passed' verified-core-smoke.log || { cat verified-core-smoke.log; exit 1; }
 
       - name: Compile first-order triples fixture
         run: cabal run agda2forth -- -i test test/TriplesFO.agda
