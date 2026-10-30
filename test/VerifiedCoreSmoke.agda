@@ -30,8 +30,8 @@ corePow2One : Nat
 corePow2One = pow2 (suc zero)
 
 -- Erased parameters must be absent from generated runtime code.
-erasedArgument : {@0 ignored : Nat} → Nat
-erasedArgument = suc zero
+erasedArgument : {@0 ignored : Nat} → Nat → Nat
+erasedArgument value = value
 
 coreErasedArgument : Nat
-coreErasedArgument = erasedArgument {ignored = suc zero}
+coreErasedArgument = erasedArgument {ignored = suc zero} (suc (suc zero))
