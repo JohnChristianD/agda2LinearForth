@@ -15,6 +15,16 @@
 ;
 verified-core-conat-first-observation
 
+: verified-core-imported-false-observation ( -- )
+  coreImportedObservationAtOne dethunk 0 expect-core-value
+;
+verified-core-imported-false-observation
+
+: verified-core-local-false-observation ( -- )
+  coreLocalObservationAtOne dethunk 0 expect-core-value
+;
+verified-core-local-false-observation
+
 : verified-core-conat-stops ( -- )
   coreCoNatStopsAtOne dethunk 0 expect-core-value
 ;
