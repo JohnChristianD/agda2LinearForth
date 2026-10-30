@@ -1912,6 +1912,37 @@ literalAlternativeFailsClosed :
     emitUnsupportedAlternativeThrow
 literalAlternativeFailsClosed = refl
 
+-- Definition compilation is a separate ToForth instance. Non-compiling
+-- definitions (including inline functions, generalizable variables, datatype
+-- and record declarations) contribute no word; axioms/primitives fail through
+-- fthAxiom; functions compile bodies; constructors define constructor words.
+-- AbstractDefn and DataOrRecSig are compiler-internal impossible cases.
+data BackendDefinitionCase : Set where
+  backendAxiomDefinition backendPrimitiveDefinition : BackendDefinitionCase
+  backendFunctionDefinition backendConstructorDefinition : BackendDefinitionCase
+  backendSkippedDefinition backendImpossibleDefinition : BackendDefinitionCase
+
+data DefinitionEmission : Set where
+  emitDefinitionDiagnosticThrow emitCompiledFunctionWord
+    emitConstructorWord emitNoDefinition emitDefinitionInternalImpossible
+    : DefinitionEmission
+
+emitBackendDefinition : BackendDefinitionCase → DefinitionEmission
+emitBackendDefinition backendAxiomDefinition = emitDefinitionDiagnosticThrow
+emitBackendDefinition backendPrimitiveDefinition = emitDefinitionDiagnosticThrow
+emitBackendDefinition backendFunctionDefinition = emitCompiledFunctionWord
+emitBackendDefinition backendConstructorDefinition = emitConstructorWord
+emitBackendDefinition backendSkippedDefinition = emitNoDefinition
+emitBackendDefinition backendImpossibleDefinition = emitDefinitionInternalImpossible
+
+axiomDefinitionFailsClosed :
+  emitBackendDefinition backendAxiomDefinition ≡ emitDefinitionDiagnosticThrow
+axiomDefinitionFailsClosed = refl
+
+primitiveDefinitionFailsClosed :
+  emitBackendDefinition backendPrimitiveDefinition ≡ emitDefinitionDiagnosticThrow
+primitiveDefinitionFailsClosed = refl
+
 -- ── 6. Runtime dispatch table mirrored from data/FLib.fth ──
 --
 -- ABI-DISPATCH-BINARY's branch structure is:
