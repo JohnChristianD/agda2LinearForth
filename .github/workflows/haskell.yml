@@ -1,5 +1,8 @@
 name: build
-on: [push, pull_request]
+on:
+  push:
+    branches: [master]
+  pull_request:
 
 concurrency:
   group: agda2forth-${{ github.event.pull_request.number || github.ref }}
@@ -41,7 +44,7 @@ jobs:
           # Shared entrypoint and erasure implementation remain byte-identical to Agda2Scheme.
           git diff --exit-code "$SCHEME_UPSTREAM_SHA" HEAD -- app/Main.hs src/Agda/Compiler/Erase.hs
 
-          # Pin the reviewed runtime implementation while allowing only ToForth.hs among Haskell files.
+          # Keep runtime source pinned; Haskell path changes are constrained by the allowlist above.
           test "$(git hash-object data/FLib.fth)" = "$FLIB_EXPECTED_BLOB"
 
       - name: Set up GHC
