@@ -20,14 +20,19 @@ extra-source-files:
     test/UnsupportedAxiom.agda
     test/UnsupportedNatLiteral.agda
     test/CheckedScalar.agda
+    test/VerifiedCoreSmoke.agda
     test/gforth/abi-smoke.fs
     test/gforth/compiler-integration.fs
+    test/gforth/verified-core-smoke.fs
     test/gforth/unsupported-axiom-boundary.fs
     test/gforth/unsupported-nat-literal.fs
     formal/LinearModalABI.agda
     formal/LinearModalStackEffects.agda
     formal/CompilerRuntimeBoundary.agda
     formal/LinearModalExamples.agda
+    formal/LinearModalSafety.agda
+    formal/VerifiedPLLCore.agda
+    formal/VerifiedCoreExecutable.agda
 
 executable agda2forth
     main-is:          Main.hs
@@ -35,8 +40,8 @@ executable agda2forth
                       Agda.Compiler.Erase
                       Paths_agda2forth
     autogen-modules:  Paths_agda2forth
-    build-depends:    base ^>=4.15.0.0
-                      , Agda >= 2.6.2.1 && < 2.6.3
+    build-depends:    base >=4.15.0.0
+                      , Agda >= 2.8.0.2 && < 2.9
                       , containers >= 0.5.7.1
                       , deepseq >= 1.4.5
                       , mtl >= 2.2.2

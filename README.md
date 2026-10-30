@@ -26,10 +26,13 @@ GNU Gforth
 | --- | --- | --- |
 | `app/Main.hs` | Entry point inherited from Agda2Scheme | Exact upstream-source check in CI |
 | `src/Agda/Compiler/Erase.hs` | Upstream erasure implementation | Exact upstream-source check in CI |
-| `src/Main.hs` | Agda backend integration inherited from Agda2Forth | Exact upstream-source check in CI |
+| `src/Main.hs` | Minimal Forth backend driver adapted for Agda 2.8 APIs | Exact driver-blob check in CI |
 | `src/Agda/Compiler/ToForth.hs` | Converts Agda treeless terms into Forth forms and definitions | Haskell build and selected generated-program tests; no machine-checked proof that this Haskell code implements the Agda model |
 | `data/FLib.fth` | Legacy Forth words, closure application, managed descriptors, checked ABI operations | Executed directly by Gforth tests; described by a separate manual Agda model |
-| `formal/LinearModalSafety.agda` | Ownership/descriptor invariants, weakest-precondition model, selected stack effects, denotations, and model-level compiler/runtime mirrors | Type-checks with `--safe`; it neither extracts nor verifies the Haskell or Forth implementation |
+| `formal/LinearModalSafety.agda` | Root model for ownership/descriptor invariants, weakest preconditions, stack effects, denotations, and selected compiler/runtime behavior; imports `VerifiedPLLCore` | Type-checks with Agda 2.8.0.2 and `--erasure`; it does not prove the concrete Haskell/Forth bridge |
+| `formal/VerifiedPLLCore.agda` | Constructive finite-type search, bounded Markov substitute, conaturals, Hedberg, dyad arithmetic, and a small positive-tensor PLL fragment | Type-checks as an import of the root; its theorem scope remains intentionally limited |
+| `formal/VerifiedCoreExecutable.agda` | Finite-observation projection and executable `pow2` interface imported by the proof core | Compiled to Forth and run in a small integration slice; proofs relate finite and infinite observations to the coinductive model, but this does not make arbitrary coinductive values executable |
+| `test/VerifiedCoreSmoke.agda` and `test/gforth/verified-core-smoke.fs` | Generated conatural observations, dyadic scale examples, and an erased-argument call | Compiled by Agda2Forth and executed by Gforth |
 | `test/CheckedScalar.agda` | Nat/Bool regression source | Compiled and executed by CI |
 | `test/gforth/compiler-integration.fs` | Expected results for generated Nat/Bool programs | Executed by CI |
 | `test/gforth/abi-smoke.fs` | Direct runtime ABI regressions | Executed by CI |
@@ -42,10 +45,10 @@ GNU Gforth
 
 CI checks that:
 
-- `app/Main.hs` and `src/Agda/Compiler/Erase.hs` match Agda2Scheme revision `6b3d975e9274448c09b5939e637b6718c2cfb10c`.
-- `src/Main.hs` matches Agda2Forth revision `e83f8cc735bf220f80b3655ce2158a23818910fe`.
-- `src/Agda/Compiler/ToForth.hs` is the sole Haskell source file permitted to differ from its pinned upstream boundary.
-- `data/FLib.fth` matches the reviewed runtime blob pinned in CI as `07ee70cb6e8c976c1ee6b8d6e46b3430afdb4ced`.
+- `app/Main.hs` and `src/Agda/Compiler/Erase.hs` are byte-identical to Agda2Scheme revision `24e02d9669f17d98ec67b8ad961cf9c3e602bf10` (the Agda 2.8 API update).
+- `src/Main.hs` is the small Forth-specific Agda 2.8 driver adapter, pinned by its exact Git blob `be738fab5d26f009576e6b1a51237d4f7f2f1f9e`.
+- `src/Agda/Compiler/ToForth.hs` is the only Forth-specific compiler translation module; the other shared Haskell source files must remain byte-identical to the Scheme upstream source.
+- `data/FLib.fth` matches the reviewed runtime blob pinned in CI as `30477369597107b579ffac29735c42b6e326b0d0`.
 
 A hash match establishes byte identity with a reference file. It does not establish semantic correctness. In particular, the Agda model is manually written and maintained; a provenance check does not prove that `ToForth.hs` or `FLib.fth` implements it.
 
@@ -108,10 +111,10 @@ The raw Nat arithmetic adapters and `ABI-PARSE-NAT` enforce nonnegative-cell inp
 
 ## What `formal/LinearModalSafety.agda` establishes
 
-The module begins with `{-# OPTIONS --safe #-}`, imports Agda builtins rather than the standard library, and contains no postulates. CI type-checks it with:
+The formal modules use Agda builtins rather than the standard library and declare no project-local axioms. The conatural model is a decreasing Boolean sequence. Formal checking uses Agda 2.8.0.2, `--without-K`, and the project options declared in the modules; `--safe` is intentionally not enabled. CI type-checks the root and its imports with:
 
 ```sh
-agda --safe --no-libraries -i formal formal/LinearModalSafety.agda
+agda --erasure --no-libraries -i formal formal/LinearModalSafety.agda
 ```
 
 Its theorems concern explicitly defined Agda models. The module includes:
@@ -123,6 +126,7 @@ Its theorems concern explicitly defined Agda models. The module includes:
 5. **Nat stack-program forward simulation and cell-bound contract.** The Nat fragment has a linear target-program representation: raw Nat-cell pushes followed by modeled `ABI-ADD-OR-LEGACY`, `ABI-MUL-OR-LEGACY`, and `ABI-MONUS-OR-LEGACY` instructions. An inductive execution relation specifies their abstract raw/raw stack behavior. `natStackExecAppend` proves sequencing, and `emissionTreeAgreesWithStackProgram` connects the tree-shaped emission mirror to the linear program. `natExpressionForwardSimulatesStackProgram` proves the expression denotation is placed above an arbitrary unchanged stack tail. Because Agda `Nat` is unbounded but a concrete Gforth cell is finite, `NatCellRepresentable` additionally requires every literal and intermediate result to fit a supplied bound. `natExpressionBoundedForwardSimulatesStackProgram` combines that witness with the stack simulation. This is an explicit proof precondition rather than an emitted proof witness; the decimal parser and raw arithmetic adapters dynamically enforce finite-cell bounds. Choosing the model bound equal to the concrete `ABI-MAX-NAT` and proving the emitter/runtime bridge remain separate obligations.
 6. **Curried closure model.** Separate lemmas show that the modeled curried addition, monus, and multiplication closures preserve their corresponding arithmetic when applied.
 7. **Nat/Bool and compiler-boundary models.** Selected arithmetic, comparisons, conditionals, and errors are modeled. The boundary model explicitly represents the fact that raw Nat/Bool outputs lack a runtime mode witness.
+8. **Emitter/runtime inventory.** Section 5 models the supported primitive table, direct saturated versus curried primitive lowering, the special saturated builtin Nat addition/monus paths, all current literal kinds, definition compilation, the major `TTerm` cases, Boolean constructor/case lowering, pattern-alternative encoding, and catchable failure branches from `ToForth.hs`. Literal alternatives are currently encoded into the constructor-like pattern path; their equality semantics are not established by this model or its tests. Section 6 models selected `FLib.fth` dispatch and mode joins; later sections model selected arithmetic, allocation, closure, and exceptional transitions. These tables are maintained by hand and are not generated from either implementation.
 
 The historical theorem `historicalGeneratedScalarDoesNotRefineAddition` preserves the old fallback-body counterexample as historical context. It is not a claim that the current tested saturated-addition lowering still exhibits that old result.
 
@@ -141,6 +145,21 @@ The current Agda file does **not** prove:
 
 A whole-backend proof needs an explicit supported source subset, a target instruction/emission relation shared by the specification and implementation, and a forward simulation that connects source meaning to generated Forth and concrete runtime state. A small Agda model and green regression tests are useful evidence, but they are not a substitute for that bridge.
 
+## Constructive foundations and polarized-logic fragment
+
+The conatural proof model follows TypeTopology's generic-convergent-sequence representation: a Boolean sequence with the decreasingness proof that once an observation is false, all later observations remain false. It is connected to the backend-compilable observation interface in `formal/VerifiedCoreExecutable.agda` by `finiteObservationAgrees` and `infiniteObservationAgrees`; CI compiles examples of that interface to Forth and executes them with Gforth. This tests the finite ABI projection, not arbitrary functions over conaturals or whole-backend correctness.
+
+`formal/VerifiedPLLCore.agda` re-expresses a deliberately bounded subset of the ideas in TypeTopology without importing its standard-library-scale dependency graph.
+
+- **CompactTypes/searchability:** `isSigmaCompact` is the root-or-everywhere-true decision shape for Boolean predicates. `finiteSearchCompact` proves it for types supplied with a complete finite enumeration. This is not a claim that all of `Nat` is Σ-compact/LPO.
+- **Conaturals:** `CoNat` encodes `ℕ∞` as a decreasing Boolean sequence, following `TypeTopology.GenericConvergentSequence`. It permits undecided finite-versus-infinite sequences constructively. The executable ABI exposes finite and infinite observation cases, with correspondence theorems; `coNatFiniteObservationCompact` applies only to predicates explicitly factored through one fixed observation, not arbitrary predicates on `ℕ∞`.
+- **Hedberg:** `hedberg` proves that decidable equality makes identity types propositions, using no `K` postulate.
+- **Markov substitute:** `finiteMarkov` and `coNatFiniteObservationMarkov` eliminate double-negated root existence only when constructive finite/enumerated compactness evidence is available. They are bounded principles, not unbounded Markov's principle for arbitrary predicates on `Nat`.
+- **Dyads:** `Dyad` stores an integer numerator as a pair of naturals plus a denominator exponent, with addition, multiplication, cross-multiplication equivalence, and reflexivity of that equivalence. The encoding is not normalized; ring laws, order, normalization, and their proofs remain incomplete.
+- **Polarized linear logic:** `PLLFragment` contains atomic identity and positive tensor introduction over ordered contexts. It is only a cut-free typing fragment, not Laurent's full calculus or proof-net normalization.
+
+`hedbergReflect` is a small builtin-reflection macro: it builds a term applying the already type-checked `hedberg` theorem to an explicitly supplied decidable-equality procedure and two equality proofs. The kernel checks the resulting proof term. This is theorem instantiation, not general proof search, a reflection-based ring solver, or an implementation of dyad normalization. Rewrite support is enabled by the root module's declared Agda options; no claim of ring automation is made.
+
 ## Test and CI contract
 
 CI checks source provenance, builds the Haskell compiler, runs the configured Cabal test command, installs/runs Gforth tests, type-checks the Agda specification, and compiles selected fixtures. The relevant commands are:
@@ -154,10 +173,10 @@ cabal test all
 gforth -e 'include data/FLib.fth' -e 'include test/gforth/abi-smoke.fs'
 
 # Type-check the Agda model.
-agda --safe --no-libraries -i formal formal/LinearModalSafety.agda
+agda --erasure --no-libraries -i formal formal/LinearModalSafety.agda
 
 # Compile and execute generated Nat/Bool programs.
-cabal run agda2forth -- -i test test/CheckedScalar.agda
+cabal run agda2forth -- --erasure -i test test/CheckedScalar.agda
 gforth CheckedScalar.fth test/gforth/compiler-integration.fs
 
 # Exercise oversized Nat literals, unsupported String literals, and axioms.
@@ -194,7 +213,11 @@ A fixed-point value stored in data-stack cells may be a reasonable future extens
 | Selected saturated Nat/Bool lowering | Generated-program tests |
 | Selected partial-application cases | Generated-program tests using existing `pass` path |
 | Checked managed ABI | Direct Gforth tests for enumerated cases |
-| Agda model | Type-checks under `--safe`; contains no postulates |
+| Agda model | Type-checks with Agda 2.8.0.2 and `--erasure`; no `--safe` claim |
+| Finite-type Σ-compactness and bounded Markov substitute | Constructive proofs in `VerifiedPLLCore`; only for an explicit finite enumeration |
+| Hedberg and conatural finite-observation model | Constructive proofs; finite and infinite-observation projection is tested through generated Forth; no claim of arbitrary-function compactness of `ℕ∞` |
+| Dyad laws | Representation/operations and equivalence reflexivity only; full ring laws and normalization are not proved |
+| Laurent polarized logic | Minimal positive-tensor proof-rule fragment only; no full calculus, cut elimination, or Forth bridge |
 | Modeled Nat-expression-to-stack-code simulation | Proven for literals, addition, multiplication, and monus with stack-tail preservation; finite-cell fit is an explicit proof precondition, not a runtime check |
 | Oversized Nat literal | Generated decimal string is parsed and overflow is caught end to end |
 | Unsupported String literal and referenced axiom | Catchable errors tested end to end |
@@ -211,11 +234,12 @@ A fixed-point value stored in data-stack cells may be a reasonable future extens
 These sources are background for the model and target language, not claims that the project has inherited their theorems:
 
 - [GNU Gforth manual](https://gforth.org/manual/) for the concrete target's stack, execution-token, and exception behavior.
-- [Agda documentation](https://agda.readthedocs.io/en/v2.6.2/) for the language and the `--safe` type-checking configuration.
+- [Agda 2.8.0.2 documentation](https://agda.readthedocs.io/en/latest/command-line-options.html) for current compiler options, including erasure checking.
 - Henry G. Baker, [Linear Logic and Permutation Stacks: The Forth Shall Be First](https://dcreager.net/papers/Baker1994/), for the connection between linear resource use and stack permutations.
 - [XDS-Agda](https://pdmosses.github.io/xds-agda/) and its [source repository](https://github.com/pdmosses/xds-agda/) for an example of organizing a language semantics in Agda.
 - [Haskell Wikibooks: Denotational semantics](https://en.wikibooks.org/wiki/Haskell/Denotational_semantics) for compositional denotational models.
 - [UPenn Software Foundations: Separation Logic Foundations](https://softwarefoundations.cis.upenn.edu/current/current/slf-current/) for heap predicates and frame reasoning. Such reasoning applies to a concrete Forth word only after its footprint and behavior have been established.
 - [Stanford Encyclopedia of Philosophy: Constructive Mathematics](https://plato.stanford.edu/entries/mathematics-constructive/) for the constructive-mathematics context.
+- [TypeTopology source repository](https://github.com/martinescardo/TypeTopology), especially `source/TypeTopology/CompactTypes.lagda`, `source/TypeTopology/GenericConvergentSequence.lagda`, `source/TypeTopology/GenericConvergentSequenceCompactness.lagda`, `source/CoNaturals/Type.lagda`, `source/UF/Hedberg.lagda`, `source/Taboos/MarkovsPrinciple.lagda`, and `source/Dyadics/Type.lagda`. The local module is a dependency-light re-expression of a limited subset, not a wholesale port.
 - [nLab: Linear logic](https://ncatlab.org/nlab/show/linear%2Blogic) and [!-modality](https://ncatlab.org/nlab/show/%21-modality) for the intended logical interpretation of modal structural rules.
 - M. Anton Ertl and Bernd Paysan, [Closures: The Forth Way](https://www.complang.tuwien.ac.at/papers/ertl%26paysan.pdf), EuroForth 2018, for Forth closure/environment design.

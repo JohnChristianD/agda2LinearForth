@@ -17,18 +17,18 @@ import Agda.TypeChecking.Pretty
 import Agda.TypeChecking.Primitive.Base
 import Agda.Utils.Impossible
 import Agda.Utils.Lens
-import Agda.Utils.List
+import Agda.Utils.List hiding ((!!))
 import Agda.Utils.Maybe
-import Agda.Utils.Monad
+import Agda.Utils.Monad hiding (unless)
 import Agda.Utils.Null
-import Agda.Utils.Pretty
+import Agda.Syntax.Common.Pretty (prettyShow)
 import Agda.Utils.Singleton
 
 import Control.DeepSeq ( NFData )
 
 import Control.Monad.Except
 import Control.Monad.Reader
-import Control.Monad.State
+import Control.Monad.State (StateT, evalStateT, gets, modify)
 
 import Data.Char
 import Data.SCargot.Repr
@@ -291,9 +291,16 @@ getFLib :: String
 getFLib = unsafeLocalState readFLib
 
 readFLib :: IO String
-readFLib = do 
+readFLib = do
   fname <- getDataFileName "FLib.fth"
-  readFile fname
+  runtime <- readFile fname
+  -- Generated modules share one Gforth dictionary. Initialize the stateful
+  -- ABI runtime once so imported closures keep using the same handle tables,
+  -- tags, and runtime words when another generated module is included.
+  return $
+    "[undefined] AGDA2FORTH-RUNTIME-LOADED [if]\n" ++
+    "true constant AGDA2FORTH-RUNTIME-LOADED\n" ++
+    runtime ++ "\n[then]\n"
 
 
 deriving instance Generic EvaluationStrategy
@@ -438,9 +445,9 @@ makeForthName n = do
     go s     = ifM (isNameUsed $ T.pack s) (go $ nextName s) (return $ T.pack s)
 
 fixName :: Foldable t => t Char -> [Char]
-fixName s =
-  let s' = concatMap fixChar s in
-  if isNumber (head s') then "z" ++ s' else s'
+fixName s = case concatMap fixChar s of
+  s'@(d:_) | isNumber d -> "z" ++ s'
+  s' -> s'
 
 fixChar :: Char -> [Char]
 fixChar c
@@ -452,7 +459,9 @@ toHex 0 = ""
 toHex i = toHex (i `div` 16) ++ [fourBitsToChar (i `mod` 16)]
 
 fourBitsToChar :: Int -> Char
-fourBitsToChar i = "0123456789ABCDEF" !! i
+fourBitsToChar i
+  | i < 10 = chr (ord '0' + i)
+  | otherwise = chr (ord 'A' + i - 10)
 {-# INLINE fourBitsToChar #-}
 
 class ToForth a b where
@@ -592,7 +601,9 @@ instance ToForth TTerm FthForm where
                     | c1 == conName trueC  = (v1',v2')
                     | c1 == conName falseC = (v2',v1')
                     | otherwise            = __IMPOSSIBLE__
-              applyToArgs $ RSList [x, RSAtom "if", thenBranch, RSAtom "else", elseBranch, RSAtom "then"]
+              -- A Bool case may inspect a thunk returned by another function.
+              -- Force it before Forth IF; deepdethunk is identity on raw Bool cells.
+              applyToArgs $ RSList [fthForce x, RSAtom "if", thenBranch, RSAtom "else", elseBranch, RSAtom "then"]
             _ -> return $ fthError "unsupported Bool case shape"
 
       TUnit -> do
@@ -660,11 +671,13 @@ instance ToForth TError FthForm where
 
 isSpecialConstructor :: QName -> ToForthM (Maybe FthForm)
 isSpecialConstructor c = do
-  Con trueCon  _ _ <- primTrue
-  Con falseCon _ _ <- primFalse
-  if | c == conName trueCon  -> return $ Just $ RSAtom (T.pack $ show (-1))
-     | c == conName falseCon -> return $ Just $ RSAtom (T.pack $ show 0)
-     | otherwise             -> return Nothing
+  let getConName (Just (Con con _ _)) = Just (conName con)
+      getConName _ = Nothing
+  mTrue <- getConName <$> getBuiltin' builtinTrue
+  mFalse <- getConName <$> getBuiltin' builtinFalse
+  if | Just c == mTrue  -> return $ Just $ RSAtom (T.pack $ show (-1))
+     | Just c == mFalse -> return $ Just $ RSAtom (T.pack $ show 0)
+     | otherwise        -> return Nothing
 
 isSpecialDefinition :: QName -> ToForthM (Maybe FthForm)
 isSpecialDefinition f = do
@@ -695,9 +708,9 @@ fthDirectDefinition _ _ = return Nothing
 data SpecialCase = BoolCase
 
 isSpecialCase :: CaseInfo -> ToForthM (Maybe SpecialCase)
-isSpecialCase (CaseInfo lazy (CTData q cty)) = do
-  boolTy <- primBool
-  if boolTy == Def cty []
+isSpecialCase (CaseInfo lazy _erased (CTData cty)) = do
+  mBool <- getBuiltin' builtinBool
+  if mBool == Just (Def cty [])
     then return (Just BoolCase)
     else return Nothing
 isSpecialCase _ = return Nothing

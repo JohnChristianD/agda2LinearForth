@@ -1,4 +1,4 @@
-{-# OPTIONS --safe #-}
+{-# OPTIONS --without-K --rewriting --confluence-check --exact-split --no-projection-like #-}
 
 -- Single-source-of-truth constructive specification for agda2LinearForth.
 --
@@ -13,6 +13,10 @@ module LinearModalSafety where
 open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _*_)
 open import Agda.Builtin.Bool using (Bool; true; false)
 open import Agda.Builtin.Equality using (_≡_; refl)
+open import Agda.Builtin.Equality.Rewrite
+
+-- Import the verified core under the same single --safe CI invocation.
+import VerifiedPLLCore
 
 -- ── 1. Descriptor heap, linear/modal invariants, and WP model ──
 
@@ -1797,26 +1801,217 @@ unsupportedPrimitiveUsesCatchableDiagnostic :
   emitBackendPrimitive backendUnsupported ≡ emitDiagnosticThrow
 unsupportedPrimitiveUsesCatchableDiagnostic = refl
 
--- Literal support has an explicit boundary in the semantic mirror too. Nat
--- and Boolean literals have raw-cell constructors; String literals use the
--- catchable unsupported-literal diagnostic.
+-- Exact-arity TPrim applications bypass generic closure application. Partial,
+-- under-applied, or over-applied calls to these same nine primitives fall back
+-- through the existing curried Forth words and fthApps/pass. Other primitives
+-- fail closed instead of being sent through generic closure application.
+data PrimitiveApplicationArity : Set where
+  primitiveBinaryArity primitiveIfArity primitiveOtherArity
+    : PrimitiveApplicationArity
+
+data PrimitiveApplicationEmission : Set where
+  emitDirectAdd emitDirectSub emitDirectMul emitDirectQuot emitDirectRem
+    emitDirectEqI emitDirectGeq emitDirectLt emitDirectIf
+    emitCurriedAdd emitCurriedSub emitCurriedMul emitCurriedQuot emitCurriedRem
+    emitCurriedEqI emitCurriedGeq emitCurriedLt emitCurriedIf
+    emitUnsupportedPrimitiveApplication : PrimitiveApplicationEmission
+
+emitPrimitiveApplication :
+  SupportedBackendPrimitive → PrimitiveApplicationArity →
+  PrimitiveApplicationEmission
+emitPrimitiveApplication backendAdd primitiveBinaryArity = emitDirectAdd
+emitPrimitiveApplication backendAdd _ = emitCurriedAdd
+emitPrimitiveApplication backendSub primitiveBinaryArity = emitDirectSub
+emitPrimitiveApplication backendSub _ = emitCurriedSub
+emitPrimitiveApplication backendMul primitiveBinaryArity = emitDirectMul
+emitPrimitiveApplication backendMul _ = emitCurriedMul
+emitPrimitiveApplication backendQuot primitiveBinaryArity = emitDirectQuot
+emitPrimitiveApplication backendQuot _ = emitCurriedQuot
+emitPrimitiveApplication backendRem primitiveBinaryArity = emitDirectRem
+emitPrimitiveApplication backendRem _ = emitCurriedRem
+emitPrimitiveApplication backendIf primitiveIfArity = emitDirectIf
+emitPrimitiveApplication backendIf _ = emitCurriedIf
+emitPrimitiveApplication backendIntegerEq primitiveBinaryArity = emitDirectEqI
+emitPrimitiveApplication backendIntegerEq _ = emitCurriedEqI
+emitPrimitiveApplication backendGeq primitiveBinaryArity = emitDirectGeq
+emitPrimitiveApplication backendGeq _ = emitCurriedGeq
+emitPrimitiveApplication backendLt primitiveBinaryArity = emitDirectLt
+emitPrimitiveApplication backendLt _ = emitCurriedLt
+
+-- TDef has a second special lowering: saturated builtin Nat addition and
+-- subtraction use ABI adapters, while partial applications use curried
+-- add/monus; all other definitions use their registered Forth word.
+data BuiltinNatDefinition : Set where
+  builtinNatPlusDefinition builtinNatMinusDefinition : BuiltinNatDefinition
+
+data DefinitionApplicationArity : Set where
+  definitionSaturatedBinary definitionOtherArity : DefinitionApplicationArity
+
+data DefinitionApplicationEmission : Set where
+  emitDirectBuiltinNatAdd emitDirectBuiltinNatMonus
+    emitCurriedBuiltinNatAdd emitCurriedBuiltinNatMonus
+    emitNamedDefinitionApplication : DefinitionApplicationEmission
+
+emitBuiltinNatDefinitionApplication :
+  BuiltinNatDefinition → DefinitionApplicationArity →
+  DefinitionApplicationEmission
+emitBuiltinNatDefinitionApplication builtinNatPlusDefinition
+  definitionSaturatedBinary = emitDirectBuiltinNatAdd
+emitBuiltinNatDefinitionApplication builtinNatPlusDefinition _ =
+  emitCurriedBuiltinNatAdd
+emitBuiltinNatDefinitionApplication builtinNatMinusDefinition
+  definitionSaturatedBinary = emitDirectBuiltinNatMonus
+emitBuiltinNatDefinitionApplication builtinNatMinusDefinition _ =
+  emitCurriedBuiltinNatMonus
+
+-- Literal support mirrors ToForth.hs's Literal case. Nat becomes decimal
+-- text consumed by ABI-PARSE-NAT; Word64/Float/String/Char/QName/Meta use
+-- fthError, which emits ABI-ERROR-COMPILED-UNSUPPORTED and throws catchably.
+-- Boolean flags are constructor cases (TCon), modeled separately below.
+data UnsupportedLiteralKind : Set where
+  unsupportedWord64 unsupportedFloat unsupportedString unsupportedChar
+    unsupportedQName unsupportedMeta : UnsupportedLiteralKind
+
 data BackendLiteral : Set where
   backendNatLiteral : Nat → BackendLiteral
-  backendTrueLiteral backendFalseLiteral : BackendLiteral
-  backendStringLiteral : BackendLiteral
+  backendUnsupportedLiteral : UnsupportedLiteralKind → BackendLiteral
 
 data LiteralEmission : Set where
-  emitNaturalCell emitTrueCell emitFalseCell emitLiteralDiagnosticThrow : LiteralEmission
+  emitNaturalCell : LiteralEmission
+  emitLiteralDiagnosticThrow : UnsupportedLiteralKind → LiteralEmission
 
 emitBackendLiteral : BackendLiteral → LiteralEmission
 emitBackendLiteral (backendNatLiteral n) = emitNaturalCell
-emitBackendLiteral backendTrueLiteral = emitTrueCell
-emitBackendLiteral backendFalseLiteral = emitFalseCell
-emitBackendLiteral backendStringLiteral = emitLiteralDiagnosticThrow
+emitBackendLiteral (backendUnsupportedLiteral kind) =
+  emitLiteralDiagnosticThrow kind
+
+unsupportedLiteralUsesCatchableDiagnostic :
+  (kind : UnsupportedLiteralKind) →
+  emitBackendLiteral (backendUnsupportedLiteral kind) ≡
+    emitLiteralDiagnosticThrow kind
+unsupportedLiteralUsesCatchableDiagnostic kind = refl
 
 unsupportedStringLiteralUsesCatchableDiagnostic :
-  emitBackendLiteral backendStringLiteral ≡ emitLiteralDiagnosticThrow
+  emitBackendLiteral (backendUnsupportedLiteral unsupportedString) ≡
+    emitLiteralDiagnosticThrow unsupportedString
 unsupportedStringLiteralUsesCatchableDiagnostic = refl
+
+-- The term-level cases classify each TTerm branch in ToForth.hs. Generic
+-- variables, primitives, definitions, lambdas, constructors, lets and cases
+-- take their corresponding backend paths. Unit/sort/erased terms emit zero;
+-- Bool constructors emit -1/0; Bool cases become IF/ELSE/THEN; coercions are
+-- transparent. TError TUnreachable and TMeta use fthError; an absent pattern
+-- fallback uses ABI-ERROR-UNREACHABLE. TApp is an internal invariant failure.
+data BackendTermCase : Set where
+  backendVariableTerm backendPrimitiveApplication backendDefinitionApplication
+    backendLambdaTerm backendConstructorApplication backendLetTerm
+    backendGeneralCase : BackendTermCase
+  backendUnitTerm backendSortTerm backendErasedTerm : BackendTermCase
+  backendTrueConstructor backendFalseConstructor : BackendTermCase
+  backendBooleanCase backendCoerceTerm : BackendTermCase
+  backendPanicTerm backendUnsolvedMetaTerm backendUnmatchedPatternFallback
+    backendInternalApplicationTerm : BackendTermCase
+
+data TermEmission : Set where
+  emitVariableLookup emitPrimitiveDispatch emitDefinitionDispatch
+    emitClosureLambda emitConstructorApplication emitLetBinding emitPatternMatch
+    emitZeroCell emitTrueFlag emitFalseFlag emitInlineConditional
+    emitTransparentTerm emitTermDiagnosticThrow emitUnreachableErrorThrow
+    emitInternalImpossible : TermEmission
+
+emitBackendTermCase : BackendTermCase → TermEmission
+emitBackendTermCase backendVariableTerm = emitVariableLookup
+emitBackendTermCase backendPrimitiveApplication = emitPrimitiveDispatch
+emitBackendTermCase backendDefinitionApplication = emitDefinitionDispatch
+emitBackendTermCase backendLambdaTerm = emitClosureLambda
+emitBackendTermCase backendConstructorApplication = emitConstructorApplication
+emitBackendTermCase backendLetTerm = emitLetBinding
+emitBackendTermCase backendGeneralCase = emitPatternMatch
+emitBackendTermCase backendUnitTerm = emitZeroCell
+emitBackendTermCase backendSortTerm = emitZeroCell
+emitBackendTermCase backendErasedTerm = emitZeroCell
+emitBackendTermCase backendTrueConstructor = emitTrueFlag
+emitBackendTermCase backendFalseConstructor = emitFalseFlag
+emitBackendTermCase backendBooleanCase = emitInlineConditional
+emitBackendTermCase backendCoerceTerm = emitTransparentTerm
+emitBackendTermCase backendPanicTerm = emitTermDiagnosticThrow
+emitBackendTermCase backendUnsolvedMetaTerm = emitTermDiagnosticThrow
+emitBackendTermCase backendUnmatchedPatternFallback = emitUnreachableErrorThrow
+emitBackendTermCase backendInternalApplicationTerm = emitInternalImpossible
+
+-- TAlt lowering is encoded through an intermediate RichSExpr shape.
+-- Constructor alternatives and literal alternatives both become
+-- [pattern, wildcard-list, body], so fthPatternMatch routes both through its
+-- constructor-pattern branch. A literal is therefore syntactically accepted
+-- by this branch, but the current emitter/runtime does not establish correct
+-- literal-pattern equality semantics. Guard alternatives use a separate
+-- [guard, body] branch; malformed alternative shapes emit a catchable error.
+data BackendAlternativeCase : Set where
+  backendConstructorAlternative backendLiteralAlternative
+    backendGuardAlternative backendMalformedAlternative : BackendAlternativeCase
+
+data AlternativeEmission : Set where
+  emitConstructorPatternBranch emitGuardBranch emitLiteralPatternBranch
+    emitUnsupportedAlternativeThrow : AlternativeEmission
+
+emitBackendAlternative : BackendAlternativeCase → AlternativeEmission
+emitBackendAlternative backendConstructorAlternative = emitConstructorPatternBranch
+emitBackendAlternative backendLiteralAlternative = emitLiteralPatternBranch
+emitBackendAlternative backendGuardAlternative = emitGuardBranch
+emitBackendAlternative backendMalformedAlternative = emitUnsupportedAlternativeThrow
+
+panicTermUsesCatchableDiagnostic :
+  emitBackendTermCase backendPanicTerm ≡ emitTermDiagnosticThrow
+panicTermUsesCatchableDiagnostic = refl
+
+unsolvedMetaUsesCatchableDiagnostic :
+  emitBackendTermCase backendUnsolvedMetaTerm ≡ emitTermDiagnosticThrow
+unsolvedMetaUsesCatchableDiagnostic = refl
+
+unmatchedPatternUsesCatchableUnreachableError :
+  emitBackendTermCase backendUnmatchedPatternFallback ≡
+    emitUnreachableErrorThrow
+unmatchedPatternUsesCatchableUnreachableError = refl
+
+literalAlternativeUsesPatternBranch :
+  emitBackendAlternative backendLiteralAlternative ≡ emitLiteralPatternBranch
+literalAlternativeUsesPatternBranch = refl
+
+malformedAlternativeFailsClosed :
+  emitBackendAlternative backendMalformedAlternative ≡
+    emitUnsupportedAlternativeThrow
+malformedAlternativeFailsClosed = refl
+
+-- Definition compilation is a separate ToForth instance. Non-compiling
+-- definitions (including inline functions, generalizable variables, datatype
+-- and record declarations) contribute no word; axioms/primitives fail through
+-- fthAxiom; functions compile bodies; constructors define constructor words.
+-- AbstractDefn and DataOrRecSig are compiler-internal impossible cases.
+data BackendDefinitionCase : Set where
+  backendAxiomDefinition backendPrimitiveDefinition : BackendDefinitionCase
+  backendFunctionDefinition backendConstructorDefinition : BackendDefinitionCase
+  backendSkippedDefinition backendImpossibleDefinition : BackendDefinitionCase
+
+data DefinitionEmission : Set where
+  emitDefinitionDiagnosticThrow emitCompiledFunctionWord
+    emitConstructorWord emitNoDefinition emitDefinitionInternalImpossible
+    : DefinitionEmission
+
+emitBackendDefinition : BackendDefinitionCase → DefinitionEmission
+emitBackendDefinition backendAxiomDefinition = emitDefinitionDiagnosticThrow
+emitBackendDefinition backendPrimitiveDefinition = emitDefinitionDiagnosticThrow
+emitBackendDefinition backendFunctionDefinition = emitCompiledFunctionWord
+emitBackendDefinition backendConstructorDefinition = emitConstructorWord
+emitBackendDefinition backendSkippedDefinition = emitNoDefinition
+emitBackendDefinition backendImpossibleDefinition = emitDefinitionInternalImpossible
+
+axiomDefinitionFailsClosed :
+  emitBackendDefinition backendAxiomDefinition ≡ emitDefinitionDiagnosticThrow
+axiomDefinitionFailsClosed = refl
+
+primitiveDefinitionFailsClosed :
+  emitBackendDefinition backendPrimitiveDefinition ≡ emitDefinitionDiagnosticThrow
+primitiveDefinitionFailsClosed = refl
 
 -- ── 6. Runtime dispatch table mirrored from data/FLib.fth ──
 --

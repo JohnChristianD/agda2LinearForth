@@ -1,5 +1,12 @@
 name: build
-on: [push, pull_request]
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: agda2forth-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -11,20 +18,33 @@ jobs:
 
       - name: Verify per-file upstream source identity
         env:
-          SCHEME_UPSTREAM_SHA: 6b3d975e9274448c09b5939e637b6718c2cfb10c
+          SCHEME_UPSTREAM_SHA: 24e02d9669f17d98ec67b8ad961cf9c3e602bf10
           FORTH_UPSTREAM_SHA: e83f8cc735bf220f80b3655ce2158a23818910fe
+          FORTH_MAIN_ADAPTER_BLOB: be738fab5d26f009576e6b1a51237d4f7f2f1f9e
           FLIB_EXPECTED_BLOB: 30477369597107b579ffac29735c42b6e326b0d0
         run: |
           git fetch --no-tags --depth=1 https://github.com/jespercockx/agda2scheme.git "$SCHEME_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$SCHEME_UPSTREAM_SHA"
           git diff --exit-code "$SCHEME_UPSTREAM_SHA" HEAD -- app/Main.hs src/Agda/Compiler/Erase.hs
 
+          # The only Haskell path changes versus Agda2Scheme are the Forth
+          # translation module, removal of the Scheme translation module, and
+          # the Forth-specific Agda 2.8 driver adapter.
+          actual_hs="$(git diff --name-only "$SCHEME_UPSTREAM_SHA" HEAD -- '*.hs' | sort)"
+          expected_hs="$(printf '%s\n' \
+            src/Agda/Compiler/ToForth.hs \
+            src/Agda/Compiler/ToScheme.hs \
+            src/Main.hs | sort)"
+          test "$actual_hs" = "$expected_hs"
+
           git fetch --no-tags --depth=1 https://github.com/LMMilliken/agda2Forth.git "$FORTH_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$FORTH_UPSTREAM_SHA"
-          # ToForth.hs is the one explicitly permitted Haskell exception; keep Main.hs pinned.
-          git diff --exit-code "$FORTH_UPSTREAM_SHA" HEAD -- src/Main.hs
+          # The Forth driver is a minimal Agda 2.8 API adapter, pinned independently.
+          test "$(git hash-object src/Main.hs)" = "$FORTH_MAIN_ADAPTER_BLOB"
+          # Shared entrypoint and erasure implementation remain byte-identical to Agda2Scheme.
+          git diff --exit-code "$SCHEME_UPSTREAM_SHA" HEAD -- app/Main.hs src/Agda/Compiler/Erase.hs
 
-          # Pin the reviewed runtime implementation while allowing only ToForth.hs among Haskell files.
+          # Keep runtime source pinned; Haskell path changes are constrained by the allowlist above.
           test "$(git hash-object data/FLib.fth)" = "$FLIB_EXPECTED_BLOB"
 
       - name: Set up GHC
@@ -50,12 +70,19 @@ jobs:
           key: ${{ env.key }}-plan-${{ hashFiles('**/plan.json') }}
           restore-keys: ${{ env.key }}-
 
-      # Agda 2.6.2.2's setup hook needs the Agda executable while installing
-      # interface files. Install the CLI before Cabal builds library-only deps.
+      # Use the official self-contained Agda 2.8.0.2 Linux binary.
+      # Verify the release asset digest before placing it on PATH.
       - name: Install Agda CLI for formal checks
         run: |
-          mkdir -p "$HOME/.local/bin"
-          cabal install Agda-2.6.2.2 --installdir="$HOME/.local/bin" --overwrite-policy=always
+          mkdir -p "$HOME/.local/bin" "$RUNNER_TEMP/agda"
+          curl --fail --location --retry 3 \
+            https://github.com/agda/agda/releases/download/v2.8.0.2/Agda-v2.8.0.2-linux.tar.xz \
+            --output "$RUNNER_TEMP/Agda-v2.8.0.2-linux.tar.xz"
+          echo "2bcf24bb561b1be859bba841e5d67962d1616b3251bc147f878e4f60a2fbd9f7  $RUNNER_TEMP/Agda-v2.8.0.2-linux.tar.xz" | sha256sum --check
+          tar -xJf "$RUNNER_TEMP/Agda-v2.8.0.2-linux.tar.xz" -C "$RUNNER_TEMP/agda"
+          agda_binary="$(find "$RUNNER_TEMP/agda" -type f -name agda -perm -u+x -print -quit)"
+          test -n "$agda_binary"
+          install "$agda_binary" "$HOME/.local/bin/agda"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/agda" --version
 
@@ -86,11 +113,11 @@ jobs:
 
       - name: Type-check the unified constructive compiler/runtime specification
         run: |
-          "$HOME/.local/bin/agda" --safe --no-libraries -i formal formal/LinearModalSafety.agda
+          "$HOME/.local/bin/agda" --erasure -i formal formal/LinearModalSafety.agda
 
       - name: Verify oversized Nat literals fail through the bounded runtime parser
         run: |
-          cabal run agda2forth -- -i test test/UnsupportedNatLiteral.agda
+          cabal run agda2forth -- --erasure -i test test/UnsupportedNatLiteral.agda
           grep -Fq 'ABI-PARSE-NAT' UnsupportedNatLiteral.fth
           if grep -Eq '(^|[[:space:]])bye([[:space:]]|$)' UnsupportedNatLiteral.fth; then
             echo "oversized Nat output must throw, not terminate Gforth with BYE"
@@ -101,7 +128,7 @@ jobs:
 
       - name: Verify unsupported string literals fail through the catchable runtime boundary
         run: |
-          cabal run agda2forth -- -i test test/UnsupportedLiteral.agda
+          cabal run agda2forth -- --erasure -i test test/UnsupportedLiteral.agda
           grep -Fq 'not yet supported: String literals " ABI-ERROR-COMPILED-UNSUPPORTED' UnsupportedLiteral.fth
           if grep -Eq '(^|[[:space:]])bye([[:space:]]|$)' UnsupportedLiteral.fth; then
             echo "unsupported output must throw, not terminate Gforth with BYE"
@@ -113,7 +140,7 @@ jobs:
 
       - name: Verify unsupported axioms fail through the catchable runtime boundary
         run: |
-          cabal run agda2forth -- -i test test/UnsupportedAxiom.agda
+          cabal run agda2forth -- --erasure -i test test/UnsupportedAxiom.agda
           grep -Fq 'encountered axiom: unknownNat' UnsupportedAxiom.fth
           if grep -Eq '(^|[[:space:]])bye([[:space:]]|$)' UnsupportedAxiom.fth; then
             echo "unsupported axiom output must throw, not terminate Gforth with BYE"
@@ -125,12 +152,24 @@ jobs:
 
       - name: Compile and execute supported primitive applications end to end
         run: |
-          cabal run agda2forth -- -i test test/CheckedScalar.agda
+          cabal run agda2forth -- --erasure -i test test/CheckedScalar.agda
           grep -Eq 's" [0-9]+[[:space:]]*" ABI-PARSE-NAT' CheckedScalar.fth
           echo "---- emitted CheckedScalar.fth ----"
           cat CheckedScalar.fth
           echo "---- generated primitive execution ----"
           gforth CheckedScalar.fth test/gforth/compiler-integration.fs
 
+      - name: Compile and execute the formal core's finite-observation/dyad slice
+        run: |
+          cabal run agda2forth -- --erasure -i formal formal/VerifiedCoreExecutable.agda
+          cabal run agda2forth -- --erasure -i formal -i test test/VerifiedCoreSmoke.agda
+          grep -n -E 'finiteObservation|coreCoNatAtZero|coreCoNatStopsAtOne|coreInfinityAtDepthEight|corePow2Zero|corePow2One' VerifiedCoreExecutable.fth VerifiedCoreSmoke.fth || true
+          echo "---- imported finiteObservation definition ----"
+          grep -n -B8 -A2 'create XTfiniteObservation' VerifiedCoreExecutable.fth || true
+          echo "---- localFiniteObservation definition ----"
+          grep -n -B8 -A2 'create XTlocalFiniteObservation' VerifiedCoreSmoke.fth || true
+          gforth VerifiedCoreExecutable.fth VerifiedCoreSmoke.fth test/gforth/verified-core-smoke.fs > verified-core-smoke.log || { cat verified-core-smoke.log; exit 1; }
+          grep -Fq 'verified-core-runtime-tests-passed' verified-core-smoke.log || { cat verified-core-smoke.log; exit 1; }
+
       - name: Compile first-order triples fixture
-        run: cabal run agda2forth -- -i test test/TriplesFO.agda
+        run: cabal run agda2forth -- --erasure -i test test/TriplesFO.agda
