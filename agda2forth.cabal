@@ -16,6 +16,7 @@ data-dir:   data
 extra-source-files:
     README.md
     test/CheckedScalar.agda.src
+    test/MALLPStrict.agda.src
     test/Erasure.agda.src
     test/First.agda.src
     test/Nats.agda.src
@@ -27,6 +28,7 @@ extra-source-files:
     test/VerifiedCoreSmoke.agda.src
     test/formalize-all-the-things.agda.src
     test/gforth/abi-smoke.fs
+    test/gforth/mallp-strict.fs
     test/gforth/compiler-integration.fs
     test/gforth/verified-core-smoke.fs
     test/gforth/unsupported-axiom-boundary.fs
