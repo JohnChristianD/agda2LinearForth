@@ -489,7 +489,6 @@ module LinearModalSafety where
   -- Maybe, while lookupListOr supplies an explicit default for sparse tails.
   ------------------------------------------------------------------------
   
-  infix 4 _<_
   
   data _<_ : Nat → Nat → Set where
     zero<successor : {n : Nat} → zero < suc n
