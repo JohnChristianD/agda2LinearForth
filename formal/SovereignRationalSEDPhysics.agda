@@ -737,7 +737,6 @@ module SovereignRSEDMotive where
                   (sampleCount V) (timeCount V) (modeCount V)
         initialMomentum : ClosedMomentumSnapshot
         momentumExchanges : List MomentumExchange
-        cohesivePresentation : CohesiveExpr
     open RSEDWorld public
 
     fieldStrength :
@@ -2027,7 +2026,6 @@ module RSEDPhysicalFoundations (Q : RationalRingInterface) where
       initialMomentum : Exchange.ClosedMomentumSnapshot
       momentumExchanges : List Exchange.MomentumExchange
       euclideanLaws : RationalTrigonometryLawWitness
-      cohesiveSyntax : CohesiveExpr
   open FiniteSEDVacuumMaxwellWorld public
 
   ----------------------------------------------------------------------
