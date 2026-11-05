@@ -1,4 +1,4 @@
-{-# OPTIONS --with-K --rewriting --confluence-check --exact-split --guardedness #-}
+{-# OPTIONS --with-K --rewriting --confluence-check --no-prop --exact-split --guardedness #-}
 
 ------------------------------------------------------------------------
 -- SovereignRationalSED
