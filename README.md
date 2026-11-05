@@ -105,7 +105,7 @@ The raw Nat arithmetic adapters and `ABI-PARSE-NAT` enforce nonnegative-cell inp
 
 ## What `formal/LinearModalSafety.agda` establishes
 
-The formal modules use Agda builtins rather than the standard library and declare no project-local axioms. The conatural model is a decreasing Boolean sequence. Formal checking uses Agda 2.8.0.2, `--without-K`, and the project options declared in the modules; `--safe` is intentionally not enabled. CI type-checks the root and its imports with:
+The formal source uses Agda builtins rather than the standard library. The compiler/runtime model and bounded Nat simulation are ordinary checked definitions, but the nested `SovereignRationalSED` foundation package is **not axiom-free**: it declares assumptions for an unbounded μ-search and its equations, arithmetical countable least-witness choice, cohesive modalities/retractions, quotient types, and symmetric bar recursion. It also enables rewrite rules for μ-search, bar recursion, and lookup/tabulation. Those declarations are trusted assumptions, not theorems proved by this repository, and their presence is why the unified file is not checked with `--safe`. The MALLP proof rules themselves contain no Seely/exponential constructors; that fact does not remove the separate foundational postulates elsewhere in the same file. The conatural model is a decreasing Boolean sequence. Formal checking uses Agda 2.8.0.2, `--without-K`, and the project options declared in the module. CI type-checks the root and its imports with:
 
 ```sh
 agda --erasure --no-libraries -i formal formal/LinearModalSafety.agda
