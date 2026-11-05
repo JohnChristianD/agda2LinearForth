@@ -786,10 +786,24 @@ module LinearModalSafety where
         boundedSearch-sound :
           (fuel : Nat) (P : Nat → Bool) (n : Nat) →
           boundedSearch fuel P ≡ just n → P n ≡ true
-        boundedSearch-sound fuel P n result
-          with boundedSearch-evidence fuel P | result
-        ... | boundedSearch-none | ()
-        ... | boundedSearch-found m proof | refl = proof
+        boundedSearch-sound zero P n ()
+
+        boundedSearch-sound (suc fuel) P zero result
+          with P zero in pzero | boundedSearch fuel (λ i → P (suc i))
+        ... | true | _ = pzero
+        ... | false | nothing with result
+        ...   | ()
+        ... | false | just m with result
+        ...   | ()
+
+        boundedSearch-sound (suc fuel) P (suc n) result
+          with P zero | boundedSearch fuel (λ i → P (suc i))
+        ... | true | _ with result
+        ...   | ()
+        ... | false | nothing with result
+        ...   | ()
+        ... | false | just m with result
+        ...   | refl = boundedSearch-sound fuel (λ i → P (suc i)) n refl
     
         MarkovPrinciple : Set₁
         MarkovPrinciple =
