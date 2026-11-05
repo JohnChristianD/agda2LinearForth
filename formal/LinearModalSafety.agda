@@ -1636,10 +1636,10 @@ composeStackSemanticPass :
   StackSemanticPass
     (λ sourceTerm → lower₂ (lower₁ sourceTerm))
     sourceSemantics targetSemantics
-composeStackSemanticPass first second = record
+composeStackSemanticPass {lower₁ = lowerOne} first second = record
   { preservesStack = λ sourceTerm tail →
       natStackEqTrans
-        (preservesStack second (lower₁ sourceTerm) tail)
+        (preservesStack second (lowerOne sourceTerm) tail)
         (preservesStack first sourceTerm tail)
   }
 
