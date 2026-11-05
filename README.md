@@ -26,7 +26,6 @@ GNU Gforth
 | --- | --- | --- |
 | `app/Main.hs`, `src/Main.hs` | Unmodified Agda2Scheme sources; not the selected Forth entrypoint | Exact upstream identity checked in CI |
 | `src/Agda/Compiler/Erase.hs` | Upstream erasure implementation | Exact upstream identity checked in CI |
-| `src/Agda/Compiler/ToScheme.hs` | Upstream Scheme backend retained byte-for-byte | Exact upstream identity checked in CI |
 | `src/Agda/Compiler/ToForth.hs` | Sole project-specific Haskell backend and executable entrypoint | Builds and runs selected fixture tests; no Agda proof establishes that it implements the formal model |
 | `data/FLib.fth` | Forth closure application, descriptor ABI, ownership checks, arithmetic adapters and runtime words | Selected direct Gforth tests; no proof that all runtime transitions refine the Agda model |
 | `formal/LinearModalSafety.agda` | The only tracked `.agda` module; contains the descriptor/WP/runtime model plus nested `VerifiedCoreExecutable`, `VerifiedPLLCore`, and `SovereignRationalSED` modules, including Laurent MALLP | Agda type-checking proves properties of these models, not the Haskell/Forth implementation |
@@ -40,7 +39,7 @@ All explanatory and verification documentation lives in this README. There are n
 CI checks that:
 
 - All Haskell files except `src/Agda/Compiler/ToForth.hs` are byte-identical to Agda2Scheme revision `24e02d9669f17d98ec67b8ad961cf9c3e602bf10`; CI verifies the complete changed-`.hs` path allowlist and exact content using `git fetch`, `git diff`, and Git blob hashes.
-- `src/Agda/Compiler/ToForth.hs` owns the Forth backend entrypoint and is the sole Haskell exception. Cabal invokes its `main` directly. `src/Main.hs`, `app/Main.hs`, and `ToScheme.hs` remain upstream-identical.
+- `src/Agda/Compiler/ToForth.hs` owns the Forth backend entrypoint and is the sole Haskell exception. Cabal invokes its `main` directly. `src/Main.hs`, `app/Main.hs`, and `src/Agda/Compiler/Erase.hs` remain upstream-identical.
 - CI asserts exactly one tracked `*.agda`: `formal/LinearModalSafety.agda`. Compiler test inputs are stored as `*.agda.src`; CI copies each to a temporary `.agda` for that step and removes it with an EXIT trap. No permanent helper scripts are used.
 - `data/FLib.fth` matches the reviewed runtime blob pinned in CI as `30477369597107b579ffac29735c42b6e326b0d0`.
 
@@ -103,6 +102,17 @@ The runtime tests exercise checked operand/range validation, linear consumption 
 
 The raw Nat arithmetic adapters and `ABI-PARSE-NAT` enforce nonnegative-cell inputs, bounded results, and catchable overflow/domain errors for their covered operations. The runtime checks each decimal literal rather than relying on an Agda-only representability witness. This still does not prove that every source type is in the supported subset. No claim is made that arbitrary Forth is sandboxed or that Girard's structural rules are preserved for every compiled Agda program.
 
+## What the semantic model is—and is not
+
+The accurate umbrella description is **a Dijkstra-style weakest-precondition model with explicit descriptor-heap and ownership invariants, plus a Laurent MALLP proof-rule development**. “Linear/modal safety” accurately names one part of that model: the runtime descriptor discipline distinguishes linear resources from modal resources, and the model permits duplication/discard only for modal descriptors. It is not yet accurate to describe the whole backend as a verified linear-modal compiler, because no source typing/usage theorem proves that every term accepted by the compiler obeys those rules.
+
+The WP judgment is explicit. Commands return either a normal state or an exceptional state paired with a runtime error; the WP has separate normal and exceptional postconditions. Its `wpSequence`, `wpCatch`, and `SemanticTriple` laws are Dijkstra-style operational contracts. The present outcome type is total and does not itself model divergence; a separate finite-fuel denotation records exhaustion.
+
+Calling this **separation logic** would overstate the formalization. The machine state has a descriptor heap represented as a list, roots, identity freshness, ownership, liveness, and reference invariants. But the file does not define a separating assertion connective over disjoint heaps, a heap-splitting composition algebra, or a general separation-logic frame rule. `stackTailFrame` is a proved suffix-preservation law for the abstract stack-effect relation; it is not a heap frame rule and proves nothing by itself about concrete Forth word footprints. The precise label is “WP plus explicit heap/ownership invariants,” not “Dijkstra separation logic.”
+
+The Laurent MALLP calculus is another distinct component. Its formula grammar, duality, optional positive stoup, negative context, explicit exchange, cut, multiplicative/additive rules, units, and polarity shifts are formalized. It has no exponential modalities or Seely comonad. The runtime’s `modal` duplication/discard mode is not an implementation of a Laurent shift and is not derived from MALLP. The current file also contains separate foundational packages with explicit postulates and rewrite rules; the unified source is not axiom-free and is not checked with Agda `--safe`.
+
+PureCake and CakeML provide the **desired proof decomposition**, not an already-realized proof result. This repository does not yet have PureCake's source-to-thunk pass chain, a typed Forth IR shared with Haskell, serializer correctness, or a final theorem relating actual generated Forth execution to source observations.
 ## What `formal/LinearModalSafety.agda` establishes
 
 The formal source uses Agda builtins rather than the standard library. The compiler/runtime model and bounded Nat simulation are ordinary checked definitions, but the nested `SovereignRationalSED` foundation package is **not axiom-free**: it declares assumptions for an unbounded μ-search and its equations, arithmetical countable least-witness choice, cohesive modalities/retractions, quotient types, and symmetric bar recursion. It also enables rewrite rules for μ-search, bar recursion, and lookup/tabulation. Those declarations are trusted assumptions, not theorems proved by this repository, and their presence is why the unified file is not checked with `--safe`. The MALLP proof rules themselves contain no Seely/exponential constructors; that fact does not remove the separate foundational postulates elsewhere in the same file. The conatural model is a decreasing Boolean sequence. Formal checking uses Agda 2.8.0.2, `--without-K`, and the project options declared in the module. CI type-checks the root and its imports with:
