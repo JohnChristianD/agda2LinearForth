@@ -34,10 +34,17 @@ jobs:
           test "$(git ls-files '*.md')" = "README.md"
           test -z "$(git ls-files '*.sh' '*.bash' '*.ps1')"
           test -f cabal.project
-          grep -Fq 'tag: v2.9.0-rc3' cabal.project
+          grep -Fq 'tag: v2.8.0.2' cabal.project
           git fetch --no-tags --depth=1 https://github.com/LMMilliken/agda2Forth.git "$FORTH_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$FORTH_UPSTREAM_SHA"
           test "$(git hash-object data/FLib.fth)" = "$FLIB_EXPECTED_BLOB"
+
+      - name: Install native linker and Gforth
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binutils gforth
+          command -v ld
+          ld --version
 
       - name: Set up GHC
         uses: haskell-actions/setup@v2
@@ -47,32 +54,19 @@ jobs:
           cabal-version: '3.10.3.0'
           cabal-update: true
 
-      - name: Install the single pinned Agda version
+      - name: Build the stable Agda CLI and Forth backend from one source
         run: |
-          mkdir -p "$HOME/.local/bin" "$RUNNER_TEMP/agda"
-          curl --fail --location --retry 3 https://github.com/agda/agda/releases/download/v2.9.0-rc3/Agda-v2.9.0-rc3-linux.tar.xz --output "$RUNNER_TEMP/Agda-v2.9.0-rc3-linux.tar.xz"
-          echo "bde55ce6855fec13404e6837655b7a98d5174ae82e31525e17fc641dac742cc2  $RUNNER_TEMP/Agda-v2.9.0-rc3-linux.tar.xz" | sha256sum --check
-          tar -xJf "$RUNNER_TEMP/Agda-v2.9.0-rc3-linux.tar.xz" -C "$RUNNER_TEMP/agda"
-          agda_binary="$(find "$RUNNER_TEMP/agda" -type f -name agda -perm -u+x -print -quit)"
-          test -n "$agda_binary"
-          install "$agda_binary" "$HOME/.local/bin/agda"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          agda --version
-
-      - name: Build Haskell backend
-        run: |
-          cabal configure --disable-documentation
-          cabal build all
-
-      - name: Install GNU Gforth
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gforth
+          cabal update
+          cabal build Agda:exe:agda agda2forth
+          agda_bin="$(cabal list-bin Agda:exe:agda)"
+          test -x "$agda_bin"
+          test "$("$agda_bin" --numeric-version)" = "2.8.0.2"
+          echo "AGDA_BIN=$agda_bin" >> "$GITHUB_ENV"
 
       - name: Type-check both safe Agda specifications with the same compiler
         run: |
-          agda -i formal formal/LinearModalSafety.agda
-          agda -i formal formal/SovereignRationalSEDPhysics.agda
+          "$AGDA_BIN" -i formal formal/MALLPForth.agda
+          "$AGDA_BIN" -i formal formal/SovereignRationalSEDPhysics.agda
 
       - name: Compile and execute the strict MALLP fixture
         run: |
