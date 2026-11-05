@@ -63,14 +63,9 @@ compileNatTerm term = do
     TPrim primitive -> do
       operands <- traverse compileNatTerm args
       case (primitive, operands) of
-        (PAdd,  [left, right]) -> binary "MALLP-NAT-ADD" left right
-        (PSub,  [left, right]) -> binary "MALLP-NAT-MONUS" left right
-        (PMul,  [left, right]) -> binary "MALLP-NAT-MUL" left right
-        (PQuot, [left, right]) -> binary "MALLP-NAT-QUOT" left right
-        (PRem,  [left, right]) -> binary "MALLP-NAT-REM" left right
-        (PEqI,  [left, right]) -> binary "MALLP-NAT-EQ" left right
-        (PGeq,  [left, right]) -> binary "MALLP-NAT-GEQ" left right
-        (PLt,   [left, right]) -> binary "MALLP-NAT-LT" left right
+        (PAdd, [left, right]) -> binary "MALLP-NAT-ADD" left right
+        (PSub, [left, right]) -> binary "MALLP-NAT-MONUS" left right
+        (PMul, [left, right]) -> binary "MALLP-NAT-MUL" left right
         _ -> unsupported ("unsupported Nat primitive or arity: " ++ show primitive)
     TDef name -> do
       plusName <- getBuiltinName builtinNatPlus
