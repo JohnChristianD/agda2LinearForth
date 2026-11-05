@@ -2513,7 +2513,7 @@ module LinearModalSafety where
           dualD₁ : DualCochain₁ M → DualCochain₂ M
           dualD₂ : DualCochain₂ M → DualCochain₃ M
           dualD₁D₀-zero : (a : DualCochain₀ M) →
-            _≡_ (dual₁Values (dualD₁ (dualD₀ a))) zeroCochain
+            _≡_ (dual₂Values (dualD₁ (dualD₀ a))) zeroCochain
           dualD₂D₁-zero : (a : DualCochain₁ M) →
             _≡_ (dual₃Values (dualD₂ (dualD₁ a))) zeroCochain
       open DualSpatialCochainComplex public
