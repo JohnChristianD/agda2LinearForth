@@ -7,12 +7,11 @@ import Agda.Compiler.Common
 
 import Agda.Main ( runAgda )
 
-import Agda.Compiler.ToForth
--- import Agda.Compiler.FLib
+import Agda.Compiler.ToScheme
+
 import Agda.Interaction.Options ( OptDescr(..) , ArgDescr(..) )
 
 import Agda.Syntax.TopLevelModuleName
-
 import Agda.Syntax.Treeless ( EvaluationStrategy(..) )
 
 import Agda.TypeChecking.Pretty
@@ -47,57 +46,51 @@ main = runAgda [backend]
 backend :: Backend
 backend = Backend backend'
 
-backend' :: Backend' FthOptions FthOptions () () (Maybe FthForm)
+backend' :: Backend' SchOptions SchOptions () () (IsMain, Definition)
 backend' = Backend'
-  { backendName           = "agda2forth"
-  , options               = FthOptions EagerEvaluation
-  , commandLineFlags      = fthFlags
+  { backendName           = "agda2scheme"
+  , options               = SchOptions EagerEvaluation
+  , commandLineFlags      = schFlags
   , isEnabled             = \ _ -> True
-  , preCompile            = fthPreCompile
+  , preCompile            = schPreCompile
   , postCompile           = \ _ _ _ -> return ()
   , preModule             = \ _ _ _ _ -> return $ Recompile ()
-  , compileDef            = fthCompileDef
-  , postModule            = fthPostModule
+  , compileDef            = \ _ _ isMain def -> return (isMain,def)
+  , postModule            = schPostModule
   , backendVersion        = Nothing
   , scopeCheckingSuffices = False
-  , backendInteractTop   = Nothing
-  , backendInteractHole  = Nothing
   , mayEraseType          = \ _ -> return True
+  , backendInteractTop    = Nothing
+  , backendInteractHole   = Nothing
   }
 
-fthFlags :: [OptDescr (Flag FthOptions)]
-fthFlags =
+schFlags :: [OptDescr (Flag SchOptions)]
+schFlags =
   [ Option [] ["lazy-evaluation"] (NoArg $ evaluationFlag LazyEvaluation)
               "Insert delay and force operations to enable lazy evaluation"
   , Option [] ["strict-evaluation"] (NoArg $ evaluationFlag EagerEvaluation)
               "Do not insert delay and force operations (default)"
   ]
 
-fthPreCompile :: FthOptions -> TCM FthOptions
-fthPreCompile = return
+schPreCompile :: SchOptions -> TCM SchOptions
+schPreCompile opts = return opts
 
-fthCompileDef :: FthOptions -> () -> IsMain -> Definition -> TCM (Maybe FthForm)
-fthCompileDef opts _ isMain def = runToForthM opts $ toForth def
-
-fthPostModule :: FthOptions -> () -> IsMain -> TopLevelModuleName -> [Maybe FthForm] -> TCM ()
-fthPostModule opts _ isMain modName defs = do
-  preamble <- runToForthM opts fthPreamble
+schPostModule :: SchOptions -> () -> IsMain -> TopLevelModuleName -> [(IsMain, Definition)] -> TCM ()
+schPostModule opts _ isMain modName defs = do
   let defToText = encodeOne printer . fromRich
-      modText   = T.append 
-        (T.pack getFLib) 
-        (makeDefines
-          (T.intercalate "\n\n" $
-          map (
-              fixWord .
-              defToText
-          )
-            (preamble ++ catMaybes defs)))
-      fileName  = prettyShow (NE.last $ moduleNameParts modName) ++ ".fth"
+      fileName  = prettyShow (NE.last $ moduleNameParts modName) ++ ".ss"
+
+  modText <- runToSchemeM opts $ do
+    ps  <- schPreamble
+    ts <- catMaybes <$> traverse defToTreeless (map snd defs)
+    ds <- traverse toScheme ts
+    return $ T.intercalate "\n\n" $ map defToText $ ps ++ ds
+
   liftIO $ T.writeFile fileName modText
 
   where
     printer :: SExprPrinter Text (SExpr Text)
     printer = basicPrint id
 
-evaluationFlag :: EvaluationStrategy -> Flag FthOptions
-evaluationFlag s o = return $ o { fthEvaluation = s }
+evaluationFlag :: EvaluationStrategy -> Flag SchOptions
+evaluationFlag s o = return $ o { schEvaluation = s }
