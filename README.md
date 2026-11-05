@@ -300,6 +300,36 @@ These sources are background for the model and target language, not claims that 
 - M. Anton Ertl and Bernd Paysan, [Closures: The Forth Way](https://www.complang.tuwien.ac.at/papers/ertl%26paysan.pdf), EuroForth 2018, for Forth closure/environment design.
 
 
+## Proof architecture decisions: conaturals, WP, and the Isabelle boundary
+
+### Escardó / TypeTopology conaturals
+
+Both conatural presentations are retained in the unified source:
+
+- The nested `VerifiedPLLCore.CoNat` is the TypeTopology-style generic-convergent-sequence encoding: a Boolean observation sequence with a proof that the observations are decreasing. It preserves the constructive distinction between a finite value and a sequence that remains observable at every finite depth.
+- The nested `SovereignRationalSED.Conat` is a coinductive `Maybe Conat` presentation, with finite approximations, productive successor/addition, bounded prefix streams, and a continuation/negative-observation view. It is part of the latest Library MALLP/RSED source and is synchronized in the compiler module.
+
+These models are valuable for infinite data, finite observations, and future semantics with coinductive results. They are **not prerequisites for proving the existing first-order Nat/Bool compiler fragment**. Nor is an infinite conatural the same thing as a diverging program: program divergence needs its own observation semantics (for example, a coinductive trace or a fuel-indexed approximation with a proved adequacy theorem). The conatural modules remain as separate foundations; the main compiler-correctness theorem should quantify only over source types and effects actually supported by the compiler.
+
+### Keep the local WP contracts; do not claim separation logic
+
+The current Dijkstra-style WP contracts remain useful for local runtime operations: they state normal and exceptional postconditions, state invariants, identity-allocation failure atomicity, and selected checked ABI transitions. Removing them would discard useful verified obligations.
+
+They are not a substitute for PureCake's pass simulations, and they are not a separation-logic development. There is no separating conjunction, disjoint-heap composition law, or general heap frame rule. A global Hoare/WP layer is not mandatory for a PureCake-style compiler theorem; the essential ingredients are explicit source and target semantics and a preservation/simulation theorem for every pass. Keep the current WP layer as a local ABI-contract API, then connect those contracts to a concrete target machine semantics. Do not promote `stackTailFrame` into a heap frame rule.
+
+### Postulates and rewrite rules are trusted assumptions, not an Isabelle bridge
+
+The phrase “seven confluent postulates” does not describe the checked source:
+
+- Seven is the number of package modules: six earlier foundation packages plus Laurent MALLP.
+- There are five global rewrite equations: `μ-step-true`, `μ-step-false`, `sBR-stop`, `sBR-step`, and `lookup-tabulate`.
+- Four rewrite equations are postulated; `lookup-tabulate` is proved by finite recursion.
+- The non-MALLP foundations contain twenty postulated declarations. MALLP itself contains no postulates.
+
+`--confluence-check` checks the declared rewrite system's critical-pair confluence conditions under Agda's rules. It does not prove termination, consistency of the postulated assumptions, or correspondence with an Isabelle/HOL development. A rewrite equation changes Agda's conversion theory; it is not a proof translator. A postulate is an explicit trusted axiom. Neither can carry an Isabelle theorem into constructive Agda.
+
+An Isabelle result can enter this development only through a sound, separately checked translation or certificate checker. That requires specifying the source logic, its classical principles and type encodings, translating the theorem statement and proof object, and proving the checker/translation sound in Agda. A theorem requiring excluded middle, choice, or classical quotient principles cannot silently become constructive merely because its proof was rewritten as an Agda postulate.
+
 ## CakeML and PureCake: proof architecture adopted
 
 
