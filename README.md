@@ -4,10 +4,14 @@ A deliberately restricted Agda-to-Gforth compiler. The checked compiler path is 
 
 The project has two separate Agda files:
 
-- `formal/MALLPForth.agda`: a `--safe --without-K`, builtin-only Laurent-style MALLP formula/sequent fragment plus an indexed Forth stack-code semantics for closed Nat expressions.
+- `formal/MALLPForth.agda`: a `--with-K --rewriting --confluence-check` compiler specification. It contains six foundational packages, constructive coinductive conaturals, Laurent's polarized MALLP calculus, and indexed strict Forth stack-code semantics.
 - `formal/SovereignRationalSEDPhysics.agda`: the separate RSED physics library. It is not a dependency of the compiler proof.
 
-Both Agda files and the Haskell backend use one pinned stable Agda source version, **2.8.0.2**, via `cabal.project`. CI builds the Agda CLI and `agda2forth` from that same Cabal source package; it does not install a separate Agda binary. The compiler proof uses `--safe --without-K`. The physics file uses `--safe --cubical` and its existing supported features. Agda 2.8.0.2 does not support `--cubical=no-glue` (introduced in 2.9.0), so that newer option is deliberately not used under the stable-version constraint.
+Both Agda files and the Haskell backend use one pinned stable Agda source version, **2.8.0.2**, via `cabal.project`. CI builds the Agda CLI and `agda2forth` from that same Cabal source package; it does not install a separate Agda binary. The compiler proof intentionally uses `--with-K`, global rewriting, and postulated rewrite equations; it is therefore not an Agda `--safe` module. The separate physics file remains `--safe --cubical`. Agda 2.8.0.2 does not support `--cubical=no-glue` (introduced in 2.9.0), so the physics file uses the stable `--cubical` mode.
+
+The compiler specification retains the original computational rewrite system from `SovereignRationalSED-MALLP.agda`: `μ-step-true`, `μ-step-false`, `sBR-stop`, `sBR-step`, and `lookup-tabulate`. The first four are postulated computation equations; `lookup-tabulate` is proved constructively. Two closed least-search witnesses check that the μ-rules reduce as intended.
+
+Those rewrite rules sit alongside four explicit postulate groups (20 declared constants in total) for least-witness choice, cohesive retractions, quotient reflection, and symmetric bar recursion. They are retained as axioms by design. They are not derivable from MALLP, and the MALLP soundness boundary must state which results depend on them. They are not silently presented as an axiom-free or `--safe` proof.
 
 ## Execution path
 
@@ -80,4 +84,4 @@ The current Agda theorem covers the closed-Nat expression AST, its code AST, ind
 
 ## Verification
 
-CI builds the Agda CLI and backend from the same stable Agda 2.8.0.2 source, type-checks both safe Agda modules with that CLI, compiles the closed-Nat fixture, rejects generated legacy-runtime words, and executes the generated program with Gforth. Passing CI establishes those checked properties and fixtures only; it does not prove arbitrary Agda compilation, full MALLP proof-to-code correspondence, or a static dictionary-size bound.
+CI builds the Agda CLI and backend from the same stable Agda 2.8.0.2 source, type-checks the with-K rewrite-enabled compiler specification and the separate safe physics module with that CLI, compiles the closed-Nat fixture, rejects generated legacy-runtime words, and executes the generated program with Gforth. Passing CI establishes those checked properties and fixtures only; it does not prove arbitrary Agda compilation, full MALLP proof-to-code correspondence, or a static dictionary-size bound.
