@@ -1563,6 +1563,9 @@ data NatStackRunResult : Set where
   natStackReturned : List Nat → NatStackRunResult
   natStackUnderflow : NatStackRunResult
 
+natStackEqTrans : {A : Set} {x y z : A} → x ≡ y → y ≡ z → x ≡ z
+natStackEqTrans refl second = second
+
 runNatStackProgram : NatStackProgram → List Nat → NatStackRunResult
 runNatStackProgram [] stack = natStackReturned stack
 runNatStackProgram (pushNatCellInstruction n :: program) stack =
@@ -1570,17 +1573,23 @@ runNatStackProgram (pushNatCellInstruction n :: program) stack =
 runNatStackProgram (abiAddOrLegacyInstruction :: program)
   (right :: left :: stack) =
   runNatStackProgram program ((left + right) :: stack)
-runNatStackProgram (abiAddOrLegacyInstruction :: program) stack =
+runNatStackProgram (abiAddOrLegacyInstruction :: program) [] =
+  natStackUnderflow
+runNatStackProgram (abiAddOrLegacyInstruction :: program) (only :: []) =
   natStackUnderflow
 runNatStackProgram (abiMulOrLegacyInstruction :: program)
   (right :: left :: stack) =
   runNatStackProgram program ((left * right) :: stack)
-runNatStackProgram (abiMulOrLegacyInstruction :: program) stack =
+runNatStackProgram (abiMulOrLegacyInstruction :: program) [] =
+  natStackUnderflow
+runNatStackProgram (abiMulOrLegacyInstruction :: program) (only :: []) =
   natStackUnderflow
 runNatStackProgram (abiMonusOrLegacyInstruction :: program)
   (right :: left :: stack) =
   runNatStackProgram program (modelNatMonus left right :: stack)
-runNatStackProgram (abiMonusOrLegacyInstruction :: program) stack =
+runNatStackProgram (abiMonusOrLegacyInstruction :: program) [] =
+  natStackUnderflow
+runNatStackProgram (abiMonusOrLegacyInstruction :: program) (only :: []) =
   natStackUnderflow
 
 -- Every relational execution proof is accepted by the executable
@@ -1629,7 +1638,7 @@ composeStackSemanticPass :
     sourceSemantics targetSemantics
 composeStackSemanticPass first second = record
   { preservesStack = λ sourceTerm tail →
-      trans
+      natStackEqTrans
         (preservesStack second (lower₁ sourceTerm) tail)
         (preservesStack first sourceTerm tail)
   }
