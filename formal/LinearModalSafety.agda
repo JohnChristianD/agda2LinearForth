@@ -759,9 +759,9 @@ module LinearModalSafety where
           (fuel : Nat) (P : Nat → Bool) (n : Nat) →
           boundedSearch fuel P ≡ just n → P n ≡ true
         boundedSearch-sound zero P n ()
-        boundedSearch-sound (suc fuel) P n result with P zero
+        boundedSearch-sound (suc fuel) P n result with P zero in firstObservation
         ... | true with result
-        ...   | refl = refl
+        ...   | refl = firstObservation
         ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
         ...   | nothing with result
         ...     | ()
