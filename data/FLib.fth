@@ -1,7 +1,7 @@
 \ MALLP-STRICT-BEGIN
 \ Strict Laurent-MALLP scalar runtime.
 \ Every arithmetic word consumes its two operands and returns one result.
-\ No descriptors, thunks, closures, mutable arena, HERE, ALLOT, or GC.
+\ No descriptors, thunks, closures, arena allocation, or GC.
 [undefined] AGDA2FORTH-MALLP-LOADED [if]
 true constant AGDA2FORTH-MALLP-LOADED
 
