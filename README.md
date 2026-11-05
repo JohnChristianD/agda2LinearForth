@@ -152,7 +152,7 @@ The conatural proof model follows TypeTopology's generic-convergent-sequence rep
 - **Hedberg:** `hedberg` proves that decidable equality makes identity types propositions, using no `K` postulate.
 - **Markov substitute:** `finiteMarkov` and `coNatFiniteObservationMarkov` eliminate double-negated root existence only when constructive finite/enumerated compactness evidence is available. They are bounded principles, not unbounded Markov's principle for arbitrary predicates on `Nat`.
 - **Dyads:** `Dyad` stores an integer numerator as a pair of naturals plus a denominator exponent, with addition, multiplication, cross-multiplication equivalence, and reflexivity of that equivalence. The encoding is not normalized; ring laws, order, normalization, and their proofs remain incomplete.
-- **Polarized linear logic:** `PLLFragment` contains atomic identity and positive tensor introduction over ordered contexts. It is only a cut-free typing fragment, not Laurent's full calculus or proof-net normalization.
+- **Polarized linear logic:** The nested `LaurentPolarizedMALLP` module defines Laurent's positive/negative formula grammar, polarity duality with involutivity proofs, negative contexts, an optional positive stoup, exchange by explicit context permutations, and proof constructors for identity, cut, exchange, tensor, one, plus, par, with, bottom, top, and both polarity shifts. It has no `!`/`?`, weakening, contraction, Seely comonad, cut-elimination proof, proof-net normalization, or compiler/runtime bridge. This is a formal proof-rule system, not a certified compiler.
 
 `hedbergReflect` is a small builtin-reflection macro: it builds a term applying the already type-checked `hedberg` theorem to an explicitly supplied decidable-equality procedure and two equality proofs. The kernel checks the resulting proof term. This is theorem instantiation, not general proof search, a reflection-based ring solver, or an implementation of dyad normalization. Rewrite support is enabled by the root module's declared Agda options; no claim of ring automation is made.
 
@@ -236,7 +236,7 @@ A fixed-point value stored in data-stack cells may be a reasonable future extens
 | Finite-type Σ-compactness and bounded Markov substitute | Constructive proofs in `VerifiedPLLCore`; only for an explicit finite enumeration |
 | Hedberg and conatural finite-observation model | Constructive proofs; finite and infinite-observation projection is tested through generated Forth; no claim of arbitrary-function compactness of `ℕ∞` |
 | Dyad laws | Representation/operations and equivalence reflexivity only; full ring laws and normalization are not proved |
-| Laurent polarized logic | Minimal positive-tensor proof-rule fragment only; no full calculus, cut elimination, or Forth bridge |
+| Laurent MALLP | Formula grammar, duality, negative-context/positive-stoup sequent rules, explicit exchange, cut, multiplicatives, additives, units, shifts; no exponentials or Seely structure |
 | Modeled Nat-expression-to-stack-code simulation | Proven for literals, addition, multiplication, and monus with stack-tail preservation; finite-cell fit is an explicit proof precondition, not a runtime check |
 | Oversized Nat literal | Generated decimal string is parsed and overflow is caught end to end |
 | Unsupported String literal and referenced axiom | Catchable errors tested end to end |
@@ -272,7 +272,7 @@ CakeML separates parser correctness, type-inference soundness/completeness, back
 
 The intended proof graph here is:
 
-\`\`\`text
+```text
 supported typed Agda/Treeless source
   → source semantics and erasure relation
   → canonical expression representation
@@ -280,25 +280,25 @@ supported typed Agda/Treeless source
   → exact Forth serializer
   → abstract Forth machine
   → concrete Gforth execution
-\`\`\`
+```
 
 Each arrow must have a separately checked preservation theorem. The final theorem must quantify over the actual compiler output and initial runtime state, and relate source observations with concrete target observations. The observation relation must account for return values, exceptions, divergence or explicit fuel, and externally visible effects in the supported subset.
 
-The current Nat fragment is only the first small instance of that architecture. \`NatStackInstruction\` has an executable semantics, \`NatStackExec\` relates execution traces, \`natStackExecSound\` connects the relation to the interpreter, and \`StackSemanticPass\` packages a lowering with an observation-preservation proof. \`composeStackSemanticPass\` composes adjacent pass proofs. \`NatCompilationCertificate\` packages the hand-mirrored Nat expression's meaning, linearization, abstract stack execution, and finite-cell representability evidence.
+The current Nat fragment is only the first small instance of that architecture. `NatStackInstruction` has an executable semantics, `NatStackExec` relates execution traces, `natStackExecSound` connects the relation to the interpreter, and `StackSemanticPass` packages a lowering with an observation-preservation proof. `composeStackSemanticPass` composes adjacent pass proofs. `NatCompilationCertificate` packages the hand-mirrored Nat expression's meaning, linearization, abstract stack execution, and finite-cell representability evidence.
 
-That certificate is produced by an Agda function over the *formal Nat AST*. The Haskell compiler does not currently construct or emit it. The Agda AST and target instructions are manually mirrored; no theorem establishes that \`ToForth.hs\` produces those instructions or that the resulting Forth text parses to them.
+That certificate is produced by an Agda function over the *formal Nat AST*. The Haskell compiler does not currently construct or emit it. The Agda AST and target instructions are manually mirrored; no theorem establishes that `ToForth.hs` produces those instructions or that the resulting Forth text parses to them.
 
 ### Laurent MALLP scope
 
-The nested \`SovereignRationalSED\` development includes Laurent-style polarized MALLP formula syntax and proof-rule constructors. Positive formulas include atoms, units, tensor, sum, and a down-shift; negative formulas include atoms, units, par, with, and an up-shift. Its sequent shape uses an ordered negative context and an optional positive stoup.
+The nested `SovereignRationalSED` development includes Laurent-style polarized MALLP formula syntax and proof-rule constructors. Positive formulas include atoms, units, tensor, sum, and a down-shift; negative formulas include atoms, units, par, with, and an up-shift. Its sequent shape uses an ordered negative context and an optional positive stoup.
 
-This fragment has no exponential \`!\`/\`?\` modalities, no Seely comonad, and no structural weakening or contraction rules. The additive \`with\` rule shares its additive context; that is part of its additive behavior, not contraction. A cut rule is present, but a complete cut-elimination proof and a proof-net normalization development are separate obligations.
+This fragment has no exponential `!`/`?` modalities, no Seely comonad, and no structural weakening or contraction rules. The additive `with` rule shares its additive context; that is part of its additive behavior, not contraction. A cut rule is present, but a complete cut-elimination proof and a proof-net normalization development are separate obligations.
 
-MALLP is presently a formal logic development inside the one Agda file. It is **not** yet the source type system for the compiled Agda subset, does not constrain every source program compiled by \`agda2forth\`, and has no proved translation into the current Forth runtime. The existing compiler's linear/modal descriptor checks and the MALLP proof calculus must not be conflated. There is no Seely structure in this MALLP fragment.
+MALLP is presently a formal logic development inside the one Agda file. It is **not** yet the source type system for the compiled Agda subset, does not constrain every source program compiled by `agda2forth`, and has no proved translation into the current Forth runtime. The existing compiler's linear/modal descriptor checks and the MALLP proof calculus must not be conflated. There is no Seely structure in this MALLP fragment.
 
 ### Lazy semantics remain open
 
-PureCake's call-by-name to call-by-value translation makes delay and force explicit in each pass. This compiler currently does not do that: \`makeDelay = id\`, and ordinary variable references bypass the force path. Consequently, the \`--lazy-evaluation\` option is not backed by a semantics-preservation theorem and must not be described as a verified PureCake-style lazy compiler.
+PureCake's call-by-name to call-by-value translation makes delay and force explicit in each pass. This compiler currently does not do that: `makeDelay = id`, and ordinary variable references bypass the force path. Consequently, the `--lazy-evaluation` option is not backed by a semantics-preservation theorem and must not be described as a verified PureCake-style lazy compiler.
 
 A linear one-shot thunk and a shared call-by-need thunk are different resource models. Shared memoization requires an explicit sharing discipline; it cannot be inferred from having a thunk constructor. The MALLP-only choice does not supply exponentials or shared duplication.
 
@@ -318,9 +318,9 @@ The existing WP model contains useful operation contracts and selected allocatio
 
 ## Dictionary allocation and no-GC status
 
-The current runtime is **not proved immune to dictionary exhaustion**. Runtime descriptor creation, metadata reservation, and closure-environment creation use monotone \`HERE ... ALLOT\` allocation. Consuming a linear handle changes ownership metadata; it does not generally return those cells to a reusable allocator. The abstract allocation model tracks cursors and preflights identity exhaustion; its `cellCount` advances the cursor without a proved arena-size bound. That does not establish memory reclamation or global storage safety in Gforth.
+The current runtime is **not proved immune to dictionary exhaustion**. Runtime descriptor creation, metadata reservation, and closure-environment creation use monotone `HERE ... ALLOT` allocation. Consuming a linear handle changes ownership metadata; it does not generally return those cells to a reusable allocator. The abstract allocation model tracks cursors and preflights identity exhaustion; its `cellCount` advances the cursor without a proved arena-size bound. That does not establish memory reclamation or global storage safety in Gforth.
 
-Compile-time \`:noname\` definitions are a separate issue from runtime object allocation. The runtime-growth concern is the dynamically repeated handle, metadata, and environment allocation. No general bounded slot pool, free-list, generation-tagged handle scheme, or reclamation simulation has yet been proved and connected to the Forth implementation.
+Compile-time `:noname` definitions are a separate issue from runtime object allocation. The runtime-growth concern is the dynamically repeated handle, metadata, and environment allocation. No general bounded slot pool, free-list, generation-tagged handle scheme, or reclamation simulation has yet been proved and connected to the Forth implementation.
 
 Therefore the answer to “is this already a complete MALLP/PureCake compiler with no dictionary overflow or no-GC problems?” is **no**. Current CI can establish only the explicit tests and Agda files it actually runs. Even a green run would not prove unbounded memory safety, correct reclamation, or end-to-end compiler refinement.
 
@@ -328,7 +328,7 @@ Therefore the answer to “is this already a complete MALLP/PureCake compiler wi
 
 The intended proof API is WP over complete runtime state; generic frame reasoning should only be added after concrete footprints are proved. Existing paired obligations include identity exhaustion/failure atomicity and selected checked arithmetic/result-allocation transitions. The Gforth ABI tests include adversarial checks for selected handle liveness, arithmetic bounds, exception cleanup, and stack balance.
 
-The selected saturated Nat/Bool regression tests cover addition, monus in both operand orders, multiplication, equality, less-than, and Boolean branches. The old \`scalarAdd 20 5\` generated-body counterexample was fixed for the tested path through direct lowering. This does not prove general higher-order application, closure capture, constructors, pattern matching, or modality preservation.
+The selected saturated Nat/Bool regression tests cover addition, monus in both operand orders, multiplication, equality, less-than, and Boolean branches. The old `scalarAdd 20 5` generated-body counterexample was fixed for the tested path through direct lowering. This does not prove general higher-order application, closure capture, constructors, pattern matching, or modality preservation.
 
 Still unspecified or unproved: exact complete source/Treeless semantics, complete Forth machine-state interpretation, executable code-pointer/dictionary semantics, every runtime word's footprint and exception behavior, and the treatment of divergence. Arbitrary hand-written Forth, raw memory access, unknown execution tokens, and unsupported Agda constructs remain outside any intended supported-fragment theorem; they must fail closed or be explicitly excluded.
 
