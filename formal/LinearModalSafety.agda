@@ -261,6 +261,15 @@ open LaurentPolarizedMALLP public
 
 module StrictNatCompiler where
 
+  -- A single value type is enough for this initial strict fragment.
+  -- Each stack transition consumes precisely its indexed input resources.
+  data StackType : Set where
+    natCell : StackType
+
+  data Stack : List StackType → Set where
+    emptyStack : Stack []
+    pushCell : {Γ : List StackType} → Nat → Stack Γ → Stack (natCell ∷ Γ)
+
   data NatOp : Set where
     addOp monusOp multiplyOp : NatOp
 
@@ -280,78 +289,45 @@ module StrictNatCompiler where
   evalNatExpr (binary op left right) =
     applyNatOp op (evalNatExpr left) (evalNatExpr right)
 
-  data ForthCode : Set where
-    pushNat : Nat → ForthCode
-    binaryWord : NatOp → ForthCode → ForthCode → ForthCode
+  -- Indexed postfix combinators. There is no constructor for DUP, DROP,
+  -- weakening, contraction, a heap address, or a closure.
+  data ForthCode : List StackType → List StackType → Set where
+    pushNat : {Γ : List StackType} → Nat → ForthCode Γ (natCell ∷ Γ)
+    binaryWord :
+      {Γ : List StackType} →
+      NatOp →
+      ForthCode (natCell ∷ natCell ∷ Γ) (natCell ∷ Γ)
+    sequence :
+      {Γ Δ Ε : List StackType} →
+      ForthCode Γ Δ →
+      ForthCode Δ Ε →
+      ForthCode Γ Ε
 
-  compileNat : NatExpr → ForthCode
+  compileNat : {Γ : List StackType} → NatExpr → ForthCode Γ (natCell ∷ Γ)
   compileNat (literal n) = pushNat n
   compileNat (binary op left right) =
-    binaryWord op (compileNat left) (compileNat right)
+    sequence (compileNat left)
+      (sequence (compileNat right) (binaryWord op))
 
-  evalForthCode : ForthCode → Nat
-  evalForthCode (pushNat n) = n
-  evalForthCode (binaryWord op left right) =
-    applyNatOp op (evalForthCode left) (evalForthCode right)
-
-  compileNat-correct : (e : NatExpr) →
-    evalForthCode (compileNat e) ≡ evalNatExpr e
-  compileNat-correct (literal n) = refl
-  compileNat-correct (binary op left right) =
-    cong₂ (applyNatOp op)
-      (compileNat-correct left)
-      (compileNat-correct right)
-
-  -- The abstract Forth combinator machine returns one new top value and
-  -- preserves the caller's residual stack.  Binary code runs its left child,
-  -- then its right child, then consumes those two results with one word.
-  record StackOutcome : Set where
-    constructor outcome
-    field
-      resultCell : Nat
-      residualStack : List Nat
-  open StackOutcome public
-
-  execForthCode : ForthCode → List Nat → StackOutcome
-  execForthCode (pushNat n) stack = outcome n stack
-  execForthCode (binaryWord op left right) stack
-    with execForthCode left stack
-  ... | outcome leftValue afterLeft
-    with execForthCode right afterLeft
-  ...   | outcome rightValue afterRight =
-          outcome (applyNatOp op leftValue rightValue) afterRight
-
-  execForthCode-preserves-residual :
-    (code : ForthCode) (stack : List Nat) →
-    residualStack (execForthCode code stack) ≡ stack
-  execForthCode-preserves-residual (pushNat n) stack = refl
-  execForthCode-preserves-residual (binaryWord op left right) stack
-    with execForthCode left stack
-  ... | outcome leftValue afterLeft
-    rewrite execForthCode-preserves-residual left stack
-    with execForthCode right stack
-  ...   | outcome rightValue afterRight
-    rewrite execForthCode-preserves-residual right stack = refl
+  execForthCode : {Γ Δ : List StackType} → ForthCode Γ Δ → Stack Γ → Stack Δ
+  execForthCode (pushNat n) stack = pushCell n stack
+  execForthCode (binaryWord addOp) (pushCell right (pushCell left stack)) =
+    pushCell (left + right) stack
+  execForthCode (binaryWord monusOp) (pushCell right (pushCell left stack)) =
+    pushCell (applyNatOp monusOp left right) stack
+  execForthCode (binaryWord multiplyOp) (pushCell right (pushCell left stack)) =
+    pushCell (left * right) stack
+  execForthCode (sequence first second) stack =
+    execForthCode second (execForthCode first stack)
 
   execForthCode-correct :
-    (code : ForthCode) (stack : List Nat) →
-    resultCell (execForthCode code stack) ≡ evalForthCode code
-  execForthCode-correct (pushNat n) stack = refl
-  execForthCode-correct (binaryWord op left right) stack
-    with execForthCode left stack
-  ... | outcome leftValue afterLeft
-    rewrite execForthCode-preserves-residual left stack
-    with execForthCode right stack
-  ...   | outcome rightValue afterRight
+    {Γ : List StackType} (e : NatExpr) (stack : Stack Γ) →
+    execForthCode (compileNat e) stack ≡ pushCell (evalNatExpr e) stack
+  execForthCode-correct (literal n) stack = refl
+  execForthCode-correct (binary op left right) stack
     rewrite execForthCode-correct left stack
-          | execForthCode-correct right stack = refl
-
-  compiledNat-stack-correct :
-    (e : NatExpr) (stack : List Nat) →
-    resultCell (execForthCode (compileNat e) stack) ≡ evalNatExpr e
-  compiledNat-stack-correct e stack =
-    trans (execForthCode-correct (compileNat e) stack)
-         (compileNat-correct e)
+          | execForthCode-correct right (pushCell (evalNatExpr left) stack) =
+      refl
 
   data ForthToken : Set where
     pushLiteral : Nat → ForthToken
@@ -366,23 +342,21 @@ module StrictNatCompiler where
   renderNatOp monusOp = monusWord
   renderNatOp multiplyOp = multiplyWord
 
-  renderForth : ForthCode → List ForthToken
+  renderForth : {Γ Δ : List StackType} → ForthCode Γ Δ → List ForthToken
   renderForth (pushNat n) = pushLiteral n ∷ []
-  renderForth (binaryWord op left right) =
-    (renderForth left ++ᴳ renderForth right) ++ᴳ (renderNatOp op ∷ [])
+  renderForth (binaryWord op) = renderNatOp op ∷ []
+  renderForth (sequence first second) =
+    renderForth first ++ᴳ renderForth second
 
   maxNat : Nat → Nat → Nat
   maxNat zero y = y
   maxNat (suc x) zero = suc x
   maxNat (suc x) (suc y) = suc (maxNat x y)
 
-  -- Maximum number of newly-produced stack cells during postfix emission.
-  -- Binary code evaluates its left child, then its right child with one cell
-  -- already present, then consumes two cells and returns one.
-  peakStackGrowth : ForthCode → Nat
-  peakStackGrowth (pushNat n) = suc zero
-  peakStackGrowth (binaryWord op left right) =
-    maxNat (peakStackGrowth left) (suc (peakStackGrowth right))
+  stackPeak : NatExpr → Nat
+  stackPeak (literal n) = suc zero
+  stackPeak (binary op left right) =
+    maxNat (stackPeak left) (suc (stackPeak right))
 
   record StackContract : Set where
     constructor stackContract
@@ -392,16 +366,19 @@ module StrictNatCompiler where
       peakAdditionalCells : Nat
   open StackContract public
 
-  stackContractOf : ForthCode → StackContract
-  stackContractOf code =
-    stackContract zero (suc zero) (peakStackGrowth code)
+  stackContractOf : NatExpr → StackContract
+  stackContractOf expression =
+    stackContract zero (suc zero) (stackPeak expression)
 
-  compiledNat-contract : (e : NatExpr) →
-    requiredInputCells (stackContractOf (compileNat e)) ≡ zero
+  compiledNat-contract :
+    (e : NatExpr) →
+    requiredInputCells (stackContractOf e) ≡ zero
   compiledNat-contract e = refl
 
-  compiledNat-result : (e : NatExpr) →
-    resultCells (stackContractOf (compileNat e)) ≡ suc zero
+  compiledNat-result :
+    (e : NatExpr) →
+    resultCells (stackContractOf e) ≡ suc zero
   compiledNat-result e = refl
 
 open StrictNatCompiler public
+
