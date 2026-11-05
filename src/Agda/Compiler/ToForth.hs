@@ -1,898 +1,154 @@
 module Agda.Compiler.ToForth where
 
-import Prelude hiding ( null , empty )
-
 import Agda.Compiler.Backend
-import Agda.Main ( runAgda )
-import Agda.Interaction.Options ( OptDescr(..), ArgDescr(..) )
-import Agda.Syntax.TopLevelModuleName
-import Agda.Utils.Either
-import Agda.Utils.Functor
-import qualified Control.Monad.IO.Class as IO
-import Data.Function
-import qualified Data.List.NonEmpty as NE
-import Data.Maybe
-import Data.SCargot
-import qualified Data.Text.IO as TIO
-
 import Agda.Compiler.Common
 import Agda.Compiler.ToTreeless
-import Agda.Compiler.Treeless.EliminateLiteralPatterns
-import Agda.Compiler.Treeless.GuardsToPrims
-import Agda.Syntax.Abstract.Name
+import Agda.Main (runAgda)
+import Agda.Syntax.Abstract.Name (qnameName)
 import Agda.Syntax.Common
+import Agda.Syntax.Common.Pretty (prettyShow)
 import Agda.Syntax.Internal as I
 import Agda.Syntax.Literal
 import Agda.Syntax.Treeless
-
+import Agda.Syntax.TopLevelModuleName
 import Agda.TypeChecking.Monad
-import Agda.TypeChecking.Pretty
 import Agda.TypeChecking.Primitive.Base
-import Agda.Utils.Impossible
-import Agda.Utils.Lens
-import Agda.Utils.List hiding ((!!))
-import Agda.Utils.Maybe
-import Agda.Utils.Monad hiding (unless)
-import Agda.Utils.Null
-import Agda.Syntax.Common.Pretty (prettyShow)
-import Agda.Utils.Singleton
-
-import Control.DeepSeq ( NFData )
-
-import Control.Monad.Except
-import Control.Monad.Reader
-import Control.Monad.State (StateT, evalStateT, gets, modify)
-
-import Data.Char
+import Agda.Utils.Either
+import Agda.Utils.Functor
+import Data.Char (isAlphaNum, isDigit)
+import Data.List.NonEmpty qualified as NE
+import Data.SCargot
 import Data.SCargot.Repr
-import Data.Map (Map)
-import qualified Data.Map as Map
-import Data.Set (Set)
-import qualified Data.Set as Set
 import Data.Text (Text)
-import qualified Data.Text as T
+import Data.Text qualified as T
+import Data.Text.IO qualified as TIO
+import Control.Monad.IO.Class qualified as IO
+import Paths_agda2forth (getDataFileName)
 
-import GHC.Generics ( Generic )
-import System.IO
-import Paths_agda2forth
-import Foreign.Marshal.Unsafe (unsafeLocalState)
+type FthForm = RichSExpr Text
 
-type FthAtom = Text
-type FthForm = RichSExpr FthAtom
+formToText :: FthForm -> Text
+formToText (RSAtom atom) = atom <> " "
+formToText (RSList forms) = T.concat (map formToText forms)
+formToText (RSDotted forms tailForm) = T.concat (map formToText forms) <> tailForm
 
-makepretty :: Bool
-makepretty = True
-
-newLine :: String
-newLine
-  | makepretty = "\n"
-  | otherwise = ""
-
-formToAtom :: FthForm -> FthAtom
-formToAtom (RSAtom ret) = T.append ret (T.pack " ")
-formToAtom (RSList xs) = T.concat (map formToAtom xs)
-formToAtom (RSDotted xs y) = T.append (T.concat (map formToAtom xs)) y
-
-fthStrictWord :: FthAtom -> FthForm -> FthForm
-fthStrictWord name body =
-  RSAtom $ T.concat [": ", name, " ", formToAtom body, ";"]
-
-
-fthWord :: FthAtom -> FthForm -> FthForm
-fthWord f body
-  | countLambdas body == 0 = fthSimpleWord f body
-  | otherwise = RSAtom (
-  T.pack ("ENDFLAG \n " ++ T.unpack (formToAtom body) ++
-  "create XT"++ T.unpack f ++" fillHere \n "++
-  ":noname" ++ " XT" ++ T.unpack f ++ " foldThunks ; is " ++ T.unpack f))
-
-fthSimpleWord :: FthAtom -> FthForm -> FthForm
-fthSimpleWord f body = RSAtom (
-  T.pack ("variable XT"++ T.unpack f ++"\n:noname "++ " " ++ T.unpack (formToAtom body) ++
-  " ; XT" ++ T.unpack f ++ " !\n:noname" ++ " XT" ++ T.unpack f ++ " @ makeTHUNK ; is " ++ T.unpack f))
-
-fthDefineType :: FthAtom -> Int -> FthAtom -> FthForm
-fthDefineType f args body = RSAtom
-  (T.concat [T.pack "variable type", f,
-  T.pack " 1 cells allot ", T.pack $ show (args + 1), T.pack " type", f, T.pack " !\n", body, "\n", fthPrinter f ," type", f, " 1 cells + !"])
-
-fthPrinter :: FthAtom -> FthAtom
-fthPrinter f = T.concat [
-  ":noname .\" ",
-  f,
-  " \" ;"
-  ]
-
-fthConstructor :: FthAtom -> Int -> FthAtom
-fthConstructor f args = formToAtom $ fthSimpleWord f (RSAtom $ T.pack
-    (" type" ++ T.unpack f ++  " here "
-    ++ show (args + 1) ++ " fillArray here " ++ show (args + 1) ++ " cells allot"))
-
-fthError :: Text -> FthForm
-fthError msg = RSAtom $ T.pack ("cr .\" " ++ T.unpack msg ++ " \" ABI-ERROR-COMPILED-UNSUPPORTED")
-
-fthAxiom :: FthAtom -> FthForm
-fthAxiom f = fthWord f $ fthError $ "encountered axiom: " <> f
-
-
-fthLocal :: [FthAtom] -> FthForm -> FthForm
-fthLocal args body = RSAtom $ T.pack $
-  "{ " ++ concatMap (\arg -> T.unpack arg ++ " ") args ++ "} " ++ newLine ++ T.unpack (formToAtom body)
-
-
-fthLambda :: [FthAtom] -> [FthAtom] -> FthForm -> FthForm
-fthLambda args lambdas body = RSAtom $ T.pack $
-  "!LAM! :LAM { " ++ bindings ++ "} " ++ newLine ++ replaceLambda lambdas (addArgs $ T.unpack injected) ++ " LAM;"
+safeForthName :: QName -> Text
+safeForthName name =
+  let raw = map escape (prettyShow (qnameName name))
+      escaped = case raw of
+        [] -> "agdaWord"
+        first : rest | isDigit first -> 'z' : first : rest
+        _ -> raw
+  in T.pack escaped
   where
-    replaceLambda (x:xs) ('!':'L':'A':'M':'!':rest) = " !LA " ++ T.unpack x ++ " M! " ++ replaceLambda xs rest
-    replaceLambda xs (y:ys) = y:replaceLambda xs ys
-    replaceLambda xs [] = []
-
-    addArgs ('!':'L':'A':rest) = T.unpack (T.intercalate " " ( reverse args)) ++ " !LA" ++ addPasses rest
-    addArgs (x:xs) = x:addArgs xs
-    addArgs [] = []
-
-    addPasses ('M':'!':rest) = "M! " ++ concatMap (const " pass ") args ++ addArgs rest
-    addPasses (x:xs) = x:addPasses xs
-    addPasses [] = []
-
-    bindings = concatMap (\arg -> T.unpack arg ++ " ") args ++ " ( LAM ) " ++ concatMap (\arg -> T.unpack arg ++ " ") lambdas
-    -- bindings = concatMap (\arg -> T.unpack arg ++ " ") (args ++ lambdas)
-
-    injected =
-      -- T.replace " } " (T.append " } " (T.append (T.intercalate " " lambdas) " ")) $
-      T.replace " ( LAM ) " (T.append (T.append (T.intercalate " " args) " ") " ( LAM ) ") (formToAtom body)
-
-
-fixWord :: Text -> Text
-fixWord word = T.concat [f, " ", T.pack (snd (moveLambdas (T.unpack body) []))]
-  where
-    (f, body) = T.breakOn "\n" word
-
-
-moveLambdas :: String -> String -> (String, String)
-moveLambdas (':':'L':'A':'M':' ':rest) acc = moveLambdas rest2 (acc2++acc)
-  where
-    (rest2, acc2) = moveLambdas rest ":noname "
-moveLambdas (' ':'L':'A':'M':';':rest) acc = (rest, acc ++ " ; \n")
-moveLambdas (x:rest) acc = moveLambdas rest (acc++[x])
-moveLambdas [] acc = ([], T.unpack $ replaceOne (removeMany ["!LA", "M!", " ( LAM )"] (T.pack acc)))
-
-removeMany :: [Text] -> Text -> Text
-removeMany xs str = foldr (`T.replace` "") str xs
-
-
-replaceOne :: Text -> Text
-replaceOne text
-  | T.null back = text
-  | otherwise = T.concat [front, "makeTHUNK", T.drop 14 back]
-    where
-      (front, back) = T.breakOn "makeTHUNK pass" text
-
-countOccurences :: Text -> Text -> Int
-countOccurences t s = sum [ 1 | r <- T.tails s, T.isPrefixOf t r ]
-
-countLambdas :: FthForm -> Int
-countLambdas (RSAtom atom) = countOccurences "!LAM!" atom
-countLambdas x = countLambdas (RSAtom (formToAtom x))
-
-
--- >>> countOccurences (T.pack "hi") (T.pack "hihihi")
--- 3
-
--- Bind each argument individually instead of all at once.
-fthLocals :: [FthAtom] -> FthForm -> FthForm
-fthLocals args body = foldr (fthLocal . singleton) body args
-
-fthApp :: FthForm -> [FthForm] -> FthForm
-fthApp f args = RSList (args ++ [f, " pass "])
-
--- Apply to each argument individually instead of all at once.
-fthApps :: FthForm -> [FthForm] -> FthForm
-fthApps = foldl (\x y -> fthApp x [y])
-
--- Fully-applied Agda primitives are operations, not closures. Route exact-arity
--- primitive applications directly to the corresponding Forth operator. Sending
--- them through fthApps would use `pass` on a raw operand/word and turns `x + y`
--- into generic closure application (the observed result was the right operand).
--- Partial applications still use the curried closure path above.
-fthDirectPrimitive :: TPrim -> [FthForm] -> Maybe FthForm
-fthDirectPrimitive PAdd [left, right] = Just $ fthDirectBinary "ABI-ADD-OR-LEGACY" left right
-fthDirectPrimitive PSub [left, right] = Just $ fthDirectBinary "ABI-SUB-OR-LEGACY" left right
-fthDirectPrimitive PMul [left, right] = Just $ fthDirectBinary "ABI-MUL-OR-LEGACY" left right
-fthDirectPrimitive PQuot [left, right] = Just $ fthDirectBinary "ABI-QUOT-OR-LEGACY" left right
-fthDirectPrimitive PRem [left, right] = Just $ fthDirectBinary "ABI-REM-OR-LEGACY" left right
-fthDirectPrimitive PEqI [left, right] = Just $ fthDirectBinary "ABI-EQ-OR-LEGACY" left right
-fthDirectPrimitive PGeq [left, right] = Just $ fthDirectBinary "ABI-GEQ-OR-LEGACY" left right
-fthDirectPrimitive PLt [left, right] = Just $ fthDirectBinary "ABI-LT-OR-LEGACY" left right
-fthDirectPrimitive PIf [condition, yesBranch, noBranch] = Just $ RSList
-  [ fthForce condition
-  , RSAtom "if"
-  , fthForce yesBranch
-  , RSAtom "else"
-  , fthForce noBranch
-  , RSAtom "then"
-  ]
-fthDirectPrimitive _ _ = Nothing
-
-fthDirectBinary :: FthAtom -> FthForm -> FthForm -> FthForm
-fthDirectBinary operator left right = RSList
-  [ fthForce left
-  , fthForce right
-  , RSAtom operator
-  ]
-
-fthLet :: [(FthAtom,FthForm)] -> FthForm -> FthForm
-fthLet binds body = RSAtom $ T.pack $
-  concatMap (\(x,v) -> T.unpack (formToAtom v) ++ "{ " ++ T.unpack x ++ " " ++ "} ") binds
-  ++ T.unpack (formToAtom body)
-  
-fthConName :: QName -> FthAtom
-fthConName x = T.pack $ prettyShow $ qnameName x
-
-fthPatternMatch :: FthForm -> [FthForm] -> Maybe FthForm -> FthForm
-fthPatternMatch x cases maybeFallback  = RSList
-  [RSAtom (makeForthy x cases maybeFallback)]
-  -- ++
-  -- [ RSList [ RSAtom "FALLBACK(?)" , fallback ] | fallback <- maybeToList maybeFallback
-  -- ]
-    where
-      makeForthy :: FthForm -> [FthForm] -> Maybe FthForm -> FthAtom
-      makeForthy arg (RSList [pat, RSList wildcards, expr]:xs) fallback = T.concat [
-        T.concat [
-          formToAtom arg,
-          T.concat (map (\x -> T.pack "makeWILDCARD ") wildcards ++ [T.pack (init (T.unpack (formToAtom pat)) ++ " ")] ++ map (\x -> T.pack "pass ") wildcards),
-          -- T.concat (map (\x -> T.pack "makeWILDCARD ") wildcards ++ [T.pack ( fixName (init $ T.unpack (formToAtom pat)) ++ " ")] ++ map (\x -> T.pack "pass ") wildcards),
-          T.pack "0 pointer !",
-          T.concat (T.pack (" obj= if wildcards " ++ show (length wildcards) ++ " pushArrayN { ") : map formToAtom wildcards ++ [T.pack "} "] ++ [T.pack newLine]),
-          formToAtom expr
-        ],
-        T.pack " else ",
-        makeForthy arg xs fallback,
-        T.pack " then "
-        ]
-      makeForthy arg (RSList [guard, body]:xs) fallback = T.concat
-        [ formToAtom guard
-        , " if "
-        , formToAtom body
-        , " else "
-        , makeForthy arg xs fallback
-        , " then "
-        ]
-      makeForthy arg (other:xs) fallback = T.append
-        (T.pack "ABI-ERROR-COMPILED-UNSUPPORTED ")
-        (makeForthy arg xs fallback)
-      makeForthy arg [] (Just fallback) = formToAtom fallback
-      makeForthy arg [] Nothing = T.pack "ABI-ERROR-UNREACHABLE "
-
-fthUnit :: FthForm
-fthUnit = RSList [RSAtom "0"]
-
-fthDelay :: FthForm -> FthForm
-fthDelay x
-  | RSList [y, RSAtom "dethunk"] <- x = y
-  | otherwise                       = RSList [x, RSAtom "makeTHUNK"]
-
-fthForce :: FthForm -> FthForm
-fthForce x = RSList [x, RSAtom "deepdethunk"]
-
-
-fthAdd, fthSub, fthMul, fthQuot, fthRem, fthIf, fthEq, fthGeq, fthLt :: FthForm
-fthAdd  = RSList [RSAtom "add"]
-fthSub  = RSList [RSAtom "sub"]
-fthMul  = RSList [RSAtom "mul"]
-fthQuot = RSList [RSAtom "quot"]
-fthRem  = RSList [RSAtom "rem"]
-fthIf   = RSList [RSAtom "iff"]
-fthEq   = RSList [RSAtom "eq"]
-fthGeq   = RSList [RSAtom "geq"]
-fthLt   = RSList [RSAtom "lt"]
-
-fthPreamble :: ToForthM [FthForm]
-fthPreamble = do
-  force <- makeForce
-  return
-    -- [ RSAtom "s\" ../lib/loader.fth\" included"
-    [ fthSimpleWord "add"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "+"]
-    , fthSimpleWord "sub"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "-"]
-    , fthSimpleWord "mul"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "*"]
-    , fthSimpleWord "quot" $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "/"]
-    , fthSimpleWord "rem"  $ fthLocals ["m","n"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "m"), force (RSAtom "n"), RSAtom "mod"]
-    , fthSimpleWord "iff"  $ fthLocals ["b","x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "b"), RSAtom "if", force (RSAtom "x"), RSAtom "else", force (RSAtom "y"), RSAtom "then"]
-    , fthSimpleWord "eq"   $ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "x"), force (RSAtom "y"), RSAtom "="]
-    , fthSimpleWord "geq"  $ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "x"), force (RSAtom "y"), RSAtom ">="]
-    , fthSimpleWord "lt"   $ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "x"), force (RSAtom "y"), RSAtom "<"]
-    , fthSimpleWord "monus"$ fthLocals ["x","y"] $ RSAtom $ formToAtom $ RSList [force (RSAtom "y x sub pass pass"),  RSAtom "dup 0 < if drop 0 then"]
-    ]
-
-getFLib :: String
-getFLib = unsafeLocalState readFLib
-
-readFLib :: IO String
-readFLib = do
-  fname <- getDataFileName "FLib.fth"
-  runtime <- readFile fname
-  -- Generated modules share one Gforth dictionary. Initialize the stateful
-  -- ABI runtime once so imported closures keep using the same handle tables,
-  -- tags, and runtime words when another generated module is included.
-  return $
-    "[undefined] AGDA2FORTH-RUNTIME-LOADED [if]\n" ++
-    "true constant AGDA2FORTH-RUNTIME-LOADED\n" ++
-    runtime ++ "\n[then]\n"
-
-
-deriving instance Generic EvaluationStrategy
-deriving instance NFData  EvaluationStrategy
-
-data FthOptions = FthOptions
-  { fthEvaluation :: EvaluationStrategy
-  , fthStrictMallp :: Bool
-  }
-  deriving (Generic, NFData)
-
-data ToForthEnv = ToForthEnv
-  { toForthOptions :: FthOptions
-  , toForthVars    :: [FthAtom]
-  }
-
-initToForthEnv :: FthOptions -> ToForthEnv
-initToForthEnv opts = ToForthEnv opts []
-
-addVarBinding :: FthAtom -> ToForthEnv -> ToForthEnv
-addVarBinding x env = env { toForthVars = x : toForthVars env }
-
-data ToForthState = ToForthState
-  { toForthFresh     :: [FthAtom]          -- Used for locally bound named variables
-  , toForthDefs      :: Map QName FthAtom  -- Used for global definitions
-  , toForthUsedNames :: Set FthAtom        -- Names that are already in use (both variables and definitions)
-  }
-
--- This is an infinite supply of variable names
--- a, b, c, ..., z, a1, b1, ..., z1, a2, b2, ...
--- We never reuse variable names to make the code easier to
--- understand.
-freshVars :: [FthAtom]
-freshVars = concat [ map (<> i) xs | i <- "":map (T.pack . show) [1..] ]
-  where
-    xs = map T.singleton ['a'..'z']
-
--- These are names that should not be used by the code we generate
-reservedNames :: Set FthAtom
-reservedNames = Set.fromList $ map T.pack
-  [ "loop" , "dethunk" , "obj=" , "obj=?"
-  , "deepdethunk" , "print" , "shallowPrint"
-  , "add", "sub", "mul", "quot", "rem"
-  , "iff", "eq", "monus", "curry", "{", "}"
-  , "(", ")"
-  -- TODO: add more
-  ]
-
-initToForthState :: ToForthState
-initToForthState = ToForthState
-  { toForthFresh     = freshVars
-  , toForthDefs      = Map.empty
-  , toForthUsedNames = reservedNames
-  }
-
-type ToForthM a = StateT ToForthState (ReaderT ToForthEnv TCM) a
-
-runToForthM :: FthOptions -> ToForthM a -> TCM a
-runToForthM opts =
-    (`runReaderT` initToForthEnv opts)
-  . (`evalStateT` initToForthState)
-
-freshFthAtom :: ToForthM FthAtom
-freshFthAtom = do
-  names <- gets toForthFresh
-  case names of
-    [] -> fail "No more variables!"
-    (x:names') -> do
-      modify $ \st -> st { toForthFresh = names' }
-      ifM (isNameUsed x) freshFthAtom $ {-otherwise-} do
-        setNameUsed x
-        return x
-
-getEvaluationStrategy :: ToForthM EvaluationStrategy
-getEvaluationStrategy = reader $ fthEvaluation . toForthOptions
-
-makeDelay :: ToForthM (FthForm -> FthForm)
-makeDelay = return id
-
-makeForce :: ToForthM (FthForm -> FthForm)
-makeForce = return fthForce
-
-getVarName :: Int -> ToForthM FthAtom
-getVarName i = reader $ (!! i) . toForthVars
-
-withFreshVar :: (FthAtom -> ToForthM a) -> ToForthM a
-withFreshVar f = do
-  x <- freshFthAtom
-  local (addVarBinding x) $ f x
-
-withFreshVars :: Int -> ([FthAtom] -> ToForthM a) -> ToForthM a
-withFreshVars i f
-  | i <= 0    = f []
-  | otherwise = withFreshVar $ \x -> withFreshVars (i-1) (f . (x:))
-
-saveDefName :: QName -> FthAtom -> ToForthM ()
-saveDefName n a = modify $ \s -> s { toForthDefs = Map.insert n a (toForthDefs s) }
-
-isNameUsed :: FthAtom -> ToForthM Bool
-isNameUsed x = gets (Set.member x . toForthUsedNames)
-
-setNameUsed :: FthAtom -> ToForthM ()
-setNameUsed x = modify $ \s ->
-  s { toForthUsedNames = Set.insert x (toForthUsedNames s) }
-
--- Extended alphabetic characters that are allowed to appear in
--- a Forth identifier
-forthExtendedAlphaChars :: Set Char
-forthExtendedAlphaChars = Set.fromList
-  [ '!' , '$' , '%' , '&' , '*' , '+' , '-' , '.' , '/' , ':' , '<' , '=' , '>'
-  , '?' , '@' , '^' , '_' , '~'
-  ]
-
--- Categories of unicode characters that are allowed to appear in
--- a Forth identifier
-forthAllowedUnicodeCats :: Set GeneralCategory
-forthAllowedUnicodeCats = Set.fromList
-  [ UppercaseLetter , LowercaseLetter , TitlecaseLetter , ModifierLetter
-  , OtherLetter , NonSpacingMark , SpacingCombiningMark , EnclosingMark
-  , DecimalNumber , LetterNumber , OtherNumber , ConnectorPunctuation
-  , DashPunctuation , OtherPunctuation , CurrencySymbol , MathSymbol
-  , ModifierSymbol , OtherSymbol , PrivateUse
-  ]
-
--- True if the character is allowed to be used in a Forth word
-isValidForthChar :: Char -> Bool
-isValidForthChar x
-  =  x /= ' '
-  && x /= '\n'
-  && x /= '\t'
-
--- Creates a valid Forth name from a (qualified) Agda name.
--- Precondition: the given name is not already in toForthDefs.
-makeForthName :: QName -> ToForthM FthAtom
-makeForthName n = do
-  a <- go $ fixName $ prettyShow $ qnameName n
-  saveDefName n a
-  setNameUsed a
-  return a
-  where
-    nextName = ('z':) -- TODO: do something smarter
-
-    go s     = ifM (isNameUsed $ T.pack s) (go $ nextName s) (return $ T.pack s)
-
-fixName :: Foldable t => t Char -> [Char]
-fixName s = case concatMap fixChar s of
-  s'@(d:_) | isNumber d -> "z" ++ s'
-  s' -> s'
-
-fixChar :: Char -> [Char]
-fixChar c
-  | isValidForthChar c = [c]
-  | otherwise           = "\\x" ++ toHex (ord c) ++ ";"
-
-toHex :: Int -> [Char]
-toHex 0 = ""
-toHex i = toHex (i `div` 16) ++ [fourBitsToChar (i `mod` 16)]
-
-fourBitsToChar :: Int -> Char
-fourBitsToChar i
-  | i < 10 = chr (ord '0' + i)
-  | otherwise = chr (ord 'A' + i - 10)
-{-# INLINE fourBitsToChar #-}
-
-class ToForth a b where
-  toForth :: a -> ToForthM b
-
-instance ToForth QName FthAtom where
-  toForth n = do
-    r <- gets (Map.lookup n . toForthDefs)
-    case r of
-      Nothing -> makeForthName n
-      Just a  -> return a
-
-instance ToForth Definition (Maybe FthForm) where
-  toForth def
-    | defNoCompilation def ||
-      not (usableModality $ getModality def) = return Nothing
-  toForth def = do
-    let f = defName def
-    case theDef def of
-      Axiom{} -> do
-        f' <- toForth f
-        return $ Just $ fthAxiom f'
-      GeneralizableVar{} -> return Nothing
-      d@Function{} | d ^. funInline -> return Nothing
-      Function{} -> do
-        f' <- toForth f
-        strat <- getEvaluationStrategy
-        maybeCompiled <- liftTCM $ toTreeless strat f
-        case maybeCompiled of
-          Just body -> Just . fthWord f' <$> toForth body
-          Nothing   -> return Nothing
-      Primitive{} -> do
-        f' <- toForth f
-        return $ Just $ fthAxiom f' -- TODO!
-      PrimitiveSort{} -> return Nothing
-      Datatype{} -> return Nothing
-      Record{} -> return Nothing
-      Constructor{ conSrcCon = chead, conArity = nargs } -> do
-        let c = conName chead
-        c' <- toForth c
-        withFreshVars nargs $ \xs ->
-          return $ Just $ fthDefineType c' (length xs) (fthConstructor c' (length xs))
-
-      AbstractDefn{} -> __IMPOSSIBLE__
-      DataOrRecSig{} -> __IMPOSSIBLE__
-
-
-instance ToForth TTerm FthForm where
-  toForth v = do
-    -- v <- liftTCM $ eliminateLiteralPatterns (convertGuards v)
-    let (w, args) = tAppView v
-    delay <- makeDelay
-    args' <- map delay <$> traverse toForth args
-    let applyToArgs f = return $ fthApps f args'
-    case w of
-      TVar i -> do
-          name <- getVarName i
-          -- force <- makeForce
-          -- applyToArgs $ force $ RSAtom name
-          applyToArgs $ RSAtom name
-      TPrim p -> case fthDirectPrimitive p args' of
-        Just direct -> return direct
-        Nothing -> case p of
-          -- These are the only primitives with an implemented curried lowering.
-          -- Retain that path for partial applications; never route an unknown
-          -- primitive through generic pass/closure lowering.
-          PAdd  -> toForth p >>= applyToArgs
-          PSub  -> toForth p >>= applyToArgs
-          PMul  -> toForth p >>= applyToArgs
-          PQuot -> toForth p >>= applyToArgs
-          PRem  -> toForth p >>= applyToArgs
-          PIf   -> toForth p >>= applyToArgs
-          PEqI  -> toForth p >>= applyToArgs
-          PGeq  -> toForth p >>= applyToArgs
-          PLt   -> toForth p >>= applyToArgs
-          _     -> return $ fthError $ T.pack $ "not yet supported: primitive " ++ show p
-      TDef d -> do
-        direct <- fthDirectDefinition d args'
-        case direct of
-          Just result -> return result
-          Nothing -> do
-            special <- isSpecialDefinition d
-            case special of
-              Nothing -> do
-                d' <- toForth d
-                applyToArgs $ RSList [RSAtom d']
-              Just v -> applyToArgs v
-      TLam v -> withFreshVar $ \x -> do
-        unless (null args) __IMPOSSIBLE__
-        body <- toForth v
-        withFreshVars (countLambdas body) $ \y -> do
-          applyToArgs $ fthLambda [x] y body
-      TLit l -> do
-        unless (null args) __IMPOSSIBLE__
-        toForth l
-      TCon c -> do
-        special <- isSpecialConstructor c
-        case special of
-          Nothing -> do
-            c' <- toForth c
-            applyToArgs $ RSList [RSAtom c']
-          Just v  -> applyToArgs v
-      TLet u v -> do
-        unless (null args) __IMPOSSIBLE__
-        expr <- toForth u
-        withFreshVar $ \x -> do
-          body <- toForth v
-          applyToArgs $ fthLet [(x,expr)] body
-      TCase i info v bs -> do
-        unless (null args) __IMPOSSIBLE__
-        -- force <- makeForce
-        -- x <- force . RSAtom <$> getVarName i
-        x <- RSAtom <$> getVarName i
-        cases <- traverse toForth bs
-        -- fallback <- if isUnreachable v
-        --     then return Nothing
-        --     else Just <$> toForth v
-        -- applyToArgs $ fthPatternMatch x cases fallback
-        special <- isSpecialCase info
-        case special of
-          Nothing -> do
-            fallback <- if isUnreachable v
-                        then return Nothing
-                        else Just <$> toForth v
-            applyToArgs $ fthPatternMatch x cases fallback
-          Just BoolCase -> case bs of
-            [] -> __IMPOSSIBLE__
-            (TACon c1 _ v1 : bs') -> do
-              Con trueC  _ _ <- primTrue
-              Con falseC _ _ <- primFalse
-              v1' <- toForth v1
-              v2' <- case bs' of
-                []                 -> toForth v
-                (TACon _ _ v2 : _) -> toForth v2
-                _                  -> __IMPOSSIBLE__
-              let (thenBranch,elseBranch)
-                    | c1 == conName trueC  = (v1',v2')
-                    | c1 == conName falseC = (v2',v1')
-                    | otherwise            = __IMPOSSIBLE__
-              -- A Bool case may inspect a thunk returned by another function.
-              -- Force it before Forth IF; deepdethunk is identity on raw Bool cells.
-              applyToArgs $ RSList [fthForce x, RSAtom "if", thenBranch, RSAtom "else", elseBranch, RSAtom "then"]
-            _ -> return $ fthError "unsupported Bool case shape"
-
-      TUnit -> do
-        unless (null args) __IMPOSSIBLE__
-        return fthUnit
-      TSort -> do
-        unless (null args) __IMPOSSIBLE__
-        return fthUnit
-      TErased -> return fthUnit
-      TCoerce u -> applyToArgs =<< toForth u
-      TError err -> toForth err
-      TApp f args -> __IMPOSSIBLE__
-
-    where
-      isUnreachable v = v == TError TUnreachable
-
-instance ToForth TPrim FthForm where
-  toForth p = case p of
-    PAdd  -> return fthAdd
-    PSub  -> return fthSub
-    PMul  -> return fthMul
-    PQuot -> return fthQuot
-    PRem  -> return fthRem
-    PIf   -> return fthIf
-    PEqI  -> return fthEq
-    PGeq  -> return fthGeq
-    PLt   -> return fthLt
-    _     -> return $ fthError $ T.pack $ "not yet supported: primitive " ++ show p
-
-instance ToForth Literal FthForm where
-  toForth lit = case lit of
-    -- Keep Nat literals as decimal text until the runtime can validate the
-    -- value against its actual signed-cell bound. Emitting a huge token bare
-    -- can make Gforth push a double-cell value or reject it before ABI checks.
-    LitNat    x -> return $ RSAtom (T.pack ("s\" " ++ show x ++ "\" ABI-PARSE-NAT"))
-    LitWord64 x -> return $ fthError "not yet supported: Word64 literals"
-    LitFloat  x -> return $ fthError "not yet supported: Float literals"
-    LitString x -> return $ fthError "not yet supported: String literals"
-    LitChar   x -> return $ fthError "not yet supported: Char literals"
-    LitQName  x -> return $ fthError "not yet supported: QName literals"
-    LitMeta p x -> return $ fthError "not yet supported: Meta literals"
-
-
--- TODO: allow literal branches and guard branches
-instance ToForth TAlt FthForm where
-  toForth alt = case alt of
-    TACon c nargs v -> withFreshVars nargs $ \xs -> do
-      body <- toForth v
-      return $ RSList [RSList [RSAtom (fthConName c)], RSList (map RSAtom xs), body]
-
-    TAGuard guard body -> do
-      guard <- toForth guard
-      body <- toForth body
-      return $ RSList [guard, body]
-
-    TALit lit body -> do
-      lit <- toForth lit
-      body <- toForth body
-      return $ RSList [lit, RSList [], body]
-
-instance ToForth TError FthForm where
-  toForth err = case err of
-    TUnreachable -> return $ fthError "Panic!"
-    TMeta s      -> return $ fthError $ "encountered unsolved meta: " <> T.pack s
-
-isSpecialConstructor :: QName -> ToForthM (Maybe FthForm)
-isSpecialConstructor c = do
-  let getConName (Just (Con con _ _)) = Just (conName con)
-      getConName _ = Nothing
-  mTrue <- getConName <$> getBuiltin' builtinTrue
-  mFalse <- getConName <$> getBuiltin' builtinFalse
-  if | Just c == mTrue  -> return $ Just $ RSAtom (T.pack $ show (-1))
-     | Just c == mFalse -> return $ Just $ RSAtom (T.pack $ show 0)
-     | otherwise        -> return Nothing
-
-isSpecialDefinition :: QName -> ToForthM (Maybe FthForm)
-isSpecialDefinition f = do
-  plusDef <- getBuiltinName builtinNatPlus
-  minusDef <- getBuiltinName builtinNatMinus
-  if | Just f == plusDef  -> return $ Just $ RSList [RSAtom "add"]
-     | Just f == minusDef -> return $ Just $ RSList [RSAtom "monus"]
-     | otherwise          -> return Nothing
-
--- The Treeless simplifier may leave Nat addition as the builtin definition
--- rather than a TPrim. Saturated calls lower as ABI operations; unsaturated
--- builtin addition maps to the existing curried "add" closure and uses "pass".
--- The Forth adapters select the checked ABI for managed scalar handles and
--- preserve legacy raw/raw calls.
-fthDirectDefinition :: QName -> [FthForm] -> ToForthM (Maybe FthForm)
-fthDirectDefinition name [left,right] = do
-  plusDef <- getBuiltinName builtinNatPlus
-  minusDef <- getBuiltinName builtinNatMinus
-  if | Just name == plusDef ->
-         return $ Just $ fthDirectBinary "ABI-ADD-OR-LEGACY" left right
-     | Just name == minusDef ->
-         return $ Just $ fthDirectBinary "ABI-MONUS-OR-LEGACY" left right
-     | otherwise -> return Nothing
-fthDirectDefinition _ _ = return Nothing
-
--- Some kinds of case statements are treated in a special way.
--- Currently, matches on Bool are translated to an `if` statement.
-data SpecialCase = BoolCase
-
-isSpecialCase :: CaseInfo -> ToForthM (Maybe SpecialCase)
-isSpecialCase (CaseInfo lazy _erased (CTData cty)) = do
-  mBool <- getBuiltin' builtinBool
-  if mBool == Just (Def cty [])
-    then return (Just BoolCase)
-    else return Nothing
-isSpecialCase _ = return Nothing
-
-makeDefines :: Text -> Text
-makeDefines x = T.append (T.pack defines) x
-  where
-    defines = concat (map (\y -> "defer " ++ y ++ "\n") (findAssignments (T.unpack x)))
-
-findAssignments :: String -> [String]
-findAssignments (' ':'i':'s':' ':rest) = name:(findAssignments rest2)
-  where
-    (name, rest2) = getAssignment rest
-findAssignments (x:rest) = findAssignments rest
-findAssignments [] = []
-
-getAssignment :: String -> (String, String)
-getAssignment ('\n':rest) = ([], rest)
-getAssignment [] = ([], [])
-getAssignment (x:rest) = ((x:xs), rest2)
-  where
-      (xs, rest2) = getAssignment rest
-
-
--- Keep the command-line backend entrypoint in the sole Forth-specific
--- Haskell module.  All shared Agda2Scheme Haskell sources remain byte-identical.
-main :: IO ()
-main = runAgda [backend]
-
-backend :: Backend
-backend = Backend backend'
-
-backend' :: Backend' FthOptions FthOptions () () (Maybe FthForm)
-backend' = Backend'
-  { backendName           = "agda2forth"
-  , options               = FthOptions EagerEvaluation True
-  , commandLineFlags      = fthFlags
-  , isEnabled             = \ _ -> True
-  , preCompile            = fthPreCompile
-  , postCompile           = \ _ _ _ -> return ()
-  , preModule             = \ _ _ _ _ -> return $ Recompile ()
-  , compileDef            = fthCompileDef
-  , postModule            = fthPostModule
-  , backendVersion        = Nothing
-  , scopeCheckingSuffices = False
-  , backendInteractTop    = Nothing
-  , backendInteractHole   = Nothing
-  , mayEraseType          = \ _ -> return True
-  }
-
-fthFlags :: [OptDescr (Flag FthOptions)]
-fthFlags =
-  [ Option [] ["strict-mallp"] (NoArg $ mallpFlag True)
-      "Explicitly select the default allocation-free Laurent-MALLP backend"
-  ]
-
-fthPreCompile :: FthOptions -> TCM FthOptions
-fthPreCompile = return
-
--- The strict MALLP path deliberately accepts only closed scalar expressions.
--- Every admitted primitive consumes each operand once and returns one result.
--- Variables, closures, sharing, constructors and implicit drops are rejected.
-toForthStrictDefinition :: Definition -> ToForthM (Maybe FthForm)
-toForthStrictDefinition def
-  | defNoCompilation def || not (usableModality $ getModality def) = return Nothing
-  | otherwise = case theDef def of
-      Function{} -> do
-        name <- toForth (defName def)
-        maybeBody <- liftTCM $ toTreeless EagerEvaluation (defName def)
-        case maybeBody of
-          Nothing -> return Nothing
-          Just body -> Just . fthStrictWord name <$> toForthStrictTerm body
-      _ -> return Nothing
-
-toForthStrictTerm :: TTerm -> ToForthM FthForm
-toForthStrictTerm term = do
+    escape c
+      | isAlphaNum c || c `elem` ("!$%&*+-./:<=>?@^_~" :: String) = c
+      | otherwise = '_'
+
+strictWord :: QName -> FthForm -> FthForm
+strictWord name body =
+  RSAtom $ T.concat [": ", safeForthName name, " ", formToText body, ";"]
+
+unsupported :: String -> TCM a
+unsupported message = typeError (genericError (T.pack ("agda2MALLPForth: " ++ message)))
+
+compileNatTerm :: TTerm -> TCM FthForm
+compileNatTerm term = do
   let (headTerm, args) = tAppView term
   case headTerm of
-    TLit literal
-      | null args -> case literal of
-          LitNat n ->
-            return $ RSAtom $ T.concat ["s\" ", T.pack (show n), "\" MALLP-PARSE-NAT"]
-          _ -> mallpUnsupported "only Nat literals are supported"
+    TLit (LitNat n)
+      | null args && n >= 0 ->
+          pure $ RSAtom $ T.concat ["s\" ", T.pack (show n), "\" MALLP-PARSE-NAT"]
     TPrim primitive -> do
-      args' <- traverse toForthStrictTerm args
-      case (primitive, args') of
-        (PAdd,  [left, right]) -> mallpBinary "MALLP-NAT-ADD" left right
-        (PSub,  [left, right]) -> mallpBinary "MALLP-NAT-MONUS" left right
-        (PMul,  [left, right]) -> mallpBinary "MALLP-NAT-MUL" left right
-        (PQuot, [left, right]) -> mallpBinary "MALLP-NAT-QUOT" left right
-        (PRem,  [left, right]) -> mallpBinary "MALLP-NAT-REM" left right
-        (PEqI,  [left, right]) -> mallpBinary "MALLP-NAT-EQ" left right
-        (PGeq,  [left, right]) -> mallpBinary "MALLP-NAT-GEQ" left right
-        (PLt,   [left, right]) -> mallpBinary "MALLP-NAT-LT" left right
-        _ -> mallpUnsupported ("unsupported primitive/arity: " ++ show primitive)
+      operands <- traverse compileNatTerm args
+      case (primitive, operands) of
+        (PAdd,  [left, right]) -> binary "MALLP-NAT-ADD" left right
+        (PSub,  [left, right]) -> binary "MALLP-NAT-MONUS" left right
+        (PMul,  [left, right]) -> binary "MALLP-NAT-MUL" left right
+        (PQuot, [left, right]) -> binary "MALLP-NAT-QUOT" left right
+        (PRem,  [left, right]) -> binary "MALLP-NAT-REM" left right
+        (PEqI,  [left, right]) -> binary "MALLP-NAT-EQ" left right
+        (PGeq,  [left, right]) -> binary "MALLP-NAT-GEQ" left right
+        (PLt,   [left, right]) -> binary "MALLP-NAT-LT" left right
+        _ -> unsupported ("unsupported Nat primitive or arity: " ++ show primitive)
     TDef name -> do
-      args' <- traverse toForthStrictTerm args
-      toForthStrictDefinitionCall name args'
+      plusName <- getBuiltinName builtinNatPlus
+      minusName <- getBuiltinName builtinNatMinus
+      operands <- traverse compileNatTerm args
+      case (name, operands) of
+        (Just builtin, [left, right]) | Just name == Just builtin ->
+          binary "MALLP-NAT-ADD" left right
+        _ -> case operands of
+          [left, right] | Just name == plusName ->
+            binary "MALLP-NAT-ADD" left right
+          [left, right] | Just name == minusName ->
+            binary "MALLP-NAT-MONUS" left right
+          _ -> unsupported "user functions and non-binary definitions are outside the closed Nat fragment"
     TCoerce inner
-      | null args -> toForthStrictTerm inner
-    _ -> mallpUnsupported ("unsupported Treeless form: " ++ show headTerm)
+      | null args -> compileNatTerm inner
+    _ -> unsupported ("Treeless term is outside the closed Nat fragment: " ++ show headTerm)
+  where
+    binary word left right = pure $ RSList [left, right, RSAtom word]
 
-mallpBinary :: FthAtom -> FthForm -> FthForm -> ToForthM FthForm
-mallpBinary word left right =
-  return $ RSList [left, right, RSAtom word]
+compileDefinition :: Definition -> TCM (Maybe FthForm)
+compileDefinition definition
+  | defNoCompilation definition || not (usableModality (getModality definition)) =
+      pure Nothing
+  | otherwise = case theDef definition of
+      Function{} -> do
+        body <- toTreeless EagerEvaluation (defName definition)
+        case body of
+          Nothing -> pure Nothing
+          Just term -> Just . strictWord (defName definition) <$> compileNatTerm term
+      _ -> pure Nothing
 
-toForthStrictDefinitionCall :: QName -> [FthForm] -> ToForthM FthForm
-toForthStrictDefinitionCall name [left, right] = do
-  plusDef <- getBuiltinName builtinNatPlus
-  minusDef <- getBuiltinName builtinNatMinus
-  if | Just name == plusDef -> mallpBinary "MALLP-NAT-ADD" left right
-     | Just name == minusDef -> mallpBinary "MALLP-NAT-MONUS" left right
-     | otherwise -> mallpUnsupported "user-function calls are outside the closed strict fragment"
-toForthStrictDefinitionCall _ _ =
-  mallpUnsupported "only saturated Nat arithmetic definitions are supported"
+readStrictRuntime :: IO String
+readStrictRuntime = do
+  path <- getDataFileName "FLib.fth"
+  runtime <- TIO.readFile path
+  let begin = "\\ MALLP-STRICT-BEGIN"
+      end = "\\ MALLP-STRICT-END"
+      (_, afterBegin) = T.breakOn begin runtime
+  if T.null afterBegin
+    then fail "FLib.fth is missing the strict MALLP runtime"
+    else do
+      let sectionStart = T.drop (T.length begin) afterBegin
+          (section, afterEnd) = T.breakOn end sectionStart
+      if T.null afterEnd
+        then fail "FLib.fth has an unterminated strict MALLP runtime"
+        else pure (T.unpack section)
 
-mallpUnsupported :: String -> ToForthM a
-mallpUnsupported reason =
-  fail ("--strict-mallp: " ++ reason)
-
-
-fthCompileDef :: FthOptions -> () -> IsMain -> Definition -> TCM (Maybe FthForm)
-fthCompileDef opts _ _ def = runToForthM opts $
-  if fthStrictMallp opts then toForthStrictDefinition def else toForth def
-
-fthPostModule :: FthOptions -> () -> IsMain -> TopLevelModuleName -> [Maybe FthForm] -> TCM ()
-fthPostModule opts _ _ modName defs = do
-  preamble <- if fthStrictMallp opts then return [] else runToForthM opts fthPreamble
-  let defToText = encodeOne printer . fromRich
-      render = if fthStrictMallp opts then id else fixWord
-      runtime = if fthStrictMallp opts then getMallpFLib else getFLib
-      modText = T.append
-        (T.pack runtime)
-        (makeDefines
-          (T.intercalate "\n\n" $
-            map (render . defToText) (preamble ++ catMaybes defs)))
-      fileName = prettyShow (NE.last $ moduleNameParts modName) ++ ".fth"
-  IO.liftIO $ TIO.writeFile fileName modText
+renderForm :: FthForm -> Text
+renderForm = encodeOne printer . fromRich
   where
     printer :: SExprPrinter Text (SExpr Text)
     printer = basicPrint id
 
-getMallpFLib :: String
-getMallpFLib = unsafeLocalState readMallpFLib
+postModule :: () -> () -> IsMain -> TopLevelModuleName -> [Maybe FthForm] -> TCM ()
+postModule _ _ _ moduleName definitions = do
+  runtime <- IO.liftIO readStrictRuntime
+  let body = T.intercalate "\n\n" (map renderForm (catMaybes definitions))
+      output = T.pack runtime <> "\n" <> body <> "\n"
+      filename = prettyShow (NE.last (moduleNameParts moduleName)) ++ ".fth"
+  IO.liftIO $ TIO.writeFile filename output
 
-readMallpFLib :: IO String
-readMallpFLib = do
-  fname <- getDataFileName "FLib.fth"
-  runtime <- T.pack <$> readFile fname
-  let startMarker = "\\ MALLP-STRICT-BEGIN"
-      endMarker = "\\ MALLP-STRICT-END"
-      (_, afterStart) = T.breakOn startMarker runtime
-  if T.null afterStart
-    then fail "FLib.fth is missing the strict MALLP runtime section"
-    else do
-      let sectionStart = T.drop (T.length startMarker) afterStart
-          (section, afterEnd) = T.breakOn endMarker sectionStart
-      if T.null afterEnd
-        then fail "FLib.fth has an unterminated strict MALLP runtime section"
-        else return (T.unpack section)
+backend :: Backend
+backend = Backend Backend'
+  { backendName = "agda2forth"
+  , options = ()
+  , commandLineFlags = []
+  , isEnabled = \_ -> True
+  , preCompile = pure
+  , postCompile = \_ _ _ -> pure ()
+  , preModule = \_ _ _ _ -> pure (Recompile ())
+  , compileDef = \_ _ _ definition -> compileDefinition definition
+  , postModule = postModule
+  , backendVersion = Nothing
+  , scopeCheckingSuffices = False
+  , backendInteractTop = Nothing
+  , backendInteractHole = Nothing
+  , mayEraseType = \_ -> pure True
+  }
 
-mallpFlag :: Bool -> Flag FthOptions
-mallpFlag enabled options = return options { fthStrictMallp = enabled }
-
-evaluationFlag :: EvaluationStrategy -> Flag FthOptions
-evaluationFlag strategy options = return options { fthEvaluation = strategy }
+main :: IO ()
+main = runAgda [backend]
