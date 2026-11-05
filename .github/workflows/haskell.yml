@@ -33,7 +33,7 @@ jobs:
           done < <(git ls-tree -r --name-only HEAD | grep -E "\\.hs$")
 
           test "$(git ls-files "*.hs" | grep -v "^src/Agda/Compiler/ToForth.hs$" | wc -l | tr -d " ")" -ge 1
-                    test "$(git ls-files '*.agda' | wc -l | tr -d ' ')" = 1
+          test "$(git ls-files '*.agda' | wc -l | tr -d ' ')" = 1
           test "$(git ls-files '*.agda')" = formal/LinearModalSafety.agda
 
           git fetch --no-tags --depth=1 https://github.com/LMMilliken/agda2Forth.git "$FORTH_UPSTREAM_SHA"
