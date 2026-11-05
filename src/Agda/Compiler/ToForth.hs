@@ -8,12 +8,12 @@ import Agda.Interaction.Options ( OptDescr(..), ArgDescr(..) )
 import Agda.Syntax.TopLevelModuleName
 import Agda.Utils.Either
 import Agda.Utils.Functor
-import Control.Monad.IO.Class ( liftIO )
+import qualified Control.Monad.IO.Class as IO
 import Data.Function
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe
 import Data.SCargot
-import qualified Data.Text.IO as T
+import qualified Data.Text.IO as TIO
 
 import Agda.Compiler.Common
 import Agda.Compiler.ToTreeless
@@ -798,7 +798,7 @@ fthPostModule opts _ _ modName defs = do
           (T.intercalate "\n\n" $
             map fixWord (map defToText (preamble ++ catMaybes defs))))
       fileName = prettyShow (NE.last $ moduleNameParts modName) ++ ".fth"
-  liftIO $ T.writeFile fileName modText
+  IO.liftIO $ TIO.writeFile fileName modText
   where
     printer :: SExprPrinter Text (SExpr Text)
     printer = basicPrint id
