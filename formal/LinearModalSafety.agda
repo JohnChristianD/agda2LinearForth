@@ -725,7 +725,7 @@ module LinearModalSafety where
         -- pointwise double-negated existence, each such search returns its
         -- least witness.  This packages the countable family of Markov steps
         -- with the deterministic μ-minimizer.  It is stronger than MP_B alone.
-        ArithmeticalCountableChoiceLeastWitness : Set₁
+        ArithmeticalCountableChoiceLeastWitness : Set
         ArithmeticalCountableChoiceLeastWitness =
           (P : Nat → Nat → Bool) →
           ((i : Nat) → ¬ (¬ BooleanWitness (P i))) →
