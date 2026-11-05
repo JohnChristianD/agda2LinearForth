@@ -4,7 +4,7 @@ A deliberately restricted Agda-to-Gforth compiler. The checked compiler path is 
 
 The project has two separate Agda files:
 
-- `formal/LinearModalSafety.agda`: a safe, builtin-only Laurent-style MALLP formula/sequent fragment plus an indexed Forth stack-code semantics for closed Nat expressions.
+- `formal/LinearModalSafety.agda`: a `--safe --without-K --cubical=no-glue`, builtin-only Laurent-style MALLP formula/sequent fragment plus an indexed Forth stack-code semantics for closed Nat expressions.
 - `formal/SovereignRationalSEDPhysics.agda`: the separate RSED physics library. It is not a dependency of the compiler proof.
 
 Both files are checked by the same pinned Agda source version, **2.9.0-rc3**, via `cabal.project` and CI. This is a release candidate, not the stable 2.8.0.2 release. The `--cubical=no-glue` option required by the physics file is supplied by that same compiler.
@@ -44,7 +44,7 @@ The Agda target code is indexed by input and output stack shapes. Its constructo
 - `binaryWord`: consumes two Nat cells and produces one;
 - `sequence`: composes stack transitions whose intermediate stack indices agree.
 
-There are no constructors for duplication, discard, heap access, closure creation, or implicit weakening/contraction. The execution function is indexed by the same stack shapes. The source-to-code theorem states that compiling an expression and executing its target code returns the source-evaluated Nat on top of the original untouched tail stack.
+There are no constructors for duplication, discard, heap access, closure creation, or implicit weakening/contraction. The execution function is indexed by the same stack shapes. The source-to-code theorem states that compiling an expression and executing its target code returns the source-evaluated Nat on top of the original untouched tail stack. A second theorem interprets the rendered postfix token list and proves it yields the same stack result, including residual-stack preservation.
 
 This is a constructive linear stack-effect semantics inspired by MALLP's resource discipline. It is **not** a claim that arbitrary Agda terms have been translated into Laurent MALLP proofs. A general source typing/usage judgment and a translation from MALLP derivations into generated words remain future proof work.
 
