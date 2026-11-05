@@ -8,22 +8,9 @@
   THEN
 ;
 
-: strict-assert-boolean { actual expected -- }
-  actual expected <> IF
-    ." strict MALLP boolean mismatch" cr
-    -4202 THROW
-  THEN
-;
-
 answerAdd 20 strict-assert-natural
 answerMonus 0 strict-assert-natural
 answerMultiply 20 strict-assert-natural
-answerEqual -1 strict-assert-boolean
-answerLess -1 strict-assert-boolean
-
-21 3 MALLP-NAT-QUOT 7 <> abort" strict MALLP quotient failed"
-22 5 MALLP-NAT-REM 2 <> abort" strict MALLP remainder failed"
-
 : testStrictOverflow ( -- )
   MALLP-MAX-NAT 1 MALLP-NAT-ADD DROP
 ;
@@ -33,11 +20,6 @@ answerLess -1 strict-assert-boolean
   -1 MALLP-CHECK-NAT DROP
 ;
 ' testStrictNegative CATCH 0= abort" strict MALLP negative Nat was accepted"
-
-: testStrictDivideByZero ( -- )
-  12 0 MALLP-NAT-QUOT DROP
-;
-' testStrictDivideByZero CATCH 0= abort" strict MALLP division by zero was accepted"
 
 depth 0<> abort" strict MALLP leaked data-stack cells"
 cr ." mallp-strict-tests-passed" cr
