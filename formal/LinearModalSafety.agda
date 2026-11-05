@@ -2929,7 +2929,8 @@ module LinearModalSafety where
     NatStackExec program initial final →
     runNatStackProgram program initial ≡ natStackReturned final
   natStackExecSound natStackDone = refl
-  natStackExecSound (natStackPush execution) = natStackExecSound execution
+  natStackExecSound {program = pushNatCellInstruction n :: program} (natStackPush {n = n} {program = program} execution) =
+    natStackExecSound {program = program} execution
   natStackExecSound (natStackAdd execution) = natStackExecSound execution
   natStackExecSound (natStackMultiply execution) = natStackExecSound execution
   natStackExecSound (natStackMonus execution) = natStackExecSound execution
