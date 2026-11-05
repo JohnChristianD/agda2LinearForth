@@ -1076,9 +1076,9 @@ module LinearModalSafety where
           (entries : PartialMap X) →
           (key : Nat) →
           DomainDecision entries key
-        decideDomain entries key with memberKey key (mapEntries entries)
-        ... | true = inDomain refl
-        ... | false = outDomain refl
+        decideDomain entries key with memberKey key (mapEntries entries) in keyMembership
+        ... | true = inDomain keyMembership
+        ... | false = outDomain keyMembership
     
         omegaThread :
           {X : Set} →
