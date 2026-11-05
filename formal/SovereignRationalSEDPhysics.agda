@@ -1,4 +1,4 @@
-{-# OPTIONS --safe --cubical=no-glue #-}
+{-# OPTIONS --safe --cubical=no-glue --guardedness #-}
 
 module SovereignRationalSEDPhysics where
 
