@@ -765,7 +765,7 @@ backend = Backend backend'
 backend' :: Backend' FthOptions FthOptions () () (Maybe FthForm)
 backend' = Backend'
   { backendName           = "agda2forth"
-  , options               = FthOptions EagerEvaluation False
+  , options               = FthOptions EagerEvaluation True
   , commandLineFlags      = fthFlags
   , isEnabled             = \ _ -> True
   , preCompile            = fthPreCompile
@@ -782,12 +782,8 @@ backend' = Backend'
 
 fthFlags :: [OptDescr (Flag FthOptions)]
 fthFlags =
-  [ Option [] ["lazy-evaluation"] (NoArg $ evaluationFlag LazyEvaluation)
-      "Insert delay and force operations to enable lazy evaluation"
-  , Option [] ["strict-evaluation"] (NoArg $ evaluationFlag EagerEvaluation)
-      "Do not insert delay and force operations (default)"
-  , Option [] ["strict-mallp"] (NoArg $ mallpFlag True)
-      "Emit closed Nat expressions as allocation-free Laurent-MALLP stack code"
+  [ Option [] ["strict-mallp"] (NoArg $ mallpFlag True)
+      "Explicitly select the default allocation-free Laurent-MALLP backend"
   ]
 
 fthPreCompile :: FthOptions -> TCM FthOptions
