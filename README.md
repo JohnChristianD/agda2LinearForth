@@ -4,7 +4,7 @@ A deliberately restricted Agda-to-Gforth compiler. The checked compiler path is 
 
 The project has two separate Agda files:
 
-- `formal/LinearModalSafety.agda`: a `--safe --without-K --cubical=no-glue`, builtin-only Laurent-style MALLP formula/sequent fragment plus an indexed Forth stack-code semantics for closed Nat expressions.
+- `formal/MALLPForth.agda`: a `--safe --without-K --cubical=no-glue`, builtin-only Laurent-style MALLP formula/sequent fragment plus an indexed Forth stack-code semantics for closed Nat expressions.
 - `formal/SovereignRationalSEDPhysics.agda`: the separate RSED physics library. It is not a dependency of the compiler proof.
 
 Both files are checked by the same pinned Agda source version, **2.9.0-rc3**, via `cabal.project` and CI. This is a release candidate, not the stable 2.8.0.2 release. The `--cubical=no-glue` option required by the physics file is supplied by that same compiler.
