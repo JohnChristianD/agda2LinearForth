@@ -768,7 +768,7 @@ module LinearModalSafety where
         ...   | just k with result
         ...     | refl = boundedSearch-sound fuel (λ i → P (suc i)) k smaller
     
-        MarkovPrinciple : Set₁
+        MarkovPrinciple : Set
         MarkovPrinciple =
           (P : Nat → Bool) →
           ¬ (¬ BooleanWitness P) →
