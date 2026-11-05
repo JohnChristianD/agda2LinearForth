@@ -24,31 +24,31 @@ GNU Gforth
 
 | File | Responsibility | What currently verifies it |
 | --- | --- | --- |
-| `app/Main.hs` | Entry point inherited from Agda2Scheme | Exact upstream-source check in CI |
+| `src/Main.hs` and `app/Main.hs` | Unmodified Agda2Scheme source files retained byte-for-byte; the executable entrypoint lives in `ToForth.hs` | Direct Git blob/diff checks in CI |
 | `src/Agda/Compiler/Erase.hs` | Upstream erasure implementation | Exact upstream-source check in CI |
-| `src/Main.hs` | Minimal Forth backend driver adapted for Agda 2.8 APIs | Exact driver-blob check in CI |
+| `src/Agda/Compiler/ToScheme.hs` | Upstream Scheme backend retained byte-for-byte | Direct Git diff check in CI |
 | `src/Agda/Compiler/ToForth.hs` | Converts Agda treeless terms into Forth forms and definitions | Haskell build and selected generated-program tests; no machine-checked proof that this Haskell code implements the Agda model |
 | `data/FLib.fth` | Legacy Forth words, closure application, managed descriptors, checked ABI operations | Executed directly by Gforth tests; described by a separate manual Agda model |
 | `formal/LinearModalSafety.agda` | Root model for ownership/descriptor invariants, weakest preconditions, stack effects, denotations, and selected compiler/runtime behavior; imports `VerifiedPLLCore` | Type-checks with Agda 2.8.0.2 and `--erasure`; it does not prove the concrete Haskell/Forth bridge |
-| `formal/VerifiedPLLCore.agda` | Constructive finite-type search, bounded Markov substitute, conaturals, Hedberg, dyad arithmetic, and a small positive-tensor PLL fragment | Type-checks as an import of the root; its theorem scope remains intentionally limited |
+| `VerifiedPLLCore` nested inside `formal/LinearModalSafety.agda` | Constructive finite-type search, bounded Markov substitute, conaturals, Hedberg, dyad arithmetic, and a small positive-tensor PLL fragment | Type-checks as an import of the root; its theorem scope remains intentionally limited |
 | `formal/CompilerVerificationSpine.md` | CakeML/PureCake-inspired end-to-end proof graph and explicitly scoped future obligations | Architecture note; not itself a correctness proof |
-| `formal/VerifiedCoreExecutable.agda` | Finite-observation projection and executable `pow2` interface imported by the proof core | Compiled to Forth and run in a small integration slice; proofs relate finite and infinite observations to the coinductive model, but this does not make arbitrary coinductive values executable |
-| `test/VerifiedCoreSmoke.agda` and `test/gforth/verified-core-smoke.fs` | Generated conatural observations, dyadic scale examples, and an erased-argument call | Compiled by Agda2Forth and executed by Gforth |
-| `test/CheckedScalar.agda` | Nat/Bool regression source | Compiled and executed by CI |
+| `VerifiedCoreExecutable` nested inside `formal/LinearModalSafety.agda` | Finite-observation projection and executable `pow2` interface imported by the proof core | Compiled to Forth and run in a small integration slice; proofs relate finite and infinite observations to the coinductive model, but this does not make arbitrary coinductive values executable |
+| `test/VerifiedCoreSmoke.agda.src` and `test/gforth/verified-core-smoke.fs` | Generated conatural observations, dyadic scale examples, and an erased-argument call | Compiled by Agda2Forth and executed by Gforth |
+| `test/CheckedScalar.agda.src` | Nat/Bool regression source | Compiled and executed by CI |
 | `test/gforth/compiler-integration.fs` | Expected results for generated Nat/Bool programs | Executed by CI |
 | `test/gforth/abi-smoke.fs` | Direct runtime ABI regressions | Executed by CI |
-| `test/UnsupportedLiteral.agda` and `test/gforth/unsupported-boundary.fs` | Unsupported String literal and catchable error path | Compiled and executed by CI |
-| `test/UnsupportedAxiom.agda` and `test/gforth/unsupported-axiom-boundary.fs` | Referenced Agda axiom fails closed through a catchable error | Compiled and executed by CI |
-| `test/UnsupportedNatLiteral.agda` and `test/gforth/unsupported-nat-literal.fs` | Oversized Nat literal throws from generated Forth | Compiled and executed by CI |
+| `test/UnsupportedLiteral.agda.src` and `test/gforth/unsupported-boundary.fs` | Unsupported String literal and catchable error path | Compiled and executed by CI |
+| `test/UnsupportedAxiom.agda.src` and `test/gforth/unsupported-axiom-boundary.fs` | Referenced Agda axiom fails closed through a catchable error | Compiled and executed by CI |
+| `test/UnsupportedNatLiteral.agda.src` and `test/gforth/unsupported-nat-literal.fs` | Oversized Nat literal throws from generated Forth | Compiled and executed by CI |
 | `test/gforth/abi-smoke.fs` | Raw Nat literal parsing, cell bounds, arithmetic overflow/domain errors, and catchable unreachable-branch boundary | Executed by CI |
 
 ### Source-provenance boundary
 
 CI checks that:
 
-- `app/Main.hs` and `src/Agda/Compiler/Erase.hs` are byte-identical to Agda2Scheme revision `24e02d9669f17d98ec67b8ad961cf9c3e602bf10` (the Agda 2.8 API update).
-- `src/Main.hs` is the small Forth-specific Agda 2.8 driver adapter, pinned by its exact Git blob `be738fab5d26f009576e6b1a51237d4f7f2f1f9e`.
-- `src/Agda/Compiler/ToForth.hs` is the only Forth-specific compiler translation module; the other shared Haskell source files must remain byte-identical to the Scheme upstream source.
+- All Haskell files except `src/Agda/Compiler/ToForth.hs` are byte-identical to Agda2Scheme revision `24e02d9669f17d98ec67b8ad961cf9c3e602bf10`; CI verifies the complete changed-`.hs` path allowlist and exact content using `git fetch`, `git diff`, and Git blob hashes.
+- `src/Agda/Compiler/ToForth.hs` owns the Forth backend entrypoint and is the sole Haskell exception. Cabal invokes its `main` directly. `src/Main.hs`, `app/Main.hs`, and `ToScheme.hs` remain upstream-identical.
+- CI asserts exactly one tracked `*.agda`: `formal/LinearModalSafety.agda`. Compiler test inputs are stored as `*.agda.src`; CI copies each to a temporary `.agda` for that step and removes it with an EXIT trap. No permanent helper scripts are used.
 - `data/FLib.fth` matches the reviewed runtime blob pinned in CI as `30477369597107b579ffac29735c42b6e326b0d0`.
 
 A hash match establishes byte identity with a reference file. It does not establish semantic correctness. In particular, the Agda model is manually written and maintained; a provenance check does not prove that `ToForth.hs` or `FLib.fth` implements it.
@@ -131,7 +131,7 @@ Its theorems concern explicitly defined Agda models. The module includes:
 
 The historical theorem `historicalGeneratedScalarDoesNotRefineAddition` preserves the old fallback-body counterexample as historical context. It is not a claim that the current tested saturated-addition lowering still exhibits that old result.
 
-#See [`formal/CompilerVerificationSpine.md`](formal/CompilerVerificationSpine.md) for the CakeML/PureCake-derived staged proof graph and concrete remaining bridges.
+
 
 ## What remains unproved
 
