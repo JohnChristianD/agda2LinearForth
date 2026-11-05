@@ -1381,8 +1381,6 @@ module LinearModalSafety where
     noPayload : MaybeNat
     hasPayload : Nat → MaybeNat
   
-  data SourceMode : Set where
-    linear modal : SourceMode
   
   -- Unannotated is a runtime boundary/error state, not a third source type.
   data RuntimeMode : Set where
