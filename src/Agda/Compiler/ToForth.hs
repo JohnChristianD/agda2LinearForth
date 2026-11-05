@@ -13,8 +13,6 @@ import Agda.Syntax.Treeless
 import Agda.Syntax.TopLevelModuleName
 import Agda.TypeChecking.Monad
 import Agda.TypeChecking.Primitive.Base
-import Agda.Utils.Either
-import Agda.Utils.Functor
 import Data.Char (isAlphaNum, isDigit)
 import qualified Data.List.NonEmpty as NE
 import Data.SCargot
