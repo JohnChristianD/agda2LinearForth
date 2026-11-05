@@ -1092,12 +1092,12 @@ module LinearModalSafety where
           omegaThread omega default alpha initial n
         ... | entries with memberKey
           (omega (streamOf (mapEntries entries) default))
-          (mapEntries entries)
+          (mapEntries entries) in keyMembership
         ...   | true = entries
         ...   | false =
           extendFresh entries
             (omega (streamOf (mapEntries entries) default))
-            refl
+            keyMembership
             (alpha (omega (streamOf (mapEntries entries) default)))
     
         SymmetricBarCondition :
