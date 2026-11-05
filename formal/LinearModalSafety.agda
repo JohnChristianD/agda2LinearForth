@@ -431,7 +431,8 @@ module LinearModalSafety where
   open import Agda.Builtin.Sigma using (Σ; _,_)
   open import Agda.Builtin.Equality using (_≡_; refl)
   open import Agda.Builtin.Equality.Rewrite
-  open import Agda.Builtin.Empty using (⊥)
+  -- Local empty type: Agda 2.8.0.2 has no Agda.Builtin.Empty module.
+  data ⊥ : Set where
   
   ------------------------------------------------------------------------
   -- Small utilities
