@@ -15,32 +15,15 @@ data-dir:   data
 
 extra-source-files:
     README.md
-    test/CheckedScalar.agda.src
     test/MALLPStrict.agda.src
-    test/Erasure.agda.src
-    test/First.agda.src
-    test/Nats.agda.src
-    test/Triples.agda.src
-    test/TriplesFO.agda.src
-    test/UnsupportedAxiom.agda.src
-    test/UnsupportedLiteral.agda.src
-    test/UnsupportedNatLiteral.agda.src
-    test/VerifiedCoreSmoke.agda.src
-    test/formalize-all-the-things.agda.src
-    test/gforth/abi-smoke.fs
     test/gforth/mallp-strict.fs
-    test/gforth/compiler-integration.fs
-    test/gforth/verified-core-smoke.fs
-    test/gforth/unsupported-axiom-boundary.fs
-    test/gforth/unsupported-boundary.fs
-    test/gforth/unsupported-nat-literal.fs
 executable agda2forth
     main-is:          Agda/Compiler/ToForth.hs
     other-modules:    Agda.Compiler.Erase
                       Paths_agda2forth
     autogen-modules:  Paths_agda2forth
     build-depends:    base >=4.15.0.0
-                      , Agda >= 2.8.0.2 && < 2.9
+                      , Agda >= 2.9.0 && < 2.10
                       , containers >= 0.5.7.1
                       , deepseq >= 1.4.5
                       , mtl >= 2.2.2
