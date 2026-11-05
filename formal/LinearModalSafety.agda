@@ -1491,7 +1491,7 @@ module LinearModalSafety where
     ------------------------------------------------------------------------
     -- MODULE 2: RATIONAL SED GEOMETRY AND MOMENTUM INTERFACES
     --
-    -- This module deliberately does not open/import Foundations.  The eight
+    -- This module deliberately does not open/import Foundations.  The seven
     -- foundational packages above therefore do not become hidden dependencies of the
     -- physical model.
     ------------------------------------------------------------------------
