@@ -747,26 +747,49 @@ module LinearModalSafety where
         leastWitnessChoice-correct P double-negated i =
           arithmeticalCountableChoiceLeastWitness P double-negated i
     
+        selectMaybe : {A : Set} → Bool → A → A → A
+        selectMaybe true yesValue noValue = yesValue
+        selectMaybe false yesValue noValue = noValue
+
+        shiftMaybeNat : Maybe Nat → Maybe Nat
+        shiftMaybeNat nothing = nothing
+        shiftMaybeNat (just n) = just (suc n)
+
         boundedSearch : Nat → (Nat → Bool) → Maybe Nat
         boundedSearch zero P = nothing
-        boundedSearch (suc fuel) P with P zero
-        ... | true = just zero
-        ... | false with boundedSearch fuel (λ n → P (suc n))
-        ...   | nothing = nothing
-        ...   | just n = just (suc n)
-    
+        boundedSearch (suc fuel) P =
+          selectMaybe (P zero) (just zero)
+            (shiftMaybeNat (boundedSearch fuel (λ n → P (suc n))))
+
+        boundedSearch-sound-true :
+          (fuel : Nat) (P : Nat → Bool) (n : Nat) →
+          P zero ≡ true →
+          selectMaybe (P zero) (just zero)
+            (shiftMaybeNat (boundedSearch fuel (λ i → P (suc i)))) ≡ just n →
+          P n ≡ true
+        boundedSearch-sound-true fuel P n first result with first | result
+        ... | refl | refl = refl
+
+        boundedSearch-sound-false :
+          (fuel : Nat) (P : Nat → Bool) (n : Nat) →
+          P zero ≡ false →
+          selectMaybe (P zero) (just zero)
+            (shiftMaybeNat (boundedSearch fuel (λ i → P (suc i)))) ≡ just n →
+          P n ≡ true
+        boundedSearch-sound-false fuel P n first result
+          with first | boundedSearch fuel (λ i → P (suc i)) | result
+        ... | refl | nothing | ()
+        ... | refl | just k | refl =
+          boundedSearch-sound fuel (λ i → P (suc i)) k refl
+
         boundedSearch-sound :
           (fuel : Nat) (P : Nat → Bool) (n : Nat) →
           boundedSearch fuel P ≡ just n → P n ≡ true
         boundedSearch-sound zero P n ()
-        boundedSearch-sound (suc fuel) P n result
-          with P zero in firstObservation
-             | boundedSearch fuel (λ i → P (suc i)) | result
-        ... | true | tail | refl = firstObservation
-        ... | false | nothing | ()
-        ... | false | just k | refl =
-          boundedSearch-sound fuel (λ i → P (suc i)) k refl
-    
+        boundedSearch-sound (suc fuel) P n result with P zero in firstObservation
+        ... | true = boundedSearch-sound-true fuel P n firstObservation result
+        ... | false = boundedSearch-sound-false fuel P n firstObservation result
+
         MarkovPrinciple : Set
         MarkovPrinciple =
           (P : Nat → Bool) →
