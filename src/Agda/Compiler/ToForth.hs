@@ -2,6 +2,19 @@ module Agda.Compiler.ToForth where
 
 import Prelude hiding ( null , empty )
 
+import Agda.Compiler.Backend
+import Agda.Main ( runAgda )
+import Agda.Interaction.Options ( OptDescr(..), ArgDescr(..) )
+import Agda.Syntax.TopLevelModuleName
+import Agda.Utils.Either
+import Agda.Utils.Functor
+import Control.Monad.IO.Class ( liftIO )
+import Data.Function
+import qualified Data.List.NonEmpty as NE
+import Data.Maybe
+import Data.SCargot
+import qualified Data.Text.IO as T
+
 import Agda.Compiler.Common
 import Agda.Compiler.ToTreeless
 import Agda.Compiler.Treeless.EliminateLiteralPatterns
@@ -733,3 +746,62 @@ getAssignment [] = ([], [])
 getAssignment (x:rest) = ((x:xs), rest2)
   where
       (xs, rest2) = getAssignment rest
+
+
+-- Keep the command-line backend entrypoint in the sole Forth-specific
+-- Haskell module.  All shared Agda2Scheme Haskell sources remain byte-identical.
+main :: IO ()
+main = runAgda [backend]
+
+backend :: Backend
+backend = Backend backend'
+
+backend' :: Backend' FthOptions FthOptions () () (Maybe FthForm)
+backend' = Backend'
+  { backendName           = "agda2forth"
+  , options               = FthOptions EagerEvaluation
+  , commandLineFlags      = fthFlags
+  , isEnabled             = \ _ -> True
+  , preCompile            = fthPreCompile
+  , postCompile           = \ _ _ _ -> return ()
+  , preModule             = \ _ _ _ _ -> return $ Recompile ()
+  , compileDef            = fthCompileDef
+  , postModule            = fthPostModule
+  , backendVersion        = Nothing
+  , scopeCheckingSuffices = False
+  , backendInteractTop    = Nothing
+  , backendInteractHole   = Nothing
+  , mayEraseType          = \ _ -> return True
+  }
+
+fthFlags :: [OptDescr (Flag FthOptions)]
+fthFlags =
+  [ Option [] ["lazy-evaluation"] (NoArg $ evaluationFlag LazyEvaluation)
+      "Insert delay and force operations to enable lazy evaluation"
+  , Option [] ["strict-evaluation"] (NoArg $ evaluationFlag EagerEvaluation)
+      "Do not insert delay and force operations (default)"
+  ]
+
+fthPreCompile :: FthOptions -> TCM FthOptions
+fthPreCompile = return
+
+fthCompileDef :: FthOptions -> () -> IsMain -> Definition -> TCM (Maybe FthForm)
+fthCompileDef opts _ _ def = runToForthM opts $ toForth def
+
+fthPostModule :: FthOptions -> () -> IsMain -> TopLevelModuleName -> [Maybe FthForm] -> TCM ()
+fthPostModule opts _ _ modName defs = do
+  preamble <- runToForthM opts fthPreamble
+  let defToText = encodeOne printer . fromRich
+      modText = T.append
+        (T.pack getFLib)
+        (makeDefines
+          (T.intercalate "\n\n" $
+            map fixWord (map defToText (preamble ++ catMaybes defs))))
+      fileName = prettyShow (NE.last $ moduleNameParts modName) ++ ".fth"
+  liftIO $ T.writeFile fileName modText
+  where
+    printer :: SExprPrinter Text (SExpr Text)
+    printer = basicPrint id
+
+evaluationFlag :: EvaluationStrategy -> Flag FthOptions
+evaluationFlag strategy options = return options { fthEvaluation = strategy }
