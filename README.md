@@ -179,6 +179,14 @@ The first four are postulated. `lookup-tabulate` is proved by recursion on the f
 The embedded RSED code has no `Vec`, `Fin`, or custom `Index` datatype and no first-class setoid/`IsEquivalence` record. It uses ordinary lists, `Nat` labels, explicit bounds where required, and builtin intensional equality. This does not make quotient assumptions constructive: the generic quotient interface still needs an equivalence relation and its laws.
 
 
+### Conaturals: present, but not a prerequisite for compiler correctness
+
+The requested TypeTopology-style conatural model is already present in the nested `VerifiedPLLCore` module. `CoNat` is a decreasing Boolean sequence: once an observation is false, every later observation is false. `finiteCoNat`, `coInfinity`, and bounded observation lemmas give finite and infinite examples. The finite compiler-facing projection is connected by `finiteObservationAgrees` and `infiniteObservationAgrees`.
+
+The RSED library module also has a separate coinductive `Conat` whose observation is `Maybe Conat`, together with `finiteApproximation` bounded by an explicit `Nat`. These are two useful presentations of conatural horizons; do not identify them without a proved representation equivalence.
+
+Conaturals are **not required** for a PureCake-style compiler theorem unless the supported Agda source grammar includes conatural values or their eliminators. Keep the mathematics as a separately checked library component. Current Gforth fixtures exercise finite observation projections only; they do not prove support for arbitrary coinductive values, infinite streams, or productivity-preserving compilation. Such support needs explicit source semantics, a target representation, a productivity argument, and an observation theorem.
+
 The conatural proof model follows TypeTopology's generic-convergent-sequence representation: a Boolean sequence with the decreasingness proof that once an observation is false, all later observations remain false. It is connected to the backend-compilable observation interface in `VerifiedCoreExecutable (nested module in formal/LinearModalSafety.agda)` by `finiteObservationAgrees` and `infiniteObservationAgrees`; CI compiles examples of that interface to Forth and executes them with Gforth. This tests the finite ABI projection, not arbitrary functions over conaturals or whole-backend correctness.
 
 `VerifiedPLLCore (nested module in formal/LinearModalSafety.agda)` re-expresses a deliberately bounded subset of the ideas in TypeTopology without importing its standard-library-scale dependency graph.
@@ -353,6 +361,12 @@ CakeML and PureCake are models for the shape of a complete correctness argument,
 
 CakeML separates parser correctness, type-inference soundness/completeness, backend correctness, target machine semantics, installed-code hypotheses, initial-state invariants, and resource bounds. Its top-level theorem composes those results. PureCake adds a particularly relevant pass chain for a lazy language: PureLang source semantics → explicit thunk language → environment/state representations → CakeML. Each compiler pass has its own syntax, semantics, side conditions, and preservation theorem. PureCake preserves observable behavior, including interaction and divergence, rather than only comparing returned values.
 
+### Which program logic is actually needed?
+
+A full separation-logic development is not a prerequisite for a PureCake-shaped compiler proof. The main structure is a chain of per-pass semantic simulations and a composed observation-preservation theorem. The current `StackEffect` suffix theorem is not a heap frame rule, and the descriptor model is not a separation algebra.
+
+Keep the existing small Dijkstra-style WP contracts where they prove useful runtime facts: allocation success/failure, descriptor liveness, ownership transitions, exception atomicity, and selected ABI operations. They complement the compiler simulations; they do not replace them. General Hoare logic, separating conjunction, heap-splitting algebra, or a frame rule should be introduced only if a concrete runtime proof needs compositional heap footprints. Do not build a general separation-logic library as a substitute for proving the compiler passes.
+
 The intended proof graph here is:
 
 ```text
@@ -384,6 +398,19 @@ MALLP is presently a formal logic development inside the one Agda file. It is **
 PureCake's call-by-name to call-by-value translation makes delay and force explicit in each pass. This compiler currently does not do that: `makeDelay = id`, and ordinary variable references bypass the force path. Consequently, the `--lazy-evaluation` option is not backed by a semantics-preservation theorem and must not be described as a verified PureCake-style lazy compiler.
 
 A linear one-shot thunk and a shared call-by-need thunk are different resource models. Shared memoization requires an explicit sharing discipline; it cannot be inferred from having a thunk constructor. The MALLP-only choice does not supply exponentials or shared duplication.
+
+## Trust boundary: Isabelle/HOL evidence and constructive Agda
+
+The seven foundation modules and their rewrite equations do **not** export Isabelle proofs into Agda. Postulates introduce assumptions; they do not prove those assumptions or establish a correspondence between two proof assistants. Agda's confluence checker checks overlap and triangle conditions for registered rewrite rules. That checks a property of the rewrite system; it is not a translator for Isabelle theorem objects.
+
+Two Isabelle outputs must be kept distinct:
+
+- Isabelle's `export_code` generates executable code for selected definitions. Generated SML/OCaml/Haskell/etc. is implementation output, not a theorem certificate.
+- Isabelle proof terms belong to Isabelle/Pure's inference framework. Its proof checker reconstructs omitted proof-term information and replays primitive inferences in its own kernel. That is not an Agda term, and Agda does not automatically accept it.
+
+A sound cross-prover bridge needs an explicit translation contract. For a small supported constructive fragment, define shared syntax for types, terms, propositions, and primitive inference rules; map Isabelle constants and assumptions to named Agda definitions or parameters; export a certificate; and implement a small Agda checker whose soundness theorem proves that each accepted certificate inhabits the translated proposition. The Agda kernel then checks the soundness proof. Reject or separately account for classical choice, excluded middle, quotient axioms, type-class assumptions, function extensionality, and any Isabelle/HOL principle lacking a constructive Agda counterpart. Keep an explicit axiom ledger and fail closed when an assumption is unmatched. A theorem name, source file, pretty-printed proof, or generated code file is not itself a certificate.
+
+The twenty postulated declarations in the RSED foundation are mathematical assumptions for their stated packages. They are not a general Isabelle-to-Agda import mechanism, a MALLP cut-elimination proof, or a source-to-Forth simulation. For compiler correctness, prioritize a constructive Agda specification and independently checked certificate format. Isabelle can act as an untrusted analysis/certificate generator until the translation and checker are proved sound.
 
 ## End-to-end verification frontier
 
