@@ -126,3 +126,15 @@ For a linear-only target discipline, a thunk can be consumed at most once. Gener
 - The allocator model does not yet implement reclamation.
 - The current lazy flag is not an established lazy semantics-preserving mode.
 - Laurent MALLP's polarity shifts are not exponentials. MALLP has no structural weakening or contraction rules; no Seely comonad is needed for this fragment.
+
+## References
+
+The following proof developments supply the proof architecture and semantic interfaces adapted here:
+
+- CakeML complete compiler correctness: https://github.com/CakeML/cakeml/blob/master/compiler/proofs/compilerProofScript.sml
+- CakeML source semantics and program observation: https://github.com/CakeML/cakeml/blob/master/semantics/semanticsScript.sml
+- PureCake end-to-end compiler correctness: https://github.com/CakeML/pure/blob/master/compiler/proofs/pure_compilerProofScript.sml
+- PureLang-to-thunkLang simulation: https://github.com/CakeML/pure/blob/master/compiler/backend/passes/proofs/pure_to_thunk_1ProofScript.sml
+- Explicit call-by-value thunk language: https://github.com/CakeML/pure/blob/master/compiler/backend/languages/semantics/thunkLangScript.sml
+- Laurent's MALLP sequent calculus: https://perso.ens-lyon.fr/olivier.laurent/fullpolgames.pdf (section 3.1)
+- Hamano and Scott, categorical semantics for polarized MALL: https://doi.org/10.1016/j.apal.2006.09.001
