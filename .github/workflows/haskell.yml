@@ -20,30 +20,20 @@ jobs:
         env:
           SCHEME_UPSTREAM_SHA: 24e02d9669f17d98ec67b8ad961cf9c3e602bf10
           FORTH_UPSTREAM_SHA: e83f8cc735bf220f80b3655ce2158a23818910fe
-          FORTH_MAIN_ADAPTER_BLOB: be738fab5d26f009576e6b1a51237d4f7f2f1f9e
           FLIB_EXPECTED_BLOB: 30477369597107b579ffac29735c42b6e326b0d0
         run: |
           git fetch --no-tags --depth=1 https://github.com/jespercockx/agda2scheme.git "$SCHEME_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$SCHEME_UPSTREAM_SHA"
-          git diff --exit-code "$SCHEME_UPSTREAM_SHA" HEAD -- app/Main.hs src/Agda/Compiler/Erase.hs
-
-          # The only Haskell path changes versus Agda2Scheme are the Forth
-          # translation module, removal of the Scheme translation module, and
-          # the Forth-specific Agda 2.8 driver adapter.
+          # ToForth.hs is the sole Haskell exception. Every other Haskell
+          # source path and blob must match Agda2Scheme at this exact commit.
+          git diff --exit-code "$SCHEME_UPSTREAM_SHA" HEAD -- \
+            app/Main.hs src/Main.hs src/Agda/Compiler/Erase.hs src/Agda/Compiler/ToScheme.hs
           actual_hs="$(git diff --name-only "$SCHEME_UPSTREAM_SHA" HEAD -- '*.hs' | sort)"
-          expected_hs="$(printf '%s\n' \
-            src/Agda/Compiler/ToForth.hs \
-            src/Agda/Compiler/ToScheme.hs \
-            src/Main.hs | sort)"
+          expected_hs="src/Agda/Compiler/ToForth.hs"
           test "$actual_hs" = "$expected_hs"
 
           git fetch --no-tags --depth=1 https://github.com/LMMilliken/agda2Forth.git "$FORTH_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$FORTH_UPSTREAM_SHA"
-          # The Forth driver is a minimal Agda 2.8 API adapter, pinned independently.
-          test "$(git hash-object src/Main.hs)" = "$FORTH_MAIN_ADAPTER_BLOB"
-          # Shared entrypoint and erasure implementation remain byte-identical to Agda2Scheme.
-          git diff --exit-code "$SCHEME_UPSTREAM_SHA" HEAD -- app/Main.hs src/Agda/Compiler/Erase.hs
-
           # Keep runtime source pinned; Haskell path changes are constrained by the allowlist above.
           test "$(git hash-object data/FLib.fth)" = "$FLIB_EXPECTED_BLOB"
 
