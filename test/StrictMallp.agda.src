@@ -1,0 +1,19 @@
+module StrictMallp where
+
+open import Agda.Builtin.Nat using (Nat; _+_; _*_; _-_; _==_; _<_)
+open import Agda.Builtin.Bool using (Bool)
+
+mallpAdd : Nat
+mallpAdd = 20 + 22
+
+mallpMonus : Nat
+mallpMonus = 5 - 9
+
+mallpMultiply : Nat
+mallpMultiply = 6 * 7
+
+mallpEqual : Bool
+mallpEqual = 4 == 4
+
+mallpLess : Bool
+mallpLess = 3 < 8
