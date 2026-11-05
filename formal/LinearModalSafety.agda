@@ -759,52 +759,6 @@ module LinearModalSafety where
         leastWitnessChoice-correct P double-negated i =
           arithmeticalCountableChoiceLeastWitness P double-negated i
     
-        boundedSearch : Nat → (Nat → Bool) → Maybe Nat
-        boundedSearch zero P = nothing
-        boundedSearch (suc fuel) P with P zero
-        ... | true = just zero
-        ... | false with boundedSearch fuel (λ n → P (suc n))
-        ...   | nothing = nothing
-        ...   | just n = just (suc n)
-    
-        data BoundedSearchEvidence (P : Nat → Bool) : Maybe Nat → Set where
-          boundedSearch-none : BoundedSearchEvidence P nothing
-          boundedSearch-found :
-            (n : Nat) → P n ≡ true → BoundedSearchEvidence P (just n)
-
-        boundedSearch-evidence :
-          (fuel : Nat) (P : Nat → Bool) →
-          BoundedSearchEvidence P (boundedSearch fuel P)
-        boundedSearch-evidence zero P = boundedSearch-none
-        boundedSearch-evidence (suc fuel) P with P zero in pzero
-        ... | true = boundedSearch-found zero pzero
-        ... | false with boundedSearch-evidence fuel (λ i → P (suc i))
-        ...   | boundedSearch-none = boundedSearch-none
-        ...   | boundedSearch-found n proof =
-          boundedSearch-found (suc n) proof
-
-        boundedSearch-sound :
-          (fuel : Nat) (P : Nat → Bool) (n : Nat) →
-          boundedSearch fuel P ≡ just n → P n ≡ true
-        boundedSearch-sound zero P n ()
-
-        boundedSearch-sound (suc fuel) P zero result
-          with P zero in pzero | boundedSearch fuel (λ i → P (suc i))
-        ... | true | _ = pzero
-        ... | false | nothing with result
-        ...   | ()
-        ... | false | just m with result
-        ...   | ()
-
-        boundedSearch-sound (suc fuel) P (suc n) result
-          with P zero | boundedSearch fuel (λ i → P (suc i))
-        ... | true | _ with result
-        ...   | ()
-        ... | false | nothing with result
-        ...   | ()
-        ... | false | just m with result
-        ...   | refl = boundedSearch-sound fuel (λ i → P (suc i)) n refl
-    
         MarkovPrinciple : Set₁
         MarkovPrinciple =
           (P : Nat → Bool) →
