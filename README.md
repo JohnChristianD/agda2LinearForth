@@ -28,7 +28,8 @@ GNU Gforth
 | `src/Agda/Compiler/Erase.hs` | Upstream erasure implementation | Exact upstream identity checked in CI |
 | `src/Agda/Compiler/ToForth.hs` | Sole project-specific Haskell backend and executable entrypoint | Builds and runs selected fixture tests; no Agda proof establishes that it implements the formal model |
 | `data/FLib.fth` | Forth closure application, descriptor ABI, ownership checks, arithmetic adapters and runtime words | Selected direct Gforth tests; no proof that all runtime transitions refine the Agda model |
-| `formal/LinearModalSafety.agda` | The only tracked `.agda` module; contains the descriptor/WP/runtime model plus nested `VerifiedCoreExecutable`, `VerifiedPLLCore`, and `SovereignRationalSED` modules, including Laurent MALLP | Agda type-checking proves properties of these models, not the Haskell/Forth implementation |
+| `formal/LinearModalSafety.agda` | Compiler/runtime WP and descriptor model, conatural/searchability model, and retained constructive foundations plus Laurent MALLP | Agda 2.8.0.2 type-checks these models; the foundational postulates remain assumptions and are not a backend refinement proof |
+| `formal/SovereignRationalSEDPhysics.agda` | Full RSED geometry, closed exchange, conatural streams and finite physical motive | Separate `--safe --cubical=no-glue` module checked with the pinned Agda 2.9.0-rc3 binary |
 | `test/*.agda.src` | Compiler fixture inputs | CI stages one input as `.agda` per step, then deletes it; none is a second tracked `.agda` module |
 | `test/gforth/*.fs` | Executable ABI and generated-program regressions | Executed directly by Gforth in CI |
 
@@ -40,8 +41,8 @@ CI checks that:
 
 - All Haskell files except `src/Agda/Compiler/ToForth.hs` are byte-identical to Agda2Scheme revision `24e02d9669f17d98ec67b8ad961cf9c3e602bf10`; CI verifies the complete changed-`.hs` path allowlist and exact content using `git fetch`, `git diff`, and Git blob hashes.
 - `src/Agda/Compiler/ToForth.hs` owns the Forth backend entrypoint and is the sole Haskell exception. Cabal invokes its `main` directly. `src/Main.hs`, `app/Main.hs`, and `src/Agda/Compiler/Erase.hs` remain upstream-identical.
-- CI asserts exactly one tracked `*.agda`: `formal/LinearModalSafety.agda`. Compiler test inputs are stored as `*.agda.src`; CI copies each to a temporary `.agda` for that step and removes it with an EXIT trap. No permanent helper scripts are used.
-- `data/FLib.fth` matches the reviewed runtime blob pinned in CI as `30477369597107b579ffac29735c42b6e326b0d0`.
+- CI asserts exactly two tracked Agda sources: `formal/LinearModalSafety.agda` and `formal/SovereignRationalSEDPhysics.agda`. Compiler test inputs are stored as `*.agda.src`; CI copies each to a temporary `.agda` for that step and removes it with an EXIT trap. No permanent helper scripts are used.
+- `data/FLib.fth` is pinned by its Git blob in CI; this file contains both the legacy descriptor runtime and the separate strict-MALLP scalar runtime section.
 
 A hash match establishes byte identity with a reference file. It does not establish semantic correctness. In particular, the Agda model is manually written and maintained; a provenance check does not prove that `ToForth.hs` or `FLib.fth` implements it.
 
@@ -77,12 +78,24 @@ The integration suite contains **23 expected Nat/Bool results**. Those execution
 
 ### Literals and unsupported terms
 
-- Nat literals are emitted as decimal strings and parsed by `ABI-PARSE-NAT`; parsing produces one raw cell or throws a catchable range/format error.
+- In the default backend mode, Nat literals are emitted as decimal strings and parsed by `ABI-PARSE-NAT`; parsing produces one raw cell or throws a catchable range/format error.
 - The special Boolean constructors are emitted as raw flags: `-1` for true and `0` for false.
-- Not every source value is wrapped in a managed scalar/Boolean descriptor. Therefore a compiled value is not guaranteed to carry a runtime witness for its source modality.
+- Not every source value is wrapped in a managed scalar/Boolean descriptor. Therefore a value in the default path is not guaranteed to carry a runtime witness for its source modality.
 - The shared unsupported-output path emits a diagnostic and invokes `ABI-ERROR-COMPILED-UNSUPPORTED`. That runtime word raises a catchable `THROW`; String-literal and referenced-axiom fixtures check the error code and stack balance. Unsupported primitives no longer fall through to generic closure application, malformed Bool cases fail closed, and unmatched unreachable pattern branches invoke the catchable `ABI-ERROR-UNREACHABLE` path.
 - The literal fallback rejects kinds outside the directly emitted Nat path. String literals and referenced axioms now have dedicated catchable-boundary integration tests.
-- Do not assume every unknown builtin fails closed. A definition not recognized by the direct/special mapping can fall through to generic name/application handling. An exhaustive checked allowlist for an explicitly supported source subset is still missing.
+- Do not assume every unknown builtin fails closed in the default mode. A definition not recognized by the direct/special mapping can fall through to generic name/application handling. An exhaustive checked allowlist for the default backend's full supported subset is still missing.
+
+### Strict MALLP mode: first closed-scalar slice
+
+Pass `--strict-mallp` to select a separate backend/runtime path. This mode emits colon definitions over raw Forth stack cells and loads only the delimited `MALLP-STRICT` section of `FLib.fth`. It does not load the legacy descriptor/thunk runtime or its dynamic metadata allocator.
+
+The currently accepted source subset is deliberately narrow: closed Nat expressions formed from literals and saturated builtin addition, subtraction (Agda monus), multiplication, quotient, remainder and comparisons. The emitter rejects variables, lambdas, captures, user-function calls, constructors, pattern matches, implicit drops, and other Treeless forms. A rejected term fails compilation rather than falling back to the descriptor runtime.
+
+The emitted words (`MALLP-NAT-ADD`, `MALLP-NAT-MONUS`, and the other `MALLP-NAT-*` operations) consume two stack operands and return one result. They check signed-cell bounds and Nat's nonnegative domain. The strict runtime's arithmetic words allocate no descriptors or thunks and use no runtime `HERE`/`ALLOT` allocation. Gforth still stores colon definitions in its dictionary when the generated file is loaded; a finite output file can still exceed the target dictionary capacity.
+
+This is an **allocation-free strict stack-code slice**, not yet a verified MALLP compiler. The current MALLP proof rules are retained and typechecked separately, but there is no theorem translating a MALLP derivation into these emitted words, no type-directed source checker enforcing linear use, and no formal serializer/runtime refinement theorem. The closed-expression restriction makes the admitted scalar expressions syntactically one-use; it does not prove the unrestricted Agda compiler respects linearity. The default mode continues using the legacy thunk/descriptor runtime.
+
+The CI fixture `MALLPStrict.agda.src` executes representative operations and checks overflow/negative-input rejection using `gforth`.
 
 ## Runtime ABI: `data/FLib.fth`
 
@@ -104,18 +117,20 @@ The raw Nat arithmetic adapters and `ABI-PARSE-NAT` enforce nonnegative-cell inp
 
 ## What the semantic model is—and is not
 
-The accurate umbrella description is **a Dijkstra-style weakest-precondition model with explicit descriptor-heap and ownership invariants, plus a Laurent MALLP proof-rule development**. “Linear/modal safety” accurately names one part of that model: the runtime descriptor discipline distinguishes linear resources from modal resources, and the model permits duplication/discard only for modal descriptors. It is not yet accurate to describe the whole backend as a verified linear-modal compiler, because no source typing/usage theorem proves that every term accepted by the compiler obeys those rules.
+The accurate umbrella description is **a Dijkstra-style weakest-precondition model with explicit descriptor-heap and ownership invariants, plus a separate Laurent MALLP proof-rule development**. Runtime `linear`/`modal` descriptor tags describe the legacy ABI; they are neither MALLP shifts nor Girard/Seely exponentials. The new `--strict-mallp` mode avoids descriptors for its closed scalar fragment, but no source typing/usage theorem yet derives its accepted Treeless subset from MALLP proofs.
 
 The WP judgment is explicit. Commands return either a normal state or an exceptional state paired with a runtime error; the WP has separate normal and exceptional postconditions. Its `wpSequence`, `wpCatch`, and `SemanticTriple` laws are Dijkstra-style operational contracts. The present outcome type is total and does not itself model divergence; a separate finite-fuel denotation records exhaustion.
 
 Calling this **separation logic** would overstate the formalization. The machine state has a descriptor heap represented as a list, roots, identity freshness, ownership, liveness, and reference invariants. But the file does not define a separating assertion connective over disjoint heaps, a heap-splitting composition algebra, or a general separation-logic frame rule. `stackTailFrame` is a proved suffix-preservation law for the abstract stack-effect relation; it is not a heap frame rule and proves nothing by itself about concrete Forth word footprints. The precise label is “WP plus explicit heap/ownership invariants,” not “Dijkstra separation logic.”
 
-The Laurent MALLP calculus is another distinct component. Its formula grammar, duality, optional positive stoup, negative context, explicit exchange, cut, multiplicative/additive rules, units, and polarity shifts are formalized. It has no exponential modalities or Seely comonad. The runtime’s `modal` duplication/discard mode is not an implementation of a Laurent shift and is not derived from MALLP. The current file also contains separate foundational packages with explicit postulates and rewrite rules; the unified source is not axiom-free and is not checked with Agda `--safe`.
+The Laurent MALLP calculus is a distinct component. Its formula grammar, duality, optional positive stoup, negative context, explicit exchange, cut, multiplicative/additive rules, units, and polarity shifts are formalized. It has no exponential modalities or Seely comonad. The runtime’s `modal` duplication/discard mode is not an implementation of a Laurent shift and is not derived from MALLP. The compiler proof file retains all six earlier foundational packages plus Laurent MALLP, including the specified postulates and rewrite equations. Those foundations are assumption-bearing; their presence does not make them proofs of the strict Forth backend's resource discipline. The compiler proof file is not checked with Agda `--safe`.
 
-PureCake and CakeML provide the **desired proof decomposition**, not an already-realized proof result. This repository does not yet have PureCake's source-to-thunk pass chain, a typed Forth IR shared with Haskell, serializer correctness, or a final theorem relating actual generated Forth execution to source observations.
+The physical RSED development is kept separately in `formal/SovereignRationalSEDPhysics.agda`, with `{-# OPTIONS --safe --cubical=no-glue #-}`. CI checks it using Agda 2.9.0-rc3 because the compiler proof remains pinned to Agda 2.8.0.2. This file separation keeps the safe physical library independent from the assumption-bearing compiler/foundations file.
+
+PureCake and CakeML provide the **desired proof decomposition**, not an already-realized proof result. The strict scalar path is a first implementation change inspired by that decomposition, but this repository still lacks a typed Forth IR shared with Haskell, independently proved lowering passes, serializer correctness, and a final theorem relating actual generated Forth execution to source observations. PureCake's verified thunk/update semantics cannot be copied directly into a strict MALLP fragment: memoized sharing needs an explicit sharing capability and update heap, whereas this path deliberately excludes closures and sharing.
 ## What `formal/LinearModalSafety.agda` establishes
 
-The formal source uses Agda builtins rather than the standard library. The compiler/runtime model and bounded Nat simulation are ordinary checked definitions, but the nested `SovereignRationalSED` foundation package is **not axiom-free**: it declares assumptions for an unbounded μ-search and its equations, arithmetical countable least-witness choice, cohesive modalities/retractions, quotient types, and symmetric bar recursion. It also enables rewrite rules for μ-search, bar recursion, and lookup/tabulation. Those declarations are trusted assumptions, not theorems proved by this repository, and their presence is why the unified file is not checked with `--safe`. The MALLP proof rules themselves contain no Seely/exponential constructors; that fact does not remove the separate foundational postulates elsewhere in the same file. The conatural model is a decreasing Boolean sequence. Formal checking uses Agda 2.8.0.2, `--without-K`, and the project options declared in the module. CI type-checks the root and its imports with:
+The compiler formalization uses Agda builtins rather than the standard library. The compiler/runtime model and bounded Nat simulation are ordinary checked definitions, but the nested `SovereignRationalSED` foundation package is **not axiom-free**: it declares assumptions for an unbounded μ-search and its equations, arithmetical countable least-witness choice, cohesive modalities/retractions, quotient types, and symmetric bar recursion. It also enables rewrite rules for μ-search, bar recursion, and lookup/tabulation. Those declarations are trusted assumptions, not theorems proved by this repository, and their presence is why the unified file is not checked with `--safe`. The MALLP proof rules themselves contain no Seely/exponential constructors; that fact does not remove the separate foundational postulates elsewhere in the same file. The conatural model is a decreasing Boolean sequence. Compiler-proof checking uses Agda 2.8.0.2 and the project options declared in the module. CI type-checks the root with:
 
 ```sh
 agda --erasure --no-libraries -i formal formal/LinearModalSafety.agda
@@ -202,7 +217,7 @@ The conatural proof model follows TypeTopology's generic-convergent-sequence rep
 
 ## Test and CI contract
 
-CI checks that `ToForth.hs` is the sole Haskell divergence from pinned Agda2Scheme sources, builds the Haskell compiler, runs the configured Cabal test command, installs/runs Gforth tests, type-checks the one tracked Agda specification, and stages individual fixture sources temporarily. The relevant commands are:
+CI checks that `ToForth.hs` is the sole Haskell divergence from pinned Agda2Scheme sources, builds the Haskell compiler, runs the configured Cabal test command, installs/runs Gforth tests, type-checks the two Agda specifications with their respective pinned Agda versions, and stages individual compiler fixtures temporarily. The relevant commands are:
 
 ```sh
 cabal build all
@@ -210,8 +225,9 @@ cabal test all
 
 gforth -e 'include data/FLib.fth' -e 'include test/gforth/abi-smoke.fs'
 agda --erasure --no-libraries -i formal formal/LinearModalSafety.agda
+agda-2.9 -i formal formal/SovereignRationalSEDPhysics.agda
 
-# Fixture source is stored as .agda.src so the repository tracks only one .agda file.
+# Compiler fixture sources are stored as .agda.src and staged temporarily.
 (
   cp test/CheckedScalar.agda.src test/CheckedScalar.agda
   trap 'rm -f test/CheckedScalar.agda' EXIT
@@ -245,6 +261,13 @@ agda --erasure --no-libraries -i formal formal/LinearModalSafety.agda
   trap 'rm -f test/VerifiedCoreSmoke.agda' EXIT
   cabal run agda2forth -- --erasure -i test test/VerifiedCoreSmoke.agda
   gforth VerifiedCoreSmoke.fth test/gforth/verified-core-smoke.fs
+)
+
+(
+  cp test/MALLPStrict.agda.src test/MALLPStrict.agda
+  trap 'rm -f test/MALLPStrict.agda' EXIT
+  cabal run agda2forth -- --strict-mallp --erasure -i test test/MALLPStrict.agda
+  gforth MALLPStrict.fth test/gforth/mallp-strict.fs
 )
 
 (
@@ -443,11 +466,11 @@ The existing WP model contains useful operation contracts and selected allocatio
 
 ## Dictionary allocation and no-GC status
 
-The current runtime is **not proved immune to dictionary exhaustion**. Runtime descriptor creation, metadata reservation, and closure-environment creation use monotone `HERE ... ALLOT` allocation. Consuming a linear handle changes ownership metadata; it does not generally return those cells to a reusable allocator. The abstract allocation model tracks cursors and preflights identity exhaustion; its `cellCount` advances the cursor without a proved arena-size bound. That does not establish memory reclamation or global storage safety in Gforth.
+The default backend runtime is **not proved immune to dictionary exhaustion**. Runtime descriptor creation, metadata reservation, and closure-environment creation use monotone `HERE ... ALLOT` allocation. Consuming a linear handle changes ownership metadata; it does not generally return those cells to a reusable allocator. The abstract allocation model tracks cursors and preflights identity exhaustion; its `cellCount` advances the cursor without a proved arena-size bound. That does not establish memory reclamation or global storage safety in Gforth.
 
-Compile-time `:noname` definitions are a separate issue from runtime object allocation. The runtime-growth concern is the dynamically repeated handle, metadata, and environment allocation. No general bounded slot pool, free-list, generation-tagged handle scheme, or reclamation simulation has yet been proved and connected to the Forth implementation.
+The strict `--strict-mallp` scalar slice does not use descriptor, thunk, or closure allocation and its selected runtime words contain no runtime `HERE ... ALLOT` path. Its colon definitions still occupy Gforth's dictionary at load time, and the compiler does not yet prove a static dictionary-size bound. The default backend remains separate and retains the runtime-growth concern described above. Compile-time `:noname` definitions remain in the default closure backend; they are not what makes strict MALLP allocation-free.
 
-Therefore the answer to “is this already a complete MALLP/PureCake compiler with no dictionary overflow or no-GC problems?” is **no**. Current CI can establish only the explicit tests and Agda files it actually runs. Even a green run would not prove unbounded memory safety, correct reclamation, or end-to-end compiler refinement.
+Therefore this is **not yet** a complete MALLP/PureCake compiler with a dictionary-capacity theorem. CI will test the strict scalar fragment and the default descriptor ABI separately, but green tests do not establish unbounded memory safety, correct reclamation, or end-to-end compiler refinement.
 
 ## Verification decisions and known frontier
 
