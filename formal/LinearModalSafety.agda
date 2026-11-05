@@ -15,6 +15,9 @@ cong₂ : {A B C : Set} (f : A → B → C)
       → {x y : A} {u v : B} → x ≡ y → u ≡ v → f x u ≡ f y v
 cong₂ f refl refl = refl
 
+trans : {A : Set} {x y z : A} → x ≡ y → y ≡ z → x ≡ z
+trans refl q = q
+
 module LaurentPolarizedMALLP where
 
   
@@ -298,6 +301,57 @@ module StrictNatCompiler where
     cong₂ (applyNatOp op)
       (compileNat-correct left)
       (compileNat-correct right)
+
+  -- The abstract Forth combinator machine returns one new top value and
+  -- preserves the caller's residual stack.  Binary code runs its left child,
+  -- then its right child, then consumes those two results with one word.
+  record StackOutcome : Set where
+    constructor outcome
+    field
+      resultCell : Nat
+      residualStack : List Nat
+  open StackOutcome public
+
+  execForthCode : ForthCode → List Nat → StackOutcome
+  execForthCode (pushNat n) stack = outcome n stack
+  execForthCode (binaryWord op left right) stack
+    with execForthCode left stack
+  ... | outcome leftValue afterLeft
+    with execForthCode right afterLeft
+  ...   | outcome rightValue afterRight =
+          outcome (applyNatOp op leftValue rightValue) afterRight
+
+  execForthCode-preserves-residual :
+    (code : ForthCode) (stack : List Nat) →
+    residualStack (execForthCode code stack) ≡ stack
+  execForthCode-preserves-residual (pushNat n) stack = refl
+  execForthCode-preserves-residual (binaryWord op left right) stack
+    with execForthCode left stack
+  ... | outcome leftValue afterLeft
+    rewrite execForthCode-preserves-residual left stack
+    with execForthCode right stack
+  ...   | outcome rightValue afterRight
+    rewrite execForthCode-preserves-residual right stack = refl
+
+  execForthCode-correct :
+    (code : ForthCode) (stack : List Nat) →
+    resultCell (execForthCode code stack) ≡ evalForthCode code
+  execForthCode-correct (pushNat n) stack = refl
+  execForthCode-correct (binaryWord op left right) stack
+    with execForthCode left stack
+  ... | outcome leftValue afterLeft
+    rewrite execForthCode-preserves-residual left stack
+    with execForthCode right stack
+  ...   | outcome rightValue afterRight
+    rewrite execForthCode-correct left stack
+          | execForthCode-correct right stack = refl
+
+  compiledNat-stack-correct :
+    (e : NatExpr) (stack : List Nat) →
+    resultCell (execForthCode (compileNat e) stack) ≡ evalNatExpr e
+  compiledNat-stack-correct e stack =
+    trans (execForthCode-correct (compileNat e) stack)
+         (compileNat-correct e)
 
   data ForthToken : Set where
     pushLiteral : Nat → ForthToken
