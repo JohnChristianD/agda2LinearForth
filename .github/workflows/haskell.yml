@@ -33,8 +33,8 @@ jobs:
           done < <(git ls-tree -r --name-only HEAD | grep -E "\\.hs$")
 
           test "$(git ls-files "*.hs" | grep -v "^src/Agda/Compiler/ToForth.hs$" | wc -l | tr -d " ")" -ge 1
-          test "$(git ls-files '*.agda' | wc -l | tr -d ' ')" = 1
-          test "$(git ls-files '*.agda')" = formal/LinearModalSafety.agda
+          test "$(git ls-files '*.agda' | wc -l | tr -d ' ')" = 2
+          test "$(git ls-files '*.agda')" = "$(printf '%s\n' formal/LinearModalSafety.agda formal/SovereignRationalSEDPhysics.agda)"
 
           git fetch --no-tags --depth=1 https://github.com/LMMilliken/agda2Forth.git "$FORTH_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$FORTH_UPSTREAM_SHA"
@@ -108,6 +108,26 @@ jobs:
       - name: Type-check the unified constructive compiler/runtime specification
         run: |
           "$HOME/.local/bin/agda" --erasure -i formal formal/LinearModalSafety.agda
+
+      # Agda 2.9 adds --cubical=no-glue. Keep the compiler proof pinned to
+      # Agda 2.8.0.2 while checking the independent safe physics module with
+      # the 2.9.0 release candidate that provides this option.
+      - name: Install Agda 2.9.0-rc3 for safe physics check
+        run: |
+          mkdir -p "$RUNNER_TEMP/agda29"
+          curl --fail --location --retry 3 \
+            https://github.com/agda/agda/releases/download/v2.9.0-rc3/Agda-v2.9.0-rc3-linux.tar.xz \
+            --output "$RUNNER_TEMP/Agda-v2.9.0-rc3-linux.tar.xz"
+          echo "bde55ce6855fec13404e6837655b7a98d5174ae82e31525e17fc641dac742cc2  $RUNNER_TEMP/Agda-v2.9.0-rc3-linux.tar.xz" | sha256sum --check
+          tar -xJf "$RUNNER_TEMP/Agda-v2.9.0-rc3-linux.tar.xz" -C "$RUNNER_TEMP/agda29"
+          agda_binary="$(find "$RUNNER_TEMP/agda29" -type f -name agda -perm -u+x -print -quit)"
+          test -n "$agda_binary"
+          install "$agda_binary" "$HOME/.local/bin/agda-2.9"
+          "$HOME/.local/bin/agda-2.9" --version
+
+      - name: Type-check safe RSED physics without Glue
+        run: |
+          "$HOME/.local/bin/agda-2.9" -i formal formal/SovereignRationalSEDPhysics.agda
 
       - name: Verify oversized Nat literals fail through the bounded runtime parser
         run: |
