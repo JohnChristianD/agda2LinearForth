@@ -21,6 +21,9 @@ answerMultiply 20 strict-assert-natural
 answerEqual -1 strict-assert-boolean
 answerLess -1 strict-assert-boolean
 
+21 3 MALLP-NAT-QUOT 7 <> abort" strict MALLP quotient failed"
+22 5 MALLP-NAT-REM 2 <> abort" strict MALLP remainder failed"
+
 : testStrictOverflow ( -- )
   MALLP-MAX-NAT 1 MALLP-NAT-ADD DROP
 ;
