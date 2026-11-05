@@ -1,4 +1,4 @@
-{-# OPTIONS --safe --cubical=no-glue #-}
+{-# OPTIONS --safe --without-K --cubical=no-glue #-}
 
 module LinearModalSafety where
 
