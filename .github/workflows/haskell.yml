@@ -50,9 +50,7 @@ jobs:
       - name: Install the single pinned Agda version
         run: |
           mkdir -p "$HOME/.local/bin" "$RUNNER_TEMP/agda"
-          curl --fail --location --retry 3 \\
-            https://github.com/agda/agda/releases/download/v2.9.0-rc3/Agda-v2.9.0-rc3-linux.tar.xz \\
-            --output "$RUNNER_TEMP/Agda-v2.9.0-rc3-linux.tar.xz"
+          curl --fail --location --retry 3 https://github.com/agda/agda/releases/download/v2.9.0-rc3/Agda-v2.9.0-rc3-linux.tar.xz --output "$RUNNER_TEMP/Agda-v2.9.0-rc3-linux.tar.xz"
           echo "bde55ce6855fec13404e6837655b7a98d5174ae82e31525e17fc641dac742cc2  $RUNNER_TEMP/Agda-v2.9.0-rc3-linux.tar.xz" | sha256sum --check
           tar -xJf "$RUNNER_TEMP/Agda-v2.9.0-rc3-linux.tar.xz" -C "$RUNNER_TEMP/agda"
           agda_binary="$(find "$RUNNER_TEMP/agda" -type f -name agda -perm -u+x -print -quit)"
