@@ -16,13 +16,14 @@ import Agda.TypeChecking.Primitive.Base
 import Agda.Utils.Either
 import Agda.Utils.Functor
 import Data.Char (isAlphaNum, isDigit)
-import Data.List.NonEmpty qualified as NE
+import qualified Data.List.NonEmpty as NE
 import Data.SCargot
 import Data.SCargot.Repr
 import Data.Text (Text)
-import Data.Text qualified as T
-import Data.Text.IO qualified as TIO
-import Control.Monad.IO.Class qualified as IO
+import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
+import qualified Control.Monad.IO.Class as IO
+import Data.Maybe (catMaybes)
 import Paths_agda2forth (getDataFileName)
 
 type FthForm = RichSExpr Text
@@ -50,7 +51,7 @@ strictWord name body =
   RSAtom $ T.concat [": ", safeForthName name, " ", formToText body, ";"]
 
 unsupported :: String -> TCM a
-unsupported message = typeError (genericError (T.pack ("agda2MALLPForth: " ++ message)))
+unsupported message = fail ("agda2MALLPForth: " ++ message)
 
 compileNatTerm :: TTerm -> TCM FthForm
 compileNatTerm term = do
@@ -75,15 +76,12 @@ compileNatTerm term = do
       plusName <- getBuiltinName builtinNatPlus
       minusName <- getBuiltinName builtinNatMinus
       operands <- traverse compileNatTerm args
-      case (name, operands) of
-        (Just builtin, [left, right]) | Just name == Just builtin ->
+      case operands of
+        [left, right] | Just name == plusName ->
           binary "MALLP-NAT-ADD" left right
-        _ -> case operands of
-          [left, right] | Just name == plusName ->
-            binary "MALLP-NAT-ADD" left right
-          [left, right] | Just name == minusName ->
-            binary "MALLP-NAT-MONUS" left right
-          _ -> unsupported "user functions and non-binary definitions are outside the closed Nat fragment"
+        [left, right] | Just name == minusName ->
+          binary "MALLP-NAT-MONUS" left right
+        _ -> unsupported "user functions and non-binary definitions are outside the closed Nat fragment"
     TCoerce inner
       | null args -> compileNatTerm inner
     _ -> unsupported ("Treeless term is outside the closed Nat fragment: " ++ show headTerm)
@@ -133,7 +131,10 @@ postModule _ _ _ moduleName definitions = do
   IO.liftIO $ TIO.writeFile filename output
 
 backend :: Backend
-backend = Backend Backend'
+backend = Backend backend'
+
+backend' :: Backend' () () () () (Maybe FthForm)
+backend' = Backend'
   { backendName = "agda2forth"
   , options = ()
   , commandLineFlags = []
