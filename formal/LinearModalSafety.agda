@@ -1550,6 +1550,136 @@ natExpressionBoundedForwardSimulatesStackProgram bound expr tail representable =
   natExpressionForwardSimulatesStackProgram expr tail ,
   natExprValueFitsCellBound bound expr representable
 
+
+-- ── 4b. Executable target semantics and compositional pass certificates ──
+--
+-- CakeML/PureCake make each compiler pass preserve a named semantic
+-- observation, then compose those pass theorems.  Reuse that discipline
+-- here: the instruction list has an executable semantics, and compiler
+-- correctness is stated as equality of source and target observations.
+-- This remains the deliberately small Nat stack fragment.
+
+data NatStackRunResult : Set where
+  natStackReturned : List Nat → NatStackRunResult
+  natStackUnderflow : NatStackRunResult
+
+runNatStackProgram : NatStackProgram → List Nat → NatStackRunResult
+runNatStackProgram [] stack = natStackReturned stack
+runNatStackProgram (pushNatCellInstruction n :: program) stack =
+  runNatStackProgram program (n :: stack)
+runNatStackProgram (abiAddOrLegacyInstruction :: program)
+  (right :: left :: stack) =
+  runNatStackProgram program ((left + right) :: stack)
+runNatStackProgram (abiAddOrLegacyInstruction :: program) stack =
+  natStackUnderflow
+runNatStackProgram (abiMulOrLegacyInstruction :: program)
+  (right :: left :: stack) =
+  runNatStackProgram program ((left * right) :: stack)
+runNatStackProgram (abiMulOrLegacyInstruction :: program) stack =
+  natStackUnderflow
+runNatStackProgram (abiMonusOrLegacyInstruction :: program)
+  (right :: left :: stack) =
+  runNatStackProgram program (modelNatMonus left right :: stack)
+runNatStackProgram (abiMonusOrLegacyInstruction :: program) stack =
+  natStackUnderflow
+
+-- Every relational execution proof is accepted by the executable
+-- interpreter.  Thus the inductive simulation is not a second, unrelated
+-- target semantics.
+natStackExecSound :
+  {program : NatStackProgram} {initial final : List Nat} →
+  NatStackExec program initial final →
+  runNatStackProgram program initial ≡ natStackReturned final
+natStackExecSound natStackDone = refl
+natStackExecSound (natStackPush execution) = natStackExecSound execution
+natStackExecSound (natStackAdd execution) = natStackExecSound execution
+natStackExecSound (natStackMultiply execution) = natStackExecSound execution
+natStackExecSound (natStackMonus execution) = natStackExecSound execution
+
+natSourceStackSemantics : NatExpr → List Nat → NatStackRunResult
+natSourceStackSemantics expr tail =
+  natStackReturned (natExprMeaning expr :: tail)
+
+-- A pass is a lowering function plus a proof that its target observation
+-- agrees with its source observation for every caller stack.
+record StackSemanticPass
+  {Source Target : Set}
+  (lower : Source → Target)
+  (sourceSemantics : Source → List Nat → NatStackRunResult)
+  (targetSemantics : Target → List Nat → NatStackRunResult) : Set where
+  field
+    preservesStack :
+      (sourceTerm : Source) (tail : List Nat) →
+      targetSemantics (lower sourceTerm) tail ≡
+        sourceSemantics sourceTerm tail
+open StackSemanticPass public
+
+-- Composition is theorem composition, not an assumed compiler axiom.
+composeStackSemanticPass :
+  {Source Middle Target : Set}
+  {lower₁ : Source → Middle}
+  {lower₂ : Middle → Target}
+  {sourceSemantics : Source → List Nat → NatStackRunResult}
+  {middleSemantics : Middle → List Nat → NatStackRunResult}
+  {targetSemantics : Target → List Nat → NatStackRunResult} →
+  StackSemanticPass lower₁ sourceSemantics middleSemantics →
+  StackSemanticPass lower₂ middleSemantics targetSemantics →
+  StackSemanticPass
+    (λ sourceTerm → lower₂ (lower₁ sourceTerm))
+    sourceSemantics targetSemantics
+composeStackSemanticPass first second = record
+  { preservesStack = λ sourceTerm tail →
+      trans
+        (preservesStack second (lower₁ sourceTerm) tail)
+        (preservesStack first sourceTerm tail)
+  }
+
+-- Concrete instance: NatExpr compiles into the current modeled ABI
+-- instructions, whose executable stack semantics preserves the Nat meaning
+-- and leaves every caller-owned suffix unchanged.
+natStackCompilerPass :
+  StackSemanticPass
+    compileNatStackProgram natSourceStackSemantics runNatStackProgram
+natStackCompilerPass = record
+  { preservesStack = λ expr tail →
+      natStackExecSound
+        (natExpressionForwardSimulatesStackProgram expr tail)
+  }
+
+-- Proof-carrying artifact for this one supported fragment.  Its four fields
+-- cover: emission-tree meaning, tree-to-instruction linearization, target
+-- execution, and finite-cell representability.  The bound must still be
+-- instantiated from the actual Forth ABI before it is a machine-cell proof.
+record NatCompilationCertificate (bound : Nat) (expr : NatExpr) : Set where
+  field
+    certifiedRepresentability : NatCellRepresentable bound expr
+    certifiedEmissionMeaning :
+      observeNatFragment (compileNatFragment expr) ≡
+        observedNat (natExprMeaning expr)
+    certifiedLinearization :
+      projectNatStackFragment (compileNatFragment expr) ≡
+        projectedNatStackProgram (compileNatStackProgram expr)
+    certifiedStackExecution :
+      (tail : List Nat) →
+      runNatStackProgram (compileNatStackProgram expr) tail ≡
+        natStackReturned (natExprMeaning expr :: tail)
+    certifiedCellBound :
+      natExprMeaning expr < suc bound
+open NatCompilationCertificate public
+
+certifyNatCompilation :
+  (bound : Nat) (expr : NatExpr) →
+  NatCellRepresentable bound expr →
+  NatCompilationCertificate bound expr
+certifyNatCompilation bound expr representable = record
+  { certifiedRepresentability = representable
+  ; certifiedEmissionMeaning = compiledNatFragmentPreservesMeaning expr
+  ; certifiedLinearization = emissionTreeAgreesWithStackProgram expr
+  ; certifiedStackExecution = preservesStack natStackCompilerPass expr
+  ; certifiedCellBound =
+      natExprValueFitsCellBound bound expr representable
+  }
+
 -- Model the runtime contract of a curried arithmetic word: the first pass
 -- captures its left operand; the next application supplies the right operand.
 -- The names correspond to the selected Forth preamble words, not extracted code.
