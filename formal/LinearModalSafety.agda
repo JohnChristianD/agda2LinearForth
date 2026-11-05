@@ -767,27 +767,29 @@ module LinearModalSafety where
         ...   | nothing = nothing
         ...   | just n = just (suc n)
     
+        data BoundedSearchEvidence (P : Nat → Bool) : Maybe Nat → Set where
+          boundedSearch-none : BoundedSearchEvidence P nothing
+          boundedSearch-found :
+            (n : Nat) → P n ≡ true → BoundedSearchEvidence P (just n)
+
+        boundedSearch-evidence :
+          (fuel : Nat) (P : Nat → Bool) →
+          BoundedSearchEvidence P (boundedSearch fuel P)
+        boundedSearch-evidence zero P = boundedSearch-none
+        boundedSearch-evidence (suc fuel) P with P zero
+        ... | true = boundedSearch-found zero refl
+        ... | false with boundedSearch-evidence fuel (λ i → P (suc i))
+        ...   | boundedSearch-none = boundedSearch-none
+        ...   | boundedSearch-found n proof =
+          boundedSearch-found (suc n) proof
+
         boundedSearch-sound :
           (fuel : Nat) (P : Nat → Bool) (n : Nat) →
           boundedSearch fuel P ≡ just n → P n ≡ true
-        boundedSearch-sound zero P n ()
-        boundedSearch-sound (suc fuel) P zero result with P zero
-        ... | true = refl
-        ... | false with boundedSearch fuel (λ i → P (suc i))
-        ...   | nothing with result
-        ...     | ()
-        ...   | just m with result
-        ...     | ()
-
-        boundedSearch-sound (suc fuel) P (suc n) result with P zero
-        ... | true with result
-        ...   | ()
-        ... | false with boundedSearch fuel (λ i → P (suc i))
-        ...   | nothing with result
-        ...     | ()
-        ...   | just m with result
-        ...     | refl =
-          boundedSearch-sound fuel (λ i → P (suc i)) n refl
+        boundedSearch-sound fuel P n result
+          with boundedSearch-evidence fuel P | result
+        ... | boundedSearch-none | ()
+        ... | boundedSearch-found m proof | refl = proof
     
         MarkovPrinciple : Set₁
         MarkovPrinciple =
