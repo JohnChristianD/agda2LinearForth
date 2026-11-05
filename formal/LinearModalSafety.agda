@@ -1,4 +1,4 @@
-{-# OPTIONS --lossy-unification --rewriting --confluence-check --no-prop --exact-split --guardedness --no-projection-like #-}
+{-# OPTIONS --lossy-unification --rewriting --confluence-check --no-prop --exact-split --guardedness --no-projection-like --experimental-laxy-instances --no-fast-reduce --no-postfix-projections #-}
 
 -- Single-source-of-truth constructive specification for agda2LinearForth.
 --
