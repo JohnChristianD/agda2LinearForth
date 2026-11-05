@@ -22,25 +22,18 @@ generated Forth definitions + compiler preamble + data/FLib.fth
 GNU Gforth
 ```
 
-| File | Responsibility | What currently verifies it |
+| File | Responsibility | Verification status |
 | --- | --- | --- |
-| `src/Main.hs` and `app/Main.hs` | Unmodified Agda2Scheme source files retained byte-for-byte; the executable entrypoint lives in `ToForth.hs` | Direct Git blob/diff checks in CI |
-| `src/Agda/Compiler/Erase.hs` | Upstream erasure implementation | Exact upstream-source check in CI |
-| `src/Agda/Compiler/ToScheme.hs` | Upstream Scheme backend retained byte-for-byte | Direct Git diff check in CI |
-| `src/Agda/Compiler/ToForth.hs` | Converts Agda treeless terms into Forth forms and definitions | Haskell build and selected generated-program tests; no machine-checked proof that this Haskell code implements the Agda model |
-| `data/FLib.fth` | Legacy Forth words, closure application, managed descriptors, checked ABI operations | Executed directly by Gforth tests; described by a separate manual Agda model |
-| `formal/LinearModalSafety.agda` | Root model for ownership/descriptor invariants, weakest preconditions, stack effects, denotations, and selected compiler/runtime behavior; imports `VerifiedPLLCore` | Type-checks with Agda 2.8.0.2 and `--erasure`; it does not prove the concrete Haskell/Forth bridge |
-| `VerifiedPLLCore` nested inside `formal/LinearModalSafety.agda` | Constructive finite-type search, bounded Markov substitute, conaturals, Hedberg, dyad arithmetic, and a small positive-tensor PLL fragment | Type-checks as an import of the root; its theorem scope remains intentionally limited |
-| `formal/CompilerVerificationSpine.md` | CakeML/PureCake-inspired end-to-end proof graph and explicitly scoped future obligations | Architecture note; not itself a correctness proof |
-| `VerifiedCoreExecutable` nested inside `formal/LinearModalSafety.agda` | Finite-observation projection and executable `pow2` interface imported by the proof core | Compiled to Forth and run in a small integration slice; proofs relate finite and infinite observations to the coinductive model, but this does not make arbitrary coinductive values executable |
-| `test/VerifiedCoreSmoke.agda.src` and `test/gforth/verified-core-smoke.fs` | Generated conatural observations, dyadic scale examples, and an erased-argument call | Compiled by Agda2Forth and executed by Gforth |
-| `test/CheckedScalar.agda.src` | Nat/Bool regression source | Compiled and executed by CI |
-| `test/gforth/compiler-integration.fs` | Expected results for generated Nat/Bool programs | Executed by CI |
-| `test/gforth/abi-smoke.fs` | Direct runtime ABI regressions | Executed by CI |
-| `test/UnsupportedLiteral.agda.src` and `test/gforth/unsupported-boundary.fs` | Unsupported String literal and catchable error path | Compiled and executed by CI |
-| `test/UnsupportedAxiom.agda.src` and `test/gforth/unsupported-axiom-boundary.fs` | Referenced Agda axiom fails closed through a catchable error | Compiled and executed by CI |
-| `test/UnsupportedNatLiteral.agda.src` and `test/gforth/unsupported-nat-literal.fs` | Oversized Nat literal throws from generated Forth | Compiled and executed by CI |
-| `test/gforth/abi-smoke.fs` | Raw Nat literal parsing, cell bounds, arithmetic overflow/domain errors, and catchable unreachable-branch boundary | Executed by CI |
+| `app/Main.hs`, `src/Main.hs` | Unmodified Agda2Scheme sources; not the selected Forth entrypoint | Exact upstream identity checked in CI |
+| `src/Agda/Compiler/Erase.hs` | Upstream erasure implementation | Exact upstream identity checked in CI |
+| `src/Agda/Compiler/ToScheme.hs` | Upstream Scheme backend retained byte-for-byte | Exact upstream identity checked in CI |
+| `src/Agda/Compiler/ToForth.hs` | Sole project-specific Haskell backend and executable entrypoint | Builds and runs selected fixture tests; no Agda proof establishes that it implements the formal model |
+| `data/FLib.fth` | Forth closure application, descriptor ABI, ownership checks, arithmetic adapters and runtime words | Selected direct Gforth tests; no proof that all runtime transitions refine the Agda model |
+| `formal/LinearModalSafety.agda` | The only tracked `.agda` module; contains the descriptor/WP/runtime model plus nested `VerifiedCoreExecutable`, `VerifiedPLLCore`, and `SovereignRationalSED` modules, including Laurent MALLP | Agda type-checking proves properties of these models, not the Haskell/Forth implementation |
+| `test/*.agda.src` | Compiler fixture inputs | CI stages one input as `.agda` per step, then deletes it; none is a second tracked `.agda` module |
+| `test/gforth/*.fs` | Executable ABI and generated-program regressions | Executed directly by Gforth in CI |
+
+All explanatory and verification documentation lives in this README. There are no separate formal-design or verification-map Markdown files.
 
 ### Source-provenance boundary
 
@@ -150,9 +143,9 @@ A whole-backend proof needs an explicit supported source subset, a target instru
 
 ## Constructive foundations and polarized-logic fragment
 
-The conatural proof model follows TypeTopology's generic-convergent-sequence representation: a Boolean sequence with the decreasingness proof that once an observation is false, all later observations remain false. It is connected to the backend-compilable observation interface in `formal/VerifiedCoreExecutable.agda` by `finiteObservationAgrees` and `infiniteObservationAgrees`; CI compiles examples of that interface to Forth and executes them with Gforth. This tests the finite ABI projection, not arbitrary functions over conaturals or whole-backend correctness.
+The conatural proof model follows TypeTopology's generic-convergent-sequence representation: a Boolean sequence with the decreasingness proof that once an observation is false, all later observations remain false. It is connected to the backend-compilable observation interface in `VerifiedCoreExecutable (nested module in formal/LinearModalSafety.agda)` by `finiteObservationAgrees` and `infiniteObservationAgrees`; CI compiles examples of that interface to Forth and executes them with Gforth. This tests the finite ABI projection, not arbitrary functions over conaturals or whole-backend correctness.
 
-`formal/VerifiedPLLCore.agda` re-expresses a deliberately bounded subset of the ideas in TypeTopology without importing its standard-library-scale dependency graph.
+`VerifiedPLLCore (nested module in formal/LinearModalSafety.agda)` re-expresses a deliberately bounded subset of the ideas in TypeTopology without importing its standard-library-scale dependency graph.
 
 - **CompactTypes/searchability:** `isSigmaCompact` is the root-or-everywhere-true decision shape for Boolean predicates. `finiteSearchCompact` proves it for types supplied with a complete finite enumeration. This is not a claim that all of `Nat` is Σ-compact/LPO.
 - **Conaturals:** `CoNat` encodes `ℕ∞` as a decreasing Boolean sequence, following `TypeTopology.GenericConvergentSequence`. It permits undecided finite-versus-infinite sequences constructively. The executable ABI exposes finite and infinite observation cases, with correspondence theorems; `coNatFiniteObservationCompact` applies only to predicates explicitly factored through one fixed observation, not arbitrary predicates on `ℕ∞`.
@@ -179,19 +172,19 @@ gforth -e 'include data/FLib.fth' -e 'include test/gforth/abi-smoke.fs'
 agda --erasure --no-libraries -i formal formal/LinearModalSafety.agda
 
 # Compile and execute generated Nat/Bool programs.
-cabal run agda2forth -- --erasure -i test test/CheckedScalar.agda
+cabal run agda2forth -- --erasure -i test test/CheckedScalar.agda.src
 gforth CheckedScalar.fth test/gforth/compiler-integration.fs
 
 # Exercise oversized Nat literals, unsupported String literals, and axioms.
-cabal run agda2forth -- -i test test/UnsupportedNatLiteral.agda
+cabal run agda2forth -- -i test test/UnsupportedNatLiteral.agda.src
 gforth UnsupportedNatLiteral.fth test/gforth/unsupported-nat-literal.fs
-cabal run agda2forth -- -i test test/UnsupportedLiteral.agda
+cabal run agda2forth -- -i test test/UnsupportedLiteral.agda.src
 gforth UnsupportedLiteral.fth test/gforth/unsupported-boundary.fs
-cabal run agda2forth -- -i test test/UnsupportedAxiom.agda
+cabal run agda2forth -- -i test test/UnsupportedAxiom.agda.src
 gforth UnsupportedAxiom.fth test/gforth/unsupported-axiom-boundary.fs
 
 # Compile the first-order triples fixture (CI does not execute it).
-cabal run agda2forth -- -i test test/TriplesFO.agda
+cabal run agda2forth -- -i test test/TriplesFO.agda.src
 ```
 
 At present, `cabal test all` reports that there are no package test suites to run. The meaningful executable regression coverage is in the explicit Gforth fixtures and generated-program integration test.
@@ -246,3 +239,82 @@ These sources are background for the model and target language, not claims that 
 - [TypeTopology source repository](https://github.com/martinescardo/TypeTopology), especially `source/TypeTopology/CompactTypes.lagda`, `source/TypeTopology/GenericConvergentSequence.lagda`, `source/TypeTopology/GenericConvergentSequenceCompactness.lagda`, `source/CoNaturals/Type.lagda`, `source/UF/Hedberg.lagda`, `source/Taboos/MarkovsPrinciple.lagda`, and `source/Dyadics/Type.lagda`. The local module is a dependency-light re-expression of a limited subset, not a wholesale port.
 - [nLab: Linear logic](https://ncatlab.org/nlab/show/linear%2Blogic) and [!-modality](https://ncatlab.org/nlab/show/%21-modality) for the intended logical interpretation of modal structural rules.
 - M. Anton Ertl and Bernd Paysan, [Closures: The Forth Way](https://www.complang.tuwien.ac.at/papers/ertl%26paysan.pdf), EuroForth 2018, for Forth closure/environment design.
+
+
+## CakeML and PureCake: proof architecture adopted
+
+CakeML and PureCake are models for the shape of a complete correctness argument, not proofs that can be imported wholesale into this repository.
+
+CakeML separates parser correctness, type-inference soundness/completeness, backend correctness, target machine semantics, installed-code hypotheses, initial-state invariants, and resource bounds. Its top-level theorem composes those results. PureCake adds a particularly relevant pass chain for a lazy language: PureLang source semantics → explicit thunk language → environment/state representations → CakeML. Each compiler pass has its own syntax, semantics, side conditions, and preservation theorem. PureCake preserves observable behavior, including interaction and divergence, rather than only comparing returned values.
+
+The intended proof graph here is:
+
+\`\`\`text
+supported typed Agda/Treeless source
+  → source semantics and erasure relation
+  → canonical expression representation
+  → typed Forth instruction representation
+  → exact Forth serializer
+  → abstract Forth machine
+  → concrete Gforth execution
+\`\`\`
+
+Each arrow must have a separately checked preservation theorem. The final theorem must quantify over the actual compiler output and initial runtime state, and relate source observations with concrete target observations. The observation relation must account for return values, exceptions, divergence or explicit fuel, and externally visible effects in the supported subset.
+
+The current Nat fragment is only the first small instance of that architecture. \`NatStackInstruction\` has an executable semantics, \`NatStackExec\` relates execution traces, \`natStackExecSound\` connects the relation to the interpreter, and \`StackSemanticPass\` packages a lowering with an observation-preservation proof. \`composeStackSemanticPass\` composes adjacent pass proofs. \`NatCompilationCertificate\` packages the hand-mirrored Nat expression's meaning, linearization, abstract stack execution, and finite-cell representability evidence.
+
+That certificate is produced by an Agda function over the *formal Nat AST*. The Haskell compiler does not currently construct or emit it. The Agda AST and target instructions are manually mirrored; no theorem establishes that \`ToForth.hs\` produces those instructions or that the resulting Forth text parses to them.
+
+### Laurent MALLP scope
+
+The nested \`SovereignRationalSED\` development includes Laurent-style polarized MALLP formula syntax and proof-rule constructors. Positive formulas include atoms, units, tensor, sum, and a down-shift; negative formulas include atoms, units, par, with, and an up-shift. Its sequent shape uses an ordered negative context and an optional positive stoup.
+
+This fragment has no exponential \`!\`/\`?\` modalities, no Seely comonad, and no structural weakening or contraction rules. The additive \`with\` rule shares its additive context; that is part of its additive behavior, not contraction. A cut rule is present, but a complete cut-elimination proof and a proof-net normalization development are separate obligations.
+
+MALLP is presently a formal logic development inside the one Agda file. It is **not** yet the source type system for the compiled Agda subset, does not constrain every source program compiled by \`agda2forth\`, and has no proved translation into the current Forth runtime. The existing compiler's linear/modal descriptor checks and the MALLP proof calculus must not be conflated. There is no Seely structure in this MALLP fragment.
+
+### Lazy semantics remain open
+
+PureCake's call-by-name to call-by-value translation makes delay and force explicit in each pass. This compiler currently does not do that: \`makeDelay = id\`, and ordinary variable references bypass the force path. Consequently, the \`--lazy-evaluation\` option is not backed by a semantics-preservation theorem and must not be described as a verified PureCake-style lazy compiler.
+
+A linear one-shot thunk and a shared call-by-need thunk are different resource models. Shared memoization requires an explicit sharing discipline; it cannot be inferred from having a thunk constructor. The MALLP-only choice does not supply exponentials or shared duplication.
+
+## End-to-end verification frontier
+
+The work still required for a PureCake-strength result is substantial and specific:
+
+1. Freeze an exhaustive supported source/Treeless grammar. Every unsupported constructor, primitive, literal, pattern shape, and axiom reference must fail closed.
+2. Define a typed target IR whose instructions expose stack, heap, control-flow, and exception effects. The Agda operational semantics must be the specification used by the Haskell lowering, rather than a separately maintained mirror.
+3. Prove source-to-IR lowering for every supported term constructor, including variables, literals, lambdas, curried application, closure environments, constructors, cases, branches, primitive calls, and error paths.
+4. Prove the exact Forth serializer. Golden tests alone are evidence, not a proof that generated text parses as the certified instruction sequence.
+5. Define a complete target state: data/return stacks, dictionary/code pointers, descriptor heap, metadata, execution tokens, error/throw state, and any observable I/O.
+6. Prove each runtime ABI word refines its Agda state transition, with explicit footprints and exceptional atomicity.
+7. Prove the generated program executes in the abstract machine with the same observations as the source semantics, and connect that machine with actual Gforth under an explicitly stated trusted computing base.
+
+The existing WP model contains useful operation contracts and selected allocation/exception proofs. It does not yet provide the complete semantic bridge above. Do not infer a generic frame rule until concrete Forth word footprints have been established.
+
+## Dictionary allocation and no-GC status
+
+The current runtime is **not proved immune to dictionary exhaustion**. Runtime descriptor creation, metadata reservation, and closure-environment creation use monotone \`HERE ... ALLOT\` allocation. Consuming a linear handle changes ownership metadata; it does not generally return those cells to a reusable allocator. The abstract allocation model tracks cursors and identity/capacity preflight, but that alone does not establish memory reclamation or global storage safety in Gforth.
+
+Compile-time \`:noname\` definitions are a separate issue from runtime object allocation. The runtime-growth concern is the dynamically repeated handle, metadata, and environment allocation. No general bounded slot pool, free-list, generation-tagged handle scheme, or reclamation simulation has yet been proved and connected to the Forth implementation.
+
+Therefore the answer to “is this already a complete MALLP/PureCake compiler with no dictionary overflow or no-GC problems?” is **no**. Current CI can establish only the explicit tests and Agda files it actually runs. Even a green run would not prove unbounded memory safety, correct reclamation, or end-to-end compiler refinement.
+
+## Verification decisions and known frontier
+
+The intended proof API is WP over complete runtime state; generic frame reasoning should only be added after concrete footprints are proved. Existing paired obligations include identity exhaustion/failure atomicity and selected checked arithmetic/result-allocation transitions. The Gforth ABI tests include adversarial checks for selected handle liveness, arithmetic bounds, exception cleanup, and stack balance.
+
+The selected saturated Nat/Bool regression tests cover addition, monus in both operand orders, multiplication, equality, less-than, and Boolean branches. The old \`scalarAdd 20 5\` generated-body counterexample was fixed for the tested path through direct lowering. This does not prove general higher-order application, closure capture, constructors, pattern matching, or modality preservation.
+
+Still unspecified or unproved: exact complete source/Treeless semantics, complete Forth machine-state interpretation, executable code-pointer/dictionary semantics, every runtime word's footprint and exception behavior, and the treatment of divergence. Arbitrary hand-written Forth, raw memory access, unknown execution tokens, and unsupported Agda constructs remain outside any intended supported-fragment theorem; they must fail closed or be explicitly excluded.
+
+## CakeML/PureCake and MALLP references
+
+- CakeML complete compiler correctness: https://github.com/CakeML/cakeml/blob/master/compiler/proofs/compilerProofScript.sml
+- CakeML source semantics: https://github.com/CakeML/cakeml/blob/master/semantics/semanticsScript.sml
+- PureCake overall compiler correctness: https://github.com/CakeML/pure/blob/master/compiler/proofs/pure_compilerProofScript.sml
+- PureLang-to-thunkLang simulation: https://github.com/CakeML/pure/blob/master/compiler/backend/passes/proofs/pure_to_thunk_1ProofScript.sml
+- Thunk-language call-by-value semantics: https://github.com/CakeML/pure/blob/master/compiler/backend/languages/semantics/thunkLangScript.sml
+- Olivier Laurent, polarized linear logic and MALLP: https://perso.ens-lyon.fr/olivier.laurent/fullpolgames.pdf
+- Hamano and Scott, categorical semantics for polarized MALL: https://doi.org/10.1016/j.apal.2006.09.001
