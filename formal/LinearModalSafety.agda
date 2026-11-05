@@ -776,8 +776,8 @@ module LinearModalSafety where
           (fuel : Nat) (P : Nat → Bool) →
           BoundedSearchEvidence P (boundedSearch fuel P)
         boundedSearch-evidence zero P = boundedSearch-none
-        boundedSearch-evidence (suc fuel) P with P zero
-        ... | true = boundedSearch-found zero refl
+        boundedSearch-evidence (suc fuel) P with P zero in pzero
+        ... | true = boundedSearch-found zero pzero
         ... | false with boundedSearch-evidence fuel (λ i → P (suc i))
         ...   | boundedSearch-none = boundedSearch-none
         ...   | boundedSearch-found n proof =
