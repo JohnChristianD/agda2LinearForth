@@ -46,7 +46,7 @@ module LinearModalSafety where
       ( Term ; TC ; Arg ; arg ; arg-info ; visible
       ; modality ; relevant ; quantity-ω ; def ; unify
       )
-    open import VerifiedCoreExecutable using (finiteObservation; infiniteObservation; pow2)
+    open VerifiedCoreExecutable using (finiteObservation; infiniteObservation; pow2)
     
     -- Small path algebra, kept local so this module has no library dependency.
     symmetry : {A : Set} {x y : A} → x ≡ y → y ≡ x
