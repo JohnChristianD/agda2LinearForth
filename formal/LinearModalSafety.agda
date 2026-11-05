@@ -1635,6 +1635,14 @@ module LinearModalSafety where
       open RationalRingInterface Q
       module P = RationalSED Q
       open P
+
+      -- Exchange notation aliases the exact rational four-vector addition
+      -- and subtraction already defined by RationalSED.
+      _⊕_ : Rational4Vector → Rational4Vector → Rational4Vector
+      _⊕_ = _+₄_
+
+      _⊖_ : Rational4Vector → Rational4Vector → Rational4Vector
+      _⊖_ = _-₄_
   
       ------------------------------------------------------------------------
       -- Exact additive structure inherited from RationalRingInterface.
