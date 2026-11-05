@@ -1636,8 +1636,8 @@ module LinearModalSafety where
       module P = RationalSED Q
       open P
 
-      -- Exchange notation aliases the exact rational four-vector addition
-      -- and subtraction already defined by RationalSED.
+      -- Exchange notation aliases the exact rational four-vector addition and
+      -- subtraction already defined by RationalSED.
       _⊕_ : Rational4Vector → Rational4Vector → Rational4Vector
       _⊕_ = _+₄_
 
