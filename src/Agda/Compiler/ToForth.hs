@@ -73,6 +73,11 @@ formToAtom (RSAtom ret) = T.append ret (T.pack " ")
 formToAtom (RSList xs) = T.concat (map formToAtom xs)
 formToAtom (RSDotted xs y) = T.append (T.concat (map formToAtom xs)) y
 
+fthStrictWord :: FthAtom -> FthForm -> FthForm
+fthStrictWord name body =
+  RSAtom $ T.concat [": ", name, " ", formToAtom body, ";"]
+
+
 fthWord :: FthAtom -> FthForm -> FthForm
 fthWord f body
   | countLambdas body == 0 = fthSimpleWord f body
@@ -321,6 +326,7 @@ deriving instance NFData  EvaluationStrategy
 
 data FthOptions = FthOptions
   { fthEvaluation :: EvaluationStrategy
+  , fthStrictMallp :: Bool
   }
   deriving (Generic, NFData)
 
@@ -759,7 +765,7 @@ backend = Backend backend'
 backend' :: Backend' FthOptions FthOptions () () (Maybe FthForm)
 backend' = Backend'
   { backendName           = "agda2forth"
-  , options               = FthOptions EagerEvaluation
+  , options               = FthOptions EagerEvaluation False
   , commandLineFlags      = fthFlags
   , isEnabled             = \ _ -> True
   , preCompile            = fthPreCompile
@@ -780,28 +786,117 @@ fthFlags =
       "Insert delay and force operations to enable lazy evaluation"
   , Option [] ["strict-evaluation"] (NoArg $ evaluationFlag EagerEvaluation)
       "Do not insert delay and force operations (default)"
+  , Option [] ["strict-mallp"] (NoArg $ mallpFlag True)
+      "Emit closed Nat expressions as allocation-free Laurent-MALLP stack code"
   ]
 
 fthPreCompile :: FthOptions -> TCM FthOptions
 fthPreCompile = return
 
+-- The strict MALLP path deliberately accepts only closed scalar expressions.
+-- Every admitted primitive consumes each operand once and returns one result.
+-- Variables, closures, sharing, constructors and implicit drops are rejected.
+toForthStrictDefinition :: Definition -> ToForthM (Maybe FthForm)
+toForthStrictDefinition def
+  | defNoCompilation def || not (usableModality $ getModality def) = return Nothing
+  | otherwise = case theDef def of
+      Function{} -> do
+        name <- toForth (defName def)
+        maybeBody <- liftTCM $ toTreeless EagerEvaluation (defName def)
+        case maybeBody of
+          Nothing -> return Nothing
+          Just body -> Just . fthStrictWord name <$> toForthStrictTerm body
+      _ -> return Nothing
+
+toForthStrictTerm :: TTerm -> ToForthM FthForm
+toForthStrictTerm term = do
+  let (headTerm, args) = tAppView term
+  case headTerm of
+    TLit literal
+      | null args -> case literal of
+          LitNat n ->
+            return $ RSAtom $ T.concat ["s\"", T.pack (show n), "\" MALLP-PARSE-NAT"]
+          _ -> mallpUnsupported "only Nat literals are supported"
+    TPrim primitive -> do
+      args' <- traverse toForthStrictTerm args
+      case (primitive, args') of
+        (PAdd,  [left, right]) -> mallpBinary "MALLP-NAT-ADD" left right
+        (PSub,  [left, right]) -> mallpBinary "MALLP-NAT-MONUS" left right
+        (PMul,  [left, right]) -> mallpBinary "MALLP-NAT-MUL" left right
+        (PQuot, [left, right]) -> mallpBinary "MALLP-NAT-QUOT" left right
+        (PRem,  [left, right]) -> mallpBinary "MALLP-NAT-REM" left right
+        (PEqI,  [left, right]) -> mallpBinary "MALLP-NAT-EQ" left right
+        (PGeq,  [left, right]) -> mallpBinary "MALLP-NAT-GEQ" left right
+        (PLt,   [left, right]) -> mallpBinary "MALLP-NAT-LT" left right
+        _ -> mallpUnsupported ("unsupported primitive/arity: " ++ show primitive)
+    TDef name -> do
+      args' <- traverse toForthStrictTerm args
+      toForthStrictDefinitionCall name args'
+    TCoerce inner
+      | null args -> toForthStrictTerm inner
+    _ -> mallpUnsupported ("unsupported Treeless form: " ++ show headTerm)
+
+mallpBinary :: FthAtom -> FthForm -> FthForm -> ToForthM FthForm
+mallpBinary word left right =
+  return $ RSList [left, right, RSAtom word]
+
+toForthStrictDefinitionCall :: QName -> [FthForm] -> ToForthM FthForm
+toForthStrictDefinitionCall name [left, right] = do
+  plusDef <- getBuiltinName builtinNatPlus
+  minusDef <- getBuiltinName builtinNatMinus
+  if | Just name == plusDef -> mallpBinary "MALLP-NAT-ADD" left right
+     | Just name == minusDef -> mallpBinary "MALLP-NAT-MONUS" left right
+     | otherwise -> mallpUnsupported "user-function calls are outside the closed strict fragment"
+toForthStrictDefinitionCall _ _ =
+  mallpUnsupported "only saturated Nat arithmetic definitions are supported"
+
+mallpUnsupported :: String -> ToForthM a
+mallpUnsupported reason =
+  fail ("--strict-mallp: " ++ reason)
+
+
 fthCompileDef :: FthOptions -> () -> IsMain -> Definition -> TCM (Maybe FthForm)
-fthCompileDef opts _ _ def = runToForthM opts $ toForth def
+fthCompileDef opts _ _ def = runToForthM opts $
+  if fthStrictMallp opts then toForthStrictDefinition def else toForth def
 
 fthPostModule :: FthOptions -> () -> IsMain -> TopLevelModuleName -> [Maybe FthForm] -> TCM ()
 fthPostModule opts _ _ modName defs = do
-  preamble <- runToForthM opts fthPreamble
+  preamble <- if fthStrictMallp opts then return [] else runToForthM opts fthPreamble
   let defToText = encodeOne printer . fromRich
+      render = if fthStrictMallp opts then id else fixWord
+      runtime = if fthStrictMallp opts then getMallpFLib else getFLib
       modText = T.append
-        (T.pack getFLib)
+        (T.pack runtime)
         (makeDefines
           (T.intercalate "\n\n" $
-            map fixWord (map defToText (preamble ++ catMaybes defs))))
+            map (render . defToText) (preamble ++ catMaybes defs)))
       fileName = prettyShow (NE.last $ moduleNameParts modName) ++ ".fth"
   IO.liftIO $ TIO.writeFile fileName modText
   where
     printer :: SExprPrinter Text (SExpr Text)
     printer = basicPrint id
+
+getMallpFLib :: String
+getMallpFLib = unsafeLocalState readMallpFLib
+
+readMallpFLib :: IO String
+readMallpFLib = do
+  fname <- getDataFileName "FLib.fth"
+  runtime <- T.pack <$> readFile fname
+  let startMarker = "\\ MALLP-STRICT-BEGIN"
+      endMarker = "\\ MALLP-STRICT-END"
+      (_, afterStart) = T.breakOn startMarker runtime
+  if T.null afterStart
+    then fail "FLib.fth is missing the strict MALLP runtime section"
+    else do
+      let sectionStart = T.drop (T.length startMarker) afterStart
+          (section, afterEnd) = T.breakOn endMarker sectionStart
+      if T.null afterEnd
+        then fail "FLib.fth has an unterminated strict MALLP runtime section"
+        else return (T.unpack section)
+
+mallpFlag :: Bool -> Flag FthOptions
+mallpFlag enabled options = return options { fthStrictMallp = enabled }
 
 evaluationFlag :: EvaluationStrategy -> Flag FthOptions
 evaluationFlag strategy options = return options { fthEvaluation = strategy }
