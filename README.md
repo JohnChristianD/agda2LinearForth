@@ -4,14 +4,14 @@ A deliberately restricted Agda-to-Gforth compiler. The checked compiler path is 
 
 The project has two separate Agda files:
 
-- `formal/MALLPForth.agda`: a `--with-K --rewriting --confluence-check` compiler specification. It contains six foundational packages, constructive coinductive conaturals, Laurent's polarized MALLP calculus, and indexed strict Forth stack-code semantics.
-- `formal/SovereignRationalSEDPhysics.agda`: the separate RSED physics library. It is not a dependency of the compiler proof.
+- `formal/MALLPForth.agda`: a `--with-K --rewriting --confluence-check --polarity --lossy-unification` compiler specification. It contains six foundational packages, constructive coinductive conaturals, Laurent's polarized MALLP calculus, and indexed strict Forth stack-code semantics.
+- `formal/SovereignRationalSEDPhysics.agda`: the separate RSED physics library, checked by the same Agda 2.8.0.2 CLI under the with-K/rewrite/polarity option family. It remains separate and is not imported by the compiler proof.
 
-Both Agda files and the Haskell backend use one pinned stable Agda source version, **2.8.0.2**, via `cabal.project`. CI builds the Agda CLI and `agda2forth` from that same Cabal source package; it does not install a separate Agda binary. The compiler proof intentionally uses `--with-K`, global rewriting, and postulated rewrite equations; it is therefore not an Agda `--safe` module. The separate physics file remains `--safe --cubical`. Agda 2.8.0.2 does not support `--cubical=no-glue` (introduced in 2.9.0), so the physics file uses the stable `--cubical` mode.
+Both Agda files and the Haskell backend use one pinned stable Agda source version, **2.8.0.2**, via `cabal.project`. CI builds the Agda CLI and `agda2forth` from that same Cabal source package; it does not install a separate Agda binary. Both specifications use `--with-K`, `--rewriting`, `--confluence-check`, `--polarity`, and `--lossy-unification`; neither is marked `--safe` or `--cubical`. The compiler file retains constructor-based guardedness, while the physics file retains guarded recursion and its existing instance-search/projection options. `--no-prop` is omitted because it is already the default. `--with-K` enables erased matches by default in Agda 2.8.0.2; the explicit `--erased-matches` flag is absent.
 
 The compiler specification retains the original computational rewrite system from `SovereignRationalSED-MALLP.agda`: `μ-step-true`, `μ-step-false`, `sBR-stop`, `sBR-step`, and `lookup-tabulate`. The first four are postulated computation equations; `lookup-tabulate` is proved constructively. Two closed least-search witnesses check that the μ-rules reduce as intended.
 
-Those rewrite rules sit alongside four explicit postulate groups (20 declared constants in total) for least-witness choice, cohesive retractions, quotient reflection, and symmetric bar recursion. They are retained as axioms by design. They are not derivable from MALLP, and the MALLP soundness boundary must state which results depend on them. They are not silently presented as an axiom-free or `--safe` proof.
+Keep the counts distinct: the module contains seven formal components (six foundational packages plus Laurent polarized MALLP), but the global `REWRITE` block registers five rules, not seven. Four registrations (`μ-step-true`, `μ-step-false`, `sBR-stop`, `sBR-step`) are postulated computation equations; `lookup-tabulate` is a constructive theorem. Separately, five postulate blocks declare 20 assumptions, grouped conceptually into least-witness search/choice, cohesive retractions, quotient reflection, and symmetric bar recursion. They are retained as axioms by design. They are not derivable from MALLP, and the MALLP soundness boundary must state which results depend on them. They are not silently presented as an axiom-free or `--safe` proof.
 
 ## Execution path
 
@@ -54,7 +54,7 @@ This is a constructive linear stack-effect semantics inspired by MALLP's resourc
 
 ## Forth runtime
 
-`data/FLib.fth` contains only the bounded strict Nat runtime:
+`data/FLib.fth` contains only the bounded strict Nat runtime. Its validator consumes its input and returns no stack value, so callers need no `DROP`. CI rejects structural stack-duplication/discard words (`DUP`, `2DUP`, `OVER`, `PICK`, `?DUP`, `DROP`, `2DROP`, `NIP`, `TUCK`) in the runtime and generated output:
 
 - `MALLP-PARSE-NAT` parses decimal literals and checks the signed-cell limit;
 - `MALLP-NAT-ADD` checks overflow before addition;
@@ -73,6 +73,12 @@ Those lazy semantics are not copied into this target. Shared call-by-need thunks
 
 The current Agda theorem covers the closed-Nat expression AST, its code AST, indexed stack execution and preservation of the residual stack. `ToForth.hs` is still a separate Haskell implementation of the lowering and textual printer. CI compiles examples and executes their generated Gforth files, but there is not yet a kernel proof that the Haskell printer emits exactly `renderForth`, nor a formal refinement theorem for the Gforth interpreter. Therefore this is **not yet an end-to-end verified compiler in the PureCake sense**.
 
+## Development tools and scope
+
+The proof files use `Agda.Builtin` modules only; no standard-library downgrade or `agdarsec` dependency is required for this core. Schmitty is an optional SMT automation layer, not a replacement for MALLP semantics or Agda kernel checking. The published Schmitty setup example pins Agda 2.6.2.2, standard library 1.7.1, `agdarsec` 0.5.0, and Schmitty 1.0.1; importing that recipe unchanged would violate this repository's stable 2.8.0.2 pin. Emacs helps interactive proof development: `C-c C-l` loads and type-checks a file; `C-c C-n` normalizes a selected expression and is a computation aid, not a proof check. CI remains the reproducible gate.
+
+Agda's `--polarity` enables its modal-polarity annotations; that is distinct from the project's own positive/negative MALLP formula grammar. `--lossy-unification` enables a unification heuristic; it is not a proof rule.
+
 ## Repository constraints
 
 - One pinned stable Agda version (2.8.0.2) supplies both the Agda CLI and the backend's Agda library dependency; both Agda checks run through that CLI.
@@ -84,4 +90,4 @@ The current Agda theorem covers the closed-Nat expression AST, its code AST, ind
 
 ## Verification
 
-CI builds the Agda CLI and backend from the same stable Agda 2.8.0.2 source, type-checks the with-K rewrite-enabled compiler specification and the separate safe physics module with that CLI, compiles the closed-Nat fixture, rejects generated legacy-runtime words, and executes the generated program with Gforth. Passing CI establishes those checked properties and fixtures only; it does not prove arbitrary Agda compilation, full MALLP proof-to-code correspondence, or a static dictionary-size bound.
+CI builds the Agda CLI and backend from the same stable Agda 2.8.0.2 source, type-checks both with-K, rewrite-enabled specifications with that CLI, compiles the closed-Nat fixture, rejects generated legacy-runtime words, and executes the generated program with Gforth. Passing CI establishes those checked properties and fixtures only; it does not prove arbitrary Agda compilation, full MALLP proof-to-code correspondence, or a static dictionary-size bound.

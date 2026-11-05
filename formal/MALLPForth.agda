@@ -1,4 +1,4 @@
-{-# OPTIONS --with-K --rewriting --confluence-check --no-prop --exact-split --guardedness #-}
+{-# OPTIONS --with-K --rewriting --confluence-check --polarity --lossy-unification --exact-split --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
 
 ------------------------------------------------------------------------
 -- SovereignRationalSED

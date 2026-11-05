@@ -20,7 +20,7 @@ jobs:
         env:
           SCHEME_UPSTREAM_SHA: 24e02d9669f17d98ec67b8ad961cf9c3e602bf10
           FORTH_UPSTREAM_SHA: e83f8cc735bf220f80b3655ce2158a23818910fe
-          FLIB_EXPECTED_BLOB: de46e5614f6de224458b3b96e18e81ad42502987
+          FLIB_UPSTREAM_BLOB: de46e5614f6de224458b3b96e18e81ad42502987
         run: |
           git fetch --no-tags --depth=1 https://github.com/jespercockx/agda2scheme.git "$SCHEME_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$SCHEME_UPSTREAM_SHA"
@@ -37,14 +37,16 @@ jobs:
           grep -Fq 'tag: v2.8.0.2' cabal.project
           git fetch --no-tags --depth=1 https://github.com/LMMilliken/agda2Forth.git "$FORTH_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$FORTH_UPSTREAM_SHA"
-          test "$(git hash-object data/FLib.fth)" = "$FLIB_EXPECTED_BLOB"
+          test "$(git rev-parse "$FORTH_UPSTREAM_SHA:data/FLib.fth")" = "$FLIB_UPSTREAM_BLOB"
+          grep -Fq 'MALLP-CHECK-NAT { value -- }' data/FLib.fth
 
       - name: Install native linker and Gforth
         run: |
           sudo apt-get update
-          sudo apt-get install -y binutils gforth
+          sudo apt-get install -y binutils binutils-gold gforth
           command -v ld
           ld --version
+          printf 'int main(void) { return 0; }\n' | gcc -fuse-ld=gold -x c -o "$RUNNER_TEMP/gold-linker-smoke" -
 
       - name: Set up GHC
         uses: haskell-actions/setup@v2
@@ -63,7 +65,7 @@ jobs:
           test "$("$agda_bin" --numeric-version)" = "2.8.0.2"
           echo "AGDA_BIN=$agda_bin" >> "$GITHUB_ENV"
 
-      - name: Type-check with-K MALLP rewrites and safe physics with the same compiler
+      - name: Type-check with-K rewrite-enabled MALLP and physics with the same stable compiler
         run: |
           "$AGDA_BIN" -i formal formal/MALLPForth.agda
           "$AGDA_BIN" -i formal formal/SovereignRationalSEDPhysics.agda
@@ -77,6 +79,10 @@ jobs:
           grep -Fq 'MALLP-PARSE-NAT' MALLPStrict.fth
           if grep -Eq '(^|[[:space:]])(:noname|makeTHUNK|dethunk|foldThunks|pass|HERE|ALLOT|CREATE)([[:space:]]|$)' MALLPStrict.fth; then
             echo "generated strict MALLP code contains a legacy runtime dependency"
+            exit 1
+          fi
+          if grep -Eiq '(^|[[:space:]])(DUP|DROP|2DUP|2DROP|OVER|NIP|TUCK|PICK|\\?DUP)([[:space:]]|$)' data/FLib.fth MALLPStrict.fth; then
+            echo "strict MALLP runtime/output contains a structural duplicate or discard word"
             exit 1
           fi
           gforth MALLPStrict.fth test/gforth/mallp-strict.fs > mallp-strict.log
