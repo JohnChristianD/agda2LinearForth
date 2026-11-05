@@ -759,7 +759,7 @@ module LinearModalSafety where
         leastWitnessChoice-correct P double-negated i =
           arithmeticalCountableChoiceLeastWitness P double-negated i
     
-        MarkovPrinciple : Set₁
+        MarkovPrinciple : Set
         MarkovPrinciple =
           (P : Nat → Bool) →
           ¬ (¬ BooleanWitness P) →
