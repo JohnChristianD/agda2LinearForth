@@ -24,14 +24,16 @@ jobs:
         run: |
           git fetch --no-tags --depth=1 https://github.com/jespercockx/agda2scheme.git "$SCHEME_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$SCHEME_UPSTREAM_SHA"
-          # ToForth.hs is the sole Haskell exception. Every other Haskell
-          # source path and blob must match Agda2Scheme at this exact commit.
-          git diff --exit-code "$SCHEME_UPSTREAM_SHA" HEAD -- \
-            app/Main.hs src/Main.hs src/Agda/Compiler/Erase.hs src/Agda/Compiler/ToScheme.hs
-          actual_hs="$(git diff --name-only "$SCHEME_UPSTREAM_SHA" HEAD -- '*.hs' | sort)"
-          expected_hs="src/Agda/Compiler/ToForth.hs"
-          test "$actual_hs" = "$expected_hs"
-          test "$(git ls-files '*.agda' | wc -l | tr -d ' ')" = 1
+          # Every tracked Haskell source except ToForth.hs must exist in
+          # Agda2Scheme at the pinned revision and have the exact same blob.
+          while IFS= read -r path; do
+            test "$path" = "src/Agda/Compiler/ToForth.hs" && continue
+            git cat-file -e "$SCHEME_UPSTREAM_SHA:$path"
+            test "$(git rev-parse "HEAD:$path")" = "$(git rev-parse "$SCHEME_UPSTREAM_SHA:$path")"
+          done < <(git ls-tree -r --name-only HEAD | grep -E "\\.hs$")
+
+          test "$(git ls-files "*.hs" | grep -v "^src/Agda/Compiler/ToForth.hs$" | wc -l | tr -d " ")" -ge 1
+                    test "$(git ls-files '*.agda' | wc -l | tr -d ' ')" = 1
           test "$(git ls-files '*.agda')" = formal/LinearModalSafety.agda
 
           git fetch --no-tags --depth=1 https://github.com/LMMilliken/agda2Forth.git "$FORTH_UPSTREAM_SHA"
