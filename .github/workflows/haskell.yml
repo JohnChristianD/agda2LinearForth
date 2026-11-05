@@ -60,7 +60,6 @@ jobs:
           install "$agda_binary" "$HOME/.local/bin/agda"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           agda --version
-          agda --help | grep -F -- '--cubical=no-glue'
 
       - name: Build Haskell backend
         run: |
