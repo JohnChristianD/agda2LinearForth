@@ -348,6 +348,55 @@ module StrictNatCompiler where
   renderForth (sequence first second) =
     renderForth first ++ᴳ renderForth second
 
+  -- Interpret the actual postfix token list produced by renderForth.
+  forgetStack : {Γ : List StackType} → Stack Γ → List Nat
+  forgetStack emptyStack = []
+  forgetStack (pushCell n stack) = n ∷ forgetStack stack
+
+  execToken : ForthToken → List Nat → Maybe (List Nat)
+  execToken (pushLiteral n) stack = just (n ∷ stack)
+  execToken addWord (right ∷ left ∷ stack) = just ((left + right) ∷ stack)
+  execToken addWord _ = nothing
+  execToken monusWord (right ∷ left ∷ stack) =
+    just (applyNatOp monusOp left right ∷ stack)
+  execToken monusWord _ = nothing
+  execToken multiplyWord (right ∷ left ∷ stack) =
+    just (left * right ∷ stack)
+  execToken multiplyWord _ = nothing
+
+  maybeBind : {A B : Set} → Maybe A → (A → Maybe B) → Maybe B
+  maybeBind nothing continuation = nothing
+  maybeBind (just value) continuation = continuation value
+
+  execTokens : List ForthToken → List Nat → Maybe (List Nat)
+  execTokens [] stack = just stack
+  execTokens (token ∷ tokens) stack with execToken token stack
+  ... | nothing = nothing
+  ... | just nextStack = execTokens tokens nextStack
+
+  execTokens-append :
+    (first second : List ForthToken) (stack : List Nat) →
+    execTokens (first ++ᴳ second) stack ≡
+    maybeBind (execTokens first stack) (λ nextStack → execTokens second nextStack)
+  execTokens-append [] second stack = refl
+  execTokens-append (token ∷ first) second stack
+    with execToken token stack
+  ... | nothing = refl
+  ... | just nextStack = execTokens-append first second nextStack
+
+  renderForth-sound :
+    {Γ Δ : List StackType} (code : ForthCode Γ Δ) (stack : Stack Γ) →
+    execTokens (renderForth code) (forgetStack stack) ≡
+    just (forgetStack (execForthCode code stack))
+  renderForth-sound (pushNat n) stack = refl
+  renderForth-sound (binaryWord addOp) (pushCell right (pushCell left stack)) = refl
+  renderForth-sound (binaryWord monusOp) (pushCell right (pushCell left stack)) = refl
+  renderForth-sound (binaryWord multiplyOp) (pushCell right (pushCell left stack)) = refl
+  renderForth-sound (sequence first second) stack
+    rewrite execTokens-append (renderForth first) (renderForth second) (forgetStack stack)
+          | renderForth-sound first stack
+          | renderForth-sound second (execForthCode first stack) = refl
+
   maxNat : Nat → Nat → Nat
   maxNat zero y = y
   maxNat (suc x) zero = suc x
