@@ -800,7 +800,7 @@ module LinearModalSafety where
       -- atoms. The three tensorNF equations have disjoint constructor patterns.
       ----------------------------------------------------------------------
     
-          module MacLaneCoherence where
+      module MacLaneCoherence where
     
         data TensorExpr : Set where
           atom : Nat → TensorExpr
