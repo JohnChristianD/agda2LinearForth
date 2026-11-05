@@ -761,35 +761,36 @@ module LinearModalSafety where
           selectMaybe (P zero) (just zero)
             (shiftMaybeNat (boundedSearch fuel (λ n → P (suc n))))
 
-        boundedSearch-sound-true :
-          (fuel : Nat) (P : Nat → Bool) (n : Nat) →
-          P zero ≡ true →
-          selectMaybe (P zero) (just zero)
-            (shiftMaybeNat (boundedSearch fuel (λ i → P (suc i)))) ≡ just n →
-          P n ≡ true
-        boundedSearch-sound-true fuel P n first result with first | result
-        ... | refl | refl = refl
-
-        boundedSearch-sound-false :
-          (fuel : Nat) (P : Nat → Bool) (n : Nat) →
-          P zero ≡ false →
-          selectMaybe (P zero) (just zero)
-            (shiftMaybeNat (boundedSearch fuel (λ i → P (suc i)))) ≡ just n →
-          P n ≡ true
-        boundedSearch-sound-false fuel P n first result
-          with first | boundedSearch fuel (λ i → P (suc i)) | result
-        ... | refl | nothing | ()
-        ... | refl | just k | refl =
-          boundedSearch-sound fuel (λ i → P (suc i)) k refl
-
-        boundedSearch-sound :
-          (fuel : Nat) (P : Nat → Bool) (n : Nat) →
-          boundedSearch fuel P ≡ just n → P n ≡ true
-        boundedSearch-sound zero P n ()
-        boundedSearch-sound (suc fuel) P n result with P zero in firstObservation
-        ... | true = boundedSearch-sound-true fuel P n firstObservation result
-        ... | false = boundedSearch-sound-false fuel P n firstObservation result
-
+        mutual
+          boundedSearch-sound-true :
+            (fuel : Nat) (P : Nat → Bool) (n : Nat) →
+            P zero ≡ true →
+            selectMaybe (P zero) (just zero)
+              (shiftMaybeNat (boundedSearch fuel (λ i → P (suc i)))) ≡ just n →
+            P n ≡ true
+          boundedSearch-sound-true fuel P n first result with first | result
+          ... | refl | refl = refl
+  
+          boundedSearch-sound-false :
+            (fuel : Nat) (P : Nat → Bool) (n : Nat) →
+            P zero ≡ false →
+            selectMaybe (P zero) (just zero)
+              (shiftMaybeNat (boundedSearch fuel (λ i → P (suc i)))) ≡ just n →
+            P n ≡ true
+          boundedSearch-sound-false fuel P n first result
+            with first | boundedSearch fuel (λ i → P (suc i)) | result
+          ... | refl | nothing | ()
+          ... | refl | just k | refl =
+            boundedSearch-sound fuel (λ i → P (suc i)) k refl
+  
+          boundedSearch-sound :
+            (fuel : Nat) (P : Nat → Bool) (n : Nat) →
+            boundedSearch fuel P ≡ just n → P n ≡ true
+          boundedSearch-sound zero P n ()
+          boundedSearch-sound (suc fuel) P n result with P zero in firstObservation
+          ... | true = boundedSearch-sound-true fuel P n firstObservation result
+          ... | false = boundedSearch-sound-false fuel P n firstObservation result
+  
         MarkovPrinciple : Set
         MarkovPrinciple =
           (P : Nat → Bool) →
