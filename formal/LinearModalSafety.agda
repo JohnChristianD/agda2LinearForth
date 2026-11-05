@@ -2931,9 +2931,15 @@ module LinearModalSafety where
   natStackExecSound natStackDone = refl
   natStackExecSound {program = pushNatCellInstruction n :: program} (natStackPush {n = n} {program = program} execution) =
     natStackExecSound {program = program} execution
-  natStackExecSound (natStackAdd execution) = natStackExecSound execution
-  natStackExecSound (natStackMultiply execution) = natStackExecSound execution
-  natStackExecSound (natStackMonus execution) = natStackExecSound execution
+  natStackExecSound {program = abiAddOrLegacyInstruction :: program}
+    (natStackAdd {program = program} execution) =
+      natStackExecSound {program = program} execution
+  natStackExecSound {program = abiMulOrLegacyInstruction :: program}
+    (natStackMultiply {program = program} execution) =
+      natStackExecSound {program = program} execution
+  natStackExecSound {program = abiMonusOrLegacyInstruction :: program}
+    (natStackMonus {program = program} execution) =
+      natStackExecSound {program = program} execution
   
   natSourceStackSemantics : NatExpr → List Nat → NatStackRunResult
   natSourceStackSemantics expr tail =
