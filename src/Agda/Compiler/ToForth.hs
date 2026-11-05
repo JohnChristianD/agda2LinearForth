@@ -815,7 +815,7 @@ toForthStrictTerm term = do
     TLit literal
       | null args -> case literal of
           LitNat n ->
-            return $ RSAtom $ T.concat ["s\"", T.pack (show n), "\" MALLP-PARSE-NAT"]
+            return $ RSAtom $ T.concat ["s\" ", T.pack (show n), "\" MALLP-PARSE-NAT"]
           _ -> mallpUnsupported "only Nat literals are supported"
     TPrim primitive -> do
       args' <- traverse toForthStrictTerm args
