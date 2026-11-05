@@ -15,7 +15,7 @@ data-dir:   data
 
 extra-source-files:
     README.md
-    formal/LinearModalSafety.agda
+    formal/MALLPForth.agda
     formal/SovereignRationalSEDPhysics.agda
     test/MALLPStrict.agda.src
     test/gforth/mallp-strict.fs
