@@ -14,6 +14,11 @@ module LinearModalSafety where
   open import Agda.Builtin.Bool using (Bool; true; false)
   open import Agda.Builtin.Equality using (_≡_; refl)
   open import Agda.Builtin.Equality.Rewrite
+
+  -- Runtime/source ownership tags used by the compiler denotation.
+  -- These are not Laurent polarity shifts or Seely exponentials.
+  data SourceMode : Set where
+    linear modal : SourceMode
   
   -- Single-file constructive cores. These nested modules replace three separately
   -- checked source files while retaining their original module boundaries.
