@@ -154,7 +154,7 @@ A whole-backend proof needs an explicit supported source subset, a target instru
 ## Constructive foundations and polarized-logic fragment
 ### Latest Library monolith synchronization
 
-The nested `SovereignRationalSED` module in `formal/LinearModalSafety.agda` is synchronized with the latest Library artifact `SovereignRationalSED-MALLP.agda` (2026-11-05). The embedded module matches that source after removing its standalone compiler-options/header preamble, applying the enclosing-module indentation, correcting one stale “eight foundational packages” comment to “seven”, and omitting one duplicate `infix 4 _<_` declaration: the outer compiler module already declares that fixity. That fixity-only omission is required for Agda's single-module namespace; it changes no definition or theorem.
+The nested `SovereignRationalSED` module in `formal/LinearModalSafety.agda` is synchronized with the latest Library artifact `SovereignRationalSED-MALLP.agda` (2026-11-05). The embedded module matches that source after removing its standalone compiler-options/header preamble, applying the enclosing-module indentation, correcting one stale “eight foundational packages” comment to “seven”, and making two Agda 2.8 integration adjustments: (1) replacing the unavailable `Agda.Builtin.Empty` import with a local empty-type declaration, and (2) omitting one duplicate `infix 4 _<_` declaration because the outer compiler module already declares that fixity. These are namespace/builtin-availability adaptations; the package definitions, equations, and proof terms are otherwise synchronized.
 
 The seven nested package modules are **six earlier foundations plus constructive Laurent MALLP**, not seven postulates:
 
