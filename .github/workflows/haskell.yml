@@ -195,3 +195,17 @@ jobs:
           cp test/TriplesFO.agda.src test/TriplesFO.agda
           trap 'rm -f test/TriplesFO.agda' EXIT
           cabal run agda2forth -- --erasure -i test test/TriplesFO.agda
+
+      - name: Compile and execute allocation-free strict MALLP Nat fragment
+        run: |
+          cp test/MALLPStrict.agda.src test/MALLPStrict.agda
+          trap 'rm -f test/MALLPStrict.agda' EXIT
+          cabal run agda2forth -- --strict-mallp --erasure -i test test/MALLPStrict.agda
+          grep -Fq 'MALLP-NAT-ADD' MALLPStrict.fth
+          grep -Fq 'MALLP-PARSE-NAT' MALLPStrict.fth
+          if grep -Eq '(:noname|makeTHUNK|foldThunks|passMany|ABI-)' MALLPStrict.fth; then
+            echo "strict MALLP output must not depend on descriptor/thunk ABI"
+            exit 1
+          fi
+          gforth MALLPStrict.fth test/gforth/mallp-strict.fs > mallp-strict.log
+          grep -Fq 'mallp-strict-tests-passed' mallp-strict.log
