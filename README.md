@@ -152,6 +152,32 @@ The current Agda file does **not** prove:
 A whole-backend proof needs an explicit supported source subset, a target instruction/emission relation shared by the specification and implementation, and a forward simulation that connects source meaning to generated Forth and concrete runtime state. A small Agda model and green regression tests are useful evidence, but they are not a substitute for that bridge.
 
 ## Constructive foundations and polarized-logic fragment
+### Latest Library monolith synchronization
+
+The nested `SovereignRationalSED` module in `formal/LinearModalSafety.agda` is synchronized with the latest Library artifact `SovereignRationalSED-MALLP.agda` (2026-11-05). The embedded module matches that source after removing its standalone compiler-options/header preamble, applying the enclosing-module indentation, correcting one stale “eight foundational packages” comment to “seven”, and omitting one duplicate `infix 4 _<_` declaration: the outer compiler module already declares that fixity. That fixity-only omission is required for Agda's single-module namespace; it changes no definition or theorem.
+
+The seven nested package modules are **six earlier foundations plus constructive Laurent MALLP**, not seven postulates:
+
+| Package | Present formal content | Exact boundary |
+| --- | --- | --- |
+| 1. Forster-style parametric enumerability | Typed `ParametricallyEnumerable`, typed `ProgramCode`, `universalEval`, and a definitional `forster-eval` theorem | `ProgramCode` carries an enumerator record and parameter. This is not a Gödel numbering of arbitrary programs by `Nat`. |
+| 2. Markov / least witness | Unbounded `μ-search`, its true/false equations, constructive bounded search, and the least-witness/countable-choice interface | The unbounded search and arithmetical countable least-witness principle remain postulated. The false equation can unfold indefinitely when no witness exists. Bounded search does not replace the unbounded principle. |
+| 3. Mac Lane coherence | Recursive flattening normalizer `tensorNF` for the free tensor-object syntax, with equations proved by `refl` | This is object-level normalization for that syntax, not the full morphism-level coherence theorem for arbitrary monoidal categories. |
+| 4. Cohesive modality fragment | `Disc`, `Π`, `Γ`, `coDisc` and three object-level isomorphisms | These operators and isomorphisms are postulated. There is no constructed cohesive topos, site, sheaf semantics, or full natural adjoint quadruple. |
+| 5. Hofmann-style quotient fragment | Quotient carrier/class, `canonize`, quotient-canonicalization, idempotence and relatedness interfaces; explicit relation laws | Quotient formation, class construction and canonicalization laws remain postulated. Reflexivity, symmetry and transitivity are explicit parameters, not a hidden setoid record. No full quotient eliminator/universal-property development is claimed. |
+| 6. Spector-style symmetric bar recursion | Finite partial maps with unique keys, domain decisions, `omegaThread`, a branchwise bar condition, and the recursive interface | `symmetricBarRec`, `sBR-stop`, and `sBR-step` remain postulated. This is not yet an executable total Spector recursor or a termination proof. |
+| 7. Laurent MALLP | Positive/negative formula grammar, De Morgan duality and involutivity, negative contexts, optional positive stoup, exchange, cut, multiplicatives, additives, units and `down`/`up` shifts | No exponentials, Seely comonad, weakening, or contraction. Cut elimination and proof-net normalization are not proved. |
+
+There are **five postulate blocks containing twenty postulated declarations** in these six non-MALLP foundations: three μ-search equations plus the countable least-witness principle; seven cohesive operators/isomorphisms; six quotient constants/laws; and three symmetric-bar-recursion constants/equations (the remaining one is the bar-recursion recursor, giving three total in that package). Forster enumeration, Mac Lane's object normalizer, and MALLP contain no postulates. The package count and postulate count are deliberately different.
+
+The one global rewrite registration has exactly five equations:
+
+`μ-step-true`, `μ-step-false`, `sBR-stop`, `sBR-step`, and `lookup-tabulate`.
+
+The first four are postulated. `lookup-tabulate` is proved by recursion on the finite bound and is an auxiliary list-computation theorem, **not an eighth foundational package**. Agda's confluence check does not establish termination; in particular, the unbounded false μ-search step is not a terminating normalizer. The MALLP constructors add no rewrite equations.
+
+The embedded RSED code has no `Vec`, `Fin`, or custom `Index` datatype and no first-class setoid/`IsEquivalence` record. It uses ordinary lists, `Nat` labels, explicit bounds where required, and builtin intensional equality. This does not make quotient assumptions constructive: the generic quotient interface still needs an equivalence relation and its laws.
+
 
 The conatural proof model follows TypeTopology's generic-convergent-sequence representation: a Boolean sequence with the decreasingness proof that once an observation is false, all later observations remain false. It is connected to the backend-compilable observation interface in `VerifiedCoreExecutable (nested module in formal/LinearModalSafety.agda)` by `finiteObservationAgrees` and `infiniteObservationAgrees`; CI compiles examples of that interface to Forth and executes them with Gforth. This tests the finite ABI projection, not arbitrary functions over conaturals or whole-backend correctness.
 
@@ -275,6 +301,23 @@ These sources are background for the model and target language, not claims that 
 
 
 ## CakeML and PureCake: proof architecture adopted
+
+
+### What is synchronized—and what is not
+
+This repository synchronizes a **semantic proof plan**, not CakeML's or PureCake's complete HOL4 formalization. The upstream developments use HOL4 datatypes, operational semantics, proof infrastructure, and target machines that are not definitionally interchangeable with Agda or Gforth. Their scripts are therefore references for proof decomposition; the theorems must be re-derived for this compiler's source subset and target.
+
+| CakeML / PureCake proof layer | Required agda2forth counterpart | Status in this repository |
+| --- | --- | --- |
+| Source-language semantics and parser/type-inference soundness | Explicit supported Agda/Treeless grammar plus a relation from Agda checking/erasure to that grammar | Partial; no exhaustive accepted-source theorem |
+| PureCake lazy PureLang semantics | Source evaluation with return, exceptions, observable effects and divergence | Partial WP model; finite outcome model does not cover arbitrary divergence |
+| PureLang → thunkLang via explicit `Delay`/`Force` | A target thunk language and a proved lazy-to-thunk pass | Missing; `makeDelay = id` and variable forcing bypass mean the lazy flag is not a verified PureCake translation |
+| Thunk/environment/state passes | Separate intermediate syntaxes, executable semantics and one preservation theorem per pass | Missing beyond the small hand-mirrored Nat stack fragment |
+| CakeML backend correctness and installed-code premises | Typed Forth IR, Haskell lowering correspondence, exact serializer relation | Missing; `ToForth.hs` is not proved to emit the Agda instruction model |
+| CakeML target-machine semantics | Complete Forth machine state and operational semantics for stacks, dictionary/code, descriptors, exceptions and I/O | Partial; selected ABI behavior and WP contracts only |
+| PureCake/CakeML composed top-level theorem preserving observations | One theorem relating supported Agda observations to execution of the exact generated Forth program | Missing |
+
+The Nat certificate is a genuine theorem about the manually defined Agda `NatExpr` and `NatStackProgram` models. It does not certify that the Haskell process emitted the same instruction list, that the text serializer preserves it, or that Gforth executes the real Forth runtime according to the model. That implementation bridge is the central remaining theorem.
 
 CakeML and PureCake are models for the shape of a complete correctness argument, not proofs that can be imported wholesale into this repository.
 
