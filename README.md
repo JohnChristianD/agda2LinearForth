@@ -54,7 +54,7 @@ This is a constructive linear stack-effect semantics inspired by MALLP's resourc
 
 ## Forth runtime
 
-`data/FLib.fth` contains only the bounded strict Nat runtime. Its validator consumes its input and returns no stack value, so callers need no `DROP`. CI rejects structural stack-duplication/discard words (`DUP`, `2DUP`, `OVER`, `PICK`, `?DUP`, `DROP`, `2DROP`, `NIP`, `TUCK`) in the runtime and generated output:
+`data/FLib.fth` contains only the bounded strict Nat runtime. Its validator consumes its input and returns no stack value, so callers need no `DROP`. CI rejects structural stack-duplication/discard words (`DUP`, `?DUP`, `2DUP`, `3DUP`, `OVER`, `2OVER`, `PICK`, `DROP`, `2DROP`, `3DROP`, `NIP`, `2NIP`, `TUCK`) in the runtime and generated output:
 
 - `MALLP-PARSE-NAT` parses decimal literals and checks the signed-cell limit;
 - `MALLP-NAT-ADD` checks overflow before addition;
