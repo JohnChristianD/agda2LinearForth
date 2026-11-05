@@ -30,7 +30,7 @@ jobs:
             test "$(git rev-parse "HEAD:$path")" = "$(git rev-parse "$SCHEME_UPSTREAM_SHA:$path")"
           done < <(git ls-tree -r --name-only HEAD | grep -E "\\.hs$")
           test "$(git ls-files '*.hs' | grep -v '^src/Agda/Compiler/ToForth.hs$' | wc -l | tr -d ' ')" -ge 1
-          test "$(git ls-files '*.agda' | paste -sd ' ')" = "formal/LinearModalSafety.agda formal/SovereignRationalSEDPhysics.agda"
+          test "$(git ls-files '*.agda' | paste -sd ' ')" = "formal/MALLPForth.agda formal/SovereignRationalSEDPhysics.agda"
           test "$(git ls-files '*.md')" = "README.md"
           test -z "$(git ls-files '*.sh' '*.bash' '*.ps1')"
           test -f cabal.project
