@@ -81,7 +81,7 @@ jobs:
             echo "generated strict MALLP code contains a legacy runtime dependency"
             exit 1
           fi
-          if grep -Eiq '(^|[[:space:]])(DUP|DROP|2DUP|2DROP|OVER|NIP|TUCK|PICK|\\?DUP)([[:space:]]|$)' data/FLib.fth MALLPStrict.fth; then
+          if grep -Eiq '(^|[[:space:]])(DUP|[?]DUP|2DUP|3DUP|OVER|2OVER|PICK|DROP|2DROP|3DROP|NIP|2NIP|TUCK)([[:space:]]|$)' data/FLib.fth MALLPStrict.fth; then
             echo "strict MALLP runtime/output contains a structural duplicate or discard word"
             exit 1
           fi
