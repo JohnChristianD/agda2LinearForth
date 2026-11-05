@@ -1,4 +1,4 @@
-{-# OPTIONS --safe --cubical=no-glue --erased-cubical --erased-matches --guarded --exact-split --no-fast-reduce --two-level --no-postfix-projections --no-projection-like --experimental-lazy-instances --backtracking-instance-search #-}
+{-# OPTIONS --safe --without-K --cubical=no-glue --erased-cubical --erased-matches --guarded --exact-split --no-fast-reduce --two-level --no-postfix-projections --no-projection-like --experimental-lazy-instances --backtracking-instance-search #-}
 
 module SovereignRationalSEDPhysics where
 
