@@ -1,4 +1,4 @@
-{-# OPTIONS --safe --without-K --cubical=no-glue #-}
+{-# OPTIONS --safe --without-K #-}
 
 module MALLPForth where
 
