@@ -63,7 +63,7 @@ jobs:
           test "$("$agda_bin" --numeric-version)" = "2.8.0.2"
           echo "AGDA_BIN=$agda_bin" >> "$GITHUB_ENV"
 
-      - name: Type-check both safe Agda specifications with the same compiler
+      - name: Type-check with-K MALLP rewrites and safe physics with the same compiler
         run: |
           "$AGDA_BIN" -i formal formal/MALLPForth.agda
           "$AGDA_BIN" -i formal formal/SovereignRationalSEDPhysics.agda
