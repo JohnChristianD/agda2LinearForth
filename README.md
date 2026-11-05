@@ -158,33 +158,56 @@ The conatural proof model follows TypeTopology's generic-convergent-sequence rep
 
 ## Test and CI contract
 
-CI checks source provenance, builds the Haskell compiler, runs the configured Cabal test command, installs/runs Gforth tests, type-checks the Agda specification, and compiles selected fixtures. The relevant commands are:
+CI checks that `ToForth.hs` is the sole Haskell divergence from pinned Agda2Scheme sources, builds the Haskell compiler, runs the configured Cabal test command, installs/runs Gforth tests, type-checks the one tracked Agda specification, and stages individual fixture sources temporarily. The relevant commands are:
 
 ```sh
-# Build compiler and execute Cabal's configured test command.
 cabal build all
 cabal test all
 
-# Run direct runtime ABI regressions.
 gforth -e 'include data/FLib.fth' -e 'include test/gforth/abi-smoke.fs'
-
-# Type-check the Agda model.
 agda --erasure --no-libraries -i formal formal/LinearModalSafety.agda
 
-# Compile and execute generated Nat/Bool programs.
-cabal run agda2forth -- --erasure -i test test/CheckedScalar.agda.src
-gforth CheckedScalar.fth test/gforth/compiler-integration.fs
+# Fixture source is stored as .agda.src so the repository tracks only one .agda file.
+(
+  cp test/CheckedScalar.agda.src test/CheckedScalar.agda
+  trap 'rm -f test/CheckedScalar.agda' EXIT
+  cabal run agda2forth -- --erasure -i test test/CheckedScalar.agda
+  gforth CheckedScalar.fth test/gforth/compiler-integration.fs
+)
 
-# Exercise oversized Nat literals, unsupported String literals, and axioms.
-cabal run agda2forth -- -i test test/UnsupportedNatLiteral.agda.src
-gforth UnsupportedNatLiteral.fth test/gforth/unsupported-nat-literal.fs
-cabal run agda2forth -- -i test test/UnsupportedLiteral.agda.src
-gforth UnsupportedLiteral.fth test/gforth/unsupported-boundary.fs
-cabal run agda2forth -- -i test test/UnsupportedAxiom.agda.src
-gforth UnsupportedAxiom.fth test/gforth/unsupported-axiom-boundary.fs
+(
+  cp test/UnsupportedNatLiteral.agda.src test/UnsupportedNatLiteral.agda
+  trap 'rm -f test/UnsupportedNatLiteral.agda' EXIT
+  cabal run agda2forth -- --erasure -i test test/UnsupportedNatLiteral.agda
+  gforth UnsupportedNatLiteral.fth test/gforth/unsupported-nat-literal.fs
+)
 
-# Compile the first-order triples fixture (CI does not execute it).
-cabal run agda2forth -- -i test test/TriplesFO.agda.src
+(
+  cp test/UnsupportedLiteral.agda.src test/UnsupportedLiteral.agda
+  trap 'rm -f test/UnsupportedLiteral.agda' EXIT
+  cabal run agda2forth -- --erasure -i test test/UnsupportedLiteral.agda
+  gforth UnsupportedLiteral.fth test/gforth/unsupported-boundary.fs
+)
+
+(
+  cp test/UnsupportedAxiom.agda.src test/UnsupportedAxiom.agda
+  trap 'rm -f test/UnsupportedAxiom.agda' EXIT
+  cabal run agda2forth -- --erasure -i test test/UnsupportedAxiom.agda
+  gforth UnsupportedAxiom.fth test/gforth/unsupported-axiom-boundary.fs
+)
+
+(
+  cp test/VerifiedCoreSmoke.agda.src test/VerifiedCoreSmoke.agda
+  trap 'rm -f test/VerifiedCoreSmoke.agda' EXIT
+  cabal run agda2forth -- --erasure -i test test/VerifiedCoreSmoke.agda
+  gforth VerifiedCoreSmoke.fth test/gforth/verified-core-smoke.fs
+)
+
+(
+  cp test/TriplesFO.agda.src test/TriplesFO.agda
+  trap 'rm -f test/TriplesFO.agda' EXIT
+  cabal run agda2forth -- --erasure -i test test/TriplesFO.agda
+)
 ```
 
 At present, `cabal test all` reports that there are no package test suites to run. The meaningful executable regression coverage is in the explicit Gforth fixtures and generated-program integration test.
