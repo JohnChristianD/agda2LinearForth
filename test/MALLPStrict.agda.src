@@ -1,6 +1,7 @@
 module MALLPStrict where
 
-open import Agda.Builtin.Nat using (Nat; _+_; _*_; _-_)
+open import Agda.Builtin.Nat using (Nat; _+_; _*_; _-_; _==_; _<_)
+open import Agda.Builtin.Bool using (Bool)
 
 answerAdd : Nat
 answerAdd = 7 + 13
@@ -11,5 +12,8 @@ answerMonus = 2 - 5
 answerMultiply : Nat
 answerMultiply = (2 + 3) * 4
 
-answerQuotient : Nat
-answerQuotient = 21 / 3
+answerEqual : Bool
+answerEqual = 5 == 5
+
+answerLess : Bool
+answerLess = 3 < 8
