@@ -1448,7 +1448,6 @@ module LinearModalSafety where
       μ-step-false
       sBR-stop
       sBR-step
-      lookup-tabulate
     #-}
     
     ------------------------------------------------------------------------
@@ -1718,7 +1717,7 @@ module LinearModalSafety where
           ((left ⊕ transfer) ⊕ (right ⊖ transfer)) ≡ (left ⊕ right)
         pair-exchange-preserves left right transfer =
           trans₄
-            (sym₄ (add₄-assoc left transfer (right ⊖ transfer)))
+            (add₄-assoc left transfer (right ⊖ transfer))
             (add₄-cong (refl₄ left)
               (add₄-with-sub-cancel transfer right))
     
