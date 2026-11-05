@@ -361,6 +361,21 @@ CakeML and PureCake are models for the shape of a complete correctness argument,
 
 CakeML separates parser correctness, type-inference soundness/completeness, backend correctness, target machine semantics, installed-code hypotheses, initial-state invariants, and resource bounds. Its top-level theorem composes those results. PureCake adds a particularly relevant pass chain for a lazy language: PureLang source semantics → explicit thunk language → environment/state representations → CakeML. Each compiler pass has its own syntax, semantics, side conditions, and preservation theorem. PureCake preserves observable behavior, including interaction and divergence, rather than only comparing returned values.
 
+### Automating the Agda/Haskell compiler correspondence
+
+Do not keep growing a second hand-maintained Agda model of `ToForth.hs`. Make the Agda semantics own the supported fragment and make the Haskell backend produce a certificate that can be checked independently.
+
+1. Freeze an indexed `TreelessSubset` grammar. Each constructor must state its source type and supported effects; every constructor outside the subset fails closed.
+2. Define a typed `ForthIR` in Agda, indexed by input/output stack shape and explicit heap, control-flow, and exception effects. Define `lower : TreelessSubset → ForthIR` and prove semantic preservation against the source evaluator.
+3. Define a canonical serializer and prove that parsing its output recovers the same `ForthIR`. The concrete Forth text must be checked against this canonical encoding; matching golden snapshots alone is only test evidence.
+4. Change the single permitted Haskell exception, `ToForth.hs`, into an **untrusted certificate producer**: emit Forth plus a compact certificate describing the accepted source fragment and the claimed IR. Keep the GHC adapter narrow; do not let it define new semantics.
+5. Add a checker in the existing Agda module. It independently validates the certificate against the supported source representation, recomputes or checks the Agda lowering, checks the exact serialized Forth, and returns proof data for the accepted compilation. The soundness theorem for the checker—not the Haskell producer—is the trust anchor.
+6. Define the abstract Forth machine and prove each runtime word refines its transition. Then compose source-to-IR, IR-to-text, runtime-word, and machine-observation simulations into the final theorem.
+
+The Nat certificate already present is a model for steps 2–3, but it is constructed from the Agda `NatExpr` AST by Agda itself; `ToForth.hs` does not yet emit or consume it. The input boundary from Agda's real `TTerm` into `TreelessSubset` is therefore still a separate proof obligation. A finite corpus of generated cases can expose drift early, but tests do not replace the certificate checker.
+
+Agda's GHC backend can compile executable Agda definitions into Haskell, which can help generate a temporary implementation of a verified lowering function. That is useful automation, but extraction alone does not prove that generated Haskell or the Forth serializer preserves the Agda semantics. Treat generated code as part of the implementation trusted base unless its behavior is checked by the Agda certificate verifier or supported by a separate extraction-correctness theorem. No new tracked Haskell file is needed for the certificate-checker architecture: keep the adapter in `ToForth.hs`, the checker/specification in `formal/LinearModalSafety.agda`, and explanatory documentation in this README.
+
 ### Which program logic is actually needed?
 
 A full separation-logic development is not a prerequisite for a PureCake-shaped compiler proof. The main structure is a chain of per-pass semantic simulations and a composed observation-preservation theorem. The current `StackEffect` suffix theorem is not a heap frame rule, and the descriptor model is not a separation algebra.
