@@ -759,14 +759,12 @@ module LinearModalSafety where
           (fuel : Nat) (P : Nat → Bool) (n : Nat) →
           boundedSearch fuel P ≡ just n → P n ≡ true
         boundedSearch-sound zero P n ()
-        boundedSearch-sound (suc fuel) P n result with P zero in firstObservation
-        ... | true with result
-        ...   | refl = firstObservation
-        ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-        ...   | nothing with result
-        ...     | ()
-        ...   | just k with result
-        ...     | refl = boundedSearch-sound fuel (λ i → P (suc i)) k smaller
+        boundedSearch-sound (suc fuel) P n result
+          with P zero | boundedSearch fuel (λ i → P (suc i)) | result
+        ... | true | tail | refl = refl
+        ... | false | nothing | ()
+        ... | false | just k | refl =
+          boundedSearch-sound fuel (λ i → P (suc i)) k refl
     
         MarkovPrinciple : Set
         MarkovPrinciple =
