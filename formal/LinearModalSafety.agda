@@ -1638,7 +1638,7 @@ module LinearModalSafety where
         trans₄ = trans
     
         add₄-cong : {u v w z : Rational4Vector} →
-                    u ≡ v → w ≡ z → (u ⊕ w) ≡ (v ⊕ z)
+                    u ≡ v → w ≡ z → (u +₄ w) ≡ (v +₄ z)
         add₄-cong refl refl = refl
     
         zero₄ : Rational4Vector
@@ -1652,7 +1652,7 @@ module LinearModalSafety where
              (0ℚ -ℚ z u)
     
         add₄-assoc : (u v w : Rational4Vector) →
-                     ((u ⊕ v) ⊕ w) ≡ (u ⊕ (v ⊕ w))
+                     ((u +₄ v) +₄ w) ≡ (u +₄ (v +₄ w))
         add₄-assoc u v w =
           r4-cong
             (+ℚ-assoc (ct u) (ct v) (ct w))
@@ -1660,7 +1660,7 @@ module LinearModalSafety where
             (+ℚ-assoc (y u) (y v) (y w))
             (+ℚ-assoc (z u) (z v) (z w))
     
-        add₄-comm : (u v : Rational4Vector) → (u ⊕ v) ≡ (v ⊕ u)
+        add₄-comm : (u v : Rational4Vector) → (u +₄ v) ≡ (v +₄ u)
         add₄-comm u v =
           r4-cong
             (+ℚ-comm (ct u) (ct v))
@@ -1668,7 +1668,7 @@ module LinearModalSafety where
             (+ℚ-comm (y u) (y v))
             (+ℚ-comm (z u) (z v))
     
-        add₄-zeroˡ : (u : Rational4Vector) → (zero₄ ⊕ u) ≡ u
+        add₄-zeroˡ : (u : Rational4Vector) → (zero₄ +₄ u) ≡ u
         add₄-zeroˡ u =
           r4-cong
             (+ℚ-zeroˡ (ct u))
@@ -1676,7 +1676,7 @@ module LinearModalSafety where
             (+ℚ-zeroˡ (y u))
             (+ℚ-zeroˡ (z u))
     
-        add₄-inverseʳ : (u : Rational4Vector) → (u ⊕ neg₄ u) ≡ zero₄
+        add₄-inverseʳ : (u : Rational4Vector) → (u +₄ neg₄ u) ≡ zero₄
         add₄-inverseʳ u =
           r4-cong
             (+ℚ-inverseʳ (ct u))
@@ -1685,7 +1685,7 @@ module LinearModalSafety where
             (+ℚ-inverseʳ (z u))
     
         minus-as-add-neg : (u v : Rational4Vector) →
-                           (u ⊖ v) ≡ (u ⊕ neg₄ v)
+                           (u -₄ v) ≡ (u +₄ neg₄ v)
         minus-as-add-neg u v =
           r4-cong
             (-ℚ-definition (ct u) (ct v))
@@ -1695,7 +1695,7 @@ module LinearModalSafety where
     
         -- Middle exchange: u + (v + w) = (u + w) + v.
         add₄-middle : (u v w : Rational4Vector) →
-                      (u ⊕ (v ⊕ w)) ≡ ((u ⊕ w) ⊕ v)
+                      (u +₄ (v +₄ w)) ≡ ((u +₄ w) +₄ v)
         add₄-middle u v w =
           trans₄
             (add₄-cong (refl₄ u) (add₄-comm v w))
@@ -1704,7 +1704,7 @@ module LinearModalSafety where
         -- The transfer and its opposite cancel, without assuming definitional
         -- equality between rational subtraction and addition of an inverse.
         add₄-with-sub-cancel : (d f : Rational4Vector) →
-                                (d ⊕ (f ⊖ d)) ≡ f
+                                (d +₄ (f -₄ d)) ≡ f
         add₄-with-sub-cancel d f =
           trans₄
             (add₄-cong (refl₄ d) (minus-as-add-neg f d))
@@ -1716,10 +1716,10 @@ module LinearModalSafety where
     
         pair-exchange-preserves :
           (left right transfer : Rational4Vector) →
-          ((left ⊕ transfer) ⊕ (right ⊖ transfer)) ≡ (left ⊕ right)
+          ((left +₄ transfer) +₄ (right -₄ transfer)) ≡ (left +₄ right)
         pair-exchange-preserves left right transfer =
           trans₄
-            (sym₄ (add₄-assoc left transfer (right ⊖ transfer)))
+            (sym₄ (add₄-assoc left transfer (right -₄ transfer)))
             (add₄-cong (refl₄ left)
               (add₄-with-sub-cancel transfer right))
     
@@ -1739,7 +1739,7 @@ module LinearModalSafety where
     
         totalClosedMomentum : ClosedMomentumSnapshot → Rational4Vector
         totalClosedMomentum s =
-          particle4Momentum s ⊕ (field4Momentum s ⊕ source4Momentum s)
+          particle4Momentum s +₄ (field4Momentum s +₄ source4Momentum s)
     
         data MomentumExchange : Set where
           particleField : Rational4Vector → MomentumExchange
@@ -1749,14 +1749,14 @@ module LinearModalSafety where
           MomentumExchange → ClosedMomentumSnapshot → ClosedMomentumSnapshot
         applyMomentumExchange (particleField δ) s =
           closedSnapshot
-            (particle4Momentum s ⊕ δ)
-            (field4Momentum s ⊖ δ)
+            (particle4Momentum s +₄ δ)
+            (field4Momentum s -₄ δ)
             (source4Momentum s)
         applyMomentumExchange (fieldSource δ) s =
           closedSnapshot
             (particle4Momentum s)
-            (field4Momentum s ⊕ δ)
-            (source4Momentum s ⊖ δ)
+            (field4Momentum s +₄ δ)
+            (source4Momentum s -₄ δ)
     
         particleField-exchange-conserves :
           (δ : Rational4Vector) (s : ClosedMomentumSnapshot) →
@@ -1766,8 +1766,8 @@ module LinearModalSafety where
           trans₄
             (sym₄
               (add₄-assoc
-                (particle4Momentum s ⊕ δ)
-                (field4Momentum s ⊖ δ)
+                (particle4Momentum s +₄ δ)
+                (field4Momentum s -₄ δ)
                 (source4Momentum s)))
             (trans₄
               (add₄-cong
