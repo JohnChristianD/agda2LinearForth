@@ -318,7 +318,7 @@ The existing WP model contains useful operation contracts and selected allocatio
 
 ## Dictionary allocation and no-GC status
 
-The current runtime is **not proved immune to dictionary exhaustion**. Runtime descriptor creation, metadata reservation, and closure-environment creation use monotone \`HERE ... ALLOT\` allocation. Consuming a linear handle changes ownership metadata; it does not generally return those cells to a reusable allocator. The abstract allocation model tracks cursors and identity/capacity preflight, but that alone does not establish memory reclamation or global storage safety in Gforth.
+The current runtime is **not proved immune to dictionary exhaustion**. Runtime descriptor creation, metadata reservation, and closure-environment creation use monotone \`HERE ... ALLOT\` allocation. Consuming a linear handle changes ownership metadata; it does not generally return those cells to a reusable allocator. The abstract allocation model tracks cursors and preflights identity exhaustion; its `cellCount` advances the cursor without a proved arena-size bound. That does not establish memory reclamation or global storage safety in Gforth.
 
 Compile-time \`:noname\` definitions are a separate issue from runtime object allocation. The runtime-growth concern is the dynamically repeated handle, metadata, and environment allocation. No general bounded slot pool, free-list, generation-tagged handle scheme, or reclamation simulation has yet been proved and connected to the Forth implementation.
 
