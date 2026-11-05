@@ -8,7 +8,6 @@ true constant AGDA2FORTH-MALLP-LOADED
 0 invert 1 rshift constant MALLP-MAX-NAT
 s" MALLP: negative natural" exception constant MALLP-ERR-NEGATIVE
 s" MALLP: natural overflow" exception constant MALLP-ERR-OVERFLOW
-s" MALLP: division by zero" exception constant MALLP-ERR-DIVZERO
 s" MALLP: invalid natural literal" exception constant MALLP-ERR-LITERAL
 
 : MALLP-CHECK-NAT { value -- value }
@@ -58,41 +57,9 @@ s" MALLP: invalid natural literal" exception constant MALLP-ERR-LITERAL
     left right *
 ;
 
-: MALLP-NAT-QUOT ( left right -- result )
-    { left right }
-    left MALLP-CHECK-NAT DROP
-    right MALLP-CHECK-NAT DROP
-    right 0= IF MALLP-ERR-DIVZERO THROW THEN
-    left right /
-;
 
-: MALLP-NAT-REM ( left right -- result )
-    { left right }
-    left MALLP-CHECK-NAT DROP
-    right MALLP-CHECK-NAT DROP
-    right 0= IF MALLP-ERR-DIVZERO THROW THEN
-    left right mod
-;
 
-: MALLP-NAT-EQ ( left right -- flag )
-    { left right }
-    left MALLP-CHECK-NAT DROP
-    right MALLP-CHECK-NAT DROP
-    left right = IF -1 ELSE 0 THEN
-;
 
-: MALLP-NAT-GEQ ( left right -- flag )
-    { left right }
-    left MALLP-CHECK-NAT DROP
-    right MALLP-CHECK-NAT DROP
-    left right >= IF -1 ELSE 0 THEN
-;
 
-: MALLP-NAT-LT ( left right -- flag )
-    { left right }
-    left MALLP-CHECK-NAT DROP
-    right MALLP-CHECK-NAT DROP
-    left right < IF -1 ELSE 0 THEN
-;
 [then]
 \ MALLP-STRICT-END
