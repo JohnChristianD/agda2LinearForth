@@ -122,6 +122,10 @@ jobs:
           cabal run agda2forth -- -i test test/MALLPStrict.agda
           grep -Fq 'MALLP-NAT-ADD' MALLPStrict.fth
           grep -Fq 'MALLP-PARSE-NAT' MALLPStrict.fth
+          if grep -Eq '^: answerInt ' MALLPStrict.fth; then
+            echo "non-Nat definition escaped the Nat result-type gate"
+            exit 1
+          fi
           if grep -Eq '(^|[[:space:]])(:noname|makeTHUNK|dethunk|foldThunks|pass|HERE|ALLOT|CREATE)([[:space:]]|$)' MALLPStrict.fth; then
             echo "generated strict MALLP code contains a legacy runtime dependency"
             exit 1
