@@ -5,6 +5,7 @@ module Agda.Compiler.NatCore
   ) where
 
 import Agda.Syntax.Treeless (TPrim(..))
+import Numeric.Natural (Natural)
 
 data NatOp
   = NatAdd
@@ -13,7 +14,7 @@ data NatOp
   deriving (Eq, Show)
 
 data NatExpr
-  = NatLiteral Integer
+  = NatLiteral Natural
   | NatBinary NatOp NatExpr NatExpr
   deriving (Eq, Show)
 
