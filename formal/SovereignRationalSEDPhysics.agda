@@ -2096,11 +2096,13 @@ module RSEDPhysicalFoundations (Q : RationalRingInterface) where
           (magneticAmplitude (ensemble (zpfVacuum W)) w
             (nextTime (timeAction (zpfVacuum W)) t) m)
       electricHodge : (w : Nat) (t : Nat) →
-        HodgeDecomposition₁ hodgeMaxwell (electricField (sampleState W w t))
+        HodgeDecomposition₁ (hodgeMaxwell W)
+          (electricField (sampleState W w t))
       magneticHodge : (w : Nat) (t : Nat) →
-        HodgeDecomposition₂ hodgeMaxwell (magneticField (sampleState W w t))
+        HodgeDecomposition₂ (hodgeMaxwell W)
+          (magneticField (sampleState W w t))
       vacuumMaxwellStep : (w : Nat) (t : Nat) →
-        MaxwellMidpointStep hodgeMaxwell timeStepSize zeroCochain
+        MaxwellMidpointStep (hodgeMaxwell W) (timeStepSize W) zeroCochain
           (sampleState W w t)
           (sampleState W w (nextTime (timeAction (zpfVacuum W)) t))
       totalMomentumConservation :
