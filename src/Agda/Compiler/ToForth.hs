@@ -57,7 +57,7 @@ decodeNatTerm term = do
   let (headTerm, args) = tAppView term
   case headTerm of
     TLit (LitNat n)
-      | null args && n >= 0 -> pure (NatLiteral n)
+      | null args && n >= 0 -> pure (NatLiteral (fromInteger n))
     TPrim primitive -> do
       operands <- traverse decodeNatTerm args
       either unsupported pure (decodeNatPrimitive primitive operands)
