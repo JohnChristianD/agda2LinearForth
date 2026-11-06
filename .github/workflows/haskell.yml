@@ -92,7 +92,7 @@ jobs:
 
       - name: Test the typed Nat decoder
         run: |
-          cabal exec -- runghc -isrc -package Agda test/NatCore.hs
+          cabal test nat-core --test-show-details=direct
 
       # Save before proof/test gates: their failures must not discard this expensive build.
       - name: Type-check the MALLP specification and rewrite system
