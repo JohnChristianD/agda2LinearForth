@@ -140,6 +140,45 @@ PureCake's call-by-need semantics also should not be transplanted wholesale into
 
 The current Agda theorem covers the closed-Nat expression AST, its code AST, indexed stack execution and preservation of the residual stack. `ToForth.hs` is still a separate Haskell implementation of the lowering and textual printer. CI compiles examples and executes their generated Gforth files, but there is not yet a kernel proof that the Haskell printer emits exactly `renderForth`, nor a formal refinement theorem for the Gforth interpreter. Therefore this is **not yet an end-to-end verified compiler in the PureCake sense**.
 
+## Exact-number development plan
+
+The signed-integer work starts in the separate `feat/signed-integer-core`
+branch. `IntegerArithmetic` uses Agda's bundled `Agda.Builtin.Int`
+representation and defines signed negation, addition, subtraction,
+multiplication, equality, and ordering. It proves negation involutive and
+shows that the embedding of `Nat` preserves addition and multiplication.
+Closed examples cover mixed-sign arithmetic. These definitions are an initial
+kernel-level arithmetic slice, not yet a proved commutative-ring structure:
+integer addition/multiplication laws and compatibility of ordering remain
+proof obligations. They must be proved before constructing a concrete
+`RationalRingInterface` instance.
+
+The remaining layers depend on that foundation:
+
+1. **Concrete rationals:** represent each value by a signed numerator and a
+   strictly positive natural denominator. Define cross-multiplication
+   equivalence, prove its setoid laws, then prove fraction arithmetic
+   respects that equivalence. Add normalization only when it provides a
+   useful canonical representation; quotient correctness matters more than
+   a clever encoding.
+2. **Co-dyadics:** represent an infinite signed-digit stream coinductively.
+   Define finite rational approximants and prove prefix consistency plus an
+   explicit Cauchy modulus. Prove extensional equality and searchable-type
+   properties only under stated hypotheses; do not infer decidable equality
+   for arbitrary exact reals.
+3. **Compiler connection:** give arbitrary-precision integers and rational
+   operations a target representation and operational semantics. The current
+   Gforth runtime has finite signed cells, so direct compilation of unbounded
+   `Int` is unsound. A multi-limb representation needs explicit memory,
+   allocation, and resource semantics, followed by a simulation theorem.
+   Then compose source, intermediate, and target preservation theorems in the
+   style of PureCake.
+
+Do not replace the existing abstract `RationalRingInterface` with the new
+representation until arithmetic and setoid laws are checked. This keeps the
+current physics proofs parametric and prevents a representation sketch from
+being mistaken for exact rational semantics.
+
 ## Development tools and scope
 
 The proof files use only Agda's bundled `Agda.Builtin` modules. The Agda standard library package is omitted entirely; those builtin modules ship with Agda itself and are not the separately maintained standard library. `agdarsec` is also absent. The Haskell backend does depend on `s-cargot` for its S-expression formatting, which is unrelated to Agda's parser. A cold CI run compiles the pinned Agda 2.8.0.2 Haskell package from source because both the CLI and backend link against that release. CI caches both the Cabal store and `dist-newstyle`: Cabal treats the pinned `source-repository-package` as a local project package, so its in-place Agda build artifacts live under `dist-newstyle`, not the global store alone. This lets later runs reuse dependencies, the pinned source checkout, and unchanged local build outputs; actual warm-run timing still needs measurement. Cache misses and toolchain changes still require rebuilding. Schmitty is an optional SMT automation layer, not a replacement for MALLP semantics or Agda kernel checking. The published Schmitty setup example pins Agda 2.6.2.2, standard library 1.7.1, `agdarsec` 0.5.0, and Schmitty 1.0.1; importing that recipe unchanged would violate this repository's stable 2.8.0.2 pin. Emacs helps interactive proof development: `C-c C-l` loads and type-checks a file; `C-c C-n` normalizes a selected expression and is a computation aid, not a proof check. CI remains the reproducible gate.
