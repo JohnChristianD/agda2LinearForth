@@ -32,6 +32,14 @@ Reach a compositional, machine-checkable compiler-correctness result for a clear
 - A runtime overflow exception cannot stand in for Agda Nat semantics: Agda's Nat is unbounded and a source expression that returns a large Nat succeeds. The bounded-runtime theorem therefore needs a compile-time proof that every literal and every intermediate subexpression stays at or below the target maximum, or the runtime must move to arbitrary precision. For the initial closed fragment, recursively compute each Nat node's value and prove the bound for all nodes; overflow tests then verify the runtime's defensive error path, not a source-level result.
 - Treeless TLet evaluates its bound term only when used; sharing is optional. TCase scrutinizes a variable; constructor alternatives are tried before ordered guards, and constructor alternatives bind an explicit arity. Source: https://hackage-content.haskell.org/package/Agda-2.8.0.2/docs/Agda-Syntax-Treeless.html.
 
+## Comparison with larger verified-extraction stacks
+
+This project borrows proof architecture, not the scale or exact trust claims of the LambdaBox/Peregrine/MetaCoq ecosystem. Peregrine puts a verified Rocq middle end around LambdaBox and connects several proof-assistant frontends (Agda, Lean, Rocq) with multiple backends (CakeML, C, Rust, OCaml, WebAssembly, and others). That is a substantially broader, layered extraction system. This repository starts with one pinned Agda Treeless frontend and one explicitly modelled Forth target subset; its upstream Agda frontend and deployed Gforth implementation remain trusted until separately verified. Do not describe this as equivalent to Peregrine or a machine-code end-to-end theorem. Sources: https://peregrine-project.github.io/ and https://github.com/peregrine-project/peregrine-tool.
+
+PureCake is the more useful pass-proof template for this task: relate source and target syntax, prove relation-level semantic preservation, then prove the implemented transformations satisfy those relations. Its lazy-to-strict stages (ThunkLang, EnvLang, StateLang) are introduced to account for delay/force, environments, and sharing. This project excludes PureCake's IO/FFI path and should add only the stages required by its chosen source fragment. Sources: https://cakeml.org/pldi23-purecake.pdf and https://github.com/CakeML/pure.
+
+Hamano–Scott interpretation belongs beside the operational proof, not in place of it: it interprets the MALLP derivation/resource discipline categorically. A separate adequacy theorem must connect that interpretation to typed source usage and the Forth stack machine.
+
 ## Not yet specified
 
 - Explicit per-constructor inventory manifest and version-drift test.
