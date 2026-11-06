@@ -19,7 +19,8 @@ Reach a compositional, machine-checkable compiler-correctness result for a clear
 
 ## Decisions so far
 
-- Current executable backend coverage is only closed Nat literals, addition, monus, and multiplication. Haskell emits text directly; the Agda Forth syntax is disconnected from the Haskell output.
+- Current executable backend coverage is only closed Nat literals, addition, builtin Nat monus, and multiplication. A small Haskell `NatExpr` core now separates Treeless decoding from Forth rendering. `TPrim PSub` is rejected: the pinned Treeless primitive is signed subtraction, while Nat monus is lowered only from the builtin Nat-minus definition. The Agda Forth syntax is still disconnected from Haskell output.
+- Focused decoder checks assert Nat `PAdd`/`PMul` lowering, reject `PSub`, and reject invalid primitive arity. The existing Agda/Gforth fixture continues to exercise builtin Nat monus. The new decoder is not yet connected to a type/provenance proof or a boundedness certificate; current PAdd/PMul acceptance is an implementation subset, not a semantic-preservation theorem.
 - Current formal MALLP calculus is proof-tree syntax. There is no computational proof-term bridge to Treeless or emitted Forth.
 - RSED signed integer functions and sample equations are separate from the compiler proof; they do not establish general integer correctness or Forth lowering.
 - Pinned inventory baseline: Agda v2.8.0.2 has 203 BuiltinId and 111 PrimitiveId constructors. Treeless has 14 TTerm, 23 TPrim, 3 TAlt, 7 CaseType, and 2 TError constructors. CaseInfo has caseLazy, caseErased, caseType; ArgUsage is ArgUsed/ArgUnused; EvaluationStrategy is LazyEvaluation/EagerEvaluation. Counts are research observations; per-constructor manifest and drift test remain open.
@@ -64,6 +65,13 @@ This project borrows proof architecture, not the scale or exact trust claims of 
 PureCake is the more useful pass-proof template for this task: relate source and target syntax, prove relation-level semantic preservation, then prove the implemented transformations satisfy those relations. Its lazy-to-strict stages (ThunkLang, EnvLang, StateLang) are introduced to account for delay/force, environments, and sharing. This project excludes PureCake's IO/FFI path and should add only the stages required by its chosen source fragment. Sources: https://cakeml.org/pldi23-purecake.pdf and https://github.com/CakeML/pure.
 
 Hamano–Scott interpretation belongs beside the operational proof, not in place of it: it interprets the MALLP derivation/resource discipline categorically. A separate adequacy theorem must connect that interpretation to typed source usage and the Forth stack machine.
+
+## Current implementation slice
+
+- `NatCore` defines a closed typed Nat expression (`NatLiteral` / `NatBinary`) and a pure Treeless-primitive decoder. The compiler now decodes into this core before rendering Forth.
+- `PSub` is rejected rather than silently reinterpreted as monus. The only monus path remains Agda's builtin Nat-minus definition.
+- `test/NatCore.hs` covers PAdd, PMul, PSub rejection, and arity rejection; CI runs it alongside the Agda proof and Gforth fixture.
+- This is a narrow correctness repair and a useful seam, not yet a verified compiler slice: result-type/provenance checks, Nat intermediate bounds, full constructor manifest, and an Agda relation for the Haskell decoder remain open.
 
 ## Not yet specified
 
