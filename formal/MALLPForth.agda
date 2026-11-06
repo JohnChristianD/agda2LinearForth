@@ -360,22 +360,37 @@ module Foundations where
     boundedSearch-sound :
       (fuel : Nat) (P : Nat → Bool) (n : Nat) →
       boundedSearch fuel P ≡ just n → P n ≡ true
+    maybeNothingNotJust : {A : Set} {x : A} → nothing ≡ just x → ⊥
+    maybeNothingNotJust ()
+
+    just-injective : {A : Set} {x y : A} → just x ≡ just y → x ≡ y
+    just-injective refl = refl
+
+    zeroNotSuc : {n : Nat} → zero ≡ suc n → ⊥
+    zeroNotSuc ()
+
+    sucNotZero : {n : Nat} → suc n ≡ zero → ⊥
+    sucNotZero ()
+
+    suc-injective : {m n : Nat} → suc m ≡ suc n → m ≡ n
+    suc-injective refl = refl
+
+    absurd : {A : Set} → ⊥ → A
+    absurd ()
+
     boundedSearch-sound zero P n ()
     boundedSearch-sound (suc fuel) P zero result with P zero
     ... | true = refl
     ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-    ...   | nothing with result
-    ...     | ()
-    ...   | just k with result
-    ...     | ()
+    ...   | nothing = absurd (maybeNothingNotJust result)
+    ...   | just k = absurd (sucNotZero (just-injective result))
     boundedSearch-sound (suc fuel) P (suc n) result with P zero
-    ... | true with result
-    ...   | ()
+    ... | true = absurd (zeroNotSuc (just-injective result))
     ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-    ...   | nothing with result
-    ...     | ()
-    ...   | just k with result
-    ...     | refl = boundedSearch-sound fuel (λ i → P (suc i)) n smaller
+    ...   | nothing = absurd (maybeNothingNotJust result)
+    ...   | just k =
+      boundedSearch-sound fuel (λ i → P (suc i)) n
+        (trans smaller (cong just (suc-injective (just-injective result))))
 
     MarkovPrinciple : Set₁
     MarkovPrinciple =
