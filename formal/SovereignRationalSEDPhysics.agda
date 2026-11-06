@@ -57,6 +57,133 @@ record Iso (A B : Set) : Set where
     to-from  : (y : B) → to (from y) ≡ y
 open Iso public
 
+infixr 5 _∷ᵥ_
+
+data Vec (A : Set) : Nat → Set where
+  []ᵥ : Vec A zero
+  _∷ᵥ_ : {n : Nat} → A → Vec A n → Vec A (suc n)
+
+replicateVec : {A : Set} → (n : Nat) → A → Vec A n
+replicateVec zero x = []ᵥ
+replicateVec (suc n) x = x ∷ᵥ replicateVec n x
+
+tabulateVec : {A : Set} → (n : Nat) → (Nat → A) → Vec A n
+tabulateVec zero f = []ᵥ
+tabulateVec (suc n) f = f zero ∷ᵥ tabulateVec n (λ i → f (suc i))
+
+lookupVecOr : {A : Set} {n : Nat} → A → Nat → Vec A n → A
+lookupVecOr fallback zero []ᵥ = fallback
+lookupVecOr fallback zero (x ∷ᵥ xs) = x
+lookupVecOr fallback (suc i) []ᵥ = fallback
+lookupVecOr fallback (suc i) (x ∷ᵥ xs) = lookupVecOr fallback i xs
+
+------------------------------------------------------------------------
+-- SIGNED INTEGER CORE
+--
+-- Agda.Builtin.Int supplies the canonical signed representation:
+--   pos n    represents n
+--   negsuc n represents -(n + 1)
+--
+-- Arithmetic below stays in mathematical Nat/Int.  No machine-cell
+-- bound or floating-point conversion enters this layer.
+------------------------------------------------------------------------
+
+module IntegerArithmetic where
+
+  open import Agda.Builtin.Int using (Int; pos; negsuc)
+
+  intFromNat : Nat → Int
+  intFromNat = pos
+
+  intNegate : Int → Int
+  intNegate (pos zero) = pos zero
+  intNegate (pos (suc n)) = negsuc n
+  intNegate (negsuc n) = pos (suc n)
+
+  intAdd : Int → Int → Int
+  intAdd (pos m) (pos n) =
+    pos (Agda.Builtin.Nat._+_ m n)
+  intAdd (pos m) (negsuc n) with Agda.Builtin.Nat._<_ m (suc n)
+  ... | true = negsuc (Agda.Builtin.Nat._-_ n m)
+  ... | false = pos (Agda.Builtin.Nat._-_ m (suc n))
+  intAdd (negsuc m) (pos n) with Agda.Builtin.Nat._<_ n (suc m)
+  ... | true = negsuc (Agda.Builtin.Nat._-_ m n)
+  ... | false = pos (Agda.Builtin.Nat._-_ n (suc m))
+  intAdd (negsuc m) (negsuc n) =
+    negsuc (suc (Agda.Builtin.Nat._+_ m n))
+
+  intSubtract : Int → Int → Int
+  intSubtract x y = intAdd x (intNegate y)
+
+  intMultiply : Int → Int → Int
+  intMultiply (pos m) (pos n) =
+    pos (Agda.Builtin.Nat._*_ m n)
+  intMultiply (pos zero) (negsuc n) = pos zero
+  intMultiply (pos (suc m)) (negsuc n) =
+    negsuc
+      (Agda.Builtin.Nat._-_
+        (Agda.Builtin.Nat._*_ (suc m) (suc n))
+        (suc zero))
+  intMultiply (negsuc m) (pos zero) = pos zero
+  intMultiply (negsuc m) (pos (suc n)) =
+    negsuc
+      (Agda.Builtin.Nat._-_
+        (Agda.Builtin.Nat._*_ (suc m) (suc n))
+        (suc zero))
+  intMultiply (negsuc m) (negsuc n) =
+    pos (Agda.Builtin.Nat._*_ (suc m) (suc n))
+
+  intEqual : Int → Int → Bool
+  intEqual (pos m) (pos n) = Agda.Builtin.Nat._==_ m n
+  intEqual (negsuc m) (negsuc n) = Agda.Builtin.Nat._==_ m n
+  intEqual (pos m) (negsuc n) = false
+  intEqual (negsuc m) (pos n) = false
+
+  intLessThan : Int → Int → Bool
+  intLessThan (pos m) (pos n) = Agda.Builtin.Nat._<_ m n
+  intLessThan (pos m) (negsuc n) = false
+  intLessThan (negsuc m) (pos n) = true
+  intLessThan (negsuc m) (negsuc n) = Agda.Builtin.Nat._<_ n m
+
+  intNegate-involutive : (x : Int) → intNegate (intNegate x) ≡ x
+  intNegate-involutive (pos zero) = refl
+  intNegate-involutive (pos (suc n)) = refl
+  intNegate-involutive (negsuc n) = refl
+
+  intNegate-fromNat-suc :
+    (n : Nat) → intNegate (intFromNat (suc n)) ≡ negsuc n
+  intNegate-fromNat-suc n = refl
+
+  intFromNat-add :
+    (m n : Nat) →
+    intFromNat (Agda.Builtin.Nat._+_ m n) ≡
+    intAdd (intFromNat m) (intFromNat n)
+  intFromNat-add m n = refl
+
+  intFromNat-multiply :
+    (m n : Nat) →
+    intFromNat (Agda.Builtin.Nat._*_ m n) ≡
+    intMultiply (intFromNat m) (intFromNat n)
+  intFromNat-multiply m n = refl
+
+  intAdd-example-positive :
+    intAdd (pos 5) (negsuc 2) ≡ pos 2
+  intAdd-example-positive = refl
+
+  intAdd-example-negative :
+    intAdd (pos 1) (negsuc 2) ≡ negsuc 1
+  intAdd-example-negative = refl
+
+  intMultiply-example-negative :
+    intMultiply (pos 2) (negsuc 2) ≡ negsuc 5
+  intMultiply-example-negative = refl
+
+  intMultiply-example-positive :
+    intMultiply (negsuc 1) (negsuc 2) ≡ pos 6
+  intMultiply-example-positive = refl
+
+open IntegerArithmetic public
+
 ------------------------------------------------------------------------
 -- FINITE LIST COMPUTATION
 --
@@ -607,14 +734,13 @@ module SovereignRSEDMotive where
     ------------------------------------------------------------------------
 
 
-    -- A cochain is a plain finite coefficient list. Its Nat parameter names
-    -- the ambient cell count; this low-level interface leaves list length
-    -- unrestricted and does not introduce a bounded-index datatype.
+    -- A cochain is a length-indexed coefficient vector, so its ambient
+    -- cell count is enforced by the type rather than kept as a phantom index.
     Cochain : Nat → Set
-    Cochain n = List Rational
+    Cochain n = Vec Rational n
 
     zeroCochain : {n : Nat} → Cochain n
-    zeroCochain {n} = replicateList n 0ℚ
+    zeroCochain {n} = replicateVec n 0ℚ
 
     ------------------------------------------------------------------------
     -- A finite oriented cochain complex C⁰ → C¹ → C² → C³.
@@ -1035,30 +1161,29 @@ module RSEDPhysicalFoundations (Q : RationalRingInterface) where
   ----------------------------------------------------------------------
 
 
-  -- Cochains use ordinary finite lists. The Nat
-  -- parameter names the ambient cell count; operators below return lists
-  -- with exactly that many entries, while lookup zero-extends short inputs.
+  -- Cochains are length-indexed vectors. Incidence maps preserve the
+  -- cell count in their types; lookup still supplies a default for sparse tails.
   Cochain : Nat → Set
-  Cochain n = List Rational
+  Cochain n = Vec Rational n
 
   zeroCochain : {n : Nat} → Cochain n
-  zeroCochain {n} = replicateList n 0ℚ
+  zeroCochain {n} = replicateVec n 0ℚ
 
   addCochain : {n : Nat} → Cochain n → Cochain n → Cochain n
   addCochain {n} xs ys =
-    tabulateList n (λ i →
-      lookupListOr 0ℚ i xs +ℚ lookupListOr 0ℚ i ys)
+    tabulateVec n (λ i →
+      lookupVecOr 0ℚ i xs +ℚ lookupVecOr 0ℚ i ys)
 
   negCochain : {n : Nat} → Cochain n → Cochain n
   negCochain {n} xs =
-    tabulateList n (λ i → 0ℚ -ℚ lookupListOr 0ℚ i xs)
+    tabulateVec n (λ i → 0ℚ -ℚ lookupVecOr 0ℚ i xs)
 
   subCochain : {n : Nat} → Cochain n → Cochain n → Cochain n
   subCochain f g = addCochain f (negCochain g)
 
   scaleCochain : {n : Nat} → Rational → Cochain n → Cochain n
   scaleCochain {n} r xs =
-    tabulateList n (λ i → r *ℚ lookupListOr 0ℚ i xs)
+    tabulateVec n (λ i → r *ℚ lookupVecOr 0ℚ i xs)
 
   sumFinite : (n : Nat) → (Nat → Rational) → Rational
   sumFinite zero f = 0ℚ
@@ -1120,27 +1245,27 @@ module RSEDPhysicalFoundations (Q : RationalRingInterface) where
     (M : FiniteRationalMesh3D) →
     Cochain (vertexCount M) → Cochain (edgeCount M)
   meshGradient M potential =
-    tabulateList (edgeCount M) (λ e →
-      lookupListOr 0ℚ (edgeTarget (orientedEdgeAt M e)) potential -ℚ
-      lookupListOr 0ℚ (edgeSource (orientedEdgeAt M e)) potential)
+    tabulateVec (edgeCount M) (λ e →
+      lookupVecOr 0ℚ (edgeTarget (orientedEdgeAt M e)) potential -ℚ
+      lookupVecOr 0ℚ (edgeSource (orientedEdgeAt M e)) potential)
 
   meshCurl :
     (M : FiniteRationalMesh3D) →
     Cochain (edgeCount M) → Cochain (faceCount M)
   meshCurl M edgeField =
-    tabulateList (faceCount M) (λ f →
+    tabulateVec (faceCount M) (λ f →
       sumFinite (edgeCount M)
         (λ e → incidenceValue (faceBoundary M f e) *ℚ
-          lookupListOr 0ℚ e edgeField))
+          lookupVecOr 0ℚ e edgeField))
 
   meshDivergence :
     (M : FiniteRationalMesh3D) →
     Cochain (faceCount M) → Cochain (cellCount M)
   meshDivergence M faceField =
-    tabulateList (cellCount M) (λ c →
+    tabulateVec (cellCount M) (λ c →
       sumFinite (faceCount M)
         (λ f → incidenceValue (cellBoundary M c f) *ℚ
-          lookupListOr 0ℚ f faceField))
+          lookupVecOr 0ℚ f faceField))
 
   record MeshBoundaryProof (M : FiniteRationalMesh3D) : Set₁ where
     field
@@ -1952,8 +2077,8 @@ module RSEDPhysicalFoundations (Q : RationalRingInterface) where
     (B : MaxwellModeBasis H modes frequency) →
     (N : FiniteSEDEnsemble P samples times modes) →
     Nat → Nat → Cochain (n₁ (complex H))
-  sampleElectricField H B N w t =
-    sumCochain _ (λ m →
+  sampleElectricField {modes = modes} H B N w t =
+    sumCochain modes (λ m →
       scaleCochain (electricAmplitude N w t m) (electricMode B m))
 
   sampleMagneticField :
@@ -1963,8 +2088,8 @@ module RSEDPhysicalFoundations (Q : RationalRingInterface) where
     (B : MaxwellModeBasis H modes frequency) →
     (N : FiniteSEDEnsemble P samples times modes) →
     Nat → Nat → Cochain (n₂ (complex H))
-  sampleMagneticField H B N w t =
-    sumCochain _ (λ m →
+  sampleMagneticField {modes = modes} H B N w t =
+    sumCochain modes (λ m →
       scaleCochain (magneticAmplitude N w t m) (magneticMode B m))
 
   ----------------------------------------------------------------------
@@ -2106,7 +2231,10 @@ module RSEDPhysicalFoundations (Q : RationalRingInterface) where
           (sampleState W w t)
           (sampleState W w (nextTime (timeAction (zpfVacuum W)) t))
       totalMomentumConservation :
-        Exchange.runExchanges-conserves (momentumExchanges W) (initialMomentum W)
+        Exchange.totalClosedMomentum
+          (Exchange.runExchanges (momentumExchanges W) (initialMomentum W))
+          ≡
+        Exchange.totalClosedMomentum (initialMomentum W)
   open FiniteSEDVacuumMotive public
 
   assembleFiniteSEDVacuumMotive :

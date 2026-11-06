@@ -360,16 +360,39 @@ module Foundations where
     boundedSearch-sound :
       (fuel : Nat) (P : Nat → Bool) (n : Nat) →
       boundedSearch fuel P ≡ just n → P n ≡ true
-    boundedSearch-sound zero P n ()
-    boundedSearch-sound (suc fuel) P n result with P zero | result
-    ... | true | refl = refl
-    ... | false | failed with boundedSearch fuel (λ i → P (suc i)) in smaller
-    ...   | nothing with failed
-    ...     | ()
-    ...   | just k with failed
-    ...     | refl = boundedSearch-sound fuel (λ i → P (suc i)) k smaller
+    maybeNothingNotJust : {A : Set} {x : A} → nothing ≡ just x → ⊥
+    maybeNothingNotJust ()
 
-    MarkovPrinciple : Set₁
+    just-injective : {A : Set} {x y : A} → just x ≡ just y → x ≡ y
+    just-injective refl = refl
+
+    zeroNotSuc : {n : Nat} → zero ≡ suc n → ⊥
+    zeroNotSuc ()
+
+    sucNotZero : {n : Nat} → suc n ≡ zero → ⊥
+    sucNotZero ()
+
+    suc-injective : {m n : Nat} → suc m ≡ suc n → m ≡ n
+    suc-injective refl = refl
+
+    absurd : {A : Set} → ⊥ → A
+    absurd ()
+
+    boundedSearch-sound zero P n ()
+    boundedSearch-sound (suc fuel) P zero result with P zero
+    ... | true = refl
+    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
+    ...   | nothing = absurd (maybeNothingNotJust result)
+    ...   | just k = absurd (sucNotZero (just-injective result))
+    boundedSearch-sound (suc fuel) P (suc n) result with P zero
+    ... | true = absurd (zeroNotSuc (just-injective result))
+    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
+    ...   | nothing = absurd (maybeNothingNotJust result)
+    ...   | just k =
+      boundedSearch-sound fuel (λ i → P (suc i)) n
+        (trans smaller (cong just (suc-injective (just-injective result))))
+
+    MarkovPrinciple : Set
     MarkovPrinciple =
       (P : Nat → Bool) →
       ¬ (¬ BooleanWitness P) →
@@ -520,11 +543,11 @@ module Foundations where
                  ((x : A) → R x x) →
                  ({x y : A} → R x y → R y x) →
                  ({x y z : A} → R x y → R y z → R x z) → Set
-      [_] : {A : Set} {R : A → A → Set}
-            {rflR : (x : A) → R x x}
-            {symR : {x y : A} → R x y → R y x}
-            {transR : {x y z : A} → R x y → R y z → R x z} →
-            A → Quotient A R rflR symR transR
+      quotientClass : {A : Set} {R : A → A → Set}
+                      {rflR : (x : A) → R x x}
+                      {symR : {x y : A} → R x y → R y x}
+                      {transR : {x y z : A} → R x y → R y z → R x z} →
+                      A → Quotient A R rflR symR transR
       canonize : {A : Set} {R : A → A → Set}
                  {rflR : (x : A) → R x x}
                  {symR : {x y : A} → R x y → R y x}
@@ -535,8 +558,10 @@ module Foundations where
         {rflR : (x : A) → R x x}
         {symR : {x y : A} → R x y → R y x}
         {transR : {x y z : A} → R x y → R y z → R x z} →
-        (x : A) → [ canonize {A} {R} {rflR} {symR} {transR} x ] ≡
-                   [ x ]
+        (x : A) →
+        quotientClass {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR}
+          (canonize {A} {R} {rflR} {symR} {transR} x) ≡
+        quotientClass {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} x
       canonical-idempotent :
         {A : Set} {R : A → A → Set}
         {rflR : (x : A) → R x x}
@@ -566,8 +591,11 @@ module Foundations where
       {symR : {x y : A} → R x y → R y x}
       {transR : {x y z : A} → R x y → R y z → R x z} →
       QuotientExpr A → Quotient A R rflR symR transR
-    denoteQuotient (rawₑ x) = [ x ]
-    denoteQuotient (canonicalizedₑ x) = [ canonize x ]
+    denoteQuotient {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} (rawₑ x) =
+      quotientClass {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} x
+    denoteQuotient {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} (canonicalizedₑ x) =
+      quotientClass {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR}
+        (canonize {A} {R} {rflR} {symR} {transR} x)
     denoteQuotient (classₑ expression) = denoteQuotient expression
 
     normalizeQuotient : {A : Set} → QuotientExpr A → QuotientExpr A
@@ -594,7 +622,8 @@ module Foundations where
       {transR : {x y z : A} → R x y → R y z → R x z} →
       (x : A) →
       denoteQuotient (rawₑ x) ≡ denoteQuotient (canonicalizedₑ x)
-    quotient-raw-sound x = sym (quotient-canon x)
+    quotient-raw-sound {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} x =
+      sym (quotient-canon {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} x)
 
     quotient-class-canon-sound :
       {A : Set} {R : A → A → Set}
@@ -604,7 +633,8 @@ module Foundations where
       (x : A) →
       denoteQuotient (classₑ (canonicalizedₑ x)) ≡
       denoteQuotient (classₑ (rawₑ x))
-    quotient-class-canon-sound x = quotient-canon x
+    quotient-class-canon-sound {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} x =
+      quotient-canon {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} x
 
   ----------------------------------------------------------------------
   -- 6. Spector-style symmetric bar recursion over finite partial maps.
@@ -686,9 +716,10 @@ module Foundations where
       (entries : PartialMap X) →
       (key : Nat) →
       DomainDecision entries key
-    decideDomain entries key with memberKey key (mapEntries entries)
-    ... | true = inDomain refl
-    ... | false = outDomain refl
+    decideDomain entries key
+      with memberKey key (mapEntries entries) in membership
+    ... | true = inDomain membership
+    ... | false = outDomain membership
 
     omegaThread :
       {X : Set} →
@@ -702,12 +733,12 @@ module Foundations where
       omegaThread omega default alpha initial n
     ... | entries with memberKey
       (omega (streamOf (mapEntries entries) default))
-      (mapEntries entries)
+      (mapEntries entries) in membership
     ...   | true = entries
     ...   | false =
       extendFresh entries
         (omega (streamOf (mapEntries entries) default))
-        refl
+        membership
         (alpha (omega (streamOf (mapEntries entries) default)))
 
     SymmetricBarCondition :
@@ -1058,7 +1089,6 @@ open Foundations.LaurentPolarizedMALLP public
   μ-step-false
   sBR-stop
   sBR-step
-  lookup-tabulate
 #-}
 
 ------------------------------------------------------------------------
@@ -1153,11 +1183,20 @@ module StrictNatCompiler where
   execForthCode-correct :
     {Γ : List StackType} (e : NatExpr) (stack : Stack Γ) →
     execForthCode (compileNat e) stack ≡ pushCell (evalNatExpr e) stack
+  execForthCode-binary-correct :
+    (op : NatOp) (left right : Nat) {Γ : List StackType} →
+    (stack : Stack Γ) →
+    execForthCode (binaryWord op) (pushCell right (pushCell left stack)) ≡
+    pushCell (applyNatOp op left right) stack
+  execForthCode-binary-correct addOp left right stack = refl
+  execForthCode-binary-correct monusOp left right stack = refl
+  execForthCode-binary-correct multiplyOp left right stack = refl
+
   execForthCode-correct (literal n) stack = refl
   execForthCode-correct (binary op left right) stack
     rewrite execForthCode-correct left stack
           | execForthCode-correct right (pushCell (evalNatExpr left) stack) =
-      refl
+      execForthCode-binary-correct op (evalNatExpr left) (evalNatExpr right) stack
 
   data ForthToken : Set where
     pushLiteral : Nat → ForthToken
