@@ -543,11 +543,11 @@ module Foundations where
                  ((x : A) → R x x) →
                  ({x y : A} → R x y → R y x) →
                  ({x y z : A} → R x y → R y z → R x z) → Set
-      [_] : {A : Set} {R : A → A → Set}
-            {rflR : (x : A) → R x x}
-            {symR : {x y : A} → R x y → R y x}
-            {transR : {x y z : A} → R x y → R y z → R x z} →
-            A → Quotient A R rflR symR transR
+      quotientClass : {A : Set} {R : A → A → Set}
+                      {rflR : (x : A) → R x x}
+                      {symR : {x y : A} → R x y → R y x}
+                      {transR : {x y z : A} → R x y → R y z → R x z} →
+                      A → Quotient A R rflR symR transR
       canonize : {A : Set} {R : A → A → Set}
                  {rflR : (x : A) → R x x}
                  {symR : {x y : A} → R x y → R y x}
@@ -558,8 +558,10 @@ module Foundations where
         {rflR : (x : A) → R x x}
         {symR : {x y : A} → R x y → R y x}
         {transR : {x y z : A} → R x y → R y z → R x z} →
-        (x : A) → [ canonize {A} {R} {rflR} {symR} {transR} x ] ≡
-                   [ x ]
+        (x : A) →
+        quotientClass {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR}
+          (canonize {A} {R} {rflR} {symR} {transR} x) ≡
+        quotientClass {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} x
       canonical-idempotent :
         {A : Set} {R : A → A → Set}
         {rflR : (x : A) → R x x}
@@ -589,8 +591,11 @@ module Foundations where
       {symR : {x y : A} → R x y → R y x}
       {transR : {x y z : A} → R x y → R y z → R x z} →
       QuotientExpr A → Quotient A R rflR symR transR
-    denoteQuotient (rawₑ x) = [ x ]
-    denoteQuotient (canonicalizedₑ x) = [ canonize x ]
+    denoteQuotient {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} (rawₑ x) =
+      quotientClass {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} x
+    denoteQuotient {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} (canonicalizedₑ x) =
+      quotientClass {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR}
+        (canonize {A} {R} {rflR} {symR} {transR} x)
     denoteQuotient (classₑ expression) = denoteQuotient expression
 
     normalizeQuotient : {A : Set} → QuotientExpr A → QuotientExpr A
@@ -617,7 +622,8 @@ module Foundations where
       {transR : {x y z : A} → R x y → R y z → R x z} →
       (x : A) →
       denoteQuotient (rawₑ x) ≡ denoteQuotient (canonicalizedₑ x)
-    quotient-raw-sound x = sym (quotient-canon x)
+    quotient-raw-sound {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} x =
+      sym (quotient-canon {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} x)
 
     quotient-class-canon-sound :
       {A : Set} {R : A → A → Set}
@@ -627,7 +633,8 @@ module Foundations where
       (x : A) →
       denoteQuotient (classₑ (canonicalizedₑ x)) ≡
       denoteQuotient (classₑ (rawₑ x))
-    quotient-class-canon-sound x = quotient-canon x
+    quotient-class-canon-sound {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} x =
+      quotient-canon {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} x
 
   ----------------------------------------------------------------------
   -- 6. Spector-style symmetric bar recursion over finite partial maps.
