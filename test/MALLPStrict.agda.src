@@ -10,3 +10,8 @@ answerMonus = 2 - 5
 
 answerMultiply : Nat
 answerMultiply = (2 + 3) * 4
+
+open import Agda.Builtin.Int using (Int; pos)
+
+answerInt : Int
+answerInt = pos 2
