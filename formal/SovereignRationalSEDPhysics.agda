@@ -2213,8 +2213,10 @@ module RSEDPhysicalFoundations (Q : RationalRingInterface) where
           (sampleState W w t)
           (sampleState W w (nextTime (timeAction (zpfVacuum W)) t))
       totalMomentumConservation :
-        Exchange.totalClosedMomentum (worldMomentum W)
-          ≡ Exchange.totalClosedMomentum (initialMomentum W)
+        Exchange.totalClosedMomentum
+          (Exchange.runExchanges (momentumExchanges W) (initialMomentum W))
+          ≡
+        Exchange.totalClosedMomentum (initialMomentum W)
   open FiniteSEDVacuumMotive public
 
   assembleFiniteSEDVacuumMotive :
