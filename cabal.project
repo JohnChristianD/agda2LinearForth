@@ -3,4 +3,4 @@ packages: .
 source-repository-package
   type: git
   location: https://github.com/agda/agda.git
-  tag: v2.9.0-rc3
+  tag: v2.8.0.2

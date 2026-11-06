@@ -10,10 +10,9 @@ s" MALLP: negative natural" exception constant MALLP-ERR-NEGATIVE
 s" MALLP: natural overflow" exception constant MALLP-ERR-OVERFLOW
 s" MALLP: invalid natural literal" exception constant MALLP-ERR-LITERAL
 
-: MALLP-CHECK-NAT { value -- value }
+: MALLP-CHECK-NAT { value -- }
     value 0< IF MALLP-ERR-NEGATIVE THROW THEN
     value MALLP-MAX-NAT > IF MALLP-ERR-OVERFLOW THROW THEN
-    value
 ;
 
 : MALLP-PARSE-NAT { addr len -- value }
@@ -34,23 +33,23 @@ s" MALLP: invalid natural literal" exception constant MALLP-ERR-LITERAL
 
 : MALLP-NAT-ADD ( left right -- result )
     { left right }
-    left MALLP-CHECK-NAT DROP
-    right MALLP-CHECK-NAT DROP
+    left MALLP-CHECK-NAT
+    right MALLP-CHECK-NAT
     left MALLP-MAX-NAT right - > IF MALLP-ERR-OVERFLOW THROW THEN
     left right +
 ;
 
 : MALLP-NAT-MONUS ( left right -- result )
     { left right }
-    left MALLP-CHECK-NAT DROP
-    right MALLP-CHECK-NAT DROP
+    left MALLP-CHECK-NAT
+    right MALLP-CHECK-NAT
     left right < IF 0 ELSE left right - THEN
 ;
 
 : MALLP-NAT-MUL ( left right -- result )
     { left right }
-    left MALLP-CHECK-NAT DROP
-    right MALLP-CHECK-NAT DROP
+    left MALLP-CHECK-NAT
+    right MALLP-CHECK-NAT
     right 0<> IF
         left MALLP-MAX-NAT right / > IF MALLP-ERR-OVERFLOW THROW THEN
     THEN

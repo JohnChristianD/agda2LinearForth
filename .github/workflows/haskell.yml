@@ -20,7 +20,7 @@ jobs:
         env:
           SCHEME_UPSTREAM_SHA: 24e02d9669f17d98ec67b8ad961cf9c3e602bf10
           FORTH_UPSTREAM_SHA: e83f8cc735bf220f80b3655ce2158a23818910fe
-          FLIB_EXPECTED_BLOB: de46e5614f6de224458b3b96e18e81ad42502987
+          FLIB_UPSTREAM_BLOB: e27c965767845678ac1b157b5fcffebe910fbfe4
         run: |
           git fetch --no-tags --depth=1 https://github.com/jespercockx/agda2scheme.git "$SCHEME_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$SCHEME_UPSTREAM_SHA"
@@ -34,10 +34,19 @@ jobs:
           test "$(git ls-files '*.md')" = "README.md"
           test -z "$(git ls-files '*.sh' '*.bash' '*.ps1')"
           test -f cabal.project
-          grep -Fq 'tag: v2.9.0-rc3' cabal.project
+          grep -Fq 'tag: v2.8.0.2' cabal.project
           git fetch --no-tags --depth=1 https://github.com/LMMilliken/agda2Forth.git "$FORTH_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$FORTH_UPSTREAM_SHA"
-          test "$(git hash-object data/FLib.fth)" = "$FLIB_EXPECTED_BLOB"
+          test "$(git rev-parse "$FORTH_UPSTREAM_SHA:data/FLib.fth")" = "$FLIB_UPSTREAM_BLOB"
+          grep -Fq 'MALLP-CHECK-NAT { value -- }' data/FLib.fth
+
+      - name: Install native linker and Gforth
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binutils binutils-gold gforth
+          command -v ld
+          ld --version
+          printf 'int main(void) { return 0; }\n' | gcc -fuse-ld=gold -x c -o "$RUNNER_TEMP/gold-linker-smoke" -
 
       - name: Set up GHC
         uses: haskell-actions/setup@v2
@@ -45,36 +54,60 @@ jobs:
         with:
           ghc-version: '9.2.8'
           cabal-version: '3.10.3.0'
-          cabal-update: true
+          cabal-update: false
 
-      - name: Install the single pinned Agda version
-        run: |
-          mkdir -p "$HOME/.local/bin" "$RUNNER_TEMP/agda"
-          curl --fail --location --retry 3 https://github.com/agda/agda/releases/download/v2.9.0-rc3/Agda-v2.9.0-rc3-linux.tar.xz --output "$RUNNER_TEMP/Agda-v2.9.0-rc3-linux.tar.xz"
-          echo "bde55ce6855fec13404e6837655b7a98d5174ae82e31525e17fc641dac742cc2  $RUNNER_TEMP/Agda-v2.9.0-rc3-linux.tar.xz" | sha256sum --check
-          tar -xJf "$RUNNER_TEMP/Agda-v2.9.0-rc3-linux.tar.xz" -C "$RUNNER_TEMP/agda"
-          agda_binary="$(find "$RUNNER_TEMP/agda" -type f -name agda -perm -u+x -print -quit)"
-          test -n "$agda_binary"
-          install "$agda_binary" "$HOME/.local/bin/agda"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          agda --version
+      - name: Restore Cabal and local build caches
+        id: build_cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ steps.setup.outputs.cabal-store }}
+            dist-newstyle
+          key: ${{ runner.os }}-ghc-${{ steps.setup.outputs.ghc-version }}-cabal-${{ steps.setup.outputs.cabal-version }}-${{ hashFiles('cabal.project', 'agda2forth.cabal') }}-local-build-v2
+          restore-keys: |
+            ${{ runner.os }}-ghc-${{ steps.setup.outputs.ghc-version }}-cabal-${{ steps.setup.outputs.cabal-version }}-
 
-      - name: Build Haskell backend
+      - name: Build the stable Agda CLI
+        id: agda_cli
         run: |
-          cabal configure --disable-documentation
-          cabal build all
+          cabal update
+          cabal build Agda:exe:agda
+          agda_bin="$(cabal list-bin Agda:exe:agda)"
+          test -x "$agda_bin"
+          test "$("$agda_bin" --numeric-version)" = "2.8.0.2"
+          echo "AGDA_BIN=$agda_bin" >> "$GITHUB_ENV"
 
-      - name: Install GNU Gforth
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gforth
+      # Save before proof/test gates: their failures must not discard this expensive build.
+      - name: Save Cabal and local build caches
+        if: always() && steps.agda_cli.outcome == 'success' && steps.build_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ steps.setup.outputs.cabal-store }}
+            dist-newstyle
+          key: ${{ runner.os }}-ghc-${{ steps.setup.outputs.ghc-version }}-cabal-${{ steps.setup.outputs.cabal-version }}-${{ hashFiles('cabal.project', 'agda2forth.cabal') }}-local-build-v2
 
-      - name: Type-check both safe Agda specifications with the same compiler
+      - name: Type-check the MALLP specification and rewrite system
+        id: mallp_proof
+        continue-on-error: true
         run: |
-          agda -i formal formal/LinearModalSafety.agda
-          agda -i formal formal/SovereignRationalSEDPhysics.agda
+          "$AGDA_BIN" -i formal formal/MALLPForth.agda
+
+      - name: Type-check the separate RSED physics specification
+        id: physics_proof
+        continue-on-error: true
+        run: |
+          "$AGDA_BIN" -i formal formal/SovereignRationalSEDPhysics.agda
+
+      - name: Build the Haskell Forth backend
+        id: forth_backend
+        continue-on-error: true
+        run: |
+          cabal build agda2forth
 
       - name: Compile and execute the strict MALLP fixture
+        id: strict_fixture
+        if: steps.forth_backend.outcome == 'success'
         run: |
           cp test/MALLPStrict.agda.src test/MALLPStrict.agda
           trap 'rm -f test/MALLPStrict.agda' EXIT
@@ -85,5 +118,23 @@ jobs:
             echo "generated strict MALLP code contains a legacy runtime dependency"
             exit 1
           fi
+          if grep -Eiq '(^|[[:space:]])(DUP|[?]DUP|2DUP|3DUP|OVER|2OVER|PICK|DROP|2DROP|3DROP|NIP|2NIP|TUCK)([[:space:]]|$)' data/FLib.fth MALLPStrict.fth test/gforth/mallp-strict.fs; then
+            echo "strict MALLP runtime/output contains a structural duplicate or discard word"
+            exit 1
+          fi
           gforth MALLPStrict.fth test/gforth/mallp-strict.fs > mallp-strict.log
           grep -Fq 'mallp-strict-tests-passed' mallp-strict.log
+
+      - name: Require every proof, backend, and execution gate
+        if: always()
+        env:
+          MALLP_CHECK: ${{ steps.mallp_proof.outcome }}
+          PHYSICS_CHECK: ${{ steps.physics_proof.outcome }}
+          BACKEND_CHECK: ${{ steps.forth_backend.outcome }}
+          FIXTURE_CHECK: ${{ steps.strict_fixture.outcome }}
+        run: |
+          printf 'MALLP proof: %s\nPhysics proof: %s\nBackend build: %s\nGforth fixture: %s\n' "$MALLP_CHECK" "$PHYSICS_CHECK" "$BACKEND_CHECK" "$FIXTURE_CHECK"
+          test "$MALLP_CHECK" = success
+          test "$PHYSICS_CHECK" = success
+          test "$BACKEND_CHECK" = success
+          test "$FIXTURE_CHECK" = success
