@@ -1,5 +1,6 @@
 module Agda.Compiler.ToForth where
 
+import Agda.Compiler.NatCore
 import Agda.Compiler.Backend
 import Agda.Compiler.Common
 import Agda.Compiler.ToTreeless
@@ -51,35 +52,38 @@ strictWord name body =
 unsupported :: String -> TCM a
 unsupported message = fail ("agda2MALLPForth: " ++ message)
 
-compileNatTerm :: TTerm -> TCM FthForm
-compileNatTerm term = do
+decodeNatTerm :: TTerm -> TCM NatExpr
+decodeNatTerm term = do
   let (headTerm, args) = tAppView term
   case headTerm of
     TLit (LitNat n)
-      | null args && n >= 0 ->
-          pure $ RSAtom $ T.concat ["s\" ", T.pack (show n), "\" MALLP-PARSE-NAT"]
+      | null args && n >= 0 -> pure (NatLiteral n)
     TPrim primitive -> do
-      operands <- traverse compileNatTerm args
-      case (primitive, operands) of
-        (PAdd, [left, right]) -> binary "MALLP-NAT-ADD" left right
-        (PSub, [left, right]) -> binary "MALLP-NAT-MONUS" left right
-        (PMul, [left, right]) -> binary "MALLP-NAT-MUL" left right
-        _ -> unsupported ("unsupported Nat primitive or arity: " ++ show primitive)
+      operands <- traverse decodeNatTerm args
+      either unsupported pure (decodeNatPrimitive primitive operands)
     TDef name -> do
       plusName <- getBuiltinName builtinNatPlus
       minusName <- getBuiltinName builtinNatMinus
-      operands <- traverse compileNatTerm args
+      operands <- traverse decodeNatTerm args
       case operands of
         [left, right] | Just name == plusName ->
-          binary "MALLP-NAT-ADD" left right
+          pure (NatBinary NatAdd left right)
         [left, right] | Just name == minusName ->
-          binary "MALLP-NAT-MONUS" left right
+          pure (NatBinary NatMonus left right)
         _ -> unsupported "user functions and non-binary definitions are outside the closed Nat fragment"
     TCoerce inner
-      | null args -> compileNatTerm inner
+      | null args -> decodeNatTerm inner
     _ -> unsupported ("Treeless term is outside the closed Nat fragment: " ++ show headTerm)
-  where
-    binary word left right = pure $ RSList [left, right, RSAtom word]
+
+renderNatExpr :: NatExpr -> FthForm
+renderNatExpr (NatLiteral n) =
+  RSAtom $ T.concat ["s\" ", T.pack (show n), "\" MALLP-PARSE-NAT"]
+renderNatExpr (NatBinary operation left right) =
+  let word = case operation of
+        NatAdd -> "MALLP-NAT-ADD"
+        NatMonus -> "MALLP-NAT-MONUS"
+        NatMultiply -> "MALLP-NAT-MUL"
+  in RSList [renderNatExpr left, renderNatExpr right, RSAtom word]
 
 compileDefinition :: Definition -> TCM (Maybe FthForm)
 compileDefinition definition
@@ -90,7 +94,9 @@ compileDefinition definition
         body <- toTreeless EagerEvaluation (defName definition)
         case body of
           Nothing -> pure Nothing
-          Just term -> Just . strictWord (defName definition) <$> compileNatTerm term
+          Just term -> do
+            expression <- decodeNatTerm term
+            pure (Just (strictWord (defName definition) (renderNatExpr expression)))
       _ -> pure Nothing
 
 readStrictRuntime :: IO String
