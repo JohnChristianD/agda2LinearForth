@@ -1082,7 +1082,6 @@ open Foundations.LaurentPolarizedMALLP public
   μ-step-false
   sBR-stop
   sBR-step
-  lookup-tabulate
 #-}
 
 ------------------------------------------------------------------------
@@ -1177,11 +1176,20 @@ module StrictNatCompiler where
   execForthCode-correct :
     {Γ : List StackType} (e : NatExpr) (stack : Stack Γ) →
     execForthCode (compileNat e) stack ≡ pushCell (evalNatExpr e) stack
+  execForthCode-binary-correct :
+    (op : NatOp) (left right : Nat) {Γ : List StackType} →
+    (stack : Stack Γ) →
+    execForthCode (binaryWord op) (pushCell right (pushCell left stack)) ≡
+    pushCell (applyNatOp op left right) stack
+  execForthCode-binary-correct addOp left right stack = refl
+  execForthCode-binary-correct monusOp left right stack = refl
+  execForthCode-binary-correct multiplyOp left right stack = refl
+
   execForthCode-correct (literal n) stack = refl
   execForthCode-correct (binary op left right) stack
     rewrite execForthCode-correct left stack
           | execForthCode-correct right (pushCell (evalNatExpr left) stack) =
-      refl
+      execForthCode-binary-correct op (evalNatExpr left) (evalNatExpr right) stack
 
   data ForthToken : Set where
     pushLiteral : Nat → ForthToken
