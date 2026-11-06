@@ -363,8 +363,11 @@ module Foundations where
     boundedSearch-sound zero P n ()
     boundedSearch-sound (suc fuel) P zero result with P zero
     ... | true = refl
-    ... | false with result
-    ...   | ()
+    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
+    ...   | nothing with result
+    ...     | ()
+    ...   | just k with result
+    ...     | ()
     boundedSearch-sound (suc fuel) P (suc n) result with P zero
     ... | true with result
     ...   | ()
