@@ -2077,7 +2077,7 @@ module RSEDPhysicalFoundations (Q : RationalRingInterface) where
     (B : MaxwellModeBasis H modes frequency) →
     (N : FiniteSEDEnsemble P samples times modes) →
     Nat → Nat → Cochain (n₁ (complex H))
-  sampleElectricField H B N w t =
+  sampleElectricField {modes = modes} H B N w t =
     sumCochain modes (λ m →
       scaleCochain (electricAmplitude N w t m) (electricMode B m))
 
@@ -2088,7 +2088,7 @@ module RSEDPhysicalFoundations (Q : RationalRingInterface) where
     (B : MaxwellModeBasis H modes frequency) →
     (N : FiniteSEDEnsemble P samples times modes) →
     Nat → Nat → Cochain (n₂ (complex H))
-  sampleMagneticField H B N w t =
+  sampleMagneticField {modes = modes} H B N w t =
     sumCochain modes (λ m →
       scaleCochain (magneticAmplitude N w t m) (magneticMode B m))
 
