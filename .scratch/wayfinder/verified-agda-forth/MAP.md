@@ -32,6 +32,31 @@ Reach a compositional, machine-checkable compiler-correctness result for a clear
 - A runtime overflow exception cannot stand in for Agda Nat semantics: Agda's Nat is unbounded and a source expression that returns a large Nat succeeds. The bounded-runtime theorem therefore needs a compile-time proof that every literal and every intermediate subexpression stays at or below the target maximum, or the runtime must move to arbitrary precision. For the initial closed fragment, recursively compute each Nat node's value and prove the bound for all nodes; overflow tests then verify the runtime's defensive error path, not a source-level result.
 - Treeless TLet evaluates its bound term only when used; sharing is optional. TCase scrutinizes a variable; constructor alternatives are tried before ordered guards, and constructor alternatives bind an explicit arity. Source: https://hackage-content.haskell.org/package/Agda-2.8.0.2/docs/Agda-Syntax-Treeless.html.
 
+## Recommended proof architecture
+
+Use **both Nat and Int**, in one compiler-specific, type-indexed source semantics, with distinct constructors and proofs:
+
+- Nat semantics: literals, addition, multiplication, and truncated subtraction/monus. The first executable milestone remains closed Nat expressions. Because Agda Nat is unbounded while the current Gforth cell is bounded, carry a proof that every intermediate result fits MALLP-MAX-NAT; otherwise reject statically or use arbitrary precision.
+- Int semantics: canonical Agda Int values, with pos n interpreted as n and negsuc n as -(n+1). Prove general addition, subtraction, multiplication, equality, ordering, normalization, and embedding laws against an integer model. Do not reuse Nat monus for signed subtraction. The current RSED arithmetic definitions and examples are not these general correctness proofs and are not connected to the compiler theorem.
+- Make operation types explicit in the core: NatAdd/NatMonus/NatMul versus IntAdd/IntSub/IntMul. A flattened Treeless PSub/PAdd/PMul tag alone is insufficient to recover source meaning after builtin translation. Preserve source-type/provenance evidence before that information is erased, and reject unknown or ambiguous cases.
+- The Agda mirror should define typed source expressions, source evaluation, typed Forth stack code, and a simulation theorem. Then prove the actual Haskell decoder and renderer satisfy the formal relations. A parallel Agda model with no relation to the Haskell output remains a shadow specification, not implementation verification.
+
+### Lists, coinduction, and strictness
+
+- **List:** introduce lists as a generic inductive data type with constructor and consuming case semantics, rather than hard-coding ad hoc list primitives. Prove constructor layout, match/branch joins, structural recursion, and stack/resource use. Agda's ordinary List is unrestricted; the MALLP source fragment must enforce a usage judgment or explicitly restrict list programs to linear use. Sharing or discarding list values cannot be implicit.
+- **Coinduction:** classify ∞, ♯, ♭, primForce, and primForceLemma together. Model observation of a productive stream, guarded construction, and force as a demand boundary. Start with finite-prefix observation; a reusable memoized stream needs a separate duplicability policy.
+- **Strictness:** do not equate EagerEvaluation with a proof of strictness preservation. Treeless TLet is demand-sensitive, caseLazy/caseErased affect matching, and primForce is translated through PSeq and a let. The closed, total Nat fragment can be shown strict/eager and avoid thunks. Coinductive and genuinely lazy cases need explicit delay/force semantics and a proof that evaluation order, sharing, and observable divergence/errors are preserved.
+
+### PureCake comparison and pass selection
+
+Use PureCake's relation-first proof pattern, not a one-to-one copy of every intermediate language:
+1. Closed total Nat: typed Nat core → bounded indexed stack code → formal Forth interpreter. No heap, closure, EnvLang, or StateLang needed.
+2. Finite List and recursion: add generic data/case and recursive-call semantics, with a linear usage proof.
+3. Coinduction/strictness: add a minimal delay/force stage and observation semantics. Introduce explicit environments only when closures require them; introduce mutable thunk state only if the chosen semantics genuinely shares/memoizes evaluation.
+4. Compose each implemented pass relation into one theorem, then connect Haskell output tokens to the Agda renderer/interpreter. PureCake's IO/FFI path is excluded by the no-IO policy.
+
+Hamano–Scott interpretation is an independent adequacy layer for the MALLP derivation and its resource discipline. It must connect to typed source usage and target stack transitions; categorical soundness alone does not prove the compiler's operational behavior.
+
 ## Comparison with larger verified-extraction stacks
 
 This project borrows proof architecture, not the scale or exact trust claims of the LambdaBox/Peregrine/MetaCoq ecosystem. Peregrine puts a verified Rocq middle end around LambdaBox and connects several proof-assistant frontends (Agda, Lean, Rocq) with multiple backends (CakeML, C, Rust, OCaml, WebAssembly, and others). That is a substantially broader, layered extraction system. This repository starts with one pinned Agda Treeless frontend and one explicitly modelled Forth target subset; its upstream Agda frontend and deployed Gforth implementation remain trusted until separately verified. Do not describe this as equivalent to Peregrine or a machine-code end-to-end theorem. Sources: https://peregrine-project.github.io/ and https://github.com/peregrine-project/peregrine-tool.
@@ -56,15 +81,15 @@ Hamano–Scott interpretation belongs beside the operational proof, not in place
 - Proving Agda's type checker, kernel, or Treeless generator correct in the first backend-verification milestone. Initial backend theorem starts at pinned accepted Treeless; upstream frontend remains in TCB unless a later milestone proves source-to-Treeless.
 - Claiming a verified Gforth machine-code backend. Initial target theorem is for a formal model of emitted Forth subset; real Gforth is integration-tested unless a verified Gforth implementation/compiler is separately connected.
 
-## Open frontier
+## Remaining milestones
 
-- [Agda 2.8.0.2 inventory](tickets/agda-2-8-0-2-inventory.md) — research; in progress.
-- [Gforth runtime semantics](tickets/gforth-runtime-semantics.md) — research; in progress.
-- [Source fragment and coverage contract](tickets/source-fragment-contract.md) — grilling; in progress.
-- [Agda frontend trust boundary](tickets/frontend-trust-boundary.md) — grilling; depends on inventory.
-- [Hamano–Scott bridge](tickets/hamano-scott-bridge.md) — research/design; depends on source contract.
-- [Pass relations and compiler composition](tickets/pass-relations.md) — task; blocked by inventory, runtime model, source contract, frontend boundary, and categorical bridge.
-- [Renderer and Gforth simulation](tickets/renderer-runtime-simulation.md) — task; blocked by pass relations and runtime semantics.
+1. Generate a version-locked manifest covering every BuiltinId, PrimitiveId, TTerm, TPrim, TAlt, CaseType, CaseInfo, TError, ArgUsage, and EvaluationStrategy constructor. Each receives exactly one disposition: lower, erase with Agda evidence, compile-time only, or reject. CI must regenerate and compare the manifest.
+2. Settle the typed source fragment and preserve type/provenance before Treeless builtin lowering.
+3. Define formal Gforth cell, stack, locals, parser, and exception semantics; pin or assert the real Gforth cell width/version in CI.
+4. Prove the Nat slice with a boundedness certificate; prove Int separately against integer semantics before adding Int lowering.
+5. Add List/case/recursion and coinduction/demand semantics only after their ownership and strictness rules are formalized.
+6. Connect Haskell decoding, target AST construction, rendering, and generated output to Agda's proof relations.
+7. Compose frontend-boundary, pass-simulation, renderer, and target-interpreter theorems. Keep Agda's upstream typechecker/Treeless conversion and real Gforth compiler explicit in the trusted boundary until they are separately related or verified.
 
 ## Stopping condition
 
