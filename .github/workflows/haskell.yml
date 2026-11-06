@@ -81,6 +81,10 @@ jobs:
           test "$("$agda_bin" --numeric-version)" = "2.8.0.2"
           echo "AGDA_BIN=$agda_bin" >> "$GITHUB_ENV"
 
+      - name: Test the typed Nat decoder
+        run: |
+          cabal exec -- runghc -isrc -package Agda test/NatCore.hs
+
       # Save before proof/test gates: their failures must not discard this expensive build.
       - name: Save Cabal and local build caches
         if: always() && steps.agda_cli.outcome == 'success' && steps.build_cache.outputs.cache-hit != 'true'
