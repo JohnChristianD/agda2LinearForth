@@ -210,7 +210,7 @@ replicateList (suc n) x = x ∷ replicateList n x
 
 tabulateList : {A : Set} → (n : Nat) → (Nat → A) → List A
 tabulateList zero f = []
-tabulateList (suc n) f = f zero ∷ tabulateVec n (λ i → f (suc i))
+tabulateList (suc n) f = f zero ∷ tabulateList n (λ i → f (suc i))
 
 lookupPrefix : {A : Set} → (n : Nat) → List A →
                (i : Nat) → i < n → Maybe A
