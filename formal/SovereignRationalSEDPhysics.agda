@@ -96,9 +96,9 @@ module IntegerArithmetic where
   intSubtract x y = intAdd x (intNegate y)
 
   intMultiply : Int → Int → Int
-  intMultiply (pos zero) y = pos zero
-  intMultiply (pos (suc m)) (pos n) =
-    pos (Agda.Builtin.Nat._*_ (suc m) n)
+  intMultiply (pos m) (pos n) =
+    pos (Agda.Builtin.Nat._*_ m n)
+  intMultiply (pos zero) (negsuc n) = pos zero
   intMultiply (pos (suc m)) (negsuc n) =
     negsuc
       (Agda.Builtin.Nat._-_
