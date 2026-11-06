@@ -24,6 +24,6 @@ answerMultiply 20 strict-assert-natural
 : assert-empty-stack ( -- )
   depth 0<> IF -4203 THROW THEN
 ;
-assert-empty-stack"
+assert-empty-stack
 cr ." mallp-strict-tests-passed" cr
 BYE
