@@ -58,6 +58,113 @@ record Iso (A B : Set) : Set where
 open Iso public
 
 ------------------------------------------------------------------------
+-- SIGNED INTEGER CORE
+--
+-- Agda.Builtin.Int supplies the canonical signed representation:
+--   pos n    represents n
+--   negsuc n represents -(n + 1)
+--
+-- Arithmetic below stays in mathematical Nat/Int.  No machine-cell
+-- bound or floating-point conversion enters this layer.
+------------------------------------------------------------------------
+
+module IntegerArithmetic where
+
+  open import Agda.Builtin.Int using (Int; pos; negsuc)
+
+  intFromNat : Nat → Int
+  intFromNat = pos
+
+  intNegate : Int → Int
+  intNegate (pos zero) = pos zero
+  intNegate (pos (suc n)) = negsuc n
+  intNegate (negsuc n) = pos (suc n)
+
+  intAdd : Int → Int → Int
+  intAdd (pos m) (pos n) =
+    pos (Agda.Builtin.Nat._+_ m n)
+  intAdd (pos m) (negsuc n) with Agda.Builtin.Nat._<_ m (suc n)
+  ... | true = negsuc (Agda.Builtin.Nat._-_ n m)
+  ... | false = pos (Agda.Builtin.Nat._-_ m (suc n))
+  intAdd (negsuc m) (pos n) with Agda.Builtin.Nat._<_ n (suc m)
+  ... | true = negsuc (Agda.Builtin.Nat._-_ m n)
+  ... | false = pos (Agda.Builtin.Nat._-_ n (suc m))
+  intAdd (negsuc m) (negsuc n) =
+    negsuc (suc (Agda.Builtin.Nat._+_ m n))
+
+  intSubtract : Int → Int → Int
+  intSubtract x y = intAdd x (intNegate y)
+
+  intMultiply : Int → Int → Int
+  intMultiply (pos zero) y = pos zero
+  intMultiply (pos (suc m)) (pos n) =
+    pos (Agda.Builtin.Nat._*_ (suc m) n)
+  intMultiply (pos (suc m)) (negsuc n) =
+    negsuc
+      (Agda.Builtin.Nat._-_
+        (Agda.Builtin.Nat._*_ (suc m) (suc n))
+        (suc zero))
+  intMultiply (negsuc m) (pos zero) = pos zero
+  intMultiply (negsuc m) (pos (suc n)) =
+    negsuc
+      (Agda.Builtin.Nat._-_
+        (Agda.Builtin.Nat._*_ (suc m) (suc n))
+        (suc zero))
+  intMultiply (negsuc m) (negsuc n) =
+    pos (Agda.Builtin.Nat._*_ (suc m) (suc n))
+
+  intEqual : Int → Int → Bool
+  intEqual (pos m) (pos n) = Agda.Builtin.Nat._==_ m n
+  intEqual (negsuc m) (negsuc n) = Agda.Builtin.Nat._==_ m n
+  intEqual (pos m) (negsuc n) = false
+  intEqual (negsuc m) (pos n) = false
+
+  intLessThan : Int → Int → Bool
+  intLessThan (pos m) (pos n) = Agda.Builtin.Nat._<_ m n
+  intLessThan (pos m) (negsuc n) = false
+  intLessThan (negsuc m) (pos n) = true
+  intLessThan (negsuc m) (negsuc n) = Agda.Builtin.Nat._<_ n m
+
+  intNegate-involutive : (x : Int) → intNegate (intNegate x) ≡ x
+  intNegate-involutive (pos zero) = refl
+  intNegate-involutive (pos (suc n)) = refl
+  intNegate-involutive (negsuc n) = refl
+
+  intNegate-fromNat-suc :
+    (n : Nat) → intNegate (intFromNat (suc n)) ≡ negsuc n
+  intNegate-fromNat-suc n = refl
+
+  intFromNat-add :
+    (m n : Nat) →
+    intFromNat (Agda.Builtin.Nat._+_ m n) ≡
+    intAdd (intFromNat m) (intFromNat n)
+  intFromNat-add m n = refl
+
+  intFromNat-multiply :
+    (m n : Nat) →
+    intFromNat (Agda.Builtin.Nat._*_ m n) ≡
+    intMultiply (intFromNat m) (intFromNat n)
+  intFromNat-multiply m n = refl
+
+  intAdd-example-positive :
+    intAdd (pos 5) (negsuc 2) ≡ pos 2
+  intAdd-example-positive = refl
+
+  intAdd-example-negative :
+    intAdd (pos 1) (negsuc 2) ≡ negsuc 1
+  intAdd-example-negative = refl
+
+  intMultiply-example-negative :
+    intMultiply (pos 2) (negsuc 2) ≡ negsuc 5
+  intMultiply-example-negative = refl
+
+  intMultiply-example-positive :
+    intMultiply (negsuc 1) (negsuc 2) ≡ pos 6
+  intMultiply-example-positive = refl
+
+open IntegerArithmetic public
+
+------------------------------------------------------------------------
 -- FINITE LIST COMPUTATION
 --
 -- Auxiliary constructive witness; separate from the six foundational
