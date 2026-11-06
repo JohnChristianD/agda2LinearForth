@@ -709,9 +709,10 @@ module Foundations where
       (entries : PartialMap X) →
       (key : Nat) →
       DomainDecision entries key
-    decideDomain entries key with memberKey key (mapEntries entries)
-    ... | true = inDomain refl
-    ... | false = outDomain refl
+    decideDomain entries key
+      with memberKey key (mapEntries entries) in membership
+    ... | true = inDomain membership
+    ... | false = outDomain membership
 
     omegaThread :
       {X : Set} →
