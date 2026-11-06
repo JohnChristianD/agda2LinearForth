@@ -57,6 +57,7 @@ jobs:
           cabal-update: false
 
       - name: Restore Cabal and local build caches
+        id: build_cache
         uses: actions/cache@v4
         with:
           path: |
@@ -67,6 +68,7 @@ jobs:
             ${{ runner.os }}-ghc-${{ steps.setup.outputs.ghc-version }}-cabal-${{ steps.setup.outputs.cabal-version }}-
 
       - name: Build the stable Agda CLI
+        id: agda_cli
         run: |
           cabal update
           cabal build Agda:exe:agda
@@ -74,6 +76,16 @@ jobs:
           test -x "$agda_bin"
           test "$("$agda_bin" --numeric-version)" = "2.8.0.2"
           echo "AGDA_BIN=$agda_bin" >> "$GITHUB_ENV"
+
+      # Save before proof/test gates: their failures must not discard this expensive build.
+      - name: Save Cabal and local build caches
+        if: always() && steps.agda_cli.outcome == 'success' && steps.build_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ steps.setup.outputs.cabal-store }}
+            dist-newstyle
+          key: ${{ runner.os }}-ghc-${{ steps.setup.outputs.ghc-version }}-cabal-${{ steps.setup.outputs.cabal-version }}-${{ hashFiles('cabal.project', 'agda2forth.cabal') }}-local-build-v2
 
       - name: Type-check the MALLP specification and rewrite system
         id: mallp_proof
