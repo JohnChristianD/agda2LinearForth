@@ -361,12 +361,13 @@ module Foundations where
       (fuel : Nat) (P : Nat → Bool) (n : Nat) →
       boundedSearch fuel P ≡ just n → P n ≡ true
     boundedSearch-sound zero P n ()
-    boundedSearch-sound (suc fuel) P n result with P zero | result
-    ... | true | refl = refl
-    ... | false | failed with boundedSearch fuel (λ i → P (suc i)) in smaller
-    ...   | nothing with failed
+    boundedSearch-sound (suc fuel) P n result with P zero
+    ... | true with result
+    ...   | refl = refl
+    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
+    ...   | nothing with result
     ...     | ()
-    ...   | just k with failed
+    ...   | just k with result
     ...     | refl = boundedSearch-sound fuel (λ i → P (suc i)) k smaller
 
     MarkovPrinciple : Set₁
