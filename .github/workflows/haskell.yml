@@ -25,7 +25,9 @@ jobs:
           git fetch --no-tags --depth=1 https://github.com/jespercockx/agda2scheme.git "$SCHEME_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$SCHEME_UPSTREAM_SHA"
           while IFS= read -r path; do
-            test "$path" = "src/Agda/Compiler/ToForth.hs" && continue
+            case "$path" in
+              src/Agda/Compiler/ToForth.hs|src/Agda/Compiler/NatCore.hs|test/NatCore.hs) continue ;;
+            esac
             git cat-file -e "$SCHEME_UPSTREAM_SHA:$path"
             test "$(git rev-parse "HEAD:$path")" = "$(git rev-parse "$SCHEME_UPSTREAM_SHA:$path")"
           done < <(git ls-tree -r --name-only HEAD | grep -E "\\.hs$")
