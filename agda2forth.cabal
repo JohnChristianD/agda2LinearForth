@@ -62,3 +62,12 @@ executable agda2forth
                        , StandaloneDeriving
                        , TupleSections
                        , TypeSynonymInstances
+
+test-suite nat-core
+    type:                exitcode-stdio-1.0
+    main-is:             NatCore.hs
+    hs-source-dirs:      test, src
+    other-modules:       Agda.Compiler.NatCore
+    build-depends:       base >=4.15.0.0
+                       , Agda >=2.8.0.2 && <2.9
+    default-language:   Haskell2010
