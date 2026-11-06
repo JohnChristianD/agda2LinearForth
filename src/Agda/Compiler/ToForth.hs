@@ -14,7 +14,8 @@ import Agda.Syntax.TopLevelModuleName
 import Agda.TypeChecking.Monad
 import Agda.TypeChecking.Primitive.Base
 import Agda.TypeChecking.Reduce (reduce)
-import Agda.TypeChecking.Telescope (TelView(..), telView)
+import Agda.TypeChecking.Substitute (TelV(..))
+import Agda.TypeChecking.Telescope (telView)
 import Data.Char (isAlphaNum, isDigit)
 import qualified Data.List.NonEmpty as NE
 import Data.SCargot
