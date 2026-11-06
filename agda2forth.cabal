@@ -22,6 +22,7 @@ extra-source-files:
 executable agda2forth
     main-is:          Agda/Compiler/ToForth.hs
     other-modules:    Agda.Compiler.Erase
+                      Agda.Compiler.NatCore
                       Paths_agda2forth
     autogen-modules:  Paths_agda2forth
     build-depends:    base >=4.15.0.0
