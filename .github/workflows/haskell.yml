@@ -46,7 +46,7 @@ jobs:
           sudo apt-get install -y binutils binutils-gold gforth
           command -v ld
           ld --version
-          printf 'int main(void) { return 0; }\\n' | gcc -fuse-ld=gold -x c -o "$RUNNER_TEMP/gold-linker-smoke" -
+          printf 'int main(void) { return 0; }\n' | gcc -fuse-ld=gold -x c -o "$RUNNER_TEMP/gold-linker-smoke" -
 
       - name: Set up GHC
         uses: haskell-actions/setup@v2
@@ -111,7 +111,7 @@ jobs:
           BACKEND_CHECK: ${{ steps.forth_backend.outcome }}
           FIXTURE_CHECK: ${{ steps.strict_fixture.outcome }}
         run: |
-          printf 'MALLP proof: %s\\nPhysics proof: %s\\nBackend build: %s\\nGforth fixture: %s\\n' "$MALLP_CHECK" "$PHYSICS_CHECK" "$BACKEND_CHECK" "$FIXTURE_CHECK"
+          printf 'MALLP proof: %s\nPhysics proof: %s\nBackend build: %s\nGforth fixture: %s\n' "$MALLP_CHECK" "$PHYSICS_CHECK" "$BACKEND_CHECK" "$FIXTURE_CHECK"
           test "$MALLP_CHECK" = success
           test "$PHYSICS_CHECK" = success
           test "$BACKEND_CHECK" = success
