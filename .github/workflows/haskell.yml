@@ -31,7 +31,18 @@ jobs:
           done < <(git ls-tree -r --name-only HEAD | grep -E "\\.hs$")
           test "$(git ls-files '*.hs' | grep -v '^src/Agda/Compiler/ToForth.hs$' | wc -l | tr -d ' ')" -ge 1
           test "$(git ls-files '*.agda' | paste -sd ' ')" = "formal/MALLPForth.agda formal/SovereignRationalSEDPhysics.agda"
-          test "$(git ls-files '*.md')" = "README.md"
+          expected_markdown_files="$(printf '%s\\n' \\
+            '.scratch/wayfinder/verified-agda-forth/MAP.md' \\
+            '.scratch/wayfinder/verified-agda-forth/tickets/agda-2-8-0-2-inventory.md' \\
+            '.scratch/wayfinder/verified-agda-forth/tickets/gforth-runtime-semantics.md' \\
+            '.scratch/wayfinder/verified-agda-forth/tickets/source-fragment-contract.md' \\
+            '.scratch/wayfinder/verified-agda-forth/tickets/frontend-trust-boundary.md' \\
+            '.scratch/wayfinder/verified-agda-forth/tickets/hamano-scott-bridge.md' \\
+            '.scratch/wayfinder/verified-agda-forth/tickets/pass-relations.md' \\
+            '.scratch/wayfinder/verified-agda-forth/tickets/renderer-runtime-simulation.md' \\
+            'README.md' | LC_ALL=C sort)"
+          actual_markdown_files="$(git ls-files '*.md' | LC_ALL=C sort)"
+          test "$actual_markdown_files" = "$expected_markdown_files"
           test -z "$(git ls-files '*.sh' '*.bash' '*.ps1')"
           test -f cabal.project
           grep -Fq 'tag: v2.8.0.2' cabal.project
