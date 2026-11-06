@@ -381,7 +381,7 @@ module Foundations where
       leastSearch P ,
       witness-holds
         (leastWitnessChoice-correct
-          (λ i n → P n) (λ i → double-negated) zero)
+          (λ i → P) (λ i → double-negated) zero)
 
   ----------------------------------------------------------------------
   -- 3. Mac Lane monoidal coherence as canonical object normalization.
