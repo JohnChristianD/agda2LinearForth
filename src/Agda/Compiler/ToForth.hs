@@ -115,8 +115,8 @@ renderForm = encodeOne printer . fromRich
     printer :: SExprPrinter Text (SExpr Text)
     printer = basicPrint id
 
-postModule :: () -> () -> IsMain -> TopLevelModuleName -> [Maybe FthForm] -> TCM ()
-postModule _ _ _ moduleName definitions = do
+emitForthModule :: () -> () -> IsMain -> TopLevelModuleName -> [Maybe FthForm] -> TCM ()
+emitForthModule _ _ _ moduleName definitions = do
   runtime <- IO.liftIO readStrictRuntime
   let body = T.intercalate "\n\n" (map renderForm (catMaybes definitions))
       output = T.pack runtime <> "\n" <> body <> "\n"
@@ -136,7 +136,7 @@ backend' = Backend'
   , postCompile = \_ _ _ -> pure ()
   , preModule = \_ _ _ _ -> pure (Recompile ())
   , compileDef = \_ _ _ definition -> compileDefinition definition
-  , postModule = postModule
+  , postModule = emitForthModule
   , backendVersion = Nothing
   , scopeCheckingSuffices = False
   , backendInteractTop = Nothing

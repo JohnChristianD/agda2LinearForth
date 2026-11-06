@@ -56,21 +56,31 @@ jobs:
           cabal-version: '3.10.3.0'
           cabal-update: true
 
-      - name: Build the stable Agda CLI and Forth backend from one source
+      - name: Build the stable Agda CLI
         run: |
           cabal update
-          cabal build Agda:exe:agda agda2forth
+          cabal build Agda:exe:agda
           agda_bin="$(cabal list-bin Agda:exe:agda)"
           test -x "$agda_bin"
           test "$("$agda_bin" --numeric-version)" = "2.8.0.2"
           echo "AGDA_BIN=$agda_bin" >> "$GITHUB_ENV"
 
       - name: Type-check with-K rewrite-enabled MALLP and physics with the same stable compiler
+        id: agda_typecheck
+        continue-on-error: true
         run: |
           "$AGDA_BIN" -i formal formal/MALLPForth.agda
           "$AGDA_BIN" -i formal formal/SovereignRationalSEDPhysics.agda
 
+      - name: Build the Haskell Forth backend
+        id: forth_backend
+        continue-on-error: true
+        run: |
+          cabal build agda2forth
+
       - name: Compile and execute the strict MALLP fixture
+        id: strict_fixture
+        if: steps.forth_backend.outcome == 'success'
         run: |
           cp test/MALLPStrict.agda.src test/MALLPStrict.agda
           trap 'rm -f test/MALLPStrict.agda' EXIT
@@ -87,3 +97,15 @@ jobs:
           fi
           gforth MALLPStrict.fth test/gforth/mallp-strict.fs > mallp-strict.log
           grep -Fq 'mallp-strict-tests-passed' mallp-strict.log
+
+      - name: Require all proof, backend, and Gforth gates
+        if: always()
+        env:
+          AGDA_CHECK: ${{ steps.agda_typecheck.outcome }}
+          BACKEND_CHECK: ${{ steps.forth_backend.outcome }}
+          FIXTURE_CHECK: ${{ steps.strict_fixture.outcome }}
+        run: |
+          printf 'Agda checks: %s\\nBackend build: %s\\nGforth fixture: %s\\n' "$AGDA_CHECK" "$BACKEND_CHECK" "$FIXTURE_CHECK"
+          test "$AGDA_CHECK" = success
+          test "$BACKEND_CHECK" = success
+          test "$FIXTURE_CHECK" = success
