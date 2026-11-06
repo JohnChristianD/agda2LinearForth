@@ -20,8 +20,8 @@ data NatExpr
 decodeNatPrimitive :: TPrim -> [NatExpr] -> Either String NatExpr
 decodeNatPrimitive PAdd [left, right] =
   Right (NatBinary NatAdd left right)
-decodeNatPrimitive PSub [left, right] =
-  Right (NatBinary NatMonus left right)
+decodeNatPrimitive PSub [_, _] =
+  Left "PSub is signed integer subtraction; Nat monus is lowered only from builtin NatMinus"
 decodeNatPrimitive PMul [left, right] =
   Right (NatBinary NatMultiply left right)
 decodeNatPrimitive primitive _ =
