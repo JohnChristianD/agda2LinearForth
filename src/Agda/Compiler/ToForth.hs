@@ -1,6 +1,5 @@
 module Agda.Compiler.ToForth where
 
-import Agda.Compiler.NatCore
 import Agda.Compiler.Backend
 import Agda.Compiler.Common
 import Agda.Compiler.ToTreeless
@@ -14,6 +13,8 @@ import Agda.Syntax.Treeless
 import Agda.Syntax.TopLevelModuleName
 import Agda.TypeChecking.Monad
 import Agda.TypeChecking.Primitive.Base
+import Agda.TypeChecking.Reduce (reduce)
+import Agda.TypeChecking.Telescope (TelView(..), telView)
 import Data.Char (isAlphaNum, isDigit)
 import qualified Data.List.NonEmpty as NE
 import Data.SCargot
@@ -23,9 +24,31 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Control.Monad.IO.Class as IO
 import Data.Maybe (catMaybes)
+import Numeric.Natural (Natural)
 import Paths_agda2forth (getDataFileName)
 
 type FthForm = RichSExpr Text
+
+data NatOp
+  = NatAdd
+  | NatMonus
+  | NatMultiply
+  deriving (Eq, Show)
+
+data NatExpr
+  = NatLiteral Natural
+  | NatBinary NatOp NatExpr NatExpr
+  deriving (Eq, Show)
+
+decodeNatPrimitive :: TPrim -> [NatExpr] -> Either String NatExpr
+decodeNatPrimitive PAdd [left, right] =
+  Right (NatBinary NatAdd left right)
+decodeNatPrimitive PSub [_, _] =
+  Left "PSub is signed integer subtraction; Nat monus is lowered from builtin NatMinus"
+decodeNatPrimitive PMul [left, right] =
+  Right (NatBinary NatMultiply left right)
+decodeNatPrimitive primitive _ =
+  Left ("unsupported Nat primitive or arity: " ++ show primitive)
 
 formToText :: FthForm -> Text
 formToText (RSAtom atom) = atom <> " "
@@ -88,8 +111,9 @@ renderNatExpr (NatBinary operation left right) =
 hasNatResult :: Definition -> TCM Bool
 hasNatResult definition = do
   natName <- getBuiltinName builtinNat
-  resultType <- reduce (defType definition)
-  pure $ case (natName, I.unEl resultType) of
+  TelV _ resultType <- telView (defType definition)
+  reducedResultType <- reduce resultType
+  pure $ case (natName, I.unEl reducedResultType) of
     (Just expected, I.Def actual []) -> expected == actual
     _ -> False
 
