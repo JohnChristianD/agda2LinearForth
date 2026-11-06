@@ -85,18 +85,30 @@ renderNatExpr (NatBinary operation left right) =
         NatMultiply -> "MALLP-NAT-MUL"
   in RSList [renderNatExpr left, renderNatExpr right, RSAtom word]
 
+hasNatResult :: Definition -> TCM Bool
+hasNatResult definition = do
+  natName <- getBuiltinName builtinNat
+  resultType <- reduce (defType definition)
+  pure $ case (natName, I.unEl resultType) of
+    (Just expected, I.Def actual []) -> expected == actual
+    _ -> False
+
 compileDefinition :: Definition -> TCM (Maybe FthForm)
 compileDefinition definition
   | defNoCompilation definition || not (usableModality (getModality definition)) =
       pure Nothing
   | otherwise = case theDef definition of
       Function{} -> do
-        body <- toTreeless EagerEvaluation (defName definition)
-        case body of
-          Nothing -> pure Nothing
-          Just term -> do
-            expression <- decodeNatTerm term
-            pure (Just (strictWord (defName definition) (renderNatExpr expression)))
+        isNat <- hasNatResult definition
+        if not isNat
+          then pure Nothing
+          else do
+            body <- toTreeless EagerEvaluation (defName definition)
+            case body of
+              Nothing -> pure Nothing
+              Just term -> do
+                expression <- decodeNatTerm term
+                pure (Just (strictWord (defName definition) (renderNatExpr expression)))
       _ -> pure Nothing
 
 readStrictRuntime :: IO String
