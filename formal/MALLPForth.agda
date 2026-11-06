@@ -392,7 +392,7 @@ module Foundations where
       boundedSearch-sound fuel (λ i → P (suc i)) n
         (trans smaller (cong just (suc-injective (just-injective result))))
 
-    MarkovPrinciple : Set₁
+    MarkovPrinciple : Set
     MarkovPrinciple =
       (P : Nat → Bool) →
       ¬ (¬ BooleanWitness P) →
