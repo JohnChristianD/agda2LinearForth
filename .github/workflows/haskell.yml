@@ -81,11 +81,6 @@ jobs:
           test "$("$agda_bin" --numeric-version)" = "2.8.0.2"
           echo "AGDA_BIN=$agda_bin" >> "$GITHUB_ENV"
 
-      - name: Test the typed Nat decoder
-        run: |
-          cabal exec -- runghc -isrc -package Agda test/NatCore.hs
-
-      # Save before proof/test gates: their failures must not discard this expensive build.
       - name: Save Cabal and local build caches
         if: always() && steps.agda_cli.outcome == 'success' && steps.build_cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -95,6 +90,11 @@ jobs:
             dist-newstyle
           key: ${{ runner.os }}-ghc-${{ steps.setup.outputs.ghc-version }}-cabal-${{ steps.setup.outputs.cabal-version }}-${{ hashFiles('cabal.project', 'agda2forth.cabal') }}-local-build-v2
 
+      - name: Test the typed Nat decoder
+        run: |
+          cabal exec -- runghc -isrc -package Agda test/NatCore.hs
+
+      # Save before proof/test gates: their failures must not discard this expensive build.
       - name: Type-check the MALLP specification and rewrite system
         id: mallp_proof
         continue-on-error: true
