@@ -11,7 +11,7 @@ Both Agda files and the Haskell backend use one pinned stable Agda source versio
 
 The compiler specification retains the original computational rewrite system from `SovereignRationalSED-MALLP.agda`: `μ-step-true`, `μ-step-false`, `sBR-stop`, `sBR-step`, and `lookup-tabulate`. The first four are postulated computation equations; `lookup-tabulate` is proved constructively. Two closed least-search witnesses check that the μ-rules reduce as intended.
 
-Keep the counts distinct: the module contains seven formal components (six foundational packages plus Laurent polarized MALLP), but the global `REWRITE` block registers five rules, not seven. Four registrations (`μ-step-true`, `μ-step-false`, `sBR-stop`, `sBR-step`) are postulated computation equations; `lookup-tabulate` is a constructive theorem. Separately, five postulate blocks declare 20 assumptions, grouped conceptually into least-witness search/choice, cohesive retractions, quotient reflection, and symmetric bar recursion. They are retained as axioms by design. They are not derivable from MALLP, and the MALLP soundness boundary must state which results depend on them. They are not silently presented as an axiom-free or `--safe` proof.
+Keep the counts distinct: the module contains seven formal components (six foundational packages plus Laurent polarized MALLP). The global `REWRITE` block registers four postulated computation equations: `μ-step-true`, `μ-step-false`, `sBR-stop`, and `sBR-step`. `lookup-tabulate` remains a constructive theorem, but is deliberately not registered as a global rewrite rule: its left-hand side overlaps the structurally recursive `tabulateList` and `lookupPrefix` equations, so global registration fails Agda's confluence check. Use the theorem explicitly where finite-list lookup reasoning needs it. Separately, five postulate blocks declare 20 assumptions, grouped conceptually into least-witness search/choice, cohesive retractions, quotient reflection, and symmetric bar recursion. They are retained as axioms by design. They are not derivable from MALLP, and the MALLP soundness boundary must state which results depend on them. They are not silently presented as an axiom-free or `--safe` proof.
 
 ## Execution path
 
@@ -30,6 +30,166 @@ Gforth colon definition, postfix stack code
         v
 FLib.fth: three bounded Nat combinators
 ```
+
+
+## Source language and builtin coverage
+
+The source language is **the Agda 2.8.0.2 Treeless language accepted by this backend**, not all well-typed Agda. A builtin is not automatically executable merely because Agda knows its name. Agda distinguishes builtin bindings (BuiltinId) from compiler primitives (PrimitiveId); the pinned source of truth is [Agda 2.8.0.2, Agda.Syntax.Builtin](https://hackage-content.haskell.org/package/Agda-2.8.0.2/docs/Agda-Syntax-Builtin.html). The backend must classify both enumerations exhaustively for that exact version. A new Agda release changes the compiler contract and requires a fresh inventory and review.
+
+The policy has five outcomes:
+
+| Classification | Backend action | Correctness obligation |
+| --- | --- | --- |
+| Runtime value or operation | Lower into typed core and target instructions | Preserve its source value and evaluation behavior |
+| Constructor or eliminator | Lower to a typed data representation and consuming case operation | Preserve constructor identity, field ownership, and selected-branch behavior |
+| Erased proof or irrelevant argument | Erase only when Agda's relevance/usage information permits it | Prove erasure leaves observable computation unchanged |
+| Type-level or compile-time construct | Consume during type checking / elaboration; emit no runtime word | Prove it cannot affect runtime observations |
+| Unsupported runtime construct | Reject with the builtin name, type, and source location | Never silently omit a reachable definition |
+
+The table below is the intended support boundary. **“Planned” is not implemented support.** At present the executable backend still accepts only closed Nat literals, addition, monus, and multiplication.
+
+| Agda family | Builtins / primitive families in the pinned compiler | Target treatment | Current status |
+| --- | --- | --- | --- |
+| Natural numbers | Nat, zero, suc, plus, minus, times, div/mod helpers, equality, less-than, show | Exact natural value plus arithmetic/comparison/formatting words | Literals, plus, monus, and times only; current cell-bounded runtime |
+| Signed integers | Integer, pos, negsuc, integer display | Canonical sign-and-magnitude value; arbitrary-precision arithmetic | Formal arithmetic is present in the separate RSED file; no Forth lowering |
+| 64-bit words | Word64, conversions to/from Nat, conversion injectivity | Fixed-width bit-vector operations with specified wrap/conversion semantics | Unsupported |
+| Floating point | Float; equality, inequality, ordering, classification, conversion, rounding, arithmetic, transcendental and display primitives | Gforth floating-point representation plus a target model for rounding, NaN, infinities, and signed zero | Unsupported |
+| Characters and strings | Char, String; character equality/conversions, string equality/append/list conversion | Unicode scalar values and explicitly encoded string buffers | Unsupported |
+| Finite algebraic data | Bool, Unit, Sigma, List, Maybe and their constructors | Tagged or stack-shaped values; constructors move fields, case consumes the scrutinee and selects one branch | Unsupported |
+| Coinduction and strictness | ∞, ♯, ♭, primForce, primForceLemma | Explicit one-shot delay/force where required; strict force evaluates its suspended expression | Unsupported |
+| Sizes and universes | Size, size relations and size constructors, Level, Prop, Set, universe/sort identifiers | Static checking or erasure; no runtime representation | Type-level only |
+| Equality and rewriting | Equality, refl, rewrite support, erased equality primitives | Proof erasure / conversion; no runtime equality proof object | Erasure depends on Agda relevance information |
+| Literal overloading | FromNat, FromNeg, FromString | Resolve during elaboration; compile the resulting value/operation, not the elaboration class | Unsupported beyond Nat literals |
+| Reflection and metaprogramming | QName, Meta, reflection syntax, TCM and reflection constructors/primitives | Compile-time only; runtime occurrence is rejected | Unsupported at runtime |
+| Cubical constructs | Path, PathP, interval, partial types, Glue, composition and related primitives | Outside this compiler configuration | Unsupported; the checked build uses --with-K, not a cubical target |
+| Effects | IO and effectful primitives | Excluded from the pure backend | No IO sites are admitted; any reachable runtime IO use must fail compilation |
+
+Additional distinctions matter:
+
+- BuiltinId constructors such as BuiltinIntegerPos or BuiltinList identify Agda's canonical representation. PrimitiveId entries such as PrimNatPlus or PrimFloatPlus identify evaluator operations. A source operator can elaborate to a definition, a primitive, or a combination of both; dispatch must use resolved Agda names and actual Treeless nodes, not source spelling.
+- FromNat, FromNeg, and FromString are elaboration mechanisms. They are not a blanket licence to treat every overloaded literal as a machine literal. The compiler must inspect the elaborated type and lower the resulting value under that type's representation.
+- Equality proofs, size evidence, and levels may disappear only after the compiler has used Agda's relevance, forced-argument, and usage information. A proof-looking name is not sufficient grounds for erasure.
+- Reflection and TCM are compile-time computation. They may influence the program produced by elaboration, but they are not a runtime service in this backend.
+- The absence of IO is a source-language restriction, not a claim that Agda's builtin IO type is absent from the language.
+
+The exhaustive manifest should live beside the backend as version-locked data or generated source, with one row per BuiltinId and PrimitiveId. CI should compare that manifest with the pinned Agda enumeration so an Agda upgrade cannot quietly introduce an unclassified constructor. Every runtime entry names its lowering function, target word(s), semantic test, and proof obligation. Every erased or compile-time entry names the reason it cannot survive into executable code. A catch-all “other primitive” branch is a compiler bug waiting to happen.
+
+## Compiler architecture
+
+The chosen architecture is a typed, staged pipeline rather than direct Treeless-to-text emission.
+
+```text
+Agda source
+  │ type checking, builtin resolution, relevance/usage analysis
+  ▼
+Agda Treeless + compiler-owned erasure
+  │ total classification; reject unsupported reachable runtime nodes
+  ▼
+Typed source core
+  │ literals, calls, constructors, cases, primitives, delay/force
+  ▼
+Pure functional lowering
+  │ explicit evaluation order and explicit recursive calls
+  ▼
+Thunk / environment / state IRs, only where demanded by the source
+  │ delay/force → closure conversion → explicit ownership/store
+  ▼
+Formula- and stack-indexed Forth AST
+  │ instruction semantics and resource transitions
+  ▼
+Canonical Forth renderer
+  │ exact token correspondence and target-runtime contract
+  ▼
+Gforth
+```
+
+The pipeline adopts PureCake's most useful lesson: each pass has a source and target semantics, a local simulation/refinement relation, and a proof that the compiler pass stays inside that relation. The actual PureCake compiler uses PureLang, ThunkLang, EnvLang, and StateLang before CakeML; its ThunkLang makes delay/force explicit, EnvLang makes environments explicit, and StateLang makes updates/stateful operations explicit. Those stages are introduced because the source language is lazy and the target compilation strategy is strict. They are not mandatory ceremony for the present closed-Nat fragment. Add a stage only when a source feature needs it, then prove its pass.
+
+The core interfaces should be narrow and total:
+
+1. **Builtin inventory:** map every pinned Agda builtin/primitive to exactly one classification. Unknown or newly introduced identifiers fail closed.
+2. **Treeless decoder:** turn Agda's internal Treeless nodes into a small compiler-owned AST. It owns source names, source types, argument-use facts, and an explicit diagnostic span.
+3. **Typed source core:** represent each admitted operation with its source type and evaluation order. No raw strings or Forth snippets enter this layer.
+4. **Evaluation/closure passes:** make laziness, delay, closures, environments, and state explicit only when needed. A pure Nat expression should pass through without acquiring a heap or thunk runtime.
+5. **Linear target AST:** every word declares its exact input/output stack indices and owned values. A sequence composes only when adjacent indices agree. A branch consumes its condition once and both branches must return the same output contract.
+6. **Renderer:** render only the target AST. Keep identifier escaping, literal formatting, runtime inclusion, and Forth syntax in one place. The rendered text is tested against the formal token renderer; manually maintaining two unrelated printers is not a proof.
+7. **Target model:** model the exact Gforth primitives, cell width, arithmetic overflow, exceptions, memory allocation, string layout, and dictionary behavior used by emitted code.
+
+The current ToForth.hs is much smaller than this architecture: compileNatTerm recursively accepts a literal or three binary Nat primitives, while compileDefinition turns Agda functions into eager Treeless and ignores non-function definitions. It builds RichSExpr Text directly. The Agda ForthCode model is a separate implementation and currently has only natCell. This separation is why a passing Haskell build and fixture do not establish that the Haskell backend implements the Agda compiler theorem. The next compiler step is to close that representation gap, not to add more ad-hoc cases to compileNatTerm.
+
+### Data and arithmetic representations
+
+Agda's mathematical Nat and Int are unbounded. A Gforth cell is finite. The existing Nat runtime therefore implements a bounded fragment and throws on values above MALLP-MAX-NAT; the Agda model does not yet model that exception. This is a known semantic mismatch, not a harmless implementation detail.
+
+The target direction for exact integer arithmetic is normalized arbitrary-precision limbs:
+
+- Nat is a non-negative, normalized little-endian limb sequence.
+- Int is a sign plus a normalized magnitude; zero has one canonical representation and is never negative.
+- Addition, subtraction, multiplication, comparison, conversion, and decimal parsing operate on limb sequences and specify allocation, ownership transfer, and exceptional/resource-exhaustion behavior.
+- Each Forth arithmetic word consumes its owned operands and returns one owned result. Any copy or shared reference must be an explicit operation justified by the source usage judgment.
+- A target execution theorem is conditional on successful memory allocation and valid target addresses; physical memory is finite even though the mathematical value is unbounded.
+
+A fixed cell or double-cell integer is a useful fast path, but cannot by itself implement all Agda Nat or Int. Such a representation is sound only under a proved range invariant. The present runtime's overflow exceptions remain valid for its explicitly bounded slice; they are not the semantics of general Agda integers.
+
+For Word64, the target must specify 64-bit modular operations and conversions independently from mathematical integer arithmetic. For Float, it must preserve the exact Agda primitive's floating-point behavior, including NaN, infinities, signed zero, comparison, and rounding. The Gforth floating-point word set must be checked against the pinned semantics rather than assumed equivalent by name. Characters require a Unicode scalar representation; strings need a defined encoding, length convention, allocation policy, and equality/concatenation semantics.
+
+For Bool, Unit, Maybe, List, and Sigma, define constructor layouts and consuming elimination before adding backend support. In a case expression, the scrutinee is consumed once; only the selected branch receives the fields it owns. Recursive lists need a representation and a recursion/iteration lowering with a proof of termination or a semantics-preserving treatment of Agda's structurally recursive definitions. A data representation must not smuggle unrestricted copying or disposal into the runtime.
+
+### Laziness, closures, and the MALLP resource discipline
+
+PureCake's ThunkLang is stateless and re-evaluates a thunk when forced; the later StateLang pass implements sharing/update behavior. That distinction matters. A thunk is not automatically a shared memo cell, and a call-by-need update is not automatically linear.
+
+MALLP has no weakening or contraction rules and no ! / ? exponentials. Therefore:
+
+- A linear closure owns its captured environment. Application consumes that environment according to its formula-indexed typing.
+- A one-shot suspension may own linear resources and be forced once.
+- A memoized/shared thunk may be used repeatedly only when its captured environment is proved duplicable by an explicit extension/modality or when the semantics otherwise justifies sharing.
+- A branch may choose one additive premise; it may not execute both premises using the same linear context.
+- An unused computational value cannot silently vanish. It must be erased by Agda's checked relevance/usage rules, consumed by a target operation, or rejected.
+- A value used more than once needs an explicit, proven duplication policy. The current MALLP calculus intentionally does not contain contraction.
+
+The compiler must therefore establish a source usage judgment before treating unrestricted Agda terms as MALLP computations. Ordinary Agda typing alone does not prove linear usage. The judgment must cover variables, constructor fields, function arguments, recursive calls, pattern matches, and alternatives. Any source construct whose use behavior is not represented in that judgment is outside the admitted fragment.
+
+## Verification architecture
+
+The objective is a composed semantic-preservation theorem, not a collection of green smoke tests:
+
+```text
+Agda source typing + usage
+  ──front-end correctness──▶ typed source core
+  ──pass simulation────────▶ thunk / environment / state IR
+  ──linear lowering────────▶ indexed Forth AST
+  ──renderer soundness─────▶ emitted Forth tokens
+  ──target simulation──────▶ Gforth execution model
+```
+
+Each arrow has its own theorem. The top-level theorem is their composition. Keep the proof boundaries explicit:
+
+- **Front end:** every accepted Treeless definition corresponds to its typed source-core term; every unsupported runtime definition is diagnosed rather than omitted.
+- **Erasure:** erased arguments and definitions are observationally irrelevant under Agda's relevance/forced/usage information.
+- **Core passes:** each pass preserves evaluation (or a stated refinement relation) and resource ownership. This follows PureCake's syntactic-relation plus semantics-preservation approach, not a single giant proof.
+- **MALLP denotation:** interpret each polarized formula and each rule in the Hamano–Scott setting: an ambient *-autonomous category with products and the reflective/coreflective polarized full subcategories related by adjunction. Prove each rule sound in that denotation. The categorical interpretation is a semantics of proofs; it does not by itself define executable closures, heaps, or Forth words.
+- **Linear lowering:** prove tensor splits resources, additive choice preserves the common context without duplicating it, shifts preserve polarity, exchange permutes resources, and cut composition consumes the intermediate interface. If cut elimination is used instead, prove it and preserve the same denotation.
+- **Forth AST and renderer:** prove each instruction's stack/resource effect; prove renderer output equals the formal token list; prove token execution matches the AST semantics and preserves the residual stack.
+- **Gforth model:** formalize the subset of Gforth actually emitted, including finite cell width, exceptions, locals, allocation/free, strings, and load-time dictionary use. Prove a simulation for successful executions and characterize resource exhaustion.
+- **Haskell connection:** show that Treeless decoding and emitted AST from ToForth.hs match the verified front end and target AST. The Haskell printer must not be an unverified parallel definition of the formal renderer.
+
+Hamano–Scott's categorical model is for polarized MALL, not a blanket full-completeness theorem for full MALLP. Use it for sound denotation and resource-sensitive rule interpretation; do not claim that every Agda program is a MALLP proof, or that categorical soundness alone proves code generation. In particular, the current MALLP datatype is a proof-tree syntax and is disconnected from NatExpr. A proof-term language and a typed translation are still required.
+
+## Coverage and regression strategy
+
+The compiler's builtin inventory drives tests. Each runtime row gets at least:
+
+- A minimal Agda source fixture that reaches the exact builtin after elaboration.
+- A lowering test for its compiler-owned core node and target AST.
+- Boundary/computation examples, including zero, negative values, overflow or wrap boundaries as appropriate, empty and singleton data, branch alternatives, and nested constructors.
+- A semantic comparison between Agda evaluation and formal target evaluation.
+- A Gforth integration check for emitted code and the declared target-runtime behavior.
+- A negative test showing that unsupported or effectful source code fails with a diagnostic.
+
+Numeric tests should include carry/borrow chains and values wider than one machine cell for arbitrary-precision Nat/Int; Word64 should test modular wraparound separately. Float tests should distinguish NaN equality/inequality, signed zero, infinities, and rounding. Unicode tests should cover multi-byte characters and string boundaries. Data tests should cover every constructor and case branch. Coinduction tests should check finite observations of productive streams without forcing an infinite computation eagerly. IO and cubical constructs should have explicit rejection tests.
+
+The CI gate should be staged so failures identify the responsible layer: (1) pinned Agda CLI version; (2) Agda formal proofs and rewrite confluence; (3) Haskell backend build; (4) manifest exhaustiveness; (5) source-core lowering tests; (6) Forth AST/renderer theorem or differential check; (7) Gforth runtime fixtures; and (8) the composed compiler correctness gate. A green legacy fixture alone must never imply whole-language builtin coverage.
 
 The admitted expression language is:
 
