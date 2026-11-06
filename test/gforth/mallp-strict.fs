@@ -21,6 +21,9 @@ answerMultiply 20 strict-assert-natural
 ;
 ' testStrictNegative CATCH MALLP-ERR-NEGATIVE strict-assert-natural
 
-depth 0<> abort" strict MALLP leaked data-stack cells"
+: assert-empty-stack ( -- )
+  depth 0<> IF -4203 THROW THEN
+;
+assert-empty-stack"
 cr ." mallp-strict-tests-passed" cr
 BYE
