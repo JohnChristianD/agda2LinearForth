@@ -14,12 +14,12 @@ answerMultiply 20 strict-assert-natural
 : testStrictOverflow ( -- )
   MALLP-MAX-NAT 1 MALLP-NAT-ADD { ignored }
 ;
-' testStrictOverflow CATCH MALLP-ERR-OVERFLOW = 0= abort" strict MALLP overflow check failed"
+' testStrictOverflow CATCH MALLP-ERR-OVERFLOW strict-assert-natural
 
 : testStrictNegative ( -- )
   -1 MALLP-CHECK-NAT
 ;
-' testStrictNegative CATCH MALLP-ERR-NEGATIVE = 0= abort" strict MALLP negative check failed"
+' testStrictNegative CATCH MALLP-ERR-NEGATIVE strict-assert-natural
 
 depth 0<> abort" strict MALLP leaked data-stack cells"
 cr ." mallp-strict-tests-passed" cr
