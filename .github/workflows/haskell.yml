@@ -46,7 +46,7 @@ jobs:
           sudo apt-get install -y binutils binutils-gold gforth
           command -v ld
           ld --version
-          printf 'int main(void) { return 0; }\n' | gcc -fuse-ld=gold -x c -o "$RUNNER_TEMP/gold-linker-smoke" -
+          printf 'int main(void) { return 0; }\\n' | gcc -fuse-ld=gold -x c -o "$RUNNER_TEMP/gold-linker-smoke" -
 
       - name: Set up GHC
         uses: haskell-actions/setup@v2
@@ -65,11 +65,16 @@ jobs:
           test "$("$agda_bin" --numeric-version)" = "2.8.0.2"
           echo "AGDA_BIN=$agda_bin" >> "$GITHUB_ENV"
 
-      - name: Type-check with-K rewrite-enabled MALLP and physics with the same stable compiler
-        id: agda_typecheck
+      - name: Type-check the MALLP specification and rewrite system
+        id: mallp_proof
         continue-on-error: true
         run: |
           "$AGDA_BIN" -i formal formal/MALLPForth.agda
+
+      - name: Type-check the separate RSED physics specification
+        id: physics_proof
+        continue-on-error: true
+        run: |
           "$AGDA_BIN" -i formal formal/SovereignRationalSEDPhysics.agda
 
       - name: Build the Haskell Forth backend
@@ -98,14 +103,16 @@ jobs:
           gforth MALLPStrict.fth test/gforth/mallp-strict.fs > mallp-strict.log
           grep -Fq 'mallp-strict-tests-passed' mallp-strict.log
 
-      - name: Require all proof, backend, and Gforth gates
+      - name: Require every proof, backend, and execution gate
         if: always()
         env:
-          AGDA_CHECK: ${{ steps.agda_typecheck.outcome }}
+          MALLP_CHECK: ${{ steps.mallp_proof.outcome }}
+          PHYSICS_CHECK: ${{ steps.physics_proof.outcome }}
           BACKEND_CHECK: ${{ steps.forth_backend.outcome }}
           FIXTURE_CHECK: ${{ steps.strict_fixture.outcome }}
         run: |
-          printf 'Agda checks: %s\\nBackend build: %s\\nGforth fixture: %s\\n' "$AGDA_CHECK" "$BACKEND_CHECK" "$FIXTURE_CHECK"
-          test "$AGDA_CHECK" = success
+          printf 'MALLP proof: %s\\nPhysics proof: %s\\nBackend build: %s\\nGforth fixture: %s\\n' "$MALLP_CHECK" "$PHYSICS_CHECK" "$BACKEND_CHECK" "$FIXTURE_CHECK"
+          test "$MALLP_CHECK" = success
+          test "$PHYSICS_CHECK" = success
           test "$BACKEND_CHECK" = success
           test "$FIXTURE_CHECK" = success
