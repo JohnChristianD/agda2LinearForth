@@ -1374,6 +1374,9 @@ module StrictNatCompiler where
 
   execTokens : List ForthToken → List Nat → Maybe (List Nat)
   execTokens [] stack = just stack
+  execTokens (rollWord depth ∷ tokens) stack with rollList depth stack
+  ... | nothing = nothing
+  ... | just nextStack = execTokens tokens nextStack
   execTokens (token ∷ tokens) stack with execToken token stack
   ... | nothing = nothing
   ... | just nextStack = execTokens tokens nextStack
@@ -1395,7 +1398,11 @@ module StrictNatCompiler where
   renderForth-sound identityNat stack = refl
   renderForth-sound (pushNat n) stack = refl
   renderForth-sound swapNat (pushCell top (pushCell next stack)) = refl
-  renderForth-sound (rollNat proof) stack = rollList-correct proof stack
+  renderForth-sound (rollNat proof) stack
+    with rollList (stackAtDepth proof) (forgetStack stack)
+       | rollList-correct proof stack
+  ... | nothing | ()
+  ... | just result | refl = refl
   renderForth-sound (binaryWord addOp) (pushCell right (pushCell left stack)) = refl
   renderForth-sound (binaryWord monusOp) (pushCell right (pushCell left stack)) = refl
   renderForth-sound (binaryWord multiplyOp) (pushCell right (pushCell left stack)) = refl
