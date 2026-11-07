@@ -1426,6 +1426,194 @@ module StrictNatCompiler where
         (cong (λ value → just (value ∷ forgetStack stack))
           (sym (natExprProof-adequate expression))))
 
+  ----------------------------------------------------------------------
+  -- Closed PureLang lets: substitution without weakening or contraction.
+  --
+  -- A closed binding owns no MALLP assumptions.  A zero-use binding may be
+  -- skipped, and a multi-use binding may be inlined into independent copies
+  -- of its closed proof.  This is distinct from copying or discarding a live
+  -- linear resource.  The theorem is intentionally restricted to a closed
+  -- Nat term; open environments need the resource-indexed judgement below
+  -- this compiler layer before analogous transformations are admitted.
+  ----------------------------------------------------------------------
+
+  data NatLocalIndex : Nat → Set where
+    local-zero : {n : Nat} → NatLocalIndex (suc n)
+    local-suc :
+      {n : Nat} →
+      NatLocalIndex n →
+      NatLocalIndex (suc n)
+
+  data NatLocalExpr : Nat → Set where
+    local-literal :
+      {n : Nat} →
+      Nat →
+      NatLocalExpr n
+
+    local-variable :
+      {n : Nat} →
+      NatLocalIndex n →
+      NatLocalExpr n
+
+    local-binary :
+      {n : Nat} →
+      NatOp →
+      NatLocalExpr n →
+      NatLocalExpr n →
+      NatLocalExpr n
+
+    local-let :
+      {n : Nat} →
+      NatLocalExpr n →
+      NatLocalExpr (suc n) →
+      NatLocalExpr n
+
+  data NatExprEnvironment : Nat → Set where
+    natExprEnvironmentNil : NatExprEnvironment zero
+    natExprEnvironmentCons :
+      {n : Nat} →
+      NatExpr →
+      NatExprEnvironment n →
+      NatExprEnvironment (suc n)
+
+  lookupNatExpr :
+    {n : Nat} →
+    NatLocalIndex n →
+    NatExprEnvironment n →
+    NatExpr
+  lookupNatExpr local-zero (natExprEnvironmentCons expression environment) =
+    expression
+  lookupNatExpr (local-suc index)
+    (natExprEnvironmentCons expression environment) =
+      lookupNatExpr index environment
+
+  evalNatExprEnvironment :
+    {n : Nat} →
+    NatExprEnvironment n →
+    NatEnvironment n
+  evalNatExprEnvironment natExprEnvironmentNil = natEnvironmentNil
+  evalNatExprEnvironment
+    (natExprEnvironmentCons expression environment) =
+      natEnvironmentCons (evalNatExpr expression)
+        (evalNatExprEnvironment environment)
+
+  lookupNatValue :
+    {n : Nat} →
+    NatLocalIndex n →
+    NatEnvironment n →
+    Nat
+  lookupNatValue local-zero (natEnvironmentCons value environment) = value
+  lookupNatValue (local-suc index)
+    (natEnvironmentCons value environment) =
+      lookupNatValue index environment
+
+  evalNatLocalExpr :
+    {n : Nat} →
+    NatLocalExpr n →
+    NatEnvironment n →
+    Nat
+  evalNatLocalExpr (local-literal value) environment = value
+  evalNatLocalExpr (local-variable index) environment =
+    lookupNatValue index environment
+  evalNatLocalExpr (local-binary operation left right) environment =
+    applyNatOp operation
+      (evalNatLocalExpr left environment)
+      (evalNatLocalExpr right environment)
+  evalNatLocalExpr (local-let bound body) environment =
+    evalNatLocalExpr body
+      (natEnvironmentCons (evalNatLocalExpr bound environment) environment)
+
+  inlineNatLocalExpr :
+    {n : Nat} →
+    NatLocalExpr n →
+    NatExprEnvironment n →
+    NatExpr
+  inlineNatLocalExpr (local-literal value) environment = literal value
+  inlineNatLocalExpr (local-variable index) environment =
+    lookupNatExpr index environment
+  inlineNatLocalExpr (local-binary operation left right) environment =
+    binary operation
+      (inlineNatLocalExpr left environment)
+      (inlineNatLocalExpr right environment)
+  inlineNatLocalExpr (local-let bound body) environment =
+    inlineNatLocalExpr body
+      (natExprEnvironmentCons
+        (inlineNatLocalExpr bound environment)
+        environment)
+
+  lookupNatExpr-adequate :
+    {n : Nat} →
+    (index : NatLocalIndex n) →
+    (environment : NatExprEnvironment n) →
+    evalNatExpr (lookupNatExpr index environment) ≡
+    lookupNatValue index (evalNatExprEnvironment environment)
+  lookupNatExpr-adequate local-zero
+    (natExprEnvironmentCons expression environment) = refl
+  lookupNatExpr-adequate (local-suc index)
+    (natExprEnvironmentCons expression environment) =
+      lookupNatExpr-adequate index environment
+
+  inlineNatLocalExpr-adequate :
+    {n : Nat} →
+    (expression : NatLocalExpr n) →
+    (environment : NatExprEnvironment n) →
+    evalNatExpr (inlineNatLocalExpr expression environment) ≡
+    evalNatLocalExpr expression (evalNatExprEnvironment environment)
+  inlineNatLocalExpr-adequate (local-literal value) environment = refl
+  inlineNatLocalExpr-adequate (local-variable index) environment =
+    lookupNatExpr-adequate index environment
+  inlineNatLocalExpr-adequate
+    (local-binary operation left right) environment
+      rewrite inlineNatLocalExpr-adequate left environment
+            | inlineNatLocalExpr-adequate right environment = refl
+  inlineNatLocalExpr-adequate (local-let bound body) environment
+      rewrite inlineNatLocalExpr-adequate body
+                (natExprEnvironmentCons
+                  (inlineNatLocalExpr bound environment)
+                  environment)
+            | inlineNatLocalExpr-adequate bound environment = refl
+
+  closedNatLocal-proof :
+    (expression : NatLocalExpr zero) →
+    MALLPNatTheory [] (just natFormula)
+  closedNatLocal-proof expression =
+    natExpr-proof-derivation
+      (inlineNatLocalExpr expression natExprEnvironmentNil)
+
+  closedNatLocal-proof-adequate :
+    (expression : NatLocalExpr zero) →
+    interpretMALLPNatProof
+      (natExprProof
+        (inlineNatLocalExpr expression natExprEnvironmentNil))
+      natEnvironmentNil ≡
+    evalNatLocalExpr expression natEnvironmentNil
+  closedNatLocal-proof-adequate expression =
+    trans
+      (natExprProof-adequate
+        (inlineNatLocalExpr expression natExprEnvironmentNil))
+      (inlineNatLocalExpr-adequate expression natExprEnvironmentNil)
+
+  closedNatLocal-forth-sound :
+    {Γ : List StackType} →
+    (expression : NatLocalExpr zero) →
+    (stack : Stack Γ) →
+    execTokens
+      (renderForth
+        (compileNat
+          (inlineNatLocalExpr expression natExprEnvironmentNil)))
+      (forgetStack stack) ≡
+    just
+      (evalNatLocalExpr expression natEnvironmentNil ∷
+        forgetStack stack)
+  closedNatLocal-forth-sound expression stack =
+    trans
+      (natMALLP-forth-sound
+        (inlineNatLocalExpr expression natExprEnvironmentNil)
+        stack)
+      (cong
+        (λ value → just (value ∷ forgetStack stack))
+        (closedNatLocal-proof-adequate expression))
+
   maxNat : Nat → Nat → Nat
   maxNat zero y = y
   maxNat (suc x) zero = suc x
