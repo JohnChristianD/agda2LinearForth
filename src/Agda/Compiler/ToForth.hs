@@ -1204,7 +1204,7 @@ rendererCertificate definitions = T.unlines $
          ]
     | (position, definition) <- zip [0 :: Int ..] definitions
     ] ++ concat
-    [ [ let expressionName = "natLinearExpression" <> index
+    [ let expressionName = "natLinearExpression" <> index
             derivationName = "natLinearDerivation" <> index
             compilerTokensName = "natLinearCompilerTokens" <> index
             modelTokensName = "natLinearModelTokens" <> index
