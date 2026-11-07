@@ -40,6 +40,9 @@ answerUnit
 2 3 4 answerThreeLet 18 strict-assert-natural
 2 3 4 5 answerFour 48 strict-assert-natural
 
+2 3 4 answerCallThree 9 strict-assert-natural
+2 3 4 answerCallNested 18 strict-assert-natural
+
 : testStrictOverflow ( -- )
   MALLP-MAX-NAT 1 MALLP-NAT-ADD { ignored }
 ;
