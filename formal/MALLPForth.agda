@@ -1129,7 +1129,7 @@ data LinearTerm : List LinearSourceType → LinearSourceType → Set where
 
   -- A closure owns one environment value. Its code receives that environment
   -- explicitly paired with its argument, so captured fields stay linear.
-  linearClosureIntro :
+  linearClosureTerm :
     {Γ : List LinearSourceType} {Environment Argument Result : LinearSourceType} →
     LinearTerm Γ Environment →
     LinearTerm
@@ -1161,7 +1161,7 @@ deriveMALLP (linearLambda body) =
     (mallp-par
       (mallp-exchange permutation-swap
         (mallp-up (deriveMALLP body))))
-deriveMALLP (linearClosureIntro environment body) =
+deriveMALLP (linearClosureTerm environment body) =
   mallp-tensor (deriveMALLP environment)
     (deriveMALLP (linearLambda body))
 
