@@ -3382,7 +3382,7 @@ module StrictLinearDataCompiler where
         (linearArrowType
           (linearArrowType A B)
           (linearArrowType A C)))
-  bciComposition =
+  bciComposition {A} {B} {C} =
     application-lambda
       (application-lambda
         (application-lambda
@@ -3412,7 +3412,7 @@ module StrictLinearDataCompiler where
       (linearArrowType
         (linearArrowType A (linearArrowType B C))
         (linearArrowType B (linearArrowType A C)))
-  bciExchange =
+  bciExchange {A} {B} {C} =
     application-lambda
       (application-lambda
         (application-lambda
