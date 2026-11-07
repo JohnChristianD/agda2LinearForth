@@ -2425,6 +2425,26 @@ module StrictBoolCompiler where
   boolCaseMALLP-forth-sound false (boolCaseProof whenTrue whenFalse) =
     boolMALLP-forth-sound whenFalse
 
+  compileBoolRuntimeCase :
+    BoolCaseProof →
+    BoolForthCode (boolCell ∷ []) (boolCell ∷ [])
+  compileBoolRuntimeCase (boolCaseProof whenTrue whenFalse) =
+    boolIfCode (compileBoolProof whenTrue) (compileBoolProof whenFalse)
+
+  -- The runtime case instruction consumes one condition and selects exactly
+  -- one additive branch. Both branches own the same empty residual context.
+  boolCaseRuntimeMALLP-forth-sound :
+    (scrutinee : Bool) →
+    (proof : BoolCaseProof) →
+    execBoolTokens
+      (renderBoolCode (compileBoolRuntimeCase proof))
+      (scrutinee ∷ []) ≡
+    just (interpretBoolCaseProof proof scrutinee ∷ [])
+  boolCaseRuntimeMALLP-forth-sound true (boolCaseProof whenTrue whenFalse) =
+    boolMALLP-forth-sound whenTrue
+  boolCaseRuntimeMALLP-forth-sound false (boolCaseProof whenTrue whenFalse) =
+    boolMALLP-forth-sound whenFalse
+
 open StrictBoolCompiler public
 
 open StrictNatCompiler public
