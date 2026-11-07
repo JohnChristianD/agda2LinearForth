@@ -1221,7 +1221,7 @@ rendererCertificate definitions = T.unlines $
          , compilerTokensName <> " = " <> formalNatTokenList (compiledTokens definition)
          , ""
          , modelTokensName <> " : List ForthToken"
-         , modelTokensName <> " = renderForth (compileNatLinear " <> expressionName <> ")"
+         , modelTokensName <> " = renderForth (compileNatLinear {Γ = []} " <> expressionName <> ")"
          , ""
          , tokenProofName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
          , tokenProofName <> " = refl"
