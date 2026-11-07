@@ -9,25 +9,32 @@ data ForthTextToken : Set where
   textAddWord textMonusWord textMultiplyWord textSwapWord : ForthTextToken
   textRollWord : Nat → ForthTextToken
   textTrueWord textFalseWord : ForthTextToken
+  textIf : List ForthTextToken → List ForthTextToken → ForthTextToken
 
-renderForthTokenText : ForthTextToken → String
-renderForthTokenText (textPushLiteral value) =
-  primStringAppend "s\" "
-    (primStringAppend (primShowNat value) "\" MALLP-PARSE-NAT ")
-renderForthTokenText textAddWord = "MALLP-NAT-ADD "
-renderForthTokenText textMonusWord = "MALLP-NAT-MONUS "
-renderForthTokenText textMultiplyWord = "MALLP-NAT-MUL "
-renderForthTokenText textSwapWord = "SWAP "
-renderForthTokenText (textRollWord depth) =
-  primStringAppend (primShowNat depth) " ROLL "
-renderForthTokenText textTrueWord = "TRUE "
-renderForthTokenText textFalseWord = "FALSE "
+mutual
+  renderForthTokenText : ForthTextToken → String
+  renderForthTokenText (textPushLiteral value) =
+    primStringAppend "s\" "
+      (primStringAppend (primShowNat value) "\" MALLP-PARSE-NAT ")
+  renderForthTokenText textAddWord = "MALLP-NAT-ADD "
+  renderForthTokenText textMonusWord = "MALLP-NAT-MONUS "
+  renderForthTokenText textMultiplyWord = "MALLP-NAT-MUL "
+  renderForthTokenText textSwapWord = "SWAP "
+  renderForthTokenText (textRollWord depth) =
+    primStringAppend (primShowNat depth) " ROLL "
+  renderForthTokenText textTrueWord = "TRUE "
+  renderForthTokenText textFalseWord = "FALSE "
+  renderForthTokenText (textIf whenTrue whenFalse) =
+    primStringAppend "IF "
+      (primStringAppend (renderForthTokensText whenTrue)
+        (primStringAppend "ELSE "
+          (primStringAppend (renderForthTokensText whenFalse) "THEN ")))
 
-renderForthTokensText : List ForthTextToken → String
-renderForthTokensText [] = ""
-renderForthTokensText (token ∷ tokens) =
-  primStringAppend (renderForthTokenText token)
-    (renderForthTokensText tokens)
+  renderForthTokensText : List ForthTextToken → String
+  renderForthTokensText [] = ""
+  renderForthTokensText (token ∷ tokens) =
+    primStringAppend (renderForthTokenText token)
+      (renderForthTokensText tokens)
 
 renderForthWordText : String → List ForthTextToken → String
 renderForthWordText name tokens =
