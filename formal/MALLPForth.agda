@@ -1766,58 +1766,21 @@ module StrictUnitCompiler where
   unitOneProof : MALLP [] (just one⁺)
   unitOneProof = mallp-one
 
-  data UnitForthCode :
-    List StackType → List StackType → Set where
-    unitNop :
-      {Γ : List StackType} →
-      UnitForthCode Γ Γ
-
+  -- Unit contributes no runtime cell. Its proof lowers to the empty token
+  -- sequence, whose formal execution preserves the caller's entire stack.
   compileUnitProof :
-    {Γ : List StackType} →
     MALLP [] (just one⁺) →
-    UnitForthCode Γ Γ
-  compileUnitProof derivation = unitNop
-
-  execUnitCode :
-    {Γ Δ : List StackType} →
-    UnitForthCode Γ Δ →
-    Stack Γ →
-    Stack Δ
-  execUnitCode unitNop stack = stack
-
-  data UnitForthToken : Set where
-
-  renderUnitCode :
-    {Γ Δ : List StackType} →
-    UnitForthCode Γ Δ →
-    List UnitForthToken
-  renderUnitCode unitNop = []
-
-  execUnitToken :
-    UnitForthToken →
-    List Nat →
-    Maybe (List Nat)
-  execUnitToken () stack
-
-  execUnitTokens :
-    List UnitForthToken →
-    List Nat →
-    Maybe (List Nat)
-  execUnitTokens [] stack = just stack
-  execUnitTokens (token ∷ tokens) stack
-    with execUnitToken token stack
-  ... | nothing = nothing
-  ... | just nextStack = execUnitTokens tokens nextStack
+    List ForthToken
+  compileUnitProof derivation = []
 
   unitMALLP-forth-sound :
-    {Γ : List StackType} →
     (derivation : MALLP [] (just one⁺)) →
+    {Γ : List StackType} →
     (stack : Stack Γ) →
-    execUnitTokens
-      (renderUnitCode (compileUnitProof derivation))
+    execTokens
+      (compileUnitProof derivation)
       (forgetStack stack) ≡
-    just (forgetStack (execUnitCode
-      (compileUnitProof derivation) stack))
+    just (forgetStack stack)
   unitMALLP-forth-sound derivation stack = refl
 
 open StrictUnitCompiler public
