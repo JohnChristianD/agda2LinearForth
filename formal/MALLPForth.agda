@@ -35,8 +35,8 @@ data ForthTextToken : Set where
 mutual
   renderForthTokenText : ForthTextToken → String
   renderForthTokenText (textPushLiteral value) =
-    primStringAppend "s\\\" "
-      (primStringAppend (primShowNat value) "\\\" MALLP-PARSE-NAT ")
+    primStringAppend "s\" "
+      (primStringAppend (primShowNat value) "\" MALLP-PARSE-NAT ")
   renderForthTokenText textAddWord = "MALLP-NAT-ADD "
   renderForthTokenText textMonusWord = "MALLP-NAT-MONUS "
   renderForthTokenText textMultiplyWord = "MALLP-NAT-MUL "
