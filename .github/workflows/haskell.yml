@@ -150,7 +150,12 @@ jobs:
             echo "strict MALLP runtime/output contains a structural duplicate or discard word"
             exit 1
           fi
-          gforth MALLPStrict.fth test/gforth/mallp-strict.fs > mallp-strict.log
+          grep -E '^: answer(CallThree|CallNested) ' MALLPStrict.fth
+          if ! gforth MALLPStrict.fth test/gforth/mallp-strict.fs > mallp-strict.log 2>&1; then
+            cat mallp-strict.log
+            exit 1
+          fi
+          cat mallp-strict.log
           grep -Fq 'mallp-strict-tests-passed' mallp-strict.log
 
       - name: Require every proof, backend, and execution gate
