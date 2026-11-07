@@ -1721,8 +1721,8 @@ module StrictBoolCompiler where
   execBoolTokens :
     List BoolForthToken →
     List Bool →
-    List Bool
-  execBoolTokens [] stack = stack
+    Maybe (List Bool)
+  execBoolTokens [] stack = just stack
   execBoolTokens (token ∷ tokens) stack =
     execBoolTokens tokens (execBoolToken token stack)
 
@@ -1731,7 +1731,7 @@ module StrictBoolCompiler where
     (code : BoolForthCode Γ Δ) →
     (stack : BoolStack Γ) →
     execBoolTokens (renderBoolCode code) (forgetBoolStack stack) ≡
-    forgetBoolStack (execBoolCode code stack)
+    just (forgetBoolStack (execBoolCode code stack))
   renderBoolCode-sound (pushBoolean true) stack = refl
   renderBoolCode-sound (pushBoolean false) stack = refl
 
