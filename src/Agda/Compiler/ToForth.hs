@@ -596,6 +596,119 @@ inlineBoolFunction callStack environment name arguments
               ("called definition is not a first-order Bool function: " ++ prettyShow name)
         _ -> unsupported ("called Treeless definition is not a function: " ++ prettyShow name)
 
+decodeBoolResourceTerm :: [QName] -> [BoolExpr] -> TTerm -> TCM BoolExpr
+decodeBoolResourceTerm callStack environment term = do
+  trueName <- getBuiltinName builtinTrue
+  falseName <- getBuiltinName builtinFalse
+  let (headTerm, arguments) = tAppView term
+      matches expected actual = Just actual == expected
+      lookupBoolean index =
+        case drop index environment of
+          value : _ -> pure value
+          [] -> unsupported ("unbound Treeless Bool resource: " ++ show index)
+      findConstructor expected alternatives =
+        find (\alternative -> case alternative of
+          TACon name arity _ -> matches expected name && arity == 0
+          _ -> False) alternatives
+      decodeConstructor expected alternatives fallback =
+        case findConstructor expected alternatives of
+          Just (TACon _ _ body) ->
+            decodeBoolResourceTerm callStack environment body
+          _ -> decodeBoolResourceGuards callStack environment alternatives fallback
+  case headTerm of
+    TCon name
+      | null arguments && matches trueName name ->
+          pure (BoolLiteral True)
+      | null arguments && matches falseName name ->
+          pure (BoolLiteral False)
+    TDef name
+      | null arguments && matches trueName name ->
+          pure (BoolLiteral True)
+      | null arguments && matches falseName name ->
+          pure (BoolLiteral False)
+    TVar index
+      | null arguments -> lookupBoolean index
+    TCoerce inner
+      | null arguments -> decodeBoolResourceTerm callStack environment inner
+    TLet bound body
+      | null arguments ->
+          let uses = natVariableUses 0 body
+          in if uses == 0
+               then decodeBoolResourceTerm callStack environment body
+               else do
+                 value <- decodeBoolResourceTerm callStack environment bound
+                 if uses > 1 && any (not . null)
+                      (boolExprResourcePaths value)
+                   then unsupported "MALLP linearity violation: a Bool let capturing a live resource is reused"
+                   else decodeBoolResourceTerm callStack (value : environment) body
+    TCase index _ fallback alternatives
+      | null arguments -> do
+          scrutinee <- lookupBoolean index
+          whenTrue <- decodeConstructor trueName alternatives fallback
+          whenFalse <- decodeConstructor falseName alternatives fallback
+          pure (BoolConditional scrutinee whenTrue whenFalse)
+    TPrim PIf
+      | [condition, whenTrue, whenFalse] <- arguments -> do
+          decodedCondition <- decodeBoolResourceTerm callStack environment condition
+          decodedTrue <- decodeBoolResourceTerm callStack environment whenTrue
+          decodedFalse <- decodeBoolResourceTerm callStack environment whenFalse
+          pure (BoolConditional decodedCondition decodedTrue decodedFalse)
+    TDef name -> inlineBoolResourceFunction callStack environment name arguments
+    _ -> unsupported
+      ("Treeless term is outside the linear Bool fragment: " ++ show headTerm)
+
+decodeBoolResourceGuards
+  :: [QName]
+  -> [BoolExpr]
+  -> [TAlt]
+  -> TTerm
+  -> TCM BoolExpr
+decodeBoolResourceGuards callStack environment alternatives fallback =
+  case alternatives of
+    [] -> decodeBoolResourceTerm callStack environment fallback
+    TAGuard guard body : rest -> do
+      condition <- decodeBoolResourceTerm callStack environment guard
+      whenTrue <- decodeBoolResourceTerm callStack environment body
+      whenFalse <- decodeBoolResourceGuards callStack environment rest fallback
+      case condition of
+        BoolLiteral True -> pure whenTrue
+        BoolLiteral False -> pure whenFalse
+        _ -> pure (BoolConditional condition whenTrue whenFalse)
+    _ : rest ->
+      decodeBoolResourceGuards callStack environment rest fallback
+
+inlineBoolResourceFunction
+  :: [QName]
+  -> [BoolExpr]
+  -> QName
+  -> [TTerm]
+  -> TCM BoolExpr
+inlineBoolResourceFunction callStack environment name arguments
+  | name `elem` callStack =
+      unsupported ("recursive Bool call requires a certified recursor: " ++ prettyShow name)
+  | otherwise = do
+      definition <- getConstInfo name
+      case theDef definition of
+        Function{} -> do
+          arity <- boolFunctionArity definition
+          case arity of
+            Just expected | expected == length arguments -> do
+              body <- toTreeless EagerEvaluation name
+              case body of
+                Nothing -> unsupported ("Bool helper has no Treeless body: " ++ prettyShow name)
+                Just functionTerm -> do
+                  let (actualArity, functionBody) = tLamView functionTerm
+                  if actualArity /= expected
+                    then unsupported ("Bool helper lambda arity mismatch: " ++ prettyShow name)
+                    else pure ()
+                  values <- traverse
+                    (decodeBoolResourceTerm callStack environment) arguments
+                  decodeBoolResourceTerm (name : callStack)
+                    (reverse values ++ environment) functionBody
+            _ -> unsupported
+              ("called definition is not a first-order Bool function: " ++ prettyShow name)
+        _ -> unsupported ("called Treeless definition is not a function: " ++ prettyShow name)
+
 isBuiltinType :: QName -> I.Type -> TCM Bool
 isBuiltinType builtinName ty = do
   reduced <- reduce ty
