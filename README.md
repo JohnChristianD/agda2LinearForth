@@ -4,7 +4,7 @@ A verified-compiler research project for Olivier Laurent's multiplicative-additi
 
 The project has two separate Agda files:
 
-- `formal/MALLPForth.agda`: a `--with-K --rewriting --confluence-check --polarity --lossy-unification` compiler specification. It contains six foundational packages, constructive coinductive conaturals, Laurent's polarized MALLP sequent calculus, and indexed strict Forth stack-code semantics. The calculus is currently a proof-tree syntax; it does not yet have computational proof terms, a Hamano–Scott categorical interpretation, or a derivation-to-Forth translation.
+- `formal/MALLPForth.agda`: a `--with-K --rewriting --confluence-check --polarity --lossy-unification` compiler specification. It contains six foundational packages, constructive coinductive conaturals, Laurent's polarized MALLP sequent calculus, and indexed strict Forth stack-code semantics. The base calculus remains proof-tree syntax. A focused Nat theory adds computational proof terms for literals, binary primitive constants, and cut, with an explicit embedding into an MALLP-with-Nat-signature derivation.
 - `formal/SovereignRationalSEDPhysics.agda`: the separate RSED physics library, checked by the same Agda 2.8.0.2 CLI under the with-K/rewrite/polarity option family. It remains separate and is not imported by the compiler proof.
 
 Both Agda files and the Haskell backend use one pinned stable Agda source version, **2.8.0.2**, via `cabal.project`. CI builds the Agda CLI and `agda2forth` from that same Cabal source package; it does not install a separate Agda binary. Both specifications use `--with-K`, `--rewriting`, `--confluence-check`, `--polarity`, and `--lossy-unification`; neither is marked `--safe` or `--cubical`. The compiler file retains constructor-based guardedness, while the physics file retains guarded recursion and its existing instance-search/projection options. `--no-prop` is omitted because it is already the default. `--with-K` enables erased matches by default in Agda 2.8.0.2; the explicit `--erased-matches` flag is absent.
@@ -174,7 +174,7 @@ Each arrow has its own theorem. The top-level theorem is their composition. Keep
 - **Gforth model:** formalize the subset of Gforth actually emitted, including finite cell width, exceptions, locals, allocation/free, strings, and load-time dictionary use. Prove a simulation for successful executions and characterize resource exhaustion.
 - **Haskell connection:** show that Treeless decoding and emitted AST from ToForth.hs match the verified front end and target AST. The Haskell printer must not be an unverified parallel definition of the formal renderer.
 
-Hamano–Scott's categorical model is for polarized MALL, not a blanket full-completeness theorem for full MALLP. Use it for sound denotation and resource-sensitive rule interpretation; do not claim that every Agda program is a MALLP proof, or that categorical soundness alone proves code generation. In particular, the current MALLP datatype is a proof-tree syntax and is disconnected from NatExpr. A proof-term language and a typed translation are still required.
+Hamano–Scott's categorical model is for polarized MALL, not a blanket full-completeness theorem for full MALLP. Use it for sound denotation and resource-sensitive rule interpretation; do not claim that every Agda program is a MALLP proof, or that categorical soundness alone proves code generation. In particular, the base MALLP datatype remains proof-tree syntax. The Nat theory is a small computational extension with an explicit primitive signature, not a general lambda-calculus proof-term language. Its proof interpretation is related to the closed Nat Forth token model; general PureCake constructs remain outside this fragment.
 
 ## Coverage and regression strategy
 
@@ -210,7 +210,7 @@ The Agda target code is indexed by input and output stack shapes. Its constructo
 
 There are no constructors for duplication, discard, heap access, closure creation, or implicit weakening/contraction. The execution function is indexed by the same stack shapes. The source-to-code theorem states that compiling an expression and executing its target code returns the source-evaluated Nat on top of the original untouched tail stack. A second theorem interprets the rendered postfix token list and proves it yields the same stack result, including residual-stack preservation.
 
-This is a constructive linear stack-effect semantics inspired by MALLP's resource discipline. It is **not** a claim that arbitrary Agda terms have been translated into Laurent MALLP proofs. A general source typing/usage judgment and a translation from MALLP derivations into generated words remain future proof work.
+The focused `MALLPNatProof` is indexed by its number of linear Nat assumptions. Literals are nullary axioms, binary primitives consume two assumptions, and cut composes proofs. `embedNatProof` maps the focused proof into `MALLPNatTheory`; `interpretMALLPNatProof` gives its Nat semantics. `natExprProof-adequate` proves agreement with `evalNatExpr`, and `natMALLP-forth-sound` composes this with indexed Forth execution and the formal postfix-token interpreter, preserving the residual stack. This covers the closed Nat expression fragment only; it is not a translation for arbitrary Agda terms or arbitrary Laurent MALLP derivations.
 
 ## MALLP semantics and runtime representations
 
@@ -222,7 +222,7 @@ Keep three layers separate:
 2. **Denotation:** Hamano–Scott interpret MALLP in an ambient *-autonomous category with products, using reflective/coreflective polarized subcategories and their adjunctions.
 3. **Execution:** closures, environments, thunks, stacks, and heaps are implementation representations. They are not MALLP connectives and do not follow automatically from the categorical model.
 
-The current `MALLP` datatype is a derivation tree, not yet a term language. A future computational interpretation may use closures when it represents higher-order proof terms as executable functions. Such a closure can be linear: its code and captured environment move together, and application consumes the captured linear resources according to the typing judgment. A duplicable closure that silently copies a captured linear environment would violate the calculus.
+The base `MALLP` datatype is still a derivation tree. The Nat theory is a small computational extension with an explicit signature, not a general lambda-calculus proof-term language. A future higher-order extension may use closures when it represents proof terms as executable functions. Such a closure can be linear: its code and captured environment move together, and application consumes the captured linear resources according to the typing judgment. A duplicable closure that silently copies a captured linear environment would violate the calculus.
 
 Thunks need the same distinction. A one-shot suspension may capture linear resources and be forced exactly once. A memoizing call-by-need thunk caches a result for repeated demands; sharing a thunk that owns linear resources would amount to reusing those resources. Such sharing needs an explicit unrestricted modality or a proof that the captured environment is duplicable. Otherwise use a one-shot thunk, evaluate eagerly, or defunctionalize the delayed computation into an explicit code-and-environment representation.
 
@@ -266,14 +266,12 @@ restrict inputs with a proved representability invariant or replace the
 target representation with verified arbitrary-precision naturals. The
 latter is the natural route for exact unbounded integers and rationals.
 
-The MALLP sequent tree and `NatExpr` are currently disjoint. MALLP rules
-carry derivation evidence, but no computational proof terms or interpretation
-that could be lowered into the Nat compiler. Additive `with` also has two
-premises over the same context, so a future translation must model its
-environment-controlled branching explicitly rather than assume the
-multiplicative stack rule handles it. The code contains no arbitrary MALLP
-derivation-to-Forth function, cut-elimination theorem, or semantic-preservation
-theorem for such a function.
+The previous gap between the MALLP sequent tree and `NatExpr` is now closed
+for the declared Nat signature: `natExprProof` constructs an indexed proof
+term, `embedNatProof` produces its MALLP-with-signature derivation, and the
+semantic/token theorem proves the closed expression result. This does not
+cover additive `with`, tensor, shifts, arbitrary MALLP derivations, or cut
+elimination. Those require rule-specific resource and branch semantics.
 
 The source comments identify Hamano–Scott's model as a separate obligation.
 The current Agda file does not define the required ambient *-autonomous
@@ -304,7 +302,7 @@ A complete verification chain should be layered and composed:
 5. Model the Gforth cell, exception, local-variable, memory, and dictionary behavior used by the output, then prove a simulation/refinement theorem from the formal Forth semantics to that target model.
 6. Connect the Haskell Treeless traversal and printer to the verified specification. Prefer a generated or mechanically checked correspondence over a manually maintained parallel renderer.
 
-This is the project-level proof boundary. The current PR establishes only the closed-Nat model and integration fixture described above; it does not claim the composed theorem.
+This is the project-level proof boundary. The current PR adds a formal MALLP Nat-term semantic theorem through the abstract Forth token machine and retains the closed-Nat Gforth integration fixture. It still does not prove the Haskell backend or real Gforth semantics.
 
 ## PureCake / CakeML relationship
 
@@ -316,7 +314,7 @@ The present RSED file is more limited than that target: `RationalRingInterface` 
 
 PureCake's thunk pipeline is an architectural precedent, not a runtime recipe to copy wholesale. Its source/target evaluation strategies and explicit thunk transformations answer needs of a lazy functional source language. For MALLP, a shared thunk is sound only when its captured resources may be shared; a one-shot suspension or a defunctionalized representation may better preserve linear usage.
 
-The current Agda theorem covers the closed-Nat expression AST, its code AST, indexed stack execution and preservation of the residual stack. `ToForth.hs` is still a separate Haskell implementation of the lowering and textual printer. CI compiles examples and executes their generated Gforth files, but there is not yet a kernel proof that the Haskell printer emits exactly `renderForth`, nor a formal refinement theorem for the Gforth interpreter. Therefore this is **not yet an end-to-end verified compiler in the PureCake sense**.
+The Agda theorem now composes the MALLP Nat proof-term interpretation, closed-Nat lowering, indexed stack execution, and the abstract postfix-token interpreter, preserving the residual stack. `ToForth.hs` remains a separate Haskell implementation of Treeless decoding and textual rendering. CI compiles examples and executes their generated Gforth files, but there is not yet a kernel proof that the Haskell printer emits exactly `renderForth`, nor a formal refinement theorem for the Gforth interpreter. Therefore this is **not yet an end-to-end verified compiler in the PureCake sense**.
 
 ## Development tools and scope
 
@@ -334,7 +332,7 @@ Agda's `--polarity` enables its modal-polarity annotations; that is distinct fro
 
 - One pinned stable Agda version (2.8.0.2) supplies both the Agda CLI and the backend's Agda library dependency; both Agda checks run through that CLI.
 - Exactly two tracked `.agda` files: compiler semantics and separate physics.
-- Exactly one Markdown file: this README.
+- The tracked Markdown files are this README and `.scratch/wayfinder/verified-agda-forth/MAP.md`.
 - No standalone shell/helper scripts and no additional workflow files.
 - `src/Agda/Compiler/ToForth.hs` is the only Haskell source allowed to differ from the pinned Agda2Scheme source; CI checks Git blob identity for every other Haskell file.
 - The only tracked compiler fixtures are `test/MALLPStrict.agda.src` and `test/gforth/mallp-strict.fs`.
