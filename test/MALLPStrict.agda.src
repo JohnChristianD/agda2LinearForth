@@ -74,6 +74,14 @@ answerMultiplyFive value = value * 5
 
 open import Agda.Builtin.Int using (Int; pos)
 
+open import Agda.Builtin.Word using (Word64)
+
+-- Word64 is carried as one linear source value and two unsigned 32-bit
+-- Gforth cells. Identity preserves both limbs without touching either.
+answerWord64Identity : Word64 → Word64
+answerWord64Identity value = value
+
+
 answerInt : Int
 answerInt = pos 2
 
