@@ -32,6 +32,12 @@ invertBool : Bool → Bool
 invertBool true = false
 invertBool false = true
 
+-- Additive case: condition is consumed once, and the selected branch
+-- consumes the remaining Bool exactly once.
+chooseBool : Bool → Bool → Bool
+chooseBool true value = value
+chooseBool false value = value
+
 answerMatchedTrue : Bool
 answerMatchedTrue = invertBool true
 
