@@ -23,6 +23,7 @@ answerLetShared 169 strict-assert-natural
 answerLetUnused 7 strict-assert-natural
 answerTrue TRUE strict-assert-boolean
 answerFalse FALSE strict-assert-boolean
+answerUnit
 : testStrictOverflow ( -- )
   MALLP-MAX-NAT 1 MALLP-NAT-ADD { ignored }
 ;
