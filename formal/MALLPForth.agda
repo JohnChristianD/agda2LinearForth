@@ -2332,8 +2332,13 @@ module StrictBoolCompiler where
   execBoolTokens (pushFalseToken ∷ tokens) stack =
     execBoolTokens tokens (false ∷ stack)
   execBoolTokens (boolIfToken whenTrue whenFalse ∷ tokens)
-    (condition ∷ stack)
-      with execBoolTokens (if condition then whenTrue else whenFalse) stack
+    (true ∷ stack)
+      with execBoolTokens whenTrue stack
+  ... | nothing = nothing
+  ... | just branchStack = execBoolTokens tokens branchStack
+  execBoolTokens (boolIfToken whenTrue whenFalse ∷ tokens)
+    (false ∷ stack)
+      with execBoolTokens whenFalse stack
   ... | nothing = nothing
   ... | just branchStack = execBoolTokens tokens branchStack
   execBoolTokens (boolIfToken whenTrue whenFalse ∷ tokens) [] = nothing
