@@ -75,3 +75,9 @@ answerThreeLet x y z =
 
 answerFour : Nat → Nat → Nat → Nat → Nat
 answerFour w x y z = (w + y) * (x + z)
+
+answerCallThree : Nat → Nat → Nat → Nat
+answerCallThree x y z = answerAddTwo x (y + z)
+
+answerCallNested : Nat → Nat → Nat → Nat
+answerCallNested x y z = answerMultiplyTwo (x + z) y
