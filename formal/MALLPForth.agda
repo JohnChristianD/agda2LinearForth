@@ -19,6 +19,7 @@ open import Agda.Builtin.List using (List; []; _∷_)
 open import Agda.Builtin.Maybe using (Maybe; just; nothing)
 open import Agda.Builtin.Sigma using (Σ; _,_)
 open import Agda.Builtin.Equality using (_≡_; refl)
+open import ForthRenderer public
 open import Agda.Builtin.Equality.Rewrite
 -- Agda 2.8 has no Agda.Builtin.Empty module; define the empty type locally.
 data ⊥ : Set where
@@ -42,6 +43,15 @@ open _×_ public
 
 cong : {A B : Set} {x y : A} (f : A → B) → x ≡ y → f x ≡ f y
 cong f refl = refl
+
+subst :
+  {A : Set} →
+  (P : A → Set) →
+  {x y : A} →
+  x ≡ y →
+  P x →
+  P y
+subst P refl value = value
 
 cong₂ : {A B C : Set} (f : A → B → C) {a a′ : A} {b b′ : B} →
         a ≡ a′ → b ≡ b′ → f a b ≡ f a′ b′
@@ -1130,6 +1140,28 @@ module StrictNatCompiler where
     emptyStack : Stack []
     pushCell : {Γ : List StackType} → Nat → Stack Γ → Stack (natCell ∷ Γ)
 
+  -- A depth witness makes ROLL stack-safe: the selected resource exists.
+  data StackAt : Nat → List StackType → Set where
+    stackAtHere : {Γ : List StackType} → StackAt zero (natCell ∷ Γ)
+    stackAtThere :
+      {depth : Nat} {Γ : List StackType} →
+      StackAt depth Γ →
+      StackAt (suc depth) (natCell ∷ Γ)
+
+  stackAtDepth : {depth : Nat} {Γ : List StackType} →
+    StackAt depth Γ → Nat
+  stackAtDepth stackAtHere = zero
+  stackAtDepth (stackAtThere proof) = suc (stackAtDepth proof)
+
+  rollStack :
+    {depth : Nat} {Γ : List StackType} →
+    StackAt depth Γ → Stack Γ → Stack Γ
+  rollStack stackAtHere stack = stack
+  rollStack (stackAtThere proof) (pushCell head rest)
+    with rollStack proof rest
+  ... | pushCell selected remaining =
+    pushCell selected (pushCell head remaining)
+
   data NatOp : Set where
     addOp monusOp multiplyOp : NatOp
 
@@ -1188,6 +1220,10 @@ module StrictNatCompiler where
     swapNat :
       {Γ : List StackType} →
       ForthCode (natCell ∷ natCell ∷ Γ) (natCell ∷ natCell ∷ Γ)
+    rollNat :
+      {depth : Nat} {Γ : List StackType} →
+      StackAt depth Γ →
+      ForthCode Γ Γ
     binaryWord :
       {Γ : List StackType} →
       NatOp →
@@ -1224,6 +1260,7 @@ module StrictNatCompiler where
   execForthCode (pushNat n) stack = pushCell n stack
   execForthCode swapNat (pushCell top (pushCell next stack)) =
     pushCell next (pushCell top stack)
+  execForthCode (rollNat proof) stack = rollStack proof stack
   execForthCode (binaryWord addOp) (pushCell right (pushCell left stack)) =
     pushCell (left + right) stack
   execForthCode (binaryWord monusOp) (pushCell right (pushCell left stack)) =
@@ -1277,7 +1314,10 @@ module StrictNatCompiler where
   data ForthToken : Set where
     pushLiteral : Nat → ForthToken
     addWord monusWord multiplyWord swapWord : ForthToken
+    rollWord : Nat → ForthToken
 
+  -- Text tokens are deliberately separate from the Nat execution machine:
+  -- TRUE/FALSE have Gforth's Bool representation, not a Nat stack meaning.
   _++ᴳ_ : {A : Set} → List A → List A → List A
   [] ++ᴳ ys = ys
   (x ∷ xs) ++ᴳ ys = x ∷ (xs ++ᴳ ys)
@@ -1291,6 +1331,7 @@ module StrictNatCompiler where
   renderForth identityNat = []
   renderForth (pushNat n) = pushLiteral n ∷ []
   renderForth swapNat = swapWord ∷ []
+  renderForth (rollNat proof) = rollWord (stackAtDepth proof) ∷ []
   renderForth (binaryWord op) = renderNatOp op ∷ []
   renderForth (sequence first second) =
     renderForth first ++ᴳ renderForth second
@@ -1299,6 +1340,30 @@ module StrictNatCompiler where
   forgetStack : {Γ : List StackType} → Stack Γ → List Nat
   forgetStack emptyStack = []
   forgetStack (pushCell n stack) = n ∷ forgetStack stack
+
+  rollList : Nat → List Nat → Maybe (List Nat)
+  rollList zero [] = nothing
+  rollList zero (x ∷ xs) = just (x ∷ xs)
+  rollList (suc depth) [] = nothing
+  rollList (suc depth) (x ∷ xs) with rollList depth xs
+  ... | nothing = nothing
+  ... | just [] = nothing
+  ... | just (selected ∷ rest) = just (selected ∷ x ∷ rest)
+
+  rollList-correct :
+    {depth : Nat} {Γ : List StackType} →
+    (proof : StackAt depth Γ) →
+    (stack : Stack Γ) →
+    rollList (stackAtDepth proof) (forgetStack stack) ≡
+    just (forgetStack (rollStack proof stack))
+  rollList-correct stackAtHere (pushCell value stack) = refl
+  rollList-correct (stackAtThere proof) (pushCell head rest)
+    with rollList (stackAtDepth proof) (forgetStack rest)
+       | rollStack proof rest
+       | rollList-correct proof rest
+  ... | nothing | _ | ()
+  ... | just [] | pushCell selected′ remaining | ()
+  ... | just (selected ∷ restValues) | pushCell selected′ remaining | refl = refl
 
   execToken : ForthToken → List Nat → Maybe (List Nat)
   execToken (pushLiteral n) stack = just (n ∷ stack)
@@ -1313,6 +1378,7 @@ module StrictNatCompiler where
 
   execToken swapWord (top ∷ next ∷ stack) = just (next ∷ top ∷ stack)
   execToken swapWord _ = nothing
+  execToken (rollWord depth) stack = rollList depth stack
 
   maybeBind : {A B : Set} → Maybe A → (A → Maybe B) → Maybe B
   maybeBind nothing continuation = nothing
@@ -1320,7 +1386,27 @@ module StrictNatCompiler where
 
   execTokens : List ForthToken → List Nat → Maybe (List Nat)
   execTokens [] stack = just stack
-  execTokens (token ∷ tokens) stack with execToken token stack
+  execTokens (pushLiteral value ∷ tokens) stack
+    with execToken (pushLiteral value) stack
+  ... | nothing = nothing
+  ... | just nextStack = execTokens tokens nextStack
+  execTokens (addWord ∷ tokens) stack
+    with execToken addWord stack
+  ... | nothing = nothing
+  ... | just nextStack = execTokens tokens nextStack
+  execTokens (monusWord ∷ tokens) stack
+    with execToken monusWord stack
+  ... | nothing = nothing
+  ... | just nextStack = execTokens tokens nextStack
+  execTokens (multiplyWord ∷ tokens) stack
+    with execToken multiplyWord stack
+  ... | nothing = nothing
+  ... | just nextStack = execTokens tokens nextStack
+  execTokens (swapWord ∷ tokens) stack
+    with execToken swapWord stack
+  ... | nothing = nothing
+  ... | just nextStack = execTokens tokens nextStack
+  execTokens (rollWord depth ∷ tokens) stack with rollList depth stack
   ... | nothing = nothing
   ... | just nextStack = execTokens tokens nextStack
 
@@ -1329,8 +1415,26 @@ module StrictNatCompiler where
     execTokens (first ++ᴳ second) stack ≡
     maybeBind (execTokens first stack) (λ nextStack → execTokens second nextStack)
   execTokens-append [] second stack = refl
-  execTokens-append (token ∷ first) second stack
-    with execToken token stack
+  execTokens-append (pushLiteral value ∷ first) second stack =
+    execTokens-append first second (value ∷ stack)
+  execTokens-append (addWord ∷ first) second (right ∷ left ∷ stack) =
+    execTokens-append first second ((left + right) ∷ stack)
+  execTokens-append (addWord ∷ first) second [] = refl
+  execTokens-append (addWord ∷ first) second (value ∷ []) = refl
+  execTokens-append (monusWord ∷ first) second (right ∷ left ∷ stack) =
+    execTokens-append first second (applyNatOp monusOp left right ∷ stack)
+  execTokens-append (monusWord ∷ first) second [] = refl
+  execTokens-append (monusWord ∷ first) second (value ∷ []) = refl
+  execTokens-append (multiplyWord ∷ first) second (right ∷ left ∷ stack) =
+    execTokens-append first second ((left * right) ∷ stack)
+  execTokens-append (multiplyWord ∷ first) second [] = refl
+  execTokens-append (multiplyWord ∷ first) second (value ∷ []) = refl
+  execTokens-append (swapWord ∷ first) second (top ∷ next ∷ stack) =
+    execTokens-append first second (next ∷ top ∷ stack)
+  execTokens-append (swapWord ∷ first) second [] = refl
+  execTokens-append (swapWord ∷ first) second (value ∷ []) = refl
+  execTokens-append (rollWord depth ∷ first) second stack
+    with rollList depth stack
   ... | nothing = refl
   ... | just nextStack = execTokens-append first second nextStack
 
@@ -1341,6 +1445,11 @@ module StrictNatCompiler where
   renderForth-sound identityNat stack = refl
   renderForth-sound (pushNat n) stack = refl
   renderForth-sound swapNat (pushCell top (pushCell next stack)) = refl
+  renderForth-sound (rollNat proof) stack
+    with rollList (stackAtDepth proof) (forgetStack stack)
+       | rollList-correct proof stack
+  ... | nothing | ()
+  ... | just result | refl = refl
   renderForth-sound (binaryWord addOp) (pushCell right (pushCell left stack)) = refl
   renderForth-sound (binaryWord monusOp) (pushCell right (pushCell left stack)) = refl
   renderForth-sound (binaryWord multiplyOp) (pushCell right (pushCell left stack)) = refl
@@ -1413,15 +1522,78 @@ module StrictNatCompiler where
       MALLPNatProof (suc (suc zero)) →
       MALLPNatProof (suc (suc zero))
 
+    -- Move the first live Nat assumption behind the remaining n resources.
+    -- This is a finite sequence of Laurent MALLP exchanges, not contraction.
+    natRotateHeadToLastProof :
+      {n : Nat} →
+      MALLPNatProof (n + suc zero) →
+      MALLPNatProof (n + suc zero)
+
     natCutProof :
       {n m : Nat} →
       MALLPNatProof n →
       MALLPNatProof (suc m) →
       MALLPNatProof (n + m)
 
+    -- Derived primitive composition: consume a closed/live result once,
+    -- then the remaining linear argument once, with the result at stack top.
+    natPrimitiveComposeProof :
+      {n : Nat} →
+      MALLPNatProof n →
+      NatOp →
+      MALLPNatProof (suc n)
+
   natContext : Nat → Context
   natContext zero = []
   natContext (suc n) = natAssumption ∷ natContext n
+
+  natRotateHeadToLastPermutation :
+    (n : Nat) →
+    ContextPermutation (natContext (suc n)) (natContext (suc n))
+  natRotateHeadToLastPermutation zero =
+    contextPermutation-refl (natContext (suc zero))
+  natRotateHeadToLastPermutation (suc n) =
+    permutation-trans permutation-swap
+      (permutation-cons (natRotateHeadToLastPermutation n))
+
+  natPlusOne : (n : Nat) → n + suc zero ≡ suc n
+  natPlusOne zero = refl
+  natPlusOne (suc n) = cong suc (natPlusOne n)
+
+  natContextPlusOne :
+    (n : Nat) →
+    natContext (n + suc zero) ≡ natAssumption ∷ natContext n
+  natContextPlusOne n rewrite natPlusOne n = refl
+
+  natContextAppendLast :
+    (n : Nat) →
+    natContext n ++ᴸ (natAssumption ∷ []) ≡
+    natAssumption ∷ natContext n
+  natContextAppendLast zero = refl
+  natContextAppendLast (suc n) =
+    cong (natAssumption ∷_) (natContextAppendLast n)
+
+  natLastToHeadPermutation :
+    (n : Nat) →
+    ContextPermutation
+      (natContext n ++ᴸ (natAssumption ∷ []))
+      (natAssumption ∷ natContext n)
+  natLastToHeadPermutation n =
+    subst
+      (λ context → ContextPermutation context (natAssumption ∷ natContext n))
+      (sym (natContextAppendLast n))
+      (contextPermutation-refl (natAssumption ∷ natContext n))
+
+  natRotateHeadToLastPermutationPlus :
+    (n : Nat) →
+    ContextPermutation
+      (natContext (n + suc zero))
+      (natContext (n + suc zero))
+  natRotateHeadToLastPermutationPlus n =
+    subst
+      (λ context → ContextPermutation context context)
+      (sym (natContextPlusOne n))
+      (natRotateHeadToLastPermutation n)
 
   natContext-append :
     (n m : Nat) →
@@ -1441,6 +1613,14 @@ module StrictNatCompiler where
     mallp-nat-logical mallp-ax
   embedNatProof (natExchangeProof proof) =
     mallp-nat-exchange permutation-swap (embedNatProof proof)
+  embedNatProof (natRotateHeadToLastProof {n = n} proof) =
+    mallp-nat-exchange
+      (natRotateHeadToLastPermutationPlus n)
+      (embedNatProof proof)
+  embedNatProof (natPrimitiveComposeProof {n = n} proof operation) =
+    mallp-nat-exchange
+      (natLastToHeadPermutation n)
+      (mallp-nat-cut (embedNatProof proof) (mallp-nat-primitive operation))
   embedNatProof (natCutProof {n = n} {m = m} first second) =
     mallp-nat-transport
       (sym (natContext-append n m))
@@ -1465,6 +1645,55 @@ module StrictNatCompiler where
   ... | pair prefix suffix =
     pair (natEnvironmentCons value prefix) suffix
 
+  appendNatEnvironment :
+    {n : Nat} →
+    NatEnvironment n →
+    Nat →
+    NatEnvironment (suc n)
+  appendNatEnvironment natEnvironmentNil value =
+    natEnvironmentCons value natEnvironmentNil
+  appendNatEnvironment (natEnvironmentCons head rest) value =
+    natEnvironmentCons head (appendNatEnvironment rest value)
+
+  rotateHeadToLastEnvironment :
+    {n : Nat} →
+    NatEnvironment (suc n) →
+    NatEnvironment (suc n)
+  rotateHeadToLastEnvironment (natEnvironmentCons head rest) =
+    appendNatEnvironment rest head
+
+  rotateHeadToLastEnvironmentPlus :
+    {n : Nat} →
+    NatEnvironment (n + suc zero) →
+    NatEnvironment (n + suc zero)
+  rotateHeadToLastEnvironmentPlus {n = n} environment =
+    subst NatEnvironment (sym (natPlusOne n))
+      (rotateHeadToLastEnvironment
+        (subst NatEnvironment (natPlusOne n) environment))
+
+  appendNatEnvironmentPlus :
+    {n : Nat} →
+    NatEnvironment n →
+    Nat →
+    NatEnvironment (n + suc zero)
+  appendNatEnvironmentPlus {n = zero} natEnvironmentNil value =
+    natEnvironmentCons value natEnvironmentNil
+  appendNatEnvironmentPlus
+    {n = suc n} (natEnvironmentCons head rest) value =
+      natEnvironmentCons head (appendNatEnvironmentPlus rest value)
+
+  splitNatEnvironment-append :
+    (n : Nat) →
+    (environment : NatEnvironment n) →
+    (value : Nat) →
+    splitNatEnvironment n (suc zero)
+      (appendNatEnvironmentPlus environment value) ≡
+    pair environment (natEnvironmentCons value natEnvironmentNil)
+  splitNatEnvironment-append zero natEnvironmentNil value = refl
+  splitNatEnvironment-append (suc n)
+    (natEnvironmentCons head rest) value
+    rewrite splitNatEnvironment-append n rest value = refl
+
   -- Environments are ordered like the target stack, with its top first.
   -- A primitive therefore sees right above left and computes left op right.
   interpretMALLPNatProof :
@@ -1483,6 +1712,14 @@ module StrictNatCompiler where
     (natEnvironmentCons first (natEnvironmentCons second natEnvironmentNil)) =
       interpretMALLPNatProof proof
         (natEnvironmentCons second (natEnvironmentCons first natEnvironmentNil))
+  interpretMALLPNatProof
+    (natRotateHeadToLastProof {n = n} proof) environment =
+      interpretMALLPNatProof proof
+        (rotateHeadToLastEnvironmentPlus {n = n} environment)
+  interpretMALLPNatProof (natPrimitiveComposeProof proof operation)
+    (natEnvironmentCons leftValue rightEnvironment) =
+      applyNatOp operation leftValue
+        (interpretMALLPNatProof proof rightEnvironment)
   interpretMALLPNatProof
     (natCutProof {n = n} {m = m} first second) environment
     with splitNatEnvironment n m environment
@@ -1509,6 +1746,81 @@ module StrictNatCompiler where
   natExprProof-adequate (binary operation left right)
     rewrite natExprProof-adequate left
           | natExprProof-adequate right = refl
+
+  ----------------------------------------------------------------------
+  -- General finite linear Nat trees.
+  --
+  -- The index n counts live Nat assumptions. Literal leaves consume zero
+  -- resources; an argument leaf consumes exactly one; binary composition
+  -- partitions n+m assumptions between its two premises. This makes
+  -- duplication and discard unrepresentable in this source core.
+  ----------------------------------------------------------------------
+
+  data NatResourceExpr : Nat → Set where
+    resourceLiteral :
+      Nat →
+      NatResourceExpr zero
+
+    resourceArgument :
+      NatResourceExpr (suc zero)
+
+    resourceBinary :
+      {n m : Nat} →
+      NatOp →
+      NatResourceExpr n →
+      NatResourceExpr m →
+      NatResourceExpr (n + m)
+
+  evalNatResourceExpr :
+    {n : Nat} →
+    NatResourceExpr n →
+    NatEnvironment n →
+    Nat
+  evalNatResourceExpr (resourceLiteral value) natEnvironmentNil = value
+  evalNatResourceExpr resourceArgument
+    (natEnvironmentCons value natEnvironmentNil) = value
+  evalNatResourceExpr
+    (resourceBinary {n = n} {m = m} operation left right) environment
+    with splitNatEnvironment n m environment
+  ... | pair leftEnvironment rightEnvironment =
+    applyNatOp operation
+      (evalNatResourceExpr left leftEnvironment)
+      (evalNatResourceExpr right rightEnvironment)
+
+  natResourceProof :
+    {n : Nat} →
+    NatResourceExpr n →
+    MALLPNatProof n
+  natResourceProof (resourceLiteral value) = natLiteralProof value
+  natResourceProof resourceArgument = natArgumentProof
+  natResourceProof
+    (resourceBinary operation left right) =
+      natCutProof
+        (natResourceProof left)
+        (natPrimitiveComposeProof (natResourceProof right) operation)
+
+  natResource-proof-derivation :
+    {n : Nat} →
+    (expression : NatResourceExpr n) →
+    MALLPNatTheory (natContext n) (just natFormula)
+  natResource-proof-derivation expression =
+    embedNatProof (natResourceProof expression)
+
+  natResourceProof-adequate :
+    {n : Nat} →
+    (expression : NatResourceExpr n) →
+    (environment : NatEnvironment n) →
+    interpretMALLPNatProof (natResourceProof expression) environment ≡
+    evalNatResourceExpr expression environment
+  natResourceProof-adequate (resourceLiteral value) natEnvironmentNil = refl
+  natResourceProof-adequate resourceArgument
+    (natEnvironmentCons value natEnvironmentNil) = refl
+  natResourceProof-adequate
+    (resourceBinary {n = n} {m = m} operation left right) environment
+    with splitNatEnvironment n m environment
+  ... | pair leftEnvironment rightEnvironment
+    rewrite natResourceProof-adequate left leftEnvironment
+          | natResourceProof-adequate right rightEnvironment = refl
 
   -- A unary source function is linear when its sole argument occurs once.
   -- Its proof term is an MALLP derivation with exactly one Nat assumption.
@@ -1603,6 +1915,110 @@ module StrictNatCompiler where
       (cong
         (λ value → just (value ∷ forgetStack stack))
         (sym (natLinearProof-adequate expression argument)))
+
+  ----------------------------------------------------------------------
+  -- Binary linear Nat primitives.
+  --
+  -- The two source arguments are each consumed once.  The incoming stack
+  -- has the second argument at its head, matching the environment order
+  -- used by the MALLP primitive signature.  Exchange is explicit.
+  ----------------------------------------------------------------------
+
+  data NatBinaryLinearExpr : Set where
+    natBinaryArguments : NatOp → NatBinaryLinearExpr
+    natBinaryArgumentsExchanged : NatOp → NatBinaryLinearExpr
+
+  evalNatBinaryLinearExpr : NatBinaryLinearExpr → Nat → Nat → Nat
+  evalNatBinaryLinearExpr (natBinaryArguments operation) first second =
+    applyNatOp operation first second
+  evalNatBinaryLinearExpr
+    (natBinaryArgumentsExchanged operation) first second =
+      applyNatOp operation second first
+
+  compileNatBinaryLinear :
+    {Γ : List StackType} →
+    NatBinaryLinearExpr →
+    ForthCode (natCell ∷ natCell ∷ Γ) (natCell ∷ Γ)
+  compileNatBinaryLinear (natBinaryArguments operation) =
+    binaryWord operation
+  compileNatBinaryLinear (natBinaryArgumentsExchanged operation) =
+    sequence swapNat (binaryWord operation)
+
+  execNatBinaryLinear-correct :
+    (expression : NatBinaryLinearExpr) →
+    (first second : Nat) →
+    {Γ : List StackType} →
+    (stack : Stack Γ) →
+    execForthCode (compileNatBinaryLinear expression)
+      (pushCell second (pushCell first stack)) ≡
+    pushCell (evalNatBinaryLinearExpr expression first second) stack
+  execNatBinaryLinear-correct
+    (natBinaryArguments operation) first second stack =
+      execForthCode-binary-correct operation first second stack
+  execNatBinaryLinear-correct
+    (natBinaryArgumentsExchanged operation) first second stack =
+      execForthCode-binary-correct operation second first stack
+
+  natBinary-forth-sound :
+    (expression : NatBinaryLinearExpr) →
+    (first second : Nat) →
+    {Γ : List StackType} →
+    (stack : Stack Γ) →
+    execTokens
+      (renderForth (compileNatBinaryLinear expression))
+      (forgetStack (pushCell second (pushCell first stack))) ≡
+    just (evalNatBinaryLinearExpr expression first second ∷ forgetStack stack)
+  natBinary-forth-sound expression first second stack =
+    trans
+      (renderForth-sound
+        (compileNatBinaryLinear expression)
+        (pushCell second (pushCell first stack)))
+      (cong (λ values → just values)
+        (cong forgetStack
+          (execNatBinaryLinear-correct expression first second stack)))
+
+  natBinaryProof : NatBinaryLinearExpr → MALLPNatProof (suc (suc zero))
+  natBinaryProof (natBinaryArguments operation) =
+    natPrimitiveProof operation
+  natBinaryProof (natBinaryArgumentsExchanged operation) =
+    natExchangeProof (natPrimitiveProof operation)
+
+  natBinary-proof-derivation :
+    (expression : NatBinaryLinearExpr) →
+    MALLPNatTheory (natContext (suc (suc zero))) (just natFormula)
+  natBinary-proof-derivation expression =
+    embedNatProof (natBinaryProof expression)
+
+  natBinaryProof-adequate :
+    (expression : NatBinaryLinearExpr) →
+    (first second : Nat) →
+    interpretMALLPNatProof (natBinaryProof expression)
+      (natEnvironmentCons second
+        (natEnvironmentCons first natEnvironmentNil)) ≡
+    evalNatBinaryLinearExpr expression first second
+  natBinaryProof-adequate (natBinaryArguments operation) first second = refl
+  natBinaryProof-adequate
+    (natBinaryArgumentsExchanged operation) first second = refl
+
+  natBinaryMALLP-forth-sound :
+    (expression : NatBinaryLinearExpr) →
+    (first second : Nat) →
+    {Γ : List StackType} →
+    (stack : Stack Γ) →
+    execTokens
+      (renderForth (compileNatBinaryLinear expression))
+      (forgetStack (pushCell second (pushCell first stack))) ≡
+    just
+      (interpretMALLPNatProof (natBinaryProof expression)
+        (natEnvironmentCons second
+          (natEnvironmentCons first natEnvironmentNil)) ∷
+        forgetStack stack)
+  natBinaryMALLP-forth-sound expression first second stack =
+    trans
+      (natBinary-forth-sound expression first second stack)
+      (cong
+        (λ value → just (value ∷ forgetStack stack))
+        (sym (natBinaryProof-adequate expression first second)))
 
   ----------------------------------------------------------------------
   -- Closed PureLang lets: substitution without weakening or contraction.
@@ -1866,43 +2282,104 @@ module StrictBoolCompiler where
 
   data BoolForthCode :
     List BoolStackType → List BoolStackType → Set where
+    boolIdentity :
+      {Γ : List BoolStackType} →
+      BoolForthCode Γ Γ
+
     pushBoolean :
       {Γ : List BoolStackType} →
       Bool →
       BoolForthCode Γ (boolCell ∷ Γ)
+
+    -- A conditional consumes its condition. Both branches begin with the
+    -- same residual stack and may return an arbitrary stack of the same type.
+    boolIfCode :
+      {Γ Δ : List BoolStackType} →
+      BoolForthCode Γ Δ →
+      BoolForthCode Γ Δ →
+      BoolForthCode (boolCell ∷ Γ) Δ
+
+    -- A source function may case-analyse the lower of two live Boolean
+    -- arguments, then return the remaining argument in either branch.
+    -- The concrete lowering is SWAP IF ... ELSE ... THEN.
+    boolIfPreserving :
+      {Γ : List BoolStackType} →
+      BoolForthCode (boolCell ∷ Γ) (boolCell ∷ Γ) →
+      BoolForthCode (boolCell ∷ Γ) (boolCell ∷ Γ) →
+      BoolForthCode (boolCell ∷ boolCell ∷ Γ) (boolCell ∷ Γ)
 
   execBoolCode :
     {Γ Δ : List BoolStackType} →
     BoolForthCode Γ Δ →
     BoolStack Γ →
     BoolStack Δ
+  execBoolCode boolIdentity stack = stack
   execBoolCode (pushBoolean value) stack =
     pushBooleanValue value stack
+  execBoolCode (boolIfCode whenTrue whenFalse)
+    (pushBooleanValue true stack) =
+      execBoolCode whenTrue stack
+  execBoolCode (boolIfCode whenTrue whenFalse)
+    (pushBooleanValue false stack) =
+      execBoolCode whenFalse stack
+  execBoolCode (boolIfPreserving whenTrue whenFalse)
+    (pushBooleanValue value (pushBooleanValue true stack)) =
+      execBoolCode whenTrue (pushBooleanValue value stack)
+  execBoolCode (boolIfPreserving whenTrue whenFalse)
+    (pushBooleanValue value (pushBooleanValue false stack)) =
+      execBoolCode whenFalse (pushBooleanValue value stack)
 
   data BoolForthToken : Set where
-    pushTrueToken pushFalseToken : BoolForthToken
+    pushTrueToken pushFalseToken boolSwapToken : BoolForthToken
+    boolIfToken : List BoolForthToken → List BoolForthToken → BoolForthToken
 
   renderBoolCode :
     {Γ Δ : List BoolStackType} →
     BoolForthCode Γ Δ →
     List BoolForthToken
+  renderBoolCode boolIdentity = []
   renderBoolCode (pushBoolean true) = pushTrueToken ∷ []
   renderBoolCode (pushBoolean false) = pushFalseToken ∷ []
+  renderBoolCode (boolIfCode whenTrue whenFalse) =
+    boolIfToken (renderBoolCode whenTrue) (renderBoolCode whenFalse) ∷ []
+  renderBoolCode (boolIfPreserving whenTrue whenFalse) =
+    boolSwapToken ∷
+      boolIfToken (renderBoolCode whenTrue) (renderBoolCode whenFalse) ∷ []
 
-  execBoolToken :
-    BoolForthToken →
-    List Bool →
-    List Bool
-  execBoolToken pushTrueToken stack = true ∷ stack
-  execBoolToken pushFalseToken stack = false ∷ stack
+  bindBoolTokens :
+    Maybe (List Bool) →
+    (List Bool → Maybe (List Bool)) →
+    Maybe (List Bool)
+  bindBoolTokens nothing continuation = nothing
+  bindBoolTokens (just stack) continuation = continuation stack
+
+  bindBoolTokens-identity :
+    (result : Maybe (List Bool)) →
+    bindBoolTokens result (λ stack → just stack) ≡ result
+  bindBoolTokens-identity nothing = refl
+  bindBoolTokens-identity (just stack) = refl
 
   execBoolTokens :
     List BoolForthToken →
     List Bool →
     Maybe (List Bool)
   execBoolTokens [] stack = just stack
-  execBoolTokens (token ∷ tokens) stack =
-    execBoolTokens tokens (execBoolToken token stack)
+  execBoolTokens (pushTrueToken ∷ tokens) stack =
+    execBoolTokens tokens (true ∷ stack)
+  execBoolTokens (pushFalseToken ∷ tokens) stack =
+    execBoolTokens tokens (false ∷ stack)
+  execBoolTokens (boolSwapToken ∷ tokens) (top ∷ next ∷ stack) =
+    execBoolTokens tokens (next ∷ top ∷ stack)
+  execBoolTokens (boolSwapToken ∷ tokens) _ = nothing
+  execBoolTokens (boolIfToken whenTrue whenFalse ∷ tokens)
+    (true ∷ stack) =
+      bindBoolTokens (execBoolTokens whenTrue stack)
+        (λ branchStack → execBoolTokens tokens branchStack)
+  execBoolTokens (boolIfToken whenTrue whenFalse ∷ tokens)
+    (false ∷ stack) =
+      bindBoolTokens (execBoolTokens whenFalse stack)
+        (λ branchStack → execBoolTokens tokens branchStack)
+  execBoolTokens (boolIfToken whenTrue whenFalse ∷ tokens) [] = nothing
 
   renderBoolCode-sound :
     {Γ Δ : List BoolStackType} →
@@ -1910,8 +2387,31 @@ module StrictBoolCompiler where
     (stack : BoolStack Γ) →
     execBoolTokens (renderBoolCode code) (forgetBoolStack stack) ≡
     just (forgetBoolStack (execBoolCode code stack))
+  renderBoolCode-sound boolIdentity stack = refl
   renderBoolCode-sound (pushBoolean true) stack = refl
   renderBoolCode-sound (pushBoolean false) stack = refl
+  renderBoolCode-sound (boolIfCode whenTrue whenFalse)
+    (pushBooleanValue true stack)
+    rewrite bindBoolTokens-identity
+      (execBoolTokens (renderBoolCode whenTrue) (forgetBoolStack stack))
+          | renderBoolCode-sound whenTrue stack = refl
+  renderBoolCode-sound (boolIfCode whenTrue whenFalse)
+    (pushBooleanValue false stack)
+    rewrite bindBoolTokens-identity
+      (execBoolTokens (renderBoolCode whenFalse) (forgetBoolStack stack))
+          | renderBoolCode-sound whenFalse stack = refl
+  renderBoolCode-sound (boolIfPreserving whenTrue whenFalse)
+    (pushBooleanValue value (pushBooleanValue true stack))
+    rewrite bindBoolTokens-identity
+      (execBoolTokens (renderBoolCode whenTrue)
+        (forgetBoolStack (pushBooleanValue value stack)))
+          | renderBoolCode-sound whenTrue (pushBooleanValue value stack) = refl
+  renderBoolCode-sound (boolIfPreserving whenTrue whenFalse)
+    (pushBooleanValue value (pushBooleanValue false stack))
+    rewrite bindBoolTokens-identity
+      (execBoolTokens (renderBoolCode whenFalse)
+        (forgetBoolStack (pushBooleanValue value stack)))
+          | renderBoolCode-sound whenFalse (pushBooleanValue value stack) = refl
 
   compileBoolProof :
     BoolProof →
@@ -1926,6 +2426,127 @@ module StrictBoolCompiler where
       [] ≡ just (interpretBoolProof proof ∷ [])
   boolMALLP-forth-sound boolTrueProof = refl
   boolMALLP-forth-sound boolFalseProof = refl
+
+  -- Convert the proof-level Boolean program into the independent text-token
+  -- renderer's nested IF representation. The renderer's Agda certificate
+  -- checks the actual text emitted by Haskell against this token algebra.
+  mutual
+    boolForthTokenAsText : BoolForthToken → ForthTextToken
+    boolForthTokenAsText pushTrueToken = textTrueWord
+    boolForthTokenAsText pushFalseToken = textFalseWord
+    boolForthTokenAsText boolSwapToken = textSwapWord
+    boolForthTokenAsText (boolIfToken whenTrue whenFalse) =
+      textIf (mapBoolForthTokensAsText whenTrue)
+        (mapBoolForthTokensAsText whenFalse)
+
+    mapBoolForthTokensAsText :
+      List BoolForthToken → List ForthTextToken
+    mapBoolForthTokensAsText [] = []
+    mapBoolForthTokensAsText (token ∷ tokens) =
+      boolForthTokenAsText token ∷ mapBoolForthTokensAsText tokens
+
+  -- A Boolean case split is the additive MALLP elimination rule:
+  -- the same residual context is available in each mutually exclusive branch.
+  data BoolCaseProof : Set where
+    boolCaseProof : BoolProof → BoolProof → BoolCaseProof
+
+  selectBoolCaseProof : BoolCaseProof → Bool → BoolProof
+  selectBoolCaseProof (boolCaseProof whenTrue whenFalse) true = whenTrue
+  selectBoolCaseProof (boolCaseProof whenTrue whenFalse) false = whenFalse
+
+  interpretBoolCaseProof : BoolCaseProof → Bool → Bool
+  interpretBoolCaseProof proof scrutinee =
+    interpretBoolProof (selectBoolCaseProof proof scrutinee)
+
+  boolCaseMALLP-derivation :
+    (proof : BoolCaseProof) →
+    MALLP (dualPos boolFormula ∷ []) (just boolFormula)
+  boolCaseMALLP-derivation (boolCaseProof whenTrue whenFalse) =
+    mallp-with
+      (mallp-bottom (boolProofDerivation whenTrue))
+      (mallp-bottom (boolProofDerivation whenFalse))
+
+  -- Closed branch selection is compiled to the corresponding Boolean literal.
+  -- The MALLP derivation above proves the eliminator consumes one Bool resource;
+  -- this theorem connects compile-time branch selection to target execution.
+  compileBoolCaseProof :
+    (scrutinee : Bool) →
+    BoolCaseProof →
+    BoolForthCode [] (boolCell ∷ [])
+  compileBoolCaseProof scrutinee proof =
+    compileBoolProof (selectBoolCaseProof proof scrutinee)
+
+  boolCaseMALLP-forth-sound :
+    (scrutinee : Bool) →
+    (proof : BoolCaseProof) →
+    execBoolTokens
+      (renderBoolCode (compileBoolCaseProof scrutinee proof))
+      [] ≡ just (interpretBoolCaseProof proof scrutinee ∷ [])
+  boolCaseMALLP-forth-sound true (boolCaseProof whenTrue whenFalse) =
+    boolMALLP-forth-sound whenTrue
+  boolCaseMALLP-forth-sound false (boolCaseProof whenTrue whenFalse) =
+    boolMALLP-forth-sound whenFalse
+
+  compileBoolRuntimeCase :
+    BoolCaseProof →
+    BoolForthCode (boolCell ∷ []) (boolCell ∷ [])
+  compileBoolRuntimeCase (boolCaseProof whenTrue whenFalse) =
+    boolIfCode (compileBoolProof whenTrue) (compileBoolProof whenFalse)
+
+  -- The runtime case instruction consumes one condition and selects exactly
+  -- one additive branch. Both branches own the same empty residual context.
+  boolCaseRuntimeMALLP-forth-sound :
+    (scrutinee : Bool) →
+    (proof : BoolCaseProof) →
+    execBoolTokens
+      (renderBoolCode (compileBoolRuntimeCase proof))
+      (scrutinee ∷ []) ≡
+    just (interpretBoolCaseProof proof scrutinee ∷ [])
+  boolCaseRuntimeMALLP-forth-sound true (boolCaseProof whenTrue whenFalse)
+    rewrite bindBoolTokens-identity
+      (execBoolTokens (renderBoolCode (compileBoolProof whenTrue)) []) =
+        boolMALLP-forth-sound whenTrue
+  boolCaseRuntimeMALLP-forth-sound false (boolCaseProof whenTrue whenFalse)
+    rewrite bindBoolTokens-identity
+      (execBoolTokens (renderBoolCode (compileBoolProof whenFalse)) []) =
+        boolMALLP-forth-sound whenFalse
+
+  -- The additive left rule consumes the condition while both branches
+  -- consume the same residual Bool assumption. This is the MALLP judgment
+  -- for chooseBool : Bool ⊗ Bool ⊸ Bool, with no weakening or contraction.
+  boolCaseWithResidualMALLP :
+    MALLP
+      (dualPos boolFormula ∷ dualPos boolFormula ∷ [])
+      (just boolFormula)
+  boolCaseWithResidualMALLP =
+    mallp-with (mallp-bottom mallp-ax) (mallp-bottom mallp-ax)
+
+  compileBoolCaseWithResidual :
+    BoolForthCode (boolCell ∷ boolCell ∷ []) (boolCell ∷ [])
+  compileBoolCaseWithResidual =
+    boolIfPreserving boolIdentity boolIdentity
+
+  -- The compiler's concrete instruction stream for chooseBool is SWAP
+  -- followed by an additive IF whose branches each preserve the same
+  -- remaining Bool. This equality links the proof-level control-flow code
+  -- with the ForthTextToken algebra used by the emitted-source certificate.
+  boolCaseWithResidual-token-correspondence :
+    mapBoolForthTokensAsText (renderBoolCode compileBoolCaseWithResidual) ≡
+    (textSwapWord ∷ textIf [] [] ∷ [])
+  boolCaseWithResidual-token-correspondence = refl
+
+  boolCaseWithResidualMALLP-forth-sound :
+    (condition value : Bool) →
+    execBoolTokens
+      (renderBoolCode compileBoolCaseWithResidual)
+      (value ∷ condition ∷ []) ≡
+    just (value ∷ [])
+  boolCaseWithResidualMALLP-forth-sound true value
+    rewrite bindBoolTokens-identity
+      (execBoolTokens [] (value ∷ [])) = refl
+  boolCaseWithResidualMALLP-forth-sound false value
+    rewrite bindBoolTokens-identity
+      (execBoolTokens [] (value ∷ [])) = refl
 
 open StrictBoolCompiler public
 
@@ -1963,4 +2584,315 @@ module StrictUnitCompiler where
 
 open StrictUnitCompiler public
 
+
+
+------------------------------------------------------------------------
+-- Linear call-by-need state and explicit effect protocols
+--
+-- These are primitive *signatures over unchanged MALLP*, not additions to
+-- Laurent's logical rules.  A store/effect token is an ordinary linear
+-- resource: every operation consumes one token and returns exactly one.
+------------------------------------------------------------------------
+
+module StrictStatefulProtocol where
+
+  thunkStoreFormula : PolType posPolarity
+  thunkStoreFormula = atom⁺ 18
+
+  effectTokenFormula : PolType posPolarity
+  effectTokenFormula = atom⁺ 19
+
+  listNatFormula : PolType posPolarity
+  listNatFormula = atom⁺ 20
+
+  -- A linear function owns each captured resource in its surrounding
+  -- context. Domain and codomain are represented with MALLP polarity shifts.
+  linearClosureFormula :
+    PolType posPolarity →
+    PolType posPolarity →
+    PolType posPolarity
+  linearClosureFormula domain codomain =
+    down⁺ (up⁻ codomain ⅋⁻ dualPos domain)
+
+  -- Computation signatures are layered over MALLP.  The only extra axioms
+  -- below are declared operations with explicit resource/stack contracts.
+  data MALLPProtocolTheory : Context → Stoup → Set where
+    protocol-logical :
+      {Γ : Context} {S : Stoup} →
+      MALLP Γ S →
+      MALLPProtocolTheory Γ S
+
+    protocol-cut :
+      {Γ Δ : Context} {P : PolType posPolarity} {S : Stoup} →
+      MALLPProtocolTheory Γ (just P) →
+      MALLPProtocolTheory (dualPos P ∷ Δ) S →
+      MALLPProtocolTheory (Γ ++ᴸ Δ) S
+
+    protocol-exchange :
+      {Γ Δ : Context} {S : Stoup} →
+      ContextPermutation Γ Δ →
+      MALLPProtocolTheory Γ S →
+      MALLPProtocolTheory Δ S
+
+    -- Forcing consumes the unique store capability and returns the demanded
+    -- Nat together with the updated capability.
+    primitive-thunk-force :
+      MALLPProtocolTheory
+        (dualPos thunkStoreFormula ∷ [])
+        (just (natFormula ⊗⁺ thunkStoreFormula))
+
+    -- Emission consumes exactly one event payload and one effect capability,
+    -- returning the updated capability.  No ambient unrestricted effect is
+    -- available in this signature.
+    primitive-effect-emit :
+      MALLPProtocolTheory
+        (dualPos effectTokenFormula ∷ dualPos natFormula ∷ [])
+        (just effectTokenFormula)
+
+    -- Linear closure application consumes the closure and its argument once.
+    primitive-linear-apply :
+      {domain codomain : PolType posPolarity} →
+      MALLPProtocolTheory
+        (dualPos (linearClosureFormula domain codomain) ∷
+         dualPos domain ∷ [])
+        (just codomain)
+
+    primitive-list-nil :
+      MALLPProtocolTheory [] (just listNatFormula)
+
+    primitive-list-cons :
+      MALLPProtocolTheory
+        (dualPos natFormula ∷ dualPos listNatFormula ∷ [])
+        (just listNatFormula)
+
+    -- The fold operation is static code. The list and accumulator are the
+    -- dynamic linear inputs; recursion is structurally justified by the
+    -- finite Agda list semantics below.
+    primitive-list-fold :
+      NatOp →
+      MALLPProtocolTheory
+        (dualPos listNatFormula ∷ dualPos natFormula ∷ [])
+        (just natFormula)
+
+  ----------------------------------------------------------------------
+  -- A total PureLang thunk fragment with explicit call-by-need update.
+  ----------------------------------------------------------------------
+
+  data ThunkExpr : Set where
+    thunkLiteral : Nat → ThunkExpr
+    thunkAdd : ThunkExpr → ThunkExpr → ThunkExpr
+    thunkMonus : ThunkExpr → ThunkExpr → ThunkExpr
+    thunkMultiply : ThunkExpr → ThunkExpr → ThunkExpr
+
+  evalThunkExpr : ThunkExpr → Nat
+  evalThunkExpr (thunkLiteral value) = value
+  evalThunkExpr (thunkAdd left right) =
+    evalThunkExpr left + evalThunkExpr right
+  evalThunkExpr (thunkMonus left right) =
+    applyNatOp monusOp (evalThunkExpr left) (evalThunkExpr right)
+  evalThunkExpr (thunkMultiply left right) =
+    evalThunkExpr left * evalThunkExpr right
+
+  data ThunkState : Set where
+    suspended : ThunkExpr → ThunkState
+    memoized : Nat → ThunkState
+
+  cacheThunkState : ThunkState → ThunkState
+  cacheThunkState (suspended expression) =
+    memoized (evalThunkExpr expression)
+  cacheThunkState (memoized value) = memoized value
+
+  data ThunkStoreToken : ThunkState → Set where
+    ownThunkStore : {state : ThunkState} → ThunkStoreToken state
+
+  -- The transition type consumes the old capability and returns one new
+  -- capability indexed by the post-update heap state.
+  forceThunk :
+    {state : ThunkState} →
+    ThunkStoreToken state →
+    Nat × ThunkStoreToken (cacheThunkState state)
+  forceThunk {suspended expression} ownThunkStore =
+    pair (evalThunkExpr expression) ownThunkStore
+  forceThunk {memoized value} ownThunkStore =
+    pair value ownThunkStore
+
+  forceThunkValue :
+    {state : ThunkState} →
+    ThunkStoreToken state →
+    Nat
+  forceThunkValue token = fst (forceThunk token)
+
+  forceThunkNext :
+    {state : ThunkState} →
+    (token : ThunkStoreToken state) →
+    ThunkStoreToken (cacheThunkState state)
+  forceThunkNext token = snd (forceThunk token)
+
+  cacheThunkState-idempotent :
+    (state : ThunkState) →
+    cacheThunkState (cacheThunkState state) ≡ cacheThunkState state
+  cacheThunkState-idempotent (suspended expression) = refl
+  cacheThunkState-idempotent (memoized value) = refl
+
+  forceThunk-stable :
+    {state : ThunkState} →
+    (token : ThunkStoreToken state) →
+    forceThunkValue (forceThunkNext token) ≡ forceThunkValue token
+  forceThunk-stable {suspended expression} ownThunkStore = refl
+  forceThunk-stable {memoized value} ownThunkStore = refl
+
+  forceThunk-caches :
+    {state : ThunkState} →
+    (token : ThunkStoreToken state) →
+    cacheThunkState state ≡
+    cacheThunkState (cacheThunkState state)
+  forceThunk-caches stateToken =
+    sym (cacheThunkState-idempotent _)
+
+  ----------------------------------------------------------------------
+  -- An explicit linear event protocol.
+  ----------------------------------------------------------------------
+
+  appendEvent : List Nat → Nat → List Nat
+  appendEvent [] event = event ∷ []
+  appendEvent (head ∷ rest) event = head ∷ appendEvent rest event
+
+  data EffectToken : List Nat → Set where
+    ownEffectToken : {trace : List Nat} → EffectToken trace
+
+  traceLength : List Nat → Nat
+  traceLength [] = zero
+  traceLength (_ ∷ events) = suc (traceLength events)
+
+  appendEvent-length :
+    (trace : List Nat) →
+    (event : Nat) →
+    traceLength (appendEvent trace event) ≡ suc (traceLength trace)
+  appendEvent-length [] event = refl
+  appendEvent-length (head ∷ rest) event =
+    cong suc (appendEvent-length rest event)
+
+  emitEffect :
+    {trace : List Nat} →
+    EffectToken trace →
+    (event : Nat) →
+    EffectToken (appendEvent trace event)
+  emitEffect ownEffectToken event = ownEffectToken
+
+  -- Public witnesses for the computation signatures.
+  thunkForceSignature :
+    MALLPProtocolTheory
+      (dualPos thunkStoreFormula ∷ [])
+      (just (natFormula ⊗⁺ thunkStoreFormula))
+  thunkForceSignature = primitive-thunk-force
+
+  effectEmitSignature :
+    MALLPProtocolTheory
+      (dualPos effectTokenFormula ∷ dualPos natFormula ∷ [])
+      (just effectTokenFormula)
+  effectEmitSignature = primitive-effect-emit
+
+open StrictStatefulProtocol public
+
+
+------------------------------------------------------------------------
+-- Linear closures, tensor/sum data, and finite list recursors
+--
+-- The proof terms below use existing MALLP introduction/elimination rules.
+-- Primitive application and list runtime operations are isolated in explicit
+-- MALLPProtocolTheory signatures.  This does not add a recursive connective
+-- to MALLP: list recursion is structural over finite Agda values.
+------------------------------------------------------------------------
+
+module StrictLinearDataCompiler where
+
+  linearProductIntro :
+    {Γ Δ : Context} {A B : PolType posPolarity} →
+    MALLP Γ (just A) →
+    MALLP Δ (just B) →
+    MALLP (Γ ++ᴸ Δ) (just (A ⊗⁺ B))
+  linearProductIntro = mallp-tensor
+
+  linearProductElim :
+    {Γ : Context} {A B : PolType posPolarity} {S : Stoup} →
+    MALLP (dualPos A ∷ dualPos B ∷ Γ) S →
+    MALLP (dualPos (A ⊗⁺ B) ∷ Γ) S
+  linearProductElim = mallp-par
+
+  linearSumIntroLeft :
+    {Γ : Context} {A B : PolType posPolarity} →
+    MALLP Γ (just A) →
+    MALLP Γ (just (A ⊕⁺ B))
+  linearSumIntroLeft = mallp-plus-left
+
+  linearSumIntroRight :
+    {Γ : Context} {A B : PolType posPolarity} →
+    MALLP Γ (just B) →
+    MALLP Γ (just (A ⊕⁺ B))
+  linearSumIntroRight = mallp-plus-right
+
+  linearSumElim :
+    {Γ : Context} {A B : PolType posPolarity} {S : Stoup} →
+    MALLP (dualPos A ∷ Γ) S →
+    MALLP (dualPos B ∷ Γ) S →
+    MALLP (dualPos (A ⊕⁺ B) ∷ Γ) S
+  linearSumElim = mallp-with
+
+  -- Γ remains present while the domain resource is abstracted.  The closure
+  -- introduction consumes the argument resource once and preserves captures.
+  linearClosureIntro :
+    {Γ : Context} {A B : PolType posPolarity} →
+    MALLP (dualPos A ∷ Γ) (just B) →
+    MALLP Γ (just (linearClosureFormula A B))
+  linearClosureIntro body =
+    mallp-down (mallp-par (mallp-up body))
+
+  linearClosureApplicationSignature :
+    {A B : PolType posPolarity} →
+    MALLPProtocolTheory
+      (dualPos (linearClosureFormula A B) ∷ dualPos A ∷ [])
+      (just B)
+  linearClosureApplicationSignature = primitive-linear-apply
+
+  data NatListValue : Set where
+    natListNil : NatListValue
+    natListCons : Nat → NatListValue → NatListValue
+
+  foldNatList : NatOp → Nat → NatListValue → Nat
+  foldNatList operation initial natListNil = initial
+  foldNatList operation initial (natListCons head tail) =
+    applyNatOp operation head (foldNatList operation initial tail)
+
+  foldNatList-step :
+    (operation : NatOp) →
+    (initial head : Nat) →
+    (tail : NatListValue) →
+    foldNatList operation initial (natListCons head tail) ≡
+    applyNatOp operation head (foldNatList operation initial tail)
+  foldNatList-step operation initial head tail = refl
+
+  foldNatList-empty :
+    (operation : NatOp) →
+    (initial : Nat) →
+    foldNatList operation initial natListNil ≡ initial
+  foldNatList-empty operation initial = refl
+
+  listNilSignature :
+    MALLPProtocolTheory [] (just listNatFormula)
+  listNilSignature = primitive-list-nil
+
+  listConsSignature :
+    MALLPProtocolTheory
+      (dualPos natFormula ∷ dualPos listNatFormula ∷ [])
+      (just listNatFormula)
+  listConsSignature = primitive-list-cons
+
+  listFoldSignature :
+    (operation : NatOp) →
+    MALLPProtocolTheory
+      (dualPos listNatFormula ∷ dualPos natFormula ∷ [])
+      (just natFormula)
+  listFoldSignature = primitive-list-fold
+
+open StrictLinearDataCompiler public
 

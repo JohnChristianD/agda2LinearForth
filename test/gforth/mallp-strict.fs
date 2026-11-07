@@ -23,12 +23,32 @@ answerLetShared 169 strict-assert-natural
 answerLetUnused 7 strict-assert-natural
 answerTrue TRUE strict-assert-boolean
 answerFalse FALSE strict-assert-boolean
+answerMatchedTrue FALSE strict-assert-boolean
+answerMatchedFalse TRUE strict-assert-boolean
+TRUE invertBool FALSE strict-assert-boolean
+FALSE invertBool TRUE strict-assert-boolean
+TRUE FALSE chooseBool FALSE strict-assert-boolean
+FALSE TRUE chooseBool TRUE strict-assert-boolean
 answerUnit
 10 answerIdentity 10 strict-assert-natural
 10 answerAddFive 15 strict-assert-natural
 3 answerMonusFive 0 strict-assert-natural
 3 answerFiveMonus 2 strict-assert-natural
 4 answerMultiplyFive 20 strict-assert-natural
+
+7 13 answerAddTwo 20 strict-assert-natural
+2 5 answerMonusTwo 0 strict-assert-natural
+5 2 answerMonusTwo 3 strict-assert-natural
+2 5 answerReverseMonusTwo 3 strict-assert-natural
+4 5 answerMultiplyTwo 20 strict-assert-natural
+
+2 3 4 answerThree 18 strict-assert-natural
+2 3 4 answerThreeLet 18 strict-assert-natural
+2 3 4 5 answerFour 48 strict-assert-natural
+
+2 3 4 answerCallThree 9 strict-assert-natural
+2 3 4 answerCallNested 18 strict-assert-natural
+
 : testStrictOverflow ( -- )
   MALLP-MAX-NAT 1 MALLP-NAT-ADD { ignored }
 ;

@@ -4,10 +4,11 @@ on:
     branches:
       - master
       - wayfinder/mallp-purecake-linear-functions
+      - wayfinder/mallp-purecake-multi-linear
   pull_request:
 
 concurrency:
-  group: agda2mallpforth-${{ github.event.pull_request.number || github.ref }}
+  group: agda2mallpforth-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -32,7 +33,7 @@ jobs:
             test "$(git rev-parse "HEAD:$path")" = "$(git rev-parse "$SCHEME_UPSTREAM_SHA:$path")"
           done < <(git ls-tree -r --name-only HEAD | grep -E "\\.hs$")
           test "$(git ls-files '*.hs' | grep -v '^src/Agda/Compiler/ToForth.hs$' | wc -l | tr -d ' ')" -ge 1
-          test "$(git ls-files '*.agda' | paste -sd ' ')" = "formal/MALLPForth.agda formal/SovereignRationalSEDPhysics.agda"
+          test "$(git ls-files '*.agda' | paste -sd ' ')" = "formal/ForthRenderer.agda formal/MALLPForth.agda formal/SovereignRationalSEDPhysics.agda"
           expected_markdown_files="README.md"
           actual_markdown_files="$(git ls-files '*.md' | LC_ALL=C sort)"
           test "$actual_markdown_files" = "$expected_markdown_files"
@@ -91,6 +92,12 @@ jobs:
           key: ${{ runner.os }}-ghc-${{ steps.setup.outputs.ghc-version }}-cabal-${{ steps.setup.outputs.cabal-version }}-${{ hashFiles('cabal.project', 'agda2forth.cabal') }}-local-build-v2
 
       # Save before proof/test gates: their failures must not discard this expensive build.
+      - name: Type-check the standalone Forth renderer
+        id: renderer_proof
+        continue-on-error: true
+        run: |
+          "$AGDA_BIN" -i formal formal/ForthRenderer.agda
+
       - name: Type-check the MALLP specification and rewrite system
         id: mallp_proof
         continue-on-error: true
@@ -115,45 +122,48 @@ jobs:
         run: |
           cp test/MALLPStrict.agda.src test/MALLPStrict.agda
           trap 'rm -f test/MALLPStrict.agda' EXIT
-          cabal run agda2forth -- -i test test/MALLPStrict.agda
+          if ! cabal run agda2forth -- -i test test/MALLPStrict.agda > agda2forth.log 2>&1; then
+            cat agda2forth.log
+            exit 1
+          fi
+          cat agda2forth.log
+          test -s MALLPStrict.fth
+          test -s MALLPEmittedRenderer.agda
+          grep -Fq 'chooseBoolTokenCorrespondence = refl' MALLPEmittedRenderer.agda
+          cat MALLPEmittedRenderer.agda
+          echo "Generated Forth module:"
+          cat MALLPStrict.fth
+          if "$AGDA_BIN" -i formal -i . MALLPEmittedRenderer.agda > renderer-certificate.log 2>&1; then
+            cat renderer-certificate.log
+          else
+            status=$?
+            cat renderer-certificate.log
+            echo "Agda renderer certificate exit: $status"
+            exit "$status"
+          fi
           grep -Fq 'MALLP-NAT-ADD' MALLPStrict.fth
           grep -Fq 'MALLP-PARSE-NAT' MALLPStrict.fth
           grep -Fq ': answerTrue TRUE ;' MALLPStrict.fth
           grep -Fq ': answerFalse FALSE ;' MALLPStrict.fth
+          grep -Fq ': answerMatchedTrue FALSE ;' MALLPStrict.fth
+          grep -Fq ': answerMatchedFalse TRUE ;' MALLPStrict.fth
+          grep -Fq ': invertBool IF FALSE ELSE TRUE THEN ;' MALLPStrict.fth
           grep -Fq ': answerUnit ;' MALLPStrict.fth
-          grep -Eq '^: answerIdentity[[:space:]]*;          if grep -Eq '^: answerInt ' MALLPStrict.fth; then
-            echo "non-admitted Int definition escaped the result-type gate"
-            exit 1
-          fi
-          if grep -Eq '(^|[[:space:]])(:noname|makeTHUNK|dethunk|foldThunks|pass|HERE|ALLOT|CREATE)([[:space:]]|$)' MALLPStrict.fth; then
-            echo "generated strict MALLP code contains a legacy runtime dependency"
-            exit 1
-          fi
-          if grep -Eiq '(^|[[:space:]])(DUP|[?]DUP|2DUP|3DUP|OVER|2OVER|PICK|DROP|2DROP|3DROP|NIP|2NIP|TUCK)([[:space:]]|$)' data/FLib.fth MALLPStrict.fth test/gforth/mallp-strict.fs; then
-            echo "strict MALLP runtime/output contains a structural duplicate or discard word"
-            exit 1
-          fi
-          gforth MALLPStrict.fth test/gforth/mallp-strict.fs > mallp-strict.log
-          grep -Fq 'mallp-strict-tests-passed' mallp-strict.log
-
-      - name: Require every proof, backend, and execution gate
-        if: always()
-        env:
-          MALLP_CHECK: ${{ steps.mallp_proof.outcome }}
-          PHYSICS_CHECK: ${{ steps.physics_proof.outcome }}
-          BACKEND_CHECK: ${{ steps.forth_backend.outcome }}
-          FIXTURE_CHECK: ${{ steps.strict_fixture.outcome }}
-        run: |
-          printf 'MALLP proof: %s\nPhysics proof: %s\nBackend build: %s\nGforth fixture: %s\n' "$MALLP_CHECK" "$PHYSICS_CHECK" "$BACKEND_CHECK" "$FIXTURE_CHECK"
-          test "$MALLP_CHECK" = success
-          test "$PHYSICS_CHECK" = success
-          test "$BACKEND_CHECK" = success
-          test "$FIXTURE_CHECK" = success
- MALLPStrict.fth
+          grep -Eq '^: answerIdentity[[:space:]]*;' MALLPStrict.fth
           grep -Fq 'answerAddFive' MALLPStrict.fth
           grep -Fq 'answerMonusFive' MALLPStrict.fth
           grep -Fq 'answerFiveMonus' MALLPStrict.fth
           grep -Fq 'answerMultiplyFive' MALLPStrict.fth
+          grep -Fq 'answerAddTwo' MALLPStrict.fth
+          grep -Fq 'answerMonusTwo' MALLPStrict.fth
+          grep -Fq 'answerReverseMonusTwo' MALLPStrict.fth
+          grep -Fq 'answerMultiplyTwo' MALLPStrict.fth
+          grep -Fq 'answerThree' MALLPStrict.fth
+          grep -Fq 'answerThreeLet' MALLPStrict.fth
+          grep -Fq 'answerFour' MALLPStrict.fth
+          grep -Fq 'answerCallThree' MALLPStrict.fth
+          grep -Fq 'answerCallNested' MALLPStrict.fth
+          grep -Fq 'ROLL' MALLPStrict.fth
           grep -Fq 'SWAP' MALLPStrict.fth
           if grep -Eq '^: answerInt ' MALLPStrict.fth; then
             echo "non-admitted Int definition escaped the result-type gate"
@@ -167,18 +177,26 @@ jobs:
             echo "strict MALLP runtime/output contains a structural duplicate or discard word"
             exit 1
           fi
-          gforth MALLPStrict.fth test/gforth/mallp-strict.fs > mallp-strict.log
+          grep -n 'answerCall' MALLPStrict.fth || true
+          cat test/gforth/mallp-strict.fs >> MALLPStrict.fth
+          if ! gforth MALLPStrict.fth > mallp-strict.log 2>&1; then
+            cat mallp-strict.log
+            exit 1
+          fi
+          cat mallp-strict.log
           grep -Fq 'mallp-strict-tests-passed' mallp-strict.log
 
       - name: Require every proof, backend, and execution gate
         if: always()
         env:
+          RENDERER_CHECK: ${{ steps.renderer_proof.outcome }}
           MALLP_CHECK: ${{ steps.mallp_proof.outcome }}
           PHYSICS_CHECK: ${{ steps.physics_proof.outcome }}
           BACKEND_CHECK: ${{ steps.forth_backend.outcome }}
           FIXTURE_CHECK: ${{ steps.strict_fixture.outcome }}
         run: |
-          printf 'MALLP proof: %s\nPhysics proof: %s\nBackend build: %s\nGforth fixture: %s\n' "$MALLP_CHECK" "$PHYSICS_CHECK" "$BACKEND_CHECK" "$FIXTURE_CHECK"
+          printf 'Forth renderer: %s\\nMALLP proof: %s\\nPhysics proof: %s\\nBackend build: %s\\nGforth fixture: %s\\n' "$RENDERER_CHECK" "$MALLP_CHECK" "$PHYSICS_CHECK" "$BACKEND_CHECK" "$FIXTURE_CHECK"
+          test "$RENDERER_CHECK" = success
           test "$MALLP_CHECK" = success
           test "$PHYSICS_CHECK" = success
           test "$BACKEND_CHECK" = success

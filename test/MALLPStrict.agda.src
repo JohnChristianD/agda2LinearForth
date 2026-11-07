@@ -28,6 +28,22 @@ answerTrue = true
 answerFalse : Bool
 answerFalse = false
 
+invertBool : Bool → Bool
+invertBool true = false
+invertBool false = true
+
+-- Additive case: condition is consumed once, and the selected branch
+-- consumes the remaining Bool exactly once.
+chooseBool : Bool → Bool → Bool
+chooseBool true value = value
+chooseBool false value = value
+
+answerMatchedTrue : Bool
+answerMatchedTrue = invertBool true
+
+answerMatchedFalse : Bool
+answerMatchedFalse = invertBool false
+
 open import Agda.Builtin.Unit using (⊤; tt)
 
 answerUnit : ⊤
@@ -53,3 +69,31 @@ open import Agda.Builtin.Int using (Int; pos)
 
 answerInt : Int
 answerInt = pos 2
+
+answerAddTwo : Nat → Nat → Nat
+answerAddTwo x y = x + y
+
+answerMonusTwo : Nat → Nat → Nat
+answerMonusTwo x y = x - y
+
+answerReverseMonusTwo : Nat → Nat → Nat
+answerReverseMonusTwo x y = y - x
+
+answerMultiplyTwo : Nat → Nat → Nat
+answerMultiplyTwo x y = x * y
+
+answerThree : Nat → Nat → Nat → Nat
+answerThree x y z = (x + z) * y
+
+answerThreeLet : Nat → Nat → Nat → Nat
+answerThreeLet x y z =
+  let partial = x + z in partial * y
+
+answerFour : Nat → Nat → Nat → Nat → Nat
+answerFour w x y z = (w + y) * (x + z)
+
+answerCallThree : Nat → Nat → Nat → Nat
+answerCallThree x y z = answerAddTwo x (y + z)
+
+answerCallNested : Nat → Nat → Nat → Nat
+answerCallNested x y z = answerMultiplyTwo (x + z) y
