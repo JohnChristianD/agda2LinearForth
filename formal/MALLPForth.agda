@@ -1332,16 +1332,16 @@ reflectConstructorShapes :
   Reflection.TC (List ReflectedConstructorShape)
 reflectConstructorShapes parameters [] =
   Reflection.returnTC []
-reflectConstructorShapes parameters (constructor ∷ constructors) =
-  Reflection.bindTC (Reflection.getType constructor)
-    (λ constructorType →
+reflectConstructorShapes parameters (entry ∷ entries) =
+  Reflection.bindTC (Reflection.getType entry)
+    (λ entryType →
       Reflection.bindTC
-        (reflectConstructorShapes parameters constructors)
+        (reflectConstructorShapes parameters entries)
         (λ rest →
           Reflection.returnTC
-            (reflectedConstructorShape constructor
+            (reflectedConstructorShape entry
               (reflectionNatDifference
-                (reflectionPiArity constructorType) parameters)
+                (reflectionPiArity entryType) parameters)
               ∷ rest)))
 
 reflectDataShapeImpl :
