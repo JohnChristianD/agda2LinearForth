@@ -31,7 +31,9 @@ jobs:
           done < <(git ls-tree -r --name-only HEAD | grep -E "\\.hs$")
           test "$(git ls-files '*.hs' | grep -v '^src/Agda/Compiler/ToForth.hs$' | wc -l | tr -d ' ')" -ge 1
           test "$(git ls-files '*.agda' | paste -sd ' ')" = "formal/MALLPForth.agda formal/SovereignRationalSEDPhysics.agda"
-          test "$(git ls-files '*.md')" = "README.md"
+          expected_markdown_files="README.md"
+          actual_markdown_files="$(git ls-files '*.md' | LC_ALL=C sort)"
+          test "$actual_markdown_files" = "$expected_markdown_files"
           test -z "$(git ls-files '*.sh' '*.bash' '*.ps1')"
           test -f cabal.project
           grep -Fq 'tag: v2.8.0.2' cabal.project
@@ -77,7 +79,6 @@ jobs:
           test "$("$agda_bin" --numeric-version)" = "2.8.0.2"
           echo "AGDA_BIN=$agda_bin" >> "$GITHUB_ENV"
 
-      # Save before proof/test gates: their failures must not discard this expensive build.
       - name: Save Cabal and local build caches
         if: always() && steps.agda_cli.outcome == 'success' && steps.build_cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -87,6 +88,7 @@ jobs:
             dist-newstyle
           key: ${{ runner.os }}-ghc-${{ steps.setup.outputs.ghc-version }}-cabal-${{ steps.setup.outputs.cabal-version }}-${{ hashFiles('cabal.project', 'agda2forth.cabal') }}-local-build-v2
 
+      # Save before proof/test gates: their failures must not discard this expensive build.
       - name: Type-check the MALLP specification and rewrite system
         id: mallp_proof
         continue-on-error: true
@@ -114,6 +116,13 @@ jobs:
           cabal run agda2forth -- -i test test/MALLPStrict.agda
           grep -Fq 'MALLP-NAT-ADD' MALLPStrict.fth
           grep -Fq 'MALLP-PARSE-NAT' MALLPStrict.fth
+          grep -Fq ': answerTrue TRUE ;' MALLPStrict.fth
+          grep -Fq ': answerFalse FALSE ;' MALLPStrict.fth
+          grep -Fq ': answerUnit ;' MALLPStrict.fth
+          if grep -Eq '^: answerInt ' MALLPStrict.fth; then
+            echo "non-admitted Int definition escaped the result-type gate"
+            exit 1
+          fi
           if grep -Eq '(^|[[:space:]])(:noname|makeTHUNK|dethunk|foldThunks|pass|HERE|ALLOT|CREATE)([[:space:]]|$)' MALLPStrict.fth; then
             echo "generated strict MALLP code contains a legacy runtime dependency"
             exit 1

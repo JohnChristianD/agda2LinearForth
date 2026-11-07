@@ -10,3 +10,30 @@ answerMonus = 2 - 5
 
 answerMultiply : Nat
 answerMultiply = (2 + 3) * 4
+
+answerLet : Nat
+answerLet = let value = 7 + 13 in value * 2
+
+answerLetShared : Nat
+answerLetShared = let value = 10 + 3 in value * value
+
+answerLetUnused : Nat
+answerLetUnused = let ignored = 1000 * 1000 in 7
+
+open import Agda.Builtin.Bool using (Bool; true; false)
+
+answerTrue : Bool
+answerTrue = true
+
+answerFalse : Bool
+answerFalse = false
+
+open import Agda.Builtin.Unit using (⊤; tt)
+
+answerUnit : ⊤
+answerUnit = tt
+
+open import Agda.Builtin.Int using (Int; pos)
+
+answerInt : Int
+answerInt = pos 2

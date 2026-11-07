@@ -13,6 +13,9 @@ import Agda.Syntax.Treeless
 import Agda.Syntax.TopLevelModuleName
 import Agda.TypeChecking.Monad
 import Agda.TypeChecking.Primitive.Base
+import Agda.TypeChecking.Reduce (reduce)
+import Agda.TypeChecking.Substitute (TelV(..))
+import Agda.TypeChecking.Telescope (telView)
 import Data.Char (isAlphaNum, isDigit)
 import qualified Data.List.NonEmpty as NE
 import Data.SCargot
@@ -22,9 +25,31 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Control.Monad.IO.Class as IO
 import Data.Maybe (catMaybes)
+import Numeric.Natural (Natural)
 import Paths_agda2forth (getDataFileName)
 
 type FthForm = RichSExpr Text
+
+data NatOp
+  = NatAdd
+  | NatMonus
+  | NatMultiply
+  deriving (Eq, Show)
+
+data NatExpr
+  = NatLiteral Natural
+  | NatBinary NatOp NatExpr NatExpr
+  deriving (Eq, Show)
+
+decodeNatPrimitive :: TPrim -> [NatExpr] -> Either String NatExpr
+decodeNatPrimitive PAdd [left, right] =
+  Right (NatBinary NatAdd left right)
+decodeNatPrimitive PSub [_, _] =
+  Left "PSub is signed integer subtraction; Nat monus is lowered from builtin NatMinus"
+decodeNatPrimitive PMul [left, right] =
+  Right (NatBinary NatMultiply left right)
+decodeNatPrimitive primitive _ =
+  Left ("unsupported Nat primitive or arity: " ++ show primitive)
 
 formToText :: FthForm -> Text
 formToText (RSAtom atom) = atom <> " "
@@ -51,35 +76,142 @@ strictWord name body =
 unsupported :: String -> TCM a
 unsupported message = fail ("agda2MALLPForth: " ++ message)
 
-compileNatTerm :: TTerm -> TCM FthForm
-compileNatTerm term = do
+-- Count references to one de Bruijn variable.  TLam, TLet, and constructor
+-- alternatives extend the local binder depth; a TCase scrutinee itself is
+-- also a use of its indexed variable.
+natVariableUses :: Int -> TTerm -> Int
+natVariableUses target = count 0
+  where
+    count depth (TVar index)
+      | index == target + depth = 1
+      | otherwise = 0
+    count depth (TApp function arguments) =
+      count depth function + sum (map (count depth) arguments)
+    count depth (TLam body) = count (depth + 1) body
+    count depth (TLet bound body) =
+      count depth bound + count (depth + 1) body
+    count depth (TCase index _ fallback alternatives) =
+      (if index == target + depth then 1 else 0)
+        + count depth fallback
+        + sum (map (countAlternative depth) alternatives)
+    count depth (TCoerce inner) = count depth inner
+    count _ _ = 0
+
+    countAlternative depth (TACon _ arity body) =
+      count (depth + arity) body
+    countAlternative depth (TAGuard guard body) =
+      count depth guard + count depth body
+    countAlternative depth (TALit _ body) = count depth body
+
+-- Closed Nat let-bindings can be substituted at every use.  The environment
+-- contains only closed NatExpr values: this decoder rejects top-level
+-- lambdas, and every accepted binding is built solely from total, pure Nat
+-- operations.  Reusing one of these expressions duplicates a closed proof
+-- tree, not a live MALLP assumption; an unused lazy binding consumes no
+-- resource and is skipped without decoding or evaluating its body.
+decodeNatTerm :: [NatExpr] -> TTerm -> TCM NatExpr
+decodeNatTerm environment term = do
   let (headTerm, args) = tAppView term
   case headTerm of
     TLit (LitNat n)
-      | null args && n >= 0 ->
-          pure $ RSAtom $ T.concat ["s\" ", T.pack (show n), "\" MALLP-PARSE-NAT"]
+      | null args && n >= 0 -> pure (NatLiteral (fromInteger n))
+    TVar index
+      | null args ->
+          case drop index environment of
+            value : _ -> pure value
+            [] -> unsupported ("unbound Treeless variable: " ++ show index)
+    TLet bound body
+      | null args ->
+          if natVariableUses 0 body == 0
+            then decodeNatTerm environment body
+            else do
+              value <- decodeNatTerm environment bound
+              decodeNatTerm (value : environment) body
     TPrim primitive -> do
-      operands <- traverse compileNatTerm args
-      case (primitive, operands) of
-        (PAdd, [left, right]) -> binary "MALLP-NAT-ADD" left right
-        (PSub, [left, right]) -> binary "MALLP-NAT-MONUS" left right
-        (PMul, [left, right]) -> binary "MALLP-NAT-MUL" left right
-        _ -> unsupported ("unsupported Nat primitive or arity: " ++ show primitive)
+      operands <- traverse (decodeNatTerm environment) args
+      either unsupported pure (decodeNatPrimitive primitive operands)
     TDef name -> do
       plusName <- getBuiltinName builtinNatPlus
       minusName <- getBuiltinName builtinNatMinus
-      operands <- traverse compileNatTerm args
+      operands <- traverse (decodeNatTerm environment) args
       case operands of
         [left, right] | Just name == plusName ->
-          binary "MALLP-NAT-ADD" left right
+          pure (NatBinary NatAdd left right)
         [left, right] | Just name == minusName ->
-          binary "MALLP-NAT-MONUS" left right
+          pure (NatBinary NatMonus left right)
         _ -> unsupported "user functions and non-binary definitions are outside the closed Nat fragment"
     TCoerce inner
-      | null args -> compileNatTerm inner
+      | null args -> decodeNatTerm environment inner
     _ -> unsupported ("Treeless term is outside the closed Nat fragment: " ++ show headTerm)
-  where
-    binary word left right = pure $ RSList [left, right, RSAtom word]
+
+renderNatExpr :: NatExpr -> FthForm
+renderNatExpr (NatLiteral n) =
+  RSAtom $ T.concat ["s\" ", T.pack (show n), "\" MALLP-PARSE-NAT"]
+renderNatExpr (NatBinary operation left right) =
+  let word = case operation of
+        NatAdd -> "MALLP-NAT-ADD"
+        NatMonus -> "MALLP-NAT-MONUS"
+        NatMultiply -> "MALLP-NAT-MUL"
+  in RSList [renderNatExpr left, renderNatExpr right, RSAtom word]
+
+decodeBoolTerm :: TTerm -> TCM Bool
+decodeBoolTerm term = do
+  trueName <- getBuiltinName builtinTrue
+  falseName <- getBuiltinName builtinFalse
+  let (headTerm, args) = tAppView term
+      matches expected actual = Just actual == expected
+  case headTerm of
+    TCon name
+      | null args && matches trueName name -> pure True
+      | null args && matches falseName name -> pure False
+    TDef name
+      | null args && matches trueName name -> pure True
+      | null args && matches falseName name -> pure False
+    TCoerce inner
+      | null args -> decodeBoolTerm inner
+    _ -> unsupported ("Treeless term is outside the closed Bool fragment: " ++ show headTerm)
+
+hasNatResult :: Definition -> TCM Bool
+hasNatResult definition = do
+  natName <- getBuiltinName builtinNat
+  TelV _ resultType <- telView (defType definition)
+  reducedResultType <- reduce resultType
+  pure $ case (natName, I.unEl reducedResultType) of
+    (Just expected, I.Def actual []) -> expected == actual
+    _ -> False
+
+hasBoolResult :: Definition -> TCM Bool
+hasBoolResult definition = do
+  boolName <- getBuiltinName builtinBool
+  TelV _ resultType <- telView (defType definition)
+  reducedResultType <- reduce resultType
+  pure $ case (boolName, I.unEl reducedResultType) of
+    (Just expected, I.Def actual []) -> expected == actual
+    _ -> False
+
+hasUnitResult :: Definition -> TCM Bool
+hasUnitResult definition = do
+  unitName <- getBuiltinName builtinUnit
+  TelV _ resultType <- telView (defType definition)
+  reducedResultType <- reduce resultType
+  pure $ case (unitName, I.unEl reducedResultType) of
+    (Just expected, I.Def actual []) -> expected == actual
+    _ -> False
+
+decodeUnitTerm :: TTerm -> TCM ()
+decodeUnitTerm term = do
+  unitConstructor <- getBuiltinName builtinUnitUnit
+  let (headTerm, args) = tAppView term
+      matches constructor = Just constructor == unitConstructor
+  case headTerm of
+    TCon name | null args && matches name -> pure ()
+    TDef name | null args && matches name -> pure ()
+    -- Agda erases the unique unit constructor in Treeless output. The
+    -- result-type gate has already established that this is a Unit value.
+    TErased | null args -> pure ()
+    TCoerce inner | null args -> decodeUnitTerm inner
+    _ -> unsupported ("Treeless term is outside the closed Unit fragment: " ++ show headTerm)
+
 
 compileDefinition :: Definition -> TCM (Maybe FthForm)
 compileDefinition definition
@@ -87,10 +219,32 @@ compileDefinition definition
       pure Nothing
   | otherwise = case theDef definition of
       Function{} -> do
-        body <- toTreeless EagerEvaluation (defName definition)
-        case body of
-          Nothing -> pure Nothing
-          Just term -> Just . strictWord (defName definition) <$> compileNatTerm term
+        isNat <- hasNatResult definition
+        isBool <- hasBoolResult definition
+        isUnit <- hasUnitResult definition
+        if isNat then do
+          body <- toTreeless EagerEvaluation (defName definition)
+          case body of
+            Nothing -> pure Nothing
+            Just term -> do
+              expression <- decodeNatTerm [] term
+              pure (Just (strictWord (defName definition) (renderNatExpr expression)))
+        else if isBool then do
+          body <- toTreeless EagerEvaluation (defName definition)
+          case body of
+            Nothing -> pure Nothing
+            Just term -> do
+              value <- decodeBoolTerm term
+              let forthBoolean = if value then "TRUE" else "FALSE"
+              pure (Just (strictWord (defName definition) (RSAtom forthBoolean)))
+        else if isUnit then do
+          body <- toTreeless EagerEvaluation (defName definition)
+          case body of
+            Nothing -> pure Nothing
+            Just term -> do
+              decodeUnitTerm term
+              pure (Just (strictWord (defName definition) (RSList [])))
+        else pure Nothing
       _ -> pure Nothing
 
 readStrictRuntime :: IO String
