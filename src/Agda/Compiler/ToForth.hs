@@ -1179,7 +1179,7 @@ rendererCertificate definitions = T.unlines $
   , "   NatExpr; literal; binary; NatLinearExpr; natArgument; natLinearLeft; natLinearRight;"
   , "   ForthToken; pushLiteral; addWord; monusWord; multiplyWord; swapWord; rollWord;"
   , "   MALLPNatTheory; natContext; natFormula; natLinear-proof-derivation;"
-  , "   natLinearProof; natEnvironmentCons; interpretMALLPNatProof; natLinearMALLP-forth-sound;"
+  , "   natLinearProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof; natLinearMALLP-forth-sound;"
   , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; cong; trans;"
   , "   compileNatLinear; renderForth)"
   , ""
