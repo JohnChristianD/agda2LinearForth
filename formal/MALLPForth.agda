@@ -2454,9 +2454,10 @@ module StrictNatCompiler where
   natEnvironmentValues-split zero m environment residual = refl
   natEnvironmentValues-split (suc n) m
     (natEnvironmentCons value rest) residual
-    with splitNatEnvironment n m rest
+    with splitNatEnvironment n m rest in splitResult
   ... | pair prefix suffix
-    rewrite natEnvironmentValues-split n m rest residual = refl
+    rewrite splitResult
+          | natEnvironmentValues-split n m rest residual = refl
 
   resourceSelectTokens : Nat → List ForthToken
   resourceSelectTokens zero = []
