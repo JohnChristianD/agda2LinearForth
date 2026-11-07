@@ -1311,9 +1311,9 @@ open ReflectedDataShape public
 reflectedConstructorArities :
   List ReflectedConstructorShape → List Nat
 reflectedConstructorArities [] = []
-reflectedConstructorArities (constructor ∷ constructors) =
-  reflectedConstructorArity constructor ∷
-    reflectedConstructorArities constructors
+reflectedConstructorArities (entry ∷ entries) =
+  reflectedConstructorArity entry ∷
+    reflectedConstructorArities entries
 
 reflectionPiArity : Reflection.Term → Nat
 reflectionPiArity (Reflection.pi _ (Reflection.abs _ body)) =
