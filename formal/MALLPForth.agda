@@ -1514,8 +1514,8 @@ module StrictNatCompiler where
     -- This is a finite sequence of Laurent MALLP exchanges, not contraction.
     natRotateHeadToLastProof :
       {n : Nat} →
-      MALLPNatProof (suc n) →
-      MALLPNatProof (suc n)
+      MALLPNatProof (n + suc zero) →
+      MALLPNatProof (n + suc zero)
 
     natCutProof :
       {n m : Nat} →
@@ -1535,6 +1535,22 @@ module StrictNatCompiler where
   natRotateHeadToLastPermutation (suc n) =
     permutation-trans permutation-swap
       (permutation-cons (natRotateHeadToLastPermutation n))
+
+  natContextPlusOne :
+    (n : Nat) →
+    natContext (n + suc zero) ≡ natAssumption ∷ natContext n
+  natContextPlusOne zero = refl
+  natContextPlusOne (suc n) =
+    cong (natAssumption ∷_) (natContextPlusOne n)
+
+  natRotateHeadToLastPermutationPlus :
+    (n : Nat) →
+    ContextPermutation
+      (natContext (n + suc zero))
+      (natContext (n + suc zero))
+  natRotateHeadToLastPermutationPlus n
+    with natContextPlusOne n
+  ... | refl = natRotateHeadToLastPermutation n
 
   natContext-append :
     (n m : Nat) →
@@ -1556,7 +1572,7 @@ module StrictNatCompiler where
     mallp-nat-exchange permutation-swap (embedNatProof proof)
   embedNatProof (natRotateHeadToLastProof {n = n} proof) =
     mallp-nat-exchange
-      (natRotateHeadToLastPermutation n)
+      (natRotateHeadToLastPermutationPlus n)
       (embedNatProof proof)
   embedNatProof (natCutProof {n = n} {m = m} first second) =
     mallp-nat-transport
@@ -1599,12 +1615,37 @@ module StrictNatCompiler where
   rotateHeadToLastEnvironment (natEnvironmentCons head rest) =
     appendNatEnvironment rest head
 
+  natPlusOne :
+    (n : Nat) →
+    n + suc zero ≡ suc n
+  natPlusOne zero = refl
+  natPlusOne (suc n) = cong suc (natPlusOne n)
+
+  rotateHeadToLastEnvironmentPlus :
+    {n : Nat} →
+    NatEnvironment (n + suc zero) →
+    NatEnvironment (n + suc zero)
+  rotateHeadToLastEnvironmentPlus {n = n} environment
+    with natPlusOne n
+  ... | refl = rotateHeadToLastEnvironment environment
+
+  appendNatEnvironmentPlus :
+    {n : Nat} →
+    NatEnvironment n →
+    Nat →
+    NatEnvironment (n + suc zero)
+  appendNatEnvironmentPlus {n = zero} natEnvironmentNil value =
+    natEnvironmentCons value natEnvironmentNil
+  appendNatEnvironmentPlus
+    {n = suc n} (natEnvironmentCons head rest) value =
+      natEnvironmentCons head (appendNatEnvironmentPlus rest value)
+
   splitNatEnvironment-append :
     (n : Nat) →
     (environment : NatEnvironment n) →
     (value : Nat) →
     splitNatEnvironment n (suc zero)
-      (appendNatEnvironment environment value) ≡
+      (appendNatEnvironmentPlus environment value) ≡
     pair environment (natEnvironmentCons value natEnvironmentNil)
   splitNatEnvironment-append zero natEnvironmentNil value = refl
   splitNatEnvironment-append (suc n)
@@ -1630,9 +1671,9 @@ module StrictNatCompiler where
       interpretMALLPNatProof proof
         (natEnvironmentCons second (natEnvironmentCons first natEnvironmentNil))
   interpretMALLPNatProof
-    (natRotateHeadToLastProof proof) environment =
+    (natRotateHeadToLastProof {n = n} proof) environment =
       interpretMALLPNatProof proof
-        (rotateHeadToLastEnvironment environment)
+        (rotateHeadToLastEnvironmentPlus {n = n} environment)
   interpretMALLPNatProof
     (natCutProof {n = n} {m = m} first second) environment
     with splitNatEnvironment n m environment
