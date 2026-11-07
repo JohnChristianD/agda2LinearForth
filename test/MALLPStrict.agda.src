@@ -65,3 +65,13 @@ answerReverseMonusTwo x y = y - x
 
 answerMultiplyTwo : Nat → Nat → Nat
 answerMultiplyTwo x y = x * y
+
+answerThree : Nat → Nat → Nat → Nat
+answerThree x y z = (x + z) * y
+
+answerThreeLet : Nat → Nat → Nat → Nat
+answerThreeLet x y z =
+  let partial = x + z in partial * y
+
+answerFour : Nat → Nat → Nat → Nat → Nat
+answerFour w x y z = (w + y) * (x + z)
