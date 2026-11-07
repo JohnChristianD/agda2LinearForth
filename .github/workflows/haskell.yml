@@ -4,6 +4,7 @@ on:
     branches:
       - master
       - wayfinder/mallp-purecake-linear-functions
+      - wayfinder/mallp-purecake-multi-linear
   pull_request:
 
 concurrency:
