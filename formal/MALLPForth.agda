@@ -2353,6 +2353,12 @@ module StrictBoolCompiler where
   bindBoolTokens nothing continuation = nothing
   bindBoolTokens (just stack) continuation = continuation stack
 
+  bindBoolTokens-identity :
+    (result : Maybe (List Bool)) →
+    bindBoolTokens result (λ stack → just stack) ≡ result
+  bindBoolTokens-identity nothing = refl
+  bindBoolTokens-identity (just stack) = refl
+
   execBoolTokens :
     List BoolForthToken →
     List Bool →
@@ -2385,19 +2391,27 @@ module StrictBoolCompiler where
   renderBoolCode-sound (pushBoolean true) stack = refl
   renderBoolCode-sound (pushBoolean false) stack = refl
   renderBoolCode-sound (boolIfCode whenTrue whenFalse)
-    (pushBooleanValue true stack) =
-      renderBoolCode-sound whenTrue stack
+    (pushBooleanValue true stack)
+    rewrite bindBoolTokens-identity
+      (execBoolTokens (renderBoolCode whenTrue) (forgetBoolStack stack))
+          | renderBoolCode-sound whenTrue stack = refl
   renderBoolCode-sound (boolIfCode whenTrue whenFalse)
-    (pushBooleanValue false stack) =
-      renderBoolCode-sound whenFalse stack
+    (pushBooleanValue false stack)
+    rewrite bindBoolTokens-identity
+      (execBoolTokens (renderBoolCode whenFalse) (forgetBoolStack stack))
+          | renderBoolCode-sound whenFalse stack = refl
   renderBoolCode-sound (boolIfPreserving whenTrue whenFalse)
     (pushBooleanValue value (pushBooleanValue true stack))
-      with renderBoolCode-sound whenTrue (pushBooleanValue value stack)
-  ... | refl = refl
+    rewrite bindBoolTokens-identity
+      (execBoolTokens (renderBoolCode whenTrue)
+        (forgetBoolStack (pushBooleanValue value stack)))
+          | renderBoolCode-sound whenTrue (pushBooleanValue value stack) = refl
   renderBoolCode-sound (boolIfPreserving whenTrue whenFalse)
     (pushBooleanValue value (pushBooleanValue false stack))
-      with renderBoolCode-sound whenFalse (pushBooleanValue value stack)
-  ... | refl = refl
+    rewrite bindBoolTokens-identity
+      (execBoolTokens (renderBoolCode whenFalse)
+        (forgetBoolStack (pushBooleanValue value stack)))
+          | renderBoolCode-sound whenFalse (pushBooleanValue value stack) = refl
 
   compileBoolProof :
     BoolProof →
