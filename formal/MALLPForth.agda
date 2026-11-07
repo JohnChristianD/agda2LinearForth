@@ -15,7 +15,7 @@ module MALLPForth where
 
 --Required for Polymorphism:
 open import Agda.Primitive using (Level; lsuc; _⊔_) public
-open import Agda.Builtin.Nat public using (Nat; zero; suc; _+_; _*_)
+open import Agda.Builtin.Nat public hiding (_<_)
 open import Agda.Builtin.Int public using (Int; pos; negsuc)
 open import Agda.Builtin.Bool public
 open import Agda.Builtin.List public
