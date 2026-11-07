@@ -1061,6 +1061,189 @@ open Foundations.SymmetricBarRecursion public
 open Foundations.LaurentPolarizedMALLP public
 
 ------------------------------------------------------------------------
+-- A relational denotation for every Laurent MALLP proof constructor.
+--
+-- Atoms are interpreted parametrically. Positive/negative tensor and
+-- par are paired resources; plus/with are tagged alternatives; one/bottom
+-- and zero/top are dual unit/empty objects. Polarity shifts exchange the
+-- two value interpretations. Cut is relational composition (an explicit
+-- intermediate witness), exchange reindexes the environment, and additive
+-- branches inspect one tagged alternative.
+--
+-- This is a concrete Rel-style sound interpretation of the proof rules.
+-- It is deliberately not labelled as the full Hamano-Scott categorical
+-- model: that stronger result needs the reflective/coreflective adjunction
+-- and its *-autonomous coherence data as explicit Agda structures.
+------------------------------------------------------------------------
+
+module MALLPRelationalDenotation (Atom : Nat → Set) where
+
+  data DenotationSum (A B : Set) : Set where
+    denLeft : A → DenotationSum A B
+    denRight : B → DenotationSum A B
+
+  record DenotationWitness (A : Set) (P : A → Set) : Set where
+    constructor denotationWitness
+    field
+      witnessValue : A
+      witnessEvidence : P witnessValue
+  open DenotationWitness public
+
+  mutual
+    PosValue : PolType posPolarity → Set
+    PosValue (atom⁺ index) = Atom index
+    PosValue one⁺ = ⊤
+    PosValue zero⁺ = ⊥
+    PosValue (left ⊗⁺ right) = PosValue left × PosValue right
+    PosValue (left ⊕⁺ right) = DenotationSum (PosValue left) (PosValue right)
+    PosValue (down⁺ negative) = NegValue negative
+
+    NegValue : PolType negPolarity → Set
+    NegValue (atom⁻ index) = Atom index
+    NegValue bot⁻ = ⊤
+    NegValue top⁻ = ⊥
+    NegValue (left ⅋⁻ right) = NegValue left × NegValue right
+    NegValue (left &⁻ right) = DenotationSum (NegValue left) (NegValue right)
+    NegValue (up⁻ positive) = PosValue positive
+
+  dualPositiveValue :
+    (positive : PolType posPolarity) →
+    PosValue positive → NegValue (dualPos positive)
+  dualNegativeValue :
+    (negative : PolType negPolarity) →
+    NegValue negative → PosValue (dualNeg negative)
+
+  dualPositiveValue (atom⁺ index) value = value
+  dualPositiveValue one⁺ value = value
+  dualPositiveValue zero⁺ ()
+  dualPositiveValue (left ⊗⁺ right) (leftValue , rightValue) =
+    dualPositiveValue left leftValue , dualPositiveValue right rightValue
+  dualPositiveValue (left ⊕⁺ right) (denLeft value) =
+    denLeft (dualPositiveValue left value)
+  dualPositiveValue (left ⊕⁺ right) (denRight value) =
+    denRight (dualPositiveValue right value)
+  dualPositiveValue (down⁺ negative) value =
+    dualNegativeValue negative value
+
+  dualNegativeValue (atom⁻ index) value = value
+  dualNegativeValue bot⁻ value = value
+  dualNegativeValue top⁻ ()
+  dualNegativeValue (left ⅋⁻ right) (leftValue , rightValue) =
+    dualNegativeValue left leftValue , dualNegativeValue right rightValue
+  dualNegativeValue (left &⁻ right) (denLeft value) =
+    denLeft (dualNegativeValue left value)
+  dualNegativeValue (left &⁻ right) (denRight value) =
+    denRight (dualNegativeValue right value)
+  dualNegativeValue (up⁻ positive) value =
+    dualPositiveValue positive value
+
+  recoverPositiveValue :
+    {positive : PolType posPolarity} →
+    NegValue (dualPos positive) → PosValue positive
+  recoverPositiveValue {positive} value =
+    subst PosValue (dualPos-involutive positive)
+      (dualNegativeValue (dualPos positive) value)
+
+  ContextValues : Context → Set
+  ContextValues [] = ⊤
+  ContextValues (negative ∷ Γ) = NegValue negative × ContextValues Γ
+
+  StoupValue : Stoup → Set
+  StoupValue nothing = ⊤
+  StoupValue (just positive) = PosValue positive
+
+  splitContextValues :
+    {Γ Δ : Context} →
+    ContextValues (Γ ++ᴸ Δ) →
+    ContextValues Γ × ContextValues Δ
+  splitContextValues {Γ = []} {Δ} values = tt , values
+  splitContextValues {Γ = negative ∷ Γ} {Δ} (head , tail)
+    with splitContextValues {Γ = Γ} {Δ = Δ} tail
+  ... | prefix , suffix = (head , prefix) , suffix
+
+  permuteContextValues :
+    {Γ Δ : Context} →
+    ContextPermutation Γ Δ →
+    ContextValues Γ → ContextValues Δ
+  permuteContextValues permutation-nil tt = tt
+  permuteContextValues (permutation-cons permutation) (head , tail) =
+    head , permuteContextValues permutation tail
+  permuteContextValues permutation-swap (first , (second , tail)) =
+    second , (first , tail)
+  permuteContextValues (permutation-trans first second) values =
+    permuteContextValues second (permuteContextValues first values)
+
+  MALLPRelation :
+    {Γ : Context} {S : Stoup} →
+    MALLP Γ S → ContextValues Γ → StoupValue S → Set
+
+  MALLPRelation mallp-ax (source , tt) result =
+    result ≡ recoverPositiveValue source
+
+  MALLPRelation
+    (mallp-cut {Γ = Γ} {Δ = Δ} {P = positive} producer consumer)
+    environment result
+    with splitContextValues {Γ = Γ} {Δ = Δ} environment
+  ... | producerEnvironment , consumerEnvironment =
+    DenotationWitness (PosValue positive)
+      (λ intermediate →
+        MALLPRelation producer producerEnvironment intermediate ×
+        MALLPRelation consumer
+          (dualPositiveValue positive intermediate , consumerEnvironment)
+          result)
+
+  MALLPRelation (mallp-exchange permutation proof) environment result =
+    MALLPRelation proof
+      (permuteContextValues (contextPermutation-sym permutation) environment)
+      result
+
+  MALLPRelation
+    (mallp-tensor {Γ = Γ} {Δ = Δ} left right)
+    environment (leftValue , rightValue)
+    with splitContextValues {Γ = Γ} {Δ = Δ} environment
+  ... | leftEnvironment , rightEnvironment =
+    MALLPRelation left leftEnvironment leftValue ×
+    MALLPRelation right rightEnvironment rightValue
+
+  MALLPRelation mallp-one tt tt = ⊤
+
+  MALLPRelation (mallp-plus-left proof) environment (denLeft value) =
+    MALLPRelation proof environment value
+  MALLPRelation (mallp-plus-left proof) environment (denRight value) = ⊥
+
+  MALLPRelation (mallp-plus-right proof) environment (denLeft value) = ⊥
+  MALLPRelation (mallp-plus-right proof) environment (denRight value) =
+    MALLPRelation proof environment value
+
+  MALLPRelation (mallp-par proof) ((leftValue , rightValue) , rest) result =
+    MALLPRelation proof (leftValue , (rightValue , rest)) result
+
+  MALLPRelation (mallp-with left right) (denLeft value , rest) result =
+    MALLPRelation left (value , rest) result
+  MALLPRelation (mallp-with left right) (denRight value , rest) result =
+    MALLPRelation right (value , rest) result
+
+  MALLPRelation (mallp-bottom proof) (tt , rest) result =
+    MALLPRelation proof rest result
+
+  MALLPRelation mallp-top (() , rest) result
+
+  MALLPRelation (mallp-down proof) environment result =
+    MALLPRelation proof (result , environment) tt
+
+  MALLPRelation (mallp-up proof) (result , environment) tt =
+    MALLPRelation proof environment result
+
+  interpretMALLP :
+    {Γ : Context} {S : Stoup} →
+    (proof : MALLP Γ S) →
+    (environment : ContextValues Γ) →
+    (result : StoupValue S) →
+    MALLPRelation proof environment result
+  interpretMALLP proof environment result =
+    MALLPRelation proof environment result
+
+------------------------------------------------------------------------
 -- GENERIC LINEAR SOURCE TERMS: STRUCTURAL MALLP DERIVATION
 --
 -- This small, reusable source core indexes every term by its exact live
