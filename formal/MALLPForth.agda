@@ -1242,8 +1242,8 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
     {Γ : Context} {S : Stoup} →
     MALLP Γ S → ContextValues Γ → StoupValue S → Set
 
-  MALLPRelation mallp-ax (pair source tt) result =
-    result ≡ recoverPositiveValue source
+  MALLPRelation {S = just positive} mallp-ax (pair source tt) result =
+    result ≡ recoverPositiveValue positive source
 
   MALLPRelation
     (mallp-cut {Γ = Γ} {Δ = Δ} {P = positive} producer consumer)
