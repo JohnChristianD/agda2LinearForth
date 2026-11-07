@@ -3386,25 +3386,19 @@ module StrictLinearDataCompiler where
     application-lambda
       (application-lambda
         (application-lambda
-          (application-exchange
-            (permutation-trans
-              permutation-swap
-              (permutation-trans
-                (permutation-cons permutation-swap)
-                permutation-swap))
+          (linearApplication
+            {A = B} {B = C}
             (linearApplication
-              {A = B} {B = C}
-              (linearApplication
-                {A = A} {B = B}
-                (application-source {Γ = A ∷ []} {A = A} linearVariable)
-                (application-source
-                  {Γ = linearArrowType A B ∷ []}
-                  {A = linearArrowType A B}
-                  linearVariable))
+              {A = A} {B = B}
+              (application-source {Γ = A ∷ []} {A = A} linearVariable)
               (application-source
-                {Γ = linearArrowType B C ∷ []}
-                {A = linearArrowType B C}
-                linearVariable)))))
+                {Γ = linearArrowType A B ∷ []}
+                {A = linearArrowType A B}
+                linearVariable))
+            (application-source
+              {Γ = linearArrowType B C ∷ []}
+              {A = linearArrowType B C}
+              linearVariable))))
 
   bciExchange :
     {A B C : LinearSourceType} →
@@ -3416,10 +3410,7 @@ module StrictLinearDataCompiler where
     application-lambda
       (application-lambda
         (application-lambda
-          (application-exchange
-            (permutation-trans
-              (permutation-cons permutation-swap)
-              permutation-swap)
+          (application-exchange permutation-swap
             (linearApplication
               {A = B} {B = C}
               (application-source {Γ = B ∷ []} {A = B} linearVariable)
