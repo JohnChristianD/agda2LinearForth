@@ -2446,7 +2446,7 @@ module StrictNatCompiler where
   resourceMap f [] = []
   resourceMap f (x ∷ xs) = f x ∷ resourceMap f xs
 
-  resourceListLength : List Nat → Nat
+  resourceListLength : {A : Set} → List A → Nat
   resourceListLength [] = zero
   resourceListLength (_ ∷ xs) = suc (resourceListLength xs)
 
@@ -2467,14 +2467,10 @@ module StrictNatCompiler where
     {A B : Set} →
     (f : A → B) →
     (xs : List A) →
-    resourceListLengthNat (resourceMap f xs) ≡ resourceListLengthNat xs
-    where
-    resourceListLengthNat : {X : Set} → List X → Nat
-    resourceListLengthNat [] = zero
-    resourceListLengthNat (_ ∷ xs) = suc (resourceListLengthNat xs)
-    resourceListLength-map f [] = refl
-    resourceListLength-map f (x ∷ xs) =
-      cong suc (resourceListLength-map f xs)
+    resourceListLength (resourceMap f xs) ≡ resourceListLength xs
+  resourceListLength-map f [] = refl
+  resourceListLength-map f (x ∷ xs) =
+    cong suc (resourceListLength-map f xs)
 
   resourceListLength-indices : (n : Nat) →
     resourceListLength (resourceIndices n) ≡ n
