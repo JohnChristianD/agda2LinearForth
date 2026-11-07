@@ -27,6 +27,8 @@ answerMatchedTrue FALSE strict-assert-boolean
 answerMatchedFalse TRUE strict-assert-boolean
 TRUE invertBool FALSE strict-assert-boolean
 FALSE invertBool TRUE strict-assert-boolean
+TRUE FALSE chooseBool FALSE strict-assert-boolean
+FALSE TRUE chooseBool TRUE strict-assert-boolean
 answerUnit
 10 answerIdentity 10 strict-assert-natural
 10 answerAddFive 15 strict-assert-natural
