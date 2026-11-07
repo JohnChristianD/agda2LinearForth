@@ -66,6 +66,9 @@ data BoolExpr
   | BoolConditional BoolExpr BoolExpr BoolExpr
   deriving (Eq, Show)
 
+data BoolPairExpr = BoolPairFields Int Int
+  deriving (Eq, Show)
+
 -- Each path is one possible additive branch. The same live resource must
 -- occur exactly once along every path; branch alternatives share a context.
 boolExprResourcePaths :: BoolExpr -> [[Int]]
@@ -287,6 +290,101 @@ compileBoolResourceExpr context (BoolConditional condition whenTrue whenFalse) =
       , conditionTokens ++ [FormalIf trueTokens falseTokens]
       , afterTrue
       )
+
+decodeBoolPairField :: TTerm -> TCM Int
+decodeBoolPairField term =
+  case tAppView term of
+    (TVar index, []) | index == 0 || index == 1 -> pure index
+    (TCoerce inner, []) -> decodeBoolPairField inner
+    (headTerm, _) ->
+      unsupported ("BoolPair field is outside the linear field fragment: " ++ show headTerm)
+
+decodeBoolPairConstructor :: QName -> TTerm -> TCM BoolPairExpr
+decodeBoolPairConstructor constructor term =
+  case tAppView term of
+    (TCon actual, [first, second]) | actual == constructor -> do
+      firstField <- decodeBoolPairField first
+      secondField <- decodeBoolPairField second
+      pure (BoolPairFields firstField secondField)
+    (TDef actual, [first, second]) | actual == constructor -> do
+      firstField <- decodeBoolPairField first
+      secondField <- decodeBoolPairField second
+      pure (BoolPairFields firstField secondField)
+    (headTerm, arguments) ->
+      unsupported
+        ("BoolPair branch must rebuild its constructor with both fields: "
+          ++ show (headTerm, arguments))
+
+decodeBoolPairFunction :: QName -> QName -> TTerm -> TCM BoolPairExpr
+decodeBoolPairFunction owner constructor term = do
+  let (actualArity, body) = tLamView term
+  if actualArity /= 1
+    then unsupported ("BoolPair function requires one pair argument, received " ++ show actualArity)
+    else decodeCase body
+  where
+    decodeCase expression =
+      case tAppView expression of
+        (TCase index _ _ alternatives, [])
+          | index == 0 ->
+              case find (matchesConstructor constructor) alternatives of
+                Just (TACon _ 2 branch) ->
+                  decodeBoolPairConstructor constructor branch
+                _ -> unsupported "BoolPair case must consume its two-field constructor"
+        (TPrim PSeq, [strictTerm, continuation]) ->
+          case tAppView strictTerm of
+            (TVar 0, []) -> decodeCase continuation
+            _ -> unsupported "BoolPair strict sequence must force its owned pair argument"
+        (TCoerce inner, []) -> decodeCase inner
+        (headTerm, arguments) ->
+          unsupported ("Treeless BoolPair term must be a consuming constructor case: "
+            ++ show (headTerm, arguments))
+
+    matchesConstructor expected (TACon actual arity _) =
+      expected == actual && arity == 2
+    matchesConstructor _ _ = False
+
+compileBoolPairResource
+  :: Int
+  -> [Int]
+  -> Int
+  -> Either String (FthForm, [FormalToken], [Int])
+compileBoolPairResource active context index =
+  case elemIndex index context of
+    Nothing -> Left ("MALLP BoolPair field missing, duplicated, or out of scope: " ++ show index)
+    Just position ->
+      let depth = active + position
+          remaining = take position context ++ drop (position + 1) context
+      in if depth == 0
+           then Right (RSList [], [], remaining)
+           else if depth == 1
+             then Right (RSAtom "SWAP", [FormalSwapWord], remaining)
+             else Right
+               ( RSList [RSAtom (T.pack (show depth)), RSAtom "ROLL"]
+               , [FormalRollWord (fromIntegral depth)]
+               , remaining
+               )
+
+compileBoolPairFunction
+  :: QName
+  -> QName
+  -> TTerm
+  -> TCM (FthForm, [FormalToken])
+compileBoolPairFunction owner constructor term = do
+  expression <- decodeBoolPairFunction owner constructor term
+  let (first, second) = case expression of
+        BoolPairFields left right -> (left, right)
+      actualResources = sort [first, second]
+      expectedResources = [0, 1]
+  if actualResources /= expectedResources
+    then unsupported "MALLP tensor elimination must consume both BoolPair fields exactly once"
+    else pure ()
+  (firstCode, firstTokens, afterFirst) <-
+    either unsupported pure (compileBoolPairResource 0 expectedResources first)
+  (secondCode, secondTokens, remaining) <-
+    either unsupported pure (compileBoolPairResource 1 afterFirst second)
+  if null remaining
+    then pure (RSList [firstCode, secondCode], firstTokens ++ secondTokens)
+    else unsupported ("MALLP BoolPair resource leak: " ++ show remaining)
 
 compileBoolResourceFunction
   :: QName
@@ -766,6 +864,38 @@ boolFunctionArity definition = do
         then Just (length argumentTypes)
         else Nothing
 
+-- Recognize a closed, non-indexed one-constructor product of exactly two
+-- Bool fields. This is a small tensor slice driven by Agda's resolved type
+-- and constructor declarations, not a source-name whitelist.
+boolPairFunctionConstructor :: Definition -> TCM (Maybe QName)
+boolPairFunctionConstructor definition = do
+  boolName <- getBuiltinName builtinBool
+  TelV telescope resultType <- telView (defType definition)
+  case (boolName, I.telToList telescope) of
+    (Just bool, [domain]) -> do
+      argumentType <- reduce (snd (I.unDom domain))
+      reducedResult <- reduce resultType
+      case (I.unEl argumentType, I.unEl reducedResult) of
+        (I.Def argumentName [], I.Def resultName [])
+          | argumentName == resultName -> do
+              typeDefinition <- getConstInfo argumentName
+              case theDef typeDefinition of
+                Datatype{dataPars = 0, dataIxs = 0, dataCons = [constructor]} -> do
+                  constructorDefinition <- getConstInfo constructor
+                  TelV fields constructorResult <-
+                    telView (defType constructorDefinition)
+                  resultMatches <- isBuiltinType argumentName constructorResult
+                  fieldMatches <- traverse
+                    (\field -> isBuiltinType bool (snd (I.unDom field)))
+                    (I.telToList fields)
+                  pure $
+                    if length fieldMatches == 2 && and fieldMatches && resultMatches
+                      then Just constructor
+                      else Nothing
+                _ -> pure Nothing
+        _ -> pure Nothing
+    _ -> pure Nothing
+
 hasBoolResult :: Definition -> TCM Bool
 hasBoolResult definition = do
   arity <- boolFunctionArity definition
@@ -805,6 +935,7 @@ compileDefinition definition
         natArity <- natFunctionArity definition
         isBool <- hasBoolResult definition
         boolArity <- boolFunctionArity definition
+        boolPairConstructor <- boolPairFunctionConstructor definition
         isUnit <- hasUnitResult definition
         if isNat then do
           body <- toTreeless EagerEvaluation (defName definition)
@@ -837,15 +968,26 @@ compileDefinition definition
                 (defName definition) (strictWord (defName definition) code) tokens))
             (Just _, Nothing) -> pure Nothing
             _ -> unsupported "Bool function arity classification changed during compilation"
-        else if isUnit then do
-          body <- toTreeless EagerEvaluation (defName definition)
-          case body of
-            Nothing -> pure Nothing
-            Just term -> do
-              decodeUnitTerm term
-              pure (Just (CompiledDefinition
-                (defName definition) (strictWord (defName definition) (RSList [])) []))
-        else pure Nothing
+        else case boolPairConstructor of
+          Just constructor -> do
+            body <- toTreeless EagerEvaluation (defName definition)
+            case body of
+              Nothing -> pure Nothing
+              Just term -> do
+                (code, tokens) <-
+                  compileBoolPairFunction (defName definition) constructor term
+                pure (Just (CompiledDefinition
+                  (defName definition) (strictWord (defName definition) code) tokens))
+          Nothing ->
+            if isUnit then do
+              body <- toTreeless EagerEvaluation (defName definition)
+              case body of
+                Nothing -> pure Nothing
+                Just term -> do
+                  decodeUnitTerm term
+                  pure (Just (CompiledDefinition
+                    (defName definition) (strictWord (defName definition) (RSList [])) []))
+            else pure Nothing
       _ -> pure Nothing
 
 readStrictRuntime :: IO String
@@ -901,11 +1043,11 @@ rendererCertificate definitions = T.unlines $
   , "open import Agda.Builtin.String using (String)"
   , "open import Agda.Builtin.List using (List; []; _∷_)"
   , "open import Agda.Builtin.Equality using (_≡_; refl)"
-  , "open import ForthRenderer using"
-  , "  (ForthTextToken; textPushLiteral; textAddWord; textMonusWord; textMultiplyWord;"
-  , "   textSwapWord; textRollWord; textTrueWord; textFalseWord; textIf; renderForthWordText)"
   , "open import MALLPForth using"
-  , "  (mapBoolForthTokensAsText; renderBoolCode; compileBoolCaseWithResidual)"
+  , "  (ForthTextToken; textPushLiteral; textAddWord; textMonusWord; textMultiplyWord;"
+  , "   textSwapWord; textRollWord; textTrueWord; textFalseWord; textIf; renderForthWordText;"
+  , "   mapBoolForthTokensAsText; renderBoolCode; compileBoolCaseWithResidual;"
+  , "   compileBoolPairSwap)"
   , ""
   ] ++ concat
     [ let index = T.pack (show position)
@@ -942,6 +1084,21 @@ rendererCertificate definitions = T.unlines $
       ]
     | definition <- definitions
     , safeForthName (compiledName definition) == "chooseBool"
+    ] ++ concat
+    [ [ "swapBoolPairCompilerTokens : List ForthTextToken"
+      , "swapBoolPairCompilerTokens = " <> formalTokenList (compiledTokens definition)
+      , ""
+      , "swapBoolPairMALLPTokens : List ForthTextToken"
+      , "swapBoolPairMALLPTokens = mapBoolForthTokensAsText"
+          <> " (renderBoolCode compileBoolPairSwap)"
+      , ""
+      , "swapBoolPairTokenCorrespondence :"
+      , "  swapBoolPairCompilerTokens ≡ swapBoolPairMALLPTokens"
+      , "swapBoolPairTokenCorrespondence = refl"
+      , ""
+      ]
+    | definition <- definitions
+    , safeForthName (compiledName definition) == "swapBoolPair"
     ]
 
 emitForthModule :: () -> () -> IsMain -> TopLevelModuleName -> [Maybe CompiledDefinition] -> TCM ()

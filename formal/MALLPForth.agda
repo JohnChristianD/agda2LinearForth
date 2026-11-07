@@ -3,7 +3,7 @@
 ------------------------------------------------------------------------
 -- SovereignRationalSED
 --
--- Six original foundational packages plus Laurent's constructive MALLP
+-- Five original foundational packages plus Laurent's constructive MALLP
 -- calculus, without exponentials or Seely structure.  Finite-list computation
 -- remains a separate helper witness.  Rewrite rules are registered once
 -- at the outer module so Agda checks the combined rewrite system together.
@@ -19,8 +19,51 @@ open import Agda.Builtin.List using (List; []; _∷_)
 open import Agda.Builtin.Maybe using (Maybe; just; nothing)
 open import Agda.Builtin.Sigma using (Σ; _,_)
 open import Agda.Builtin.Equality using (_≡_; refl)
-open import ForthRenderer public
+open import Agda.Builtin.String using (String; primStringAppend; primShowNat)
 open import Agda.Builtin.Equality.Rewrite
+
+-- Proof-carrying Forth instruction vocabulary and canonical renderer.
+-- Kept here so generated compiler witnesses and MALLP derivations share
+-- one source-level interface.
+data ForthTextToken : Set where
+  textPushLiteral : Nat → ForthTextToken
+  textAddWord textMonusWord textMultiplyWord textSwapWord : ForthTextToken
+  textRollWord : Nat → ForthTextToken
+  textTrueWord textFalseWord : ForthTextToken
+  textIf : List ForthTextToken → List ForthTextToken → ForthTextToken
+
+mutual
+  renderForthTokenText : ForthTextToken → String
+  renderForthTokenText (textPushLiteral value) =
+    primStringAppend "s\" "
+      (primStringAppend (primShowNat value) "\" MALLP-PARSE-NAT ")
+  renderForthTokenText textAddWord = "MALLP-NAT-ADD "
+  renderForthTokenText textMonusWord = "MALLP-NAT-MONUS "
+  renderForthTokenText textMultiplyWord = "MALLP-NAT-MUL "
+  renderForthTokenText textSwapWord = "SWAP "
+  renderForthTokenText (textRollWord depth) =
+    primStringAppend (primShowNat depth) " ROLL "
+  renderForthTokenText textTrueWord = "TRUE "
+  renderForthTokenText textFalseWord = "FALSE "
+  renderForthTokenText (textIf whenTrue whenFalse) =
+    primStringAppend "IF "
+      (primStringAppend (renderForthTokensText whenTrue)
+        (primStringAppend "ELSE "
+          (primStringAppend (renderForthTokensText whenFalse) "THEN ")))
+
+  renderForthTokensText : List ForthTextToken → String
+  renderForthTokensText [] = ""
+  renderForthTokensText (token ∷ tokens) =
+    primStringAppend (renderForthTokenText token)
+      (renderForthTokensText tokens)
+
+renderForthWordText : String → List ForthTextToken → String
+renderForthWordText name tokens =
+  primStringAppend ": "
+    (primStringAppend name
+      (primStringAppend " "
+        (primStringAppend (renderForthTokensText tokens) ";")))
+
 -- Agda 2.8 has no Agda.Builtin.Empty module; define the empty type locally.
 data ⊥ : Set where
 
@@ -125,7 +168,7 @@ lookupListOr fallback (suc i) (x ∷ xs) = lookupListOr fallback i xs
 -- FINITE LIST COMPUTATION: AUXILIARY CONSTRUCTIVE WITNESS
 --
 -- This theorem remains available to finite-prefix code, separate from the
--- six foundational packages and Laurent MALLP.
+-- five foundational packages and Laurent MALLP.
 ------------------------------------------------------------------------
 
 module FiniteListComputation where
@@ -533,121 +576,7 @@ module Foundations where
     gamma-codisc X = refl
 
   ----------------------------------------------------------------------
-  -- 5. Hofmann-style quotient reflection on quotient-expression syntax.
-  --
-  -- Quotients are indexed by an explicit equivalence-relation certificate.
-  -- Raw and canonicalized representatives denote equal quotient classes.
-  -- The rewrite layer normalizes expression syntax; canonicalization laws
-  -- remain explicit assumptions about the chosen representative function.
-  ----------------------------------------------------------------------
-
-  module QuotientReflection where
-
-    -- Equivalence laws are explicit arguments to the quotient completion.
-    -- There is no first-class setoid carrier/record: the relation and its
-    -- three laws are passed directly.  This preserves the quotient package's
-    -- mathematical requirements without adding another equality structure.
-    postulate
-      Quotient : (A : Set) →
-                 (R : A → A → Set) →
-                 ((x : A) → R x x) →
-                 ({x y : A} → R x y → R y x) →
-                 ({x y z : A} → R x y → R y z → R x z) → Set
-      quotientClass : {A : Set} {R : A → A → Set}
-                      {rflR : (x : A) → R x x}
-                      {symR : {x y : A} → R x y → R y x}
-                      {transR : {x y z : A} → R x y → R y z → R x z} →
-                      A → Quotient A R rflR symR transR
-      canonize : {A : Set} {R : A → A → Set}
-                 {rflR : (x : A) → R x x}
-                 {symR : {x y : A} → R x y → R y x}
-                 {transR : {x y z : A} → R x y → R y z → R x z} →
-                 A → A
-      quotient-canon :
-        {A : Set} {R : A → A → Set}
-        {rflR : (x : A) → R x x}
-        {symR : {x y : A} → R x y → R y x}
-        {transR : {x y z : A} → R x y → R y z → R x z} →
-        (x : A) →
-        quotientClass {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR}
-          (canonize {A} {R} {rflR} {symR} {transR} x) ≡
-        quotientClass {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} x
-      canonical-idempotent :
-        {A : Set} {R : A → A → Set}
-        {rflR : (x : A) → R x x}
-        {symR : {x y : A} → R x y → R y x}
-        {transR : {x y z : A} → R x y → R y z → R x z} →
-        (x : A) →
-        canonize {A} {R} {rflR} {symR} {transR}
-          (canonize {A} {R} {rflR} {symR} {transR} x) ≡
-        canonize {A} {R} {rflR} {symR} {transR} x
-      canonical-related :
-        {A : Set} {R : A → A → Set}
-        {rflR : (x : A) → R x x}
-        {symR : {x y : A} → R x y → R y x}
-        {transR : {x y z : A} → R x y → R y z → R x z} →
-        (x : A) → R (canonize {A} {R} {rflR} {symR} {transR} x) x
-
-    -- Syntax for quotient normalization.  `canonicalizedₑ x` denotes the
-    -- canonical representative; the quotient relation remains explicit.
-    data QuotientExpr (A : Set) : Set where
-      rawₑ : A → QuotientExpr A
-      canonicalizedₑ : A → QuotientExpr A
-      classₑ : QuotientExpr A → QuotientExpr A
-
-    denoteQuotient :
-      {A : Set} {R : A → A → Set}
-      {rflR : (x : A) → R x x}
-      {symR : {x y : A} → R x y → R y x}
-      {transR : {x y z : A} → R x y → R y z → R x z} →
-      QuotientExpr A → Quotient A R rflR symR transR
-    denoteQuotient {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} (rawₑ x) =
-      quotientClass {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} x
-    denoteQuotient {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} (canonicalizedₑ x) =
-      quotientClass {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR}
-        (canonize {A} {R} {rflR} {symR} {transR} x)
-    denoteQuotient (classₑ expression) = denoteQuotient expression
-
-    normalizeQuotient : {A : Set} → QuotientExpr A → QuotientExpr A
-    normalizeQuotient (rawₑ x) = canonicalizedₑ x
-    normalizeQuotient (canonicalizedₑ x) = canonicalizedₑ x
-    normalizeQuotient (classₑ expression) =
-      classₑ (normalizeQuotient expression)
-
-    quotient-raw :
-      {A : Set} → (x : A) →
-      normalizeQuotient (rawₑ x) ≡ normalizeQuotient (canonicalizedₑ x)
-    quotient-raw x = refl
-
-    quotient-class-canon :
-      {A : Set} → (x : A) →
-      normalizeQuotient (classₑ (canonicalizedₑ x)) ≡
-      normalizeQuotient (classₑ (rawₑ x))
-    quotient-class-canon x = refl
-
-    quotient-raw-sound :
-      {A : Set} {R : A → A → Set}
-      {rflR : (x : A) → R x x}
-      {symR : {x y : A} → R x y → R y x}
-      {transR : {x y z : A} → R x y → R y z → R x z} →
-      (x : A) →
-      denoteQuotient (rawₑ x) ≡ denoteQuotient (canonicalizedₑ x)
-    quotient-raw-sound {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} x =
-      sym (quotient-canon {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} x)
-
-    quotient-class-canon-sound :
-      {A : Set} {R : A → A → Set}
-      {rflR : (x : A) → R x x}
-      {symR : {x y : A} → R x y → R y x}
-      {transR : {x y z : A} → R x y → R y z → R x z} →
-      (x : A) →
-      denoteQuotient (classₑ (canonicalizedₑ x)) ≡
-      denoteQuotient (classₑ (rawₑ x))
-    quotient-class-canon-sound {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} x =
-      quotient-canon {A = A} {R = R} {rflR = rflR} {symR = symR} {transR = transR} x
-
-  ----------------------------------------------------------------------
-  -- 6. Spector-style symmetric bar recursion over finite partial maps.
+  -- 5. Spector-style symmetric bar recursion over finite partial maps.
   --
   -- The control functional chooses the next key.  A present key hits the
   -- bar; an absent key is extended with a value supplied by the step
@@ -823,7 +752,7 @@ module Foundations where
         (decideDomain entries (omega (streamOf (mapEntries entries) default)))
 
   ----------------------------------------------------------------------
-  -- 7. LAURENT'S MULTIPLICATIVE-ADDITIVE POLARIZED LINEAR LOGIC (MALLP)
+  -- 6. LAURENT'S MULTIPLICATIVE-ADDITIVE POLARIZED LINEAR LOGIC (MALLP)
   --
   -- This is Laurent's polarized linear fragment WITHOUT exponentials.
   -- Positive and negative formulas are separated by polarity; down/up
@@ -1074,7 +1003,7 @@ module Foundations where
     hasCut (mallp-up p) = hasCut p
 
   ----------------------------------------------------------------------
-  -- Publicly expose the six foundational packages and the Laurent MALLP
+  -- Publicly expose the five foundational packages and the Laurent MALLP
   -- calculus.  No Seely / exponential structure is part of this interface.
   ----------------------------------------------------------------------
 
@@ -1082,7 +1011,6 @@ module Foundations where
   open MarkovLeastWitness public
   open MacLaneCoherence public
   open CohesiveRetractions public
-  open QuotientReflection public
   open SymmetricBarRecursion public
   open LaurentPolarizedMALLP public
 
@@ -1090,7 +1018,6 @@ open Foundations.ForsterEnumerability public
 open Foundations.MarkovLeastWitness public
 open Foundations.MacLaneCoherence public
 open Foundations.CohesiveRetractions public
-open Foundations.QuotientReflection public
 open Foundations.SymmetricBarRecursion public
 open Foundations.LaurentPolarizedMALLP public
 
@@ -2253,6 +2180,22 @@ module StrictBoolCompiler where
   boolFormula : PolType posPolarity
   boolFormula = one⁺ ⊕⁺ one⁺
 
+  -- Pair is a multiplicative tensor of two Bool values. Its negative
+  -- occurrence in the input context is the dual par; tensor introduction,
+  -- exchange, and par introduction give the field-swapping linear map.
+  boolPairFormula : PolType posPolarity
+  boolPairFormula = boolFormula ⊗⁺ boolFormula
+
+  boolPairAssumption : PolType negPolarity
+  boolPairAssumption = dualPos boolPairFormula
+
+  boolPairSwapMALLP :
+    MALLP (boolPairAssumption ∷ []) (just boolPairFormula)
+  boolPairSwapMALLP =
+    mallp-par
+      (mallp-exchange permutation-swap
+        (mallp-tensor mallp-ax mallp-ax))
+
   data BoolProof : Set where
     boolTrueProof boolFalseProof : BoolProof
 
@@ -2286,6 +2229,12 @@ module StrictBoolCompiler where
       {Γ : List BoolStackType} →
       BoolForthCode Γ Γ
 
+    -- Tensor-field permutation: both Boolean cells remain live.
+    boolSwapCode :
+      {Γ : List BoolStackType} →
+      BoolForthCode (boolCell ∷ boolCell ∷ Γ)
+        (boolCell ∷ boolCell ∷ Γ)
+
     pushBoolean :
       {Γ : List BoolStackType} →
       Bool →
@@ -2314,6 +2263,9 @@ module StrictBoolCompiler where
     BoolStack Γ →
     BoolStack Δ
   execBoolCode boolIdentity stack = stack
+  execBoolCode boolSwapCode
+    (pushBooleanValue top (pushBooleanValue next stack)) =
+      pushBooleanValue next (pushBooleanValue top stack)
   execBoolCode (pushBoolean value) stack =
     pushBooleanValue value stack
   execBoolCode (boolIfCode whenTrue whenFalse)
@@ -2338,6 +2290,7 @@ module StrictBoolCompiler where
     BoolForthCode Γ Δ →
     List BoolForthToken
   renderBoolCode boolIdentity = []
+  renderBoolCode boolSwapCode = boolSwapToken ∷ []
   renderBoolCode (pushBoolean true) = pushTrueToken ∷ []
   renderBoolCode (pushBoolean false) = pushFalseToken ∷ []
   renderBoolCode (boolIfCode whenTrue whenFalse) =
@@ -2381,6 +2334,17 @@ module StrictBoolCompiler where
         (λ branchStack → execBoolTokens tokens branchStack)
   execBoolTokens (boolIfToken whenTrue whenFalse ∷ tokens) [] = nothing
 
+  compileBoolPairSwap :
+    BoolForthCode (boolCell ∷ boolCell ∷ [])
+      (boolCell ∷ boolCell ∷ [])
+  compileBoolPairSwap = boolSwapCode
+
+  boolPairSwapMALLP-forth-sound :
+    (first second : Bool) →
+    execBoolTokens (renderBoolCode compileBoolPairSwap)
+      (second ∷ first ∷ []) ≡ just (first ∷ second ∷ [])
+  boolPairSwapMALLP-forth-sound first second = refl
+
   renderBoolCode-sound :
     {Γ Δ : List BoolStackType} →
     (code : BoolForthCode Γ Δ) →
@@ -2388,6 +2352,8 @@ module StrictBoolCompiler where
     execBoolTokens (renderBoolCode code) (forgetBoolStack stack) ≡
     just (forgetBoolStack (execBoolCode code stack))
   renderBoolCode-sound boolIdentity stack = refl
+  renderBoolCode-sound boolSwapCode
+    (pushBooleanValue top (pushBooleanValue next stack)) = refl
   renderBoolCode-sound (pushBoolean true) stack = refl
   renderBoolCode-sound (pushBoolean false) stack = refl
   renderBoolCode-sound (boolIfCode whenTrue whenFalse)
@@ -2444,6 +2410,11 @@ module StrictBoolCompiler where
     mapBoolForthTokensAsText [] = []
     mapBoolForthTokensAsText (token ∷ tokens) =
       boolForthTokenAsText token ∷ mapBoolForthTokensAsText tokens
+
+  boolPairSwap-token-correspondence :
+    mapBoolForthTokensAsText (renderBoolCode compileBoolPairSwap) ≡
+    (textSwapWord ∷ [])
+  boolPairSwap-token-correspondence = refl
 
   -- A Boolean case split is the additive MALLP elimination rule:
   -- the same residual context is available in each mutually exclusive branch.

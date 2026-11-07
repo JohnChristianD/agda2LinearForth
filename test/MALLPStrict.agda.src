@@ -38,6 +38,13 @@ chooseBool : Bool → Bool → Bool
 chooseBool true value = value
 chooseBool false value = value
 
+-- A two-field product is one value with two linearly owned Bool fields.
+data BoolPair : Set where
+  boolPair : Bool → Bool → BoolPair
+
+swapBoolPair : BoolPair → BoolPair
+swapBoolPair (boolPair first second) = boolPair second first
+
 answerMatchedTrue : Bool
 answerMatchedTrue = invertBool true
 
