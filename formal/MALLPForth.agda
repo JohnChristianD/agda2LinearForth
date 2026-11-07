@@ -1106,38 +1106,39 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
     NegValue (left &⁻ right) = DenotationSum (NegValue left) (NegValue right)
     NegValue (up⁻ positive) = PosValue positive
 
-  dualPositiveValue :
-    (positive : PolType posPolarity) →
-    PosValue positive → NegValue (dualPos positive)
-  dualNegativeValue :
-    (negative : PolType negPolarity) →
-    NegValue negative → PosValue (dualNeg negative)
-
-  dualPositiveValue (atom⁺ index) value = value
-  dualPositiveValue one⁺ value = value
-  dualPositiveValue zero⁺ ()
-  dualPositiveValue (left ⊗⁺ right) (pair leftValue rightValue) =
-    pair (dualPositiveValue left leftValue) (dualPositiveValue right rightValue)
-  dualPositiveValue (left ⊕⁺ right) (denLeft value) =
-    denLeft (dualPositiveValue left value)
-  dualPositiveValue (left ⊕⁺ right) (denRight value) =
-    denRight (dualPositiveValue right value)
-  dualPositiveValue (down⁺ negative) value =
-    dualNegativeValue negative value
-
-  dualNegativeValue (atom⁻ index) value = value
-  dualNegativeValue bot⁻ value = value
-  dualNegativeValue top⁻ ()
-  dualNegativeValue (left ⅋⁻ right) (pair leftValue rightValue) =
-    pair (dualNegativeValue left leftValue) (dualNegativeValue right rightValue)
-  dualNegativeValue (left &⁻ right) (denLeft value) =
-    denLeft (dualNegativeValue left value)
-  dualNegativeValue (left &⁻ right) (denRight value) =
-    denRight (dualNegativeValue right value)
-  dualNegativeValue (up⁻ positive) value =
-    dualPositiveValue positive value
-
-  recoverPositiveValue :
+  mutual
+    dualPositiveValue :
+      (positive : PolType posPolarity) →
+      PosValue positive → NegValue (dualPos positive)
+    dualNegativeValue :
+      (negative : PolType negPolarity) →
+      NegValue negative → PosValue (dualNeg negative)
+  
+    dualPositiveValue (atom⁺ index) value = value
+    dualPositiveValue one⁺ value = value
+    dualPositiveValue zero⁺ ()
+    dualPositiveValue (left ⊗⁺ right) (pair leftValue rightValue) =
+      pair (dualPositiveValue left leftValue) (dualPositiveValue right rightValue)
+    dualPositiveValue (left ⊕⁺ right) (denLeft value) =
+      denLeft (dualPositiveValue left value)
+    dualPositiveValue (left ⊕⁺ right) (denRight value) =
+      denRight (dualPositiveValue right value)
+    dualPositiveValue (down⁺ negative) value =
+      dualNegativeValue negative value
+  
+    dualNegativeValue (atom⁻ index) value = value
+    dualNegativeValue bot⁻ value = value
+    dualNegativeValue top⁻ ()
+    dualNegativeValue (left ⅋⁻ right) (pair leftValue rightValue) =
+      pair (dualNegativeValue left leftValue) (dualNegativeValue right rightValue)
+    dualNegativeValue (left &⁻ right) (denLeft value) =
+      denLeft (dualNegativeValue left value)
+    dualNegativeValue (left &⁻ right) (denRight value) =
+      denRight (dualNegativeValue right value)
+    dualNegativeValue (up⁻ positive) value =
+      dualPositiveValue positive value
+  
+    recoverPositiveValue :
     {positive : PolType posPolarity} →
     NegValue (dualPos positive) → PosValue positive
   recoverPositiveValue {positive} value =
