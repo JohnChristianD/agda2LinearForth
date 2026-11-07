@@ -1021,6 +1021,168 @@ open Foundations.CohesiveRetractions public
 open Foundations.SymmetricBarRecursion public
 open Foundations.LaurentPolarizedMALLP public
 
+------------------------------------------------------------------------
+-- GENERIC LINEAR SOURCE TERMS: STRUCTURAL MALLP DERIVATION
+--
+-- This small, reusable source core indexes every term by its exact live
+-- context and result type. Its interpretation is a Laurent MALLP proof.
+-- Tensor elimination is par on the negative context; sum elimination is
+-- with over a shared branch context; cut is linear substitution; and
+-- lambda introduction uses the existing up/par/down rules.
+--
+-- A closure stores its environment once and its code expects that same
+-- environment paired with its explicit argument. No captured resource is
+-- copied into code or silently discarded at closure creation.
+------------------------------------------------------------------------
+
+data LinearSourceType : Set where
+  linearNatType linearIntType linearBoolType linearUnitType : LinearSourceType
+  linearTensorType linearSumType linearArrowType :
+    LinearSourceType → LinearSourceType → LinearSourceType
+
+linearSourceFormula : LinearSourceType → PolType posPolarity
+linearSourceFormula linearNatType = atom⁺ zero
+linearSourceFormula linearIntType = atom⁺ (suc zero)
+linearSourceFormula linearBoolType = one⁺ ⊕⁺ one⁺
+linearSourceFormula linearUnitType = one⁺
+linearSourceFormula (linearTensorType A B) =
+  linearSourceFormula A ⊗⁺ linearSourceFormula B
+linearSourceFormula (linearSumType A B) =
+  linearSourceFormula A ⊕⁺ linearSourceFormula B
+linearSourceFormula (linearArrowType A B) =
+  down⁺ (dualPos (linearSourceFormula A) ⅋⁻ up⁻ (linearSourceFormula B))
+
+linearSourceContext : List LinearSourceType → Context
+linearSourceContext [] = []
+linearSourceContext (A ∷ Γ) =
+  dualPos (linearSourceFormula A) ∷ linearSourceContext Γ
+
+appendLinearContext : List LinearSourceType → List LinearSourceType →
+  List LinearSourceType
+appendLinearContext [] Δ = Δ
+appendLinearContext (A ∷ Γ) Δ = A ∷ appendLinearContext Γ Δ
+
+linearContextPermutation :
+  {Γ Δ : List LinearSourceType} →
+  ContextPermutation Γ Δ →
+  ContextPermutation (linearSourceContext Γ) (linearSourceContext Δ)
+linearContextPermutation permutation-nil = permutation-nil
+linearContextPermutation (permutation-cons permutation) =
+  permutation-cons (linearContextPermutation permutation)
+linearContextPermutation permutation-swap = permutation-swap
+linearContextPermutation (permutation-trans first second) =
+  permutation-trans
+    (linearContextPermutation first)
+    (linearContextPermutation second)
+
+data LinearTerm : List LinearSourceType → LinearSourceType → Set where
+  linearVariable :
+    {A : LinearSourceType} →
+    LinearTerm (A ∷ []) A
+
+  linearExchange :
+    {Γ Δ : List LinearSourceType} {A : LinearSourceType} →
+    ContextPermutation Γ Δ →
+    LinearTerm Γ A →
+    LinearTerm Δ A
+
+  linearTensor :
+    {Γ Δ : List LinearSourceType} {A B : LinearSourceType} →
+    LinearTerm Γ A →
+    LinearTerm Δ B →
+    LinearTerm (appendLinearContext Γ Δ) (linearTensorType A B)
+
+  linearUnit :
+    LinearTerm [] linearUnitType
+
+  linearInl :
+    {Γ : List LinearSourceType} {A B : LinearSourceType} →
+    LinearTerm Γ A →
+    LinearTerm Γ (linearSumType A B)
+
+  linearInr :
+    {Γ : List LinearSourceType} {A B : LinearSourceType} →
+    LinearTerm Γ B →
+    LinearTerm Γ (linearSumType A B)
+
+  linearTensorElim :
+    {Γ : List LinearSourceType} {A B C : LinearSourceType} →
+    LinearTerm (A ∷ B ∷ Γ) C →
+    LinearTerm (linearTensorType A B ∷ Γ) C
+
+  linearSumElim :
+    {Γ : List LinearSourceType} {A B C : LinearSourceType} →
+    LinearTerm (A ∷ Γ) C →
+    LinearTerm (B ∷ Γ) C →
+    LinearTerm (linearSumType A B ∷ Γ) C
+
+  linearCut :
+    {Γ Δ : List LinearSourceType} {A B : LinearSourceType} →
+    LinearTerm Γ A →
+    LinearTerm (A ∷ Δ) B →
+    LinearTerm (appendLinearContext Γ Δ) B
+
+  linearLambda :
+    {Γ : List LinearSourceType} {A B : LinearSourceType} →
+    LinearTerm (A ∷ Γ) B →
+    LinearTerm Γ (linearArrowType A B)
+
+  -- A closure owns one environment value. Its code receives that environment
+  -- explicitly paired with its argument, so captured fields stay linear.
+  linearClosureIntro :
+    {Γ : List LinearSourceType} {Environment Argument Result : LinearSourceType} →
+    LinearTerm Γ Environment →
+    LinearTerm
+      (linearTensorType Environment Argument ∷ [])
+      Result →
+    LinearTerm Γ
+      (linearTensorType Environment
+        (linearArrowType (linearTensorType Environment Argument) Result))
+
+deriveMALLP :
+  {Γ : List LinearSourceType} {A : LinearSourceType} →
+  LinearTerm Γ A →
+  MALLP (linearSourceContext Γ) (just (linearSourceFormula A))
+deriveMALLP linearVariable = mallp-ax
+deriveMALLP (linearExchange permutation term) =
+  mallp-exchange (linearContextPermutation permutation) (deriveMALLP term)
+deriveMALLP (linearTensor left right) =
+  mallp-tensor (deriveMALLP left) (deriveMALLP right)
+deriveMALLP linearUnit = mallp-one
+deriveMALLP (linearInl term) = mallp-plus-left (deriveMALLP term)
+deriveMALLP (linearInr term) = mallp-plus-right (deriveMALLP term)
+deriveMALLP (linearTensorElim body) = mallp-par (deriveMALLP body)
+deriveMALLP (linearSumElim whenLeft whenRight) =
+  mallp-with (deriveMALLP whenLeft) (deriveMALLP whenRight)
+deriveMALLP (linearCut producer consumer) =
+  mallp-cut (deriveMALLP producer) (deriveMALLP consumer)
+deriveMALLP (linearLambda body) =
+  mallp-down
+    (mallp-par
+      (mallp-exchange permutation-swap
+        (mallp-up (deriveMALLP body))))
+deriveMALLP (linearClosureIntro environment body) =
+  mallp-tensor (deriveMALLP environment)
+    (deriveMALLP (linearLambda body))
+
+-- General tensor permutation is a derived source term, not a special rule.
+linearTensorSwap :
+  {A B : LinearSourceType} →
+  LinearTerm
+    (linearTensorType A B ∷ [])
+    (linearTensorType B A)
+linearTensorSwap =
+  linearTensorElim
+    (linearExchange permutation-swap
+      (linearTensor linearVariable linearVariable))
+
+linearTensorSwapMALLP :
+  {A B : LinearSourceType} →
+  MALLP
+    (linearSourceContext (linearTensorType A B ∷ []))
+    (just (linearSourceFormula (linearTensorType B A)))
+linearTensorSwapMALLP = deriveMALLP linearTensorSwap
+
 {-# REWRITE
   μ-step-true
   μ-step-false
