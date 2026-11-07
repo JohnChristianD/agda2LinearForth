@@ -19,6 +19,17 @@
   THEN
 ;
 
+: strict-assert-word64 { actual-high actual-low expected-high expected-low -- }
+  actual-high expected-high <> IF
+    ." strict MALLP Word64 high limb mismatch" cr
+    -4206 THROW
+  THEN
+  actual-low expected-low <> IF
+    ." strict MALLP Word64 low limb mismatch" cr
+    -4207 THROW
+  THEN
+;
+
 : strict-assert-natural { actual expected -- }
   actual expected <> IF
     ." strict MALLP natural mismatch" cr
@@ -53,6 +64,9 @@ answerUnit
 5 2 answerMonusTwo 3 strict-assert-natural
 2 5 answerReverseMonusTwo 3 strict-assert-natural
 4 5 answerMultiplyTwo 20 strict-assert-natural
+
+4294967295 4294967295 answerWord64Identity
+4294967295 4294967295 strict-assert-word64
 
 2 3 4 answerThree 18 strict-assert-natural
 2 3 4 answerThreeLet 18 strict-assert-natural
