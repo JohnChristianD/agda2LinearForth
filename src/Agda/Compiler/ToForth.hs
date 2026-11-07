@@ -1045,7 +1045,8 @@ rendererCertificate definitions = T.unlines $
   , "  (ForthTextToken; textPushLiteral; textAddWord; textMonusWord; textMultiplyWord;"
   , "   textSwapWord; textRollWord; textTrueWord; textFalseWord; textIf; renderForthWordText)"
   , "open import MALLPForth using"
-  , "  (mapBoolForthTokensAsText; renderBoolCode; compileBoolCaseWithResidual)"
+  , "  (mapBoolForthTokensAsText; renderBoolCode; compileBoolCaseWithResidual;"
+  , "   compileBoolPairSwap)"
   , ""
   ] ++ concat
     [ let index = T.pack (show position)
@@ -1082,6 +1083,21 @@ rendererCertificate definitions = T.unlines $
       ]
     | definition <- definitions
     , safeForthName (compiledName definition) == "chooseBool"
+    ] ++ concat
+    [ [ "swapBoolPairCompilerTokens : List ForthTextToken"
+      , "swapBoolPairCompilerTokens = " <> formalTokenList (compiledTokens definition)
+      , ""
+      , "swapBoolPairMALLPTokens : List ForthTextToken"
+      , "swapBoolPairMALLPTokens = mapBoolForthTokensAsText"
+          <> " (renderBoolCode compileBoolPairSwap)"
+      , ""
+      , "swapBoolPairTokenCorrespondence :"
+      , "  swapBoolPairCompilerTokens ≡ swapBoolPairMALLPTokens"
+      , "swapBoolPairTokenCorrespondence = refl"
+      , ""
+      ]
+    | definition <- definitions
+    , safeForthName (compiledName definition) == "swapBoolPair"
     ]
 
 emitForthModule :: () -> () -> IsMain -> TopLevelModuleName -> [Maybe CompiledDefinition] -> TCM ()
