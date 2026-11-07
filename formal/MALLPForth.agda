@@ -1266,6 +1266,166 @@ module StrictNatCompiler where
           | renderForth-sound first stack
           | renderForth-sound second (execForthCode first stack) = refl
 
+  ----------------------------------------------------------------------
+  -- A closed, proof-carrying MALLP theory for the implemented Nat slice.
+  --
+  -- Numerals are nullary constants. Each arithmetic primitive is a linear
+  -- axiom Nat- ⊗ Nat- ⊢ Nat+, and composition is MALLP cut. Thus every
+  -- source subterm is consumed once; this is a theory over MALLP, with an
+  -- explicit primitive signature, rather than bare proof-tree syntax.
+  ----------------------------------------------------------------------
+
+  natFormula : PolType posPolarity
+  natFormula = atom⁺ zero
+
+  natAssumption : PolType negPolarity
+  natAssumption = dualPos natFormula
+
+  data MALLPNatTheory : Context → Stoup → Set where
+    mallp-nat-literal :
+      Nat → MALLPNatTheory [] (just natFormula)
+
+    mallp-nat-primitive :
+      NatOp →
+      MALLPNatTheory
+        (natAssumption ∷ natAssumption ∷ [])
+        (just natFormula)
+
+    mallp-nat-cut :
+      {Γ Δ : Context} →
+      MALLPNatTheory Γ (just natFormula) →
+      MALLPNatTheory (natAssumption ∷ Δ) (just natFormula) →
+      MALLPNatTheory (Γ ++ᴸ Δ) (just natFormula)
+
+    mallp-nat-transport :
+      {Γ Δ : Context} →
+      Γ ≡ Δ →
+      MALLPNatTheory Γ (just natFormula) →
+      MALLPNatTheory Δ (just natFormula)
+
+    mallp-nat-logical :
+      {Γ : Context} {S : Stoup} →
+      MALLP Γ S →
+      MALLPNatTheory Γ S
+
+  -- The focused proof-term language records only the number of linear Nat
+  -- assumptions. Its constructors are exactly the two signature axioms and cut.
+  data MALLPNatProof : Nat → Set where
+    natLiteralProof :
+      Nat → MALLPNatProof zero
+
+    natPrimitiveProof :
+      NatOp → MALLPNatProof (suc (suc zero))
+
+    natCutProof :
+      {n m : Nat} →
+      MALLPNatProof n →
+      MALLPNatProof (suc m) →
+      MALLPNatProof (n + m)
+
+  natContext : Nat → Context
+  natContext zero = []
+  natContext (suc n) = natAssumption ∷ natContext n
+
+  natContext-append :
+    (n m : Nat) →
+    natContext (n + m) ≡ natContext n ++ᴸ natContext m
+  natContext-append zero m = refl
+  natContext-append (suc n) m =
+    cong (natAssumption ∷_) (natContext-append n m)
+
+  embedNatProof :
+    {n : Nat} →
+    MALLPNatProof n →
+    MALLPNatTheory (natContext n) (just natFormula)
+  embedNatProof (natLiteralProof value) = mallp-nat-literal value
+  embedNatProof (natPrimitiveProof operation) =
+    mallp-nat-primitive operation
+  embedNatProof (natCutProof {n = n} {m = m} first second) =
+    mallp-nat-transport
+      (sym (natContext-append n m))
+      (mallp-nat-cut (embedNatProof first) (embedNatProof second))
+
+  data NatEnvironment : Nat → Set where
+    natEnvironmentNil : NatEnvironment zero
+    natEnvironmentCons :
+      {n : Nat} →
+      Nat →
+      NatEnvironment n →
+      NatEnvironment (suc n)
+
+  splitNatEnvironment :
+    (n m : Nat) →
+    NatEnvironment (n + m) →
+    NatEnvironment n × NatEnvironment m
+  splitNatEnvironment zero m environment =
+    pair natEnvironmentNil environment
+  splitNatEnvironment (suc n) m (natEnvironmentCons value rest)
+    with splitNatEnvironment n m rest
+  ... | pair prefix suffix =
+    pair (natEnvironmentCons value prefix) suffix
+
+  -- Environments are ordered like the target stack, with its top first.
+  -- A primitive therefore sees right above left and computes left op right.
+  interpretMALLPNatProof :
+    {n : Nat} →
+    MALLPNatProof n →
+    NatEnvironment n →
+    Nat
+  interpretMALLPNatProof (natLiteralProof value) natEnvironmentNil = value
+  interpretMALLPNatProof (natPrimitiveProof operation)
+    (natEnvironmentCons right
+      (natEnvironmentCons left natEnvironmentNil)) =
+        applyNatOp operation left right
+  interpretMALLPNatProof
+    (natCutProof {n = n} {m = m} first second) environment
+    with splitNatEnvironment n m environment
+  ... | pair prefix suffix =
+    interpretMALLPNatProof second
+      (natEnvironmentCons (interpretMALLPNatProof first prefix) suffix)
+
+  natExprProof : NatExpr → MALLPNatProof zero
+  natExprProof (NatLiteral value) = natLiteralProof value
+  natExprProof (NatBinary operation left right) =
+    natCutProof (natExprProof left)
+      (natCutProof (natExprProof right) (natPrimitiveProof operation))
+
+  natExpr-proof-derivation :
+    (expression : NatExpr) →
+    MALLPNatTheory [] (just natFormula)
+  natExpr-proof-derivation expression = embedNatProof (natExprProof expression)
+
+  natExprProof-adequate :
+    (expression : NatExpr) →
+    interpretMALLPNatProof (natExprProof expression) natEnvironmentNil ≡
+    evalNatExpr expression
+  natExprProof-adequate (NatLiteral value) = refl
+  natExprProof-adequate (NatBinary operation left right)
+    rewrite natExprProof-adequate left
+          | natExprProof-adequate right = refl
+
+  -- Composition of the proof-term interpretation, the typed Forth stack
+  -- machine, and the rendered postfix-token interpreter. This theorem is for
+  -- the mathematical token machine, not yet the Haskell printer or real Gforth.
+  natMALLP-forth-sound :
+    {Γ : List StackType} →
+    (expression : NatExpr) →
+    (stack : Stack Γ) →
+    execTokens
+      (renderForth (compileNat expression))
+      (forgetStack stack) ≡
+    just
+      (interpretMALLPNatProof (natExprProof expression) natEnvironmentNil
+        ∷ forgetStack stack)
+  natMALLP-forth-sound expression stack =
+    trans
+      (renderForth-sound (compileNat expression) stack)
+      (trans
+        (cong (λ values → just values)
+          (cong forgetStack (execForthCode-correct expression stack)))
+        (cong (λ value → just (value ∷ forgetStack stack))
+          (sym (natExprProof-adequate expression))))
+
   maxNat : Nat → Nat → Nat
   maxNat zero y = y
   maxNat (suc x) zero = suc x
