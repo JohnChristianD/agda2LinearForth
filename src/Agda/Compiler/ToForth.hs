@@ -17,7 +17,7 @@ import Agda.TypeChecking.Reduce (reduce)
 import Agda.TypeChecking.Substitute (TelV(..))
 import Agda.TypeChecking.Telescope (telView)
 import Data.Char (isAlphaNum, isDigit)
-import Data.List (elemIndex, sort)
+import Data.List (elemIndex, find, sort)
 import qualified Data.List.NonEmpty as NE
 import Data.SCargot
 import Data.SCargot.Repr
@@ -417,22 +417,86 @@ renderNatBinaryLinearExpr (NatBinaryArguments operation) =
 renderNatBinaryLinearExpr (NatBinaryArgumentsExchanged operation) =
   RSList [RSAtom "SWAP", renderNatOp operation]
 
-decodeBoolTerm :: TTerm -> TCM Bool
-decodeBoolTerm term = do
+decodeBoolTerm :: [QName] -> [QName] -> [Bool] -> TTerm -> TCM Bool
+decodeBoolTerm callStack environment term = do
   trueName <- getBuiltinName builtinTrue
   falseName <- getBuiltinName builtinFalse
-  let (headTerm, args) = tAppView term
+  let (headTerm, arguments) = tAppView term
       matches expected actual = Just actual == expected
+      chooseConstructor expected (TACon name arity body) =
+        matches expected name && arity == 0
+      chooseConstructor _ _ = False
+      chooseGuard [] fallback = decodeBoolTerm callStack environment fallback
+      chooseGuard (TAGuard guard body : rest) fallback = do
+        matchesGuard <- decodeBoolTerm callStack environment guard
+        if matchesGuard
+          then decodeBoolTerm callStack environment body
+          else chooseGuard rest fallback
+      chooseGuard (_ : rest) fallback = chooseGuard rest fallback
+      lookupBoolean index =
+        case drop index environment of
+          value : _ -> pure value
+          [] -> unsupported ("unbound Treeless Bool variable: " ++ show index)
   case headTerm of
     TCon name
-      | null args && matches trueName name -> pure True
-      | null args && matches falseName name -> pure False
+      | null arguments && matches trueName name -> pure True
+      | null arguments && matches falseName name -> pure False
     TDef name
-      | null args && matches trueName name -> pure True
-      | null args && matches falseName name -> pure False
+      | null arguments && matches trueName name -> pure True
+      | null arguments && matches falseName name -> pure False
+    TVar index
+      | null arguments -> lookupBoolean index
     TCoerce inner
-      | null args -> decodeBoolTerm inner
+      | null arguments -> decodeBoolTerm callStack environment inner
+    TLet bound body
+      | null arguments ->
+          if natVariableUses 0 body == 0
+            then decodeBoolTerm callStack environment body
+            else do
+              value <- decodeBoolTerm callStack environment bound
+              decodeBoolTerm callStack (value : environment) body
+    TCase index _ fallback alternatives
+      | null arguments -> do
+          scrutinee <- lookupBoolean index
+          let constructor = if scrutinee then trueName else falseName
+          case find (chooseConstructor constructor) alternatives of
+            Just (TACon _ _ body) ->
+              decodeBoolTerm callStack environment body
+            _ -> chooseGuard alternatives fallback
+    TPrim PIf
+      | [condition, whenTrue, whenFalse] <- arguments -> do
+          selected <- decodeBoolTerm callStack environment condition
+          decodeBoolTerm callStack environment
+            (if selected then whenTrue else whenFalse)
+    TDef name -> inlineBoolFunction callStack environment name arguments
     _ -> unsupported ("Treeless term is outside the closed Bool fragment: " ++ show headTerm)
+
+inlineBoolFunction :: [QName] -> [Bool] -> QName -> [TTerm] -> TCM Bool
+inlineBoolFunction callStack environment name arguments
+  | name `elem` callStack =
+      unsupported ("recursive Bool call requires a certified recursor: " ++ prettyShow name)
+  | otherwise = do
+      definition <- getConstInfo name
+      case theDef definition of
+        Function{} -> do
+          arity <- boolFunctionArity definition
+          case arity of
+            Just expected | expected == length arguments -> do
+              body <- toTreeless EagerEvaluation name
+              case body of
+                Nothing -> unsupported ("Bool helper has no Treeless body: " ++ prettyShow name)
+                Just functionTerm -> do
+                  let (actualArity, functionBody) = tLamView functionTerm
+                  if actualArity /= expected
+                    then unsupported ("Bool helper lambda arity mismatch: " ++ prettyShow name)
+                    else pure ()
+                  argumentValues <- traverse
+                    (decodeBoolTerm callStack environment) arguments
+                  decodeBoolTerm (name : callStack)
+                    (reverse argumentValues ++ environment) functionBody
+            _ -> unsupported
+              ("called definition is not a first-order Bool function: " ++ prettyShow name)
+        _ -> unsupported ("called Treeless definition is not a function: " ++ prettyShow name)
 
 isBuiltinType :: QName -> I.Type -> TCM Bool
 isBuiltinType builtinName ty = do
@@ -463,14 +527,25 @@ natFunctionArity definition = do
         then Just (length argumentTypes)
         else Nothing
 
+boolFunctionArity :: Definition -> TCM (Maybe Int)
+boolFunctionArity definition = do
+  boolName <- getBuiltinName builtinBool
+  TelV telescope resultType <- telView (defType definition)
+  case boolName of
+    Nothing -> pure Nothing
+    Just name -> do
+      resultIsBool <- isBuiltinType name resultType
+      argumentTypes <- traverse
+        (\domain -> isBuiltinType name (snd (I.unDom domain)))
+        (I.telToList telescope)
+      pure $ if resultIsBool && and argumentTypes
+        then Just (length argumentTypes)
+        else Nothing
+
 hasBoolResult :: Definition -> TCM Bool
 hasBoolResult definition = do
-  boolName <- getBuiltinName builtinBool
-  TelV _ resultType <- telView (defType definition)
-  reducedResultType <- reduce resultType
-  pure $ case (boolName, I.unEl reducedResultType) of
-    (Just expected, I.Def actual []) -> expected == actual
-    _ -> False
+  arity <- boolFunctionArity definition
+  pure (arity == Just 0)
 
 hasUnitResult :: Definition -> TCM Bool
 hasUnitResult definition = do
@@ -520,7 +595,7 @@ compileDefinition definition
           case body of
             Nothing -> pure Nothing
             Just term -> do
-              value <- decodeBoolTerm term
+              value <- decodeBoolTerm [] [] term
               let (forthBoolean, formalBoolean) =
                     if value then ("TRUE", FormalTrueWord) else ("FALSE", FormalFalseWord)
               pure (Just (CompiledDefinition
