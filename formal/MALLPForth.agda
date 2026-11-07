@@ -3398,7 +3398,7 @@ module StrictLinearDataCompiler where
             (application-source
               {Γ = linearArrowType B C ∷ []}
               {A = linearArrowType B C}
-              linearVariable)))
+              linearVariable)))))
 
   bciExchange :
     {A B C : LinearSourceType} →
