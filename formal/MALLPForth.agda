@@ -1235,14 +1235,6 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
   MALLPRelation (mallp-up proof) (pair result environment) tt =
     MALLPRelation proof environment result
 
-  interpretMALLP :
-    {Γ : Context} {S : Stoup} →
-    (proof : MALLP Γ S) →
-    (environment : ContextValues Γ) →
-    (result : StoupValue S) →
-    MALLPRelation proof environment result
-  interpretMALLP proof environment result =
-    MALLPRelation proof environment result
 
 ------------------------------------------------------------------------
 -- GENERIC LINEAR SOURCE TERMS: STRUCTURAL MALLP DERIVATION
