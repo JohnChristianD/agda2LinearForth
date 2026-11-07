@@ -151,7 +151,8 @@ jobs:
             exit 1
           fi
           grep -n 'answerCall' MALLPStrict.fth || true
-          if ! gforth MALLPStrict.fth test/gforth/mallp-strict.fs > mallp-strict.log 2>&1; then
+          cat test/gforth/mallp-strict.fs >> MALLPStrict.fth
+          if ! gforth MALLPStrict.fth > mallp-strict.log 2>&1; then
             cat mallp-strict.log
             exit 1
           fi
