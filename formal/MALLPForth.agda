@@ -1605,6 +1605,110 @@ module StrictNatCompiler where
         (sym (natLinearProof-adequate expression argument)))
 
   ----------------------------------------------------------------------
+  -- Binary linear Nat primitives.
+  --
+  -- The two source arguments are each consumed once.  The incoming stack
+  -- has the second argument at its head, matching the environment order
+  -- used by the MALLP primitive signature.  Exchange is explicit.
+  ----------------------------------------------------------------------
+
+  data NatBinaryLinearExpr : Set where
+    natBinaryArguments : NatOp → NatBinaryLinearExpr
+    natBinaryArgumentsExchanged : NatOp → NatBinaryLinearExpr
+
+  evalNatBinaryLinearExpr : NatBinaryLinearExpr → Nat → Nat → Nat
+  evalNatBinaryLinearExpr (natBinaryArguments operation) first second =
+    applyNatOp operation first second
+  evalNatBinaryLinearExpr
+    (natBinaryArgumentsExchanged operation) first second =
+      applyNatOp operation second first
+
+  compileNatBinaryLinear :
+    {Γ : List StackType} →
+    NatBinaryLinearExpr →
+    ForthCode (natCell ∷ natCell ∷ Γ) (natCell ∷ Γ)
+  compileNatBinaryLinear (natBinaryArguments operation) =
+    binaryWord operation
+  compileNatBinaryLinear (natBinaryArgumentsExchanged operation) =
+    sequence swapNat (binaryWord operation)
+
+  execNatBinaryLinear-correct :
+    (expression : NatBinaryLinearExpr) →
+    (first second : Nat) →
+    {Γ : List StackType} →
+    (stack : Stack Γ) →
+    execForthCode (compileNatBinaryLinear expression)
+      (pushCell second (pushCell first stack)) ≡
+    pushCell (evalNatBinaryLinearExpr expression first second) stack
+  execNatBinaryLinear-correct
+    (natBinaryArguments operation) first second stack =
+      execForthCode-binary-correct operation first second stack
+  execNatBinaryLinear-correct
+    (natBinaryArgumentsExchanged operation) first second stack =
+      execForthCode-binary-correct operation second first stack
+
+  natBinary-forth-sound :
+    (expression : NatBinaryLinearExpr) →
+    (first second : Nat) →
+    {Γ : List StackType} →
+    (stack : Stack Γ) →
+    execTokens
+      (renderForth (compileNatBinaryLinear expression))
+      (forgetStack (pushCell second (pushCell first stack))) ≡
+    just (evalNatBinaryLinearExpr expression first second ∷ forgetStack stack)
+  natBinary-forth-sound expression first second stack =
+    trans
+      (renderForth-sound
+        (compileNatBinaryLinear expression)
+        (pushCell second (pushCell first stack)))
+      (cong (λ values → just values)
+        (cong forgetStack
+          (execNatBinaryLinear-correct expression first second stack)))
+
+  natBinaryProof : NatBinaryLinearExpr → MALLPNatProof (suc (suc zero))
+  natBinaryProof (natBinaryArguments operation) =
+    natPrimitiveProof operation
+  natBinaryProof (natBinaryArgumentsExchanged operation) =
+    natExchangeProof (natPrimitiveProof operation)
+
+  natBinary-proof-derivation :
+    (expression : NatBinaryLinearExpr) →
+    MALLPNatTheory (natContext (suc (suc zero))) (just natFormula)
+  natBinary-proof-derivation expression =
+    embedNatProof (natBinaryProof expression)
+
+  natBinaryProof-adequate :
+    (expression : NatBinaryLinearExpr) →
+    (first second : Nat) →
+    interpretMALLPNatProof (natBinaryProof expression)
+      (natEnvironmentCons second
+        (natEnvironmentCons first natEnvironmentNil)) ≡
+    evalNatBinaryLinearExpr expression first second
+  natBinaryProof-adequate (natBinaryArguments operation) first second = refl
+  natBinaryProof-adequate
+    (natBinaryArgumentsExchanged operation) first second = refl
+
+  natBinaryMALLP-forth-sound :
+    (expression : NatBinaryLinearExpr) →
+    (first second : Nat) →
+    {Γ : List StackType} →
+    (stack : Stack Γ) →
+    execTokens
+      (renderForth (compileNatBinaryLinear expression))
+      (forgetStack (pushCell second (pushCell first stack))) ≡
+    just
+      (interpretMALLPNatProof (natBinaryProof expression)
+        (natEnvironmentCons second
+          (natEnvironmentCons first natEnvironmentNil)) ∷
+        forgetStack stack)
+  natBinaryMALLP-forth-sound expression first second stack =
+    trans
+      (natBinary-forth-sound expression first second stack)
+      (cong
+        (λ value → just (value ∷ forgetStack stack))
+        (sym (natBinaryProof-adequate expression first second)))
+
+  ----------------------------------------------------------------------
   -- Closed PureLang lets: substitution without weakening or contraction.
   --
   -- A closed binding owns no MALLP assumptions.  A zero-use binding may be
