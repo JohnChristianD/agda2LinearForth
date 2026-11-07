@@ -3297,13 +3297,19 @@ module StrictLinearDataCompiler where
       LinearApplicationTerm (appendLinearContext Δ Γ) B
 
   rotateLastContext :
-    (prefix : Context) (last : PolType negPolarity) →
-    ContextPermutation (prefix ++ᴸ (last ∷ [])) (last ∷ prefix)
-  rotateLastContext [] last = permutation-cons permutation-nil
+    (prefix : List (PolType negPolarity)) →
+    (last : PolType negPolarity) →
+    ContextPermutation
+      (prefix ++ᴸ (last ∷ []))
+      (last ∷ prefix)
+  rotateLastContext [] last =
+    permutation-cons {A = PolType negPolarity} permutation-nil
   rotateLastContext (head ∷ prefix) last =
     permutation-trans
-      (permutation-cons (rotateLastContext prefix last))
-      permutation-swap
+      (permutation-cons
+        {A = PolType negPolarity}
+        (rotateLastContext prefix last))
+      (permutation-swap {A = PolType negPolarity})
 
   deriveLinearApplication :
     {Γ : List LinearSourceType} {A : LinearSourceType} →
