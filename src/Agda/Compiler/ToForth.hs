@@ -657,7 +657,8 @@ formalTokenList tokens =
 
 rendererCertificate :: [CompiledDefinition] -> Text
 rendererCertificate definitions = T.unlines $
-  [ "module MALLPEmittedRenderer where"
+  [ "{-# OPTIONS --with-K --rewriting --confluence-check --polarity --lossy-unification --exact-split --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}"
+  , "module MALLPEmittedRenderer where"
   , ""
   , "open import Agda.Builtin.String using (String)"
   , "open import Agda.Builtin.List using (List; []; _∷_)"
