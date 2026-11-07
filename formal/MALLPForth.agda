@@ -1362,7 +1362,7 @@ module StrictNatCompiler where
        | rollStack proof rest
        | rollList-correct proof rest
   ... | nothing | _ | ()
-  ... | just [] | _ | ()
+  ... | just [] | pushCell selected′ remaining | ()
   ... | just (selected ∷ restValues) | pushCell selected′ remaining | refl = refl
 
   execToken : ForthToken → List Nat → Maybe (List Nat)
