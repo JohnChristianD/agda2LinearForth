@@ -200,11 +200,13 @@ compileNatResourceExpr active context (NatResourceVariable index) =
     Just position ->
       let depth = active + position
           remaining = take position context ++ drop (position + 1) context
-      in Right
-          ( RSList [RSAtom (T.pack (show depth)), RSAtom "ROLL"]
-          , [FormalRollWord (fromIntegral depth)]
-          , remaining
-          )
+      in if depth == 0
+           then Right (RSList [], [], remaining)
+           else Right
+             ( RSList [RSAtom (T.pack (show depth)), RSAtom "ROLL"]
+             , [FormalRollWord (fromIntegral depth)]
+             , remaining
+             )
 compileNatResourceExpr active context (NatResourceBinary operation left right) = do
   (leftCode, leftTokens, afterLeft) <- compileNatResourceExpr active context left
   (rightCode, rightTokens, afterRight) <-
