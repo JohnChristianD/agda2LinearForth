@@ -1306,28 +1306,35 @@ module StrictNatCompiler where
     pushLiteral : Nat → ForthToken
     addWord monusWord multiplyWord swapWord : ForthToken
     rollWord : Nat → ForthToken
-    trueWord falseWord : ForthToken
 
-  renderForthTokenText : ForthToken → String
-  renderForthTokenText (pushLiteral value) =
+  -- Text tokens are deliberately separate from the Nat execution machine:
+  -- TRUE/FALSE have Gforth's Bool representation, not a Nat stack meaning.
+  data ForthTextToken : Set where
+    textPushLiteral : Nat → ForthTextToken
+    textAddWord textMonusWord textMultiplyWord textSwapWord : ForthTextToken
+    textRollWord : Nat → ForthTextToken
+    textTrueWord textFalseWord : ForthTextToken
+
+  renderForthTokenText : ForthTextToken → String
+  renderForthTokenText (textPushLiteral value) =
     primStringAppend "s\" "
       (primStringAppend (primShowNat value) "\" MALLP-PARSE-NAT ")
-  renderForthTokenText addWord = "MALLP-NAT-ADD "
-  renderForthTokenText monusWord = "MALLP-NAT-MONUS "
-  renderForthTokenText multiplyWord = "MALLP-NAT-MUL "
-  renderForthTokenText swapWord = "SWAP "
-  renderForthTokenText (rollWord depth) =
+  renderForthTokenText textAddWord = "MALLP-NAT-ADD "
+  renderForthTokenText textMonusWord = "MALLP-NAT-MONUS "
+  renderForthTokenText textMultiplyWord = "MALLP-NAT-MUL "
+  renderForthTokenText textSwapWord = "SWAP "
+  renderForthTokenText (textRollWord depth) =
     primStringAppend (primShowNat depth) " ROLL "
-  renderForthTokenText trueWord = "TRUE "
-  renderForthTokenText falseWord = "FALSE "
+  renderForthTokenText textTrueWord = "TRUE "
+  renderForthTokenText textFalseWord = "FALSE "
 
-  renderForthTokensText : List ForthToken → String
+  renderForthTokensText : List ForthTextToken → String
   renderForthTokensText [] = ""
   renderForthTokensText (token ∷ tokens) =
     primStringAppend (renderForthTokenText token)
       (renderForthTokensText tokens)
 
-  renderForthWordText : String → List ForthToken → String
+  renderForthWordText : String → List ForthTextToken → String
   renderForthWordText name tokens =
     primStringAppend ": "
       (primStringAppend name
