@@ -28,6 +28,11 @@ answerTrue = true
 answerFalse : Bool
 answerFalse = false
 
+open import Agda.Builtin.Unit using (⊤; tt)
+
+answerUnit : ⊤
+answerUnit = tt
+
 open import Agda.Builtin.Int using (Int; pos)
 
 answerInt : Int
