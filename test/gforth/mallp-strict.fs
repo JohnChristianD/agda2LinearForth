@@ -29,6 +29,13 @@ answerUnit
 3 answerMonusFive 0 strict-assert-natural
 3 answerFiveMonus 2 strict-assert-natural
 4 answerMultiplyFive 20 strict-assert-natural
+
+7 13 answerAddTwo 20 strict-assert-natural
+2 5 answerMonusTwo 0 strict-assert-natural
+5 2 answerMonusTwo 3 strict-assert-natural
+2 5 answerReverseMonusTwo 3 strict-assert-natural
+4 5 answerMultiplyTwo 20 strict-assert-natural
+
 : testStrictOverflow ( -- )
   MALLP-MAX-NAT 1 MALLP-NAT-ADD { ignored }
 ;
@@ -45,9 +52,3 @@ answerUnit
 assert-empty-stack
 cr ." mallp-strict-tests-passed" cr
 BYE
-
-7 13 answerAddTwo 20 strict-assert-natural
-2 5 answerMonusTwo 0 strict-assert-natural
-5 2 answerMonusTwo 3 strict-assert-natural
-2 5 answerReverseMonusTwo 3 strict-assert-natural
-4 5 answerMultiplyTwo 20 strict-assert-natural
