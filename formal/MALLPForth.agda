@@ -69,10 +69,9 @@ mutual
     primStringAppend "s\" "
       (primStringAppend (primShowNat value) "\" MALLP-PARSE-NAT ")
   renderForthTokenText (textPushWord64 high low) =
-    primStringAppend "s\\" "
-      (primStringAppend (primShowNat high)
-        (primStringAppend "\\" MALLP-PARSE-NAT s\\" "
-          (primStringAppend (primShowNat low) "\\" MALLP-PARSE-NAT ")))
+    primStringAppend
+      (renderForthTokenText (textPushLiteral high))
+      (renderForthTokenText (textPushLiteral low))
   renderForthTokenText textAddWord = "MALLP-NAT-ADD "
   renderForthTokenText textMonusWord = "MALLP-NAT-MONUS "
   renderForthTokenText textMultiplyWord = "MALLP-NAT-MUL "
