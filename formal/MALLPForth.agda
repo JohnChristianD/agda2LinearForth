@@ -1138,7 +1138,7 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
     dualNegativeValue (up⁻ positive) value =
       dualPositiveValue positive value
   
-    recoverPositiveValue :
+  recoverPositiveValue :
     {positive : PolType posPolarity} →
     NegValue (dualPos positive) → PosValue positive
   recoverPositiveValue {positive} value =
