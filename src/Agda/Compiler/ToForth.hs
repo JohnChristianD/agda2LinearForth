@@ -1239,7 +1239,7 @@ rendererCertificate definitions = T.unlines $
          , "  trans"
          , "    (cong (λ tokens → execTokens tokens (forgetStack (pushCell argument stack)))"
          , "      " <> tokenProofName <> ")"
-         , "    (natLinearMALLP-forth-sound {Γ = Γ} " <> expressionName <> " argument stack)"
+         , "    (natLinearMALLP-forth-sound " <> expressionName <> " argument {Γ = Γ} stack)"
          , ""
          ]
       | (index, definition, expression) <-
