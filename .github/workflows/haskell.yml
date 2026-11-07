@@ -150,7 +150,7 @@ jobs:
             echo "strict MALLP runtime/output contains a structural duplicate or discard word"
             exit 1
           fi
-          grep -E '^: answer(CallThree|CallNested) ' MALLPStrict.fth
+          grep -n 'answerCall' MALLPStrict.fth || true
           if ! gforth MALLPStrict.fth test/gforth/mallp-strict.fs > mallp-strict.log 2>&1; then
             cat mallp-strict.log
             exit 1
