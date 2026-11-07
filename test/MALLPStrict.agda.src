@@ -33,6 +33,22 @@ open import Agda.Builtin.Unit using (⊤; tt)
 answerUnit : ⊤
 answerUnit = tt
 
+-- Linear function cases: one live argument, consumed exactly once.
+answerIdentity : Nat → Nat
+answerIdentity value = value
+
+answerAddFive : Nat → Nat
+answerAddFive value = value + 5
+
+answerMonusFive : Nat → Nat
+answerMonusFive value = value - 5
+
+answerFiveMonus : Nat → Nat
+answerFiveMonus value = 5 - value
+
+answerMultiplyFive : Nat → Nat
+answerMultiplyFive value = value * 5
+
 open import Agda.Builtin.Int using (Int; pos)
 
 answerInt : Int

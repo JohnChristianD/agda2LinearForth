@@ -48,15 +48,22 @@ The checked end-to-end fragment remains intentionally small:
 
 - Closed Nat literals; Nat addition, natural subtraction (monus), and multiplication.
 - Nonrecursive closed Nat lets, including unused and multiply-used bindings. These are substituted before Forth rendering; multiple uses expand into separate copies of a closed expression.
+- Unary `Nat → Nat` functions with exactly one use of their live argument. The compiler recognizes a one-argument Nat telescope, checks the Treeless lambda arity, and lowers argument references through an indexed stack contract. Both operand orders are supported; a closed left operand uses `SWAP`, which is exchange rather than duplication or discard.
 - Closed Boolean constructors: `true` and `false`, represented by the additive MALLP formula `1 ⊕ 1` and emitted as Gforth `TRUE` / `FALSE` values.
 - Pure `Unit`: the MALLP multiplicative unit `1`, compiled as an empty Forth word that preserves the caller's stack.
 - Bounded-cell Gforth Nat runtime with explicit negative/overflow checks.
 
 `TPrim PSub` remains rejected as Nat monus: it denotes signed integer subtraction. Nat monus is handled through Agda's Nat subtraction builtin.
 
-The Agda specification contains Laurent's polarized MALLP proof-tree calculus, a focused Nat primitive theory, a Boolean encoding as the additive formula `1 ⊕ 1`, and Unit as the multiplicative formula `1`. `boolProofDerivation` builds the two Boolean introductions from `mallp-plus-left` / `mallp-plus-right` and `mallp-one`; `boolMALLP-forth-sound` proves the rendered Boolean token has the same value as its MALLP proof. `unitProof` is `mallp-one`, and `unitMALLP-forth-sound` proves the empty Forth lowering preserves the caller's residual stack. `natMALLP-forth-sound` proves the Nat AST, indexed Forth stack code, and abstract postfix-token interpreter agree while preserving the residual stack. The closed-local-let model adds `closedNatLocal-proof`, `closedNatLocal-proof-adequate`, and `closedNatLocal-forth-sound`: a closed PureLang-style let expression is inlined and receives a MALLP derivation without weakening or contraction.
+The Agda specification contains Laurent's polarized MALLP proof-tree calculus, a focused Nat primitive theory, a linear unary Nat function proof (`NatLinearExpr`) with exactly one live assumption, an indexed Forth `SWAP` exchange, a Boolean encoding as the additive formula `1 ⊕ 1`, and Unit as the multiplicative formula `1`. `boolProofDerivation` builds the two Boolean introductions from `mallp-plus-left` / `mallp-plus-right` and `mallp-one`; `boolMALLP-forth-sound` proves the rendered Boolean token has the same value as its MALLP proof. `unitProof` is `mallp-one`, and `unitMALLP-forth-sound` proves the empty Forth lowering preserves the caller's residual stack. `natMALLP-forth-sound` proves the closed Nat AST, indexed Forth stack code, and abstract postfix-token interpreter agree while preserving the residual stack. `natLinearMALLP-forth-sound` connects a unary linear Nat function's one-assumption proof interpretation with its indexed Forth/token execution. The closed-local-let model adds `closedNatLocal-proof`, `closedNatLocal-proof-adequate`, and `closedNatLocal-forth-sound`: a closed PureLang-style let expression is inlined and receives a MALLP derivation without weakening or contraction.
 
 This is not yet a proof that the Haskell decoder/printer or a real Gforth process implements the Agda model. The existing Gforth cell bound also differs from mathematical unbounded Agda Nat; the emitted runtime reports overflow rather than proving arbitrary-precision Nat semantics.
+
+## Current expanded test slice
+
+The Gforth fixture now includes unary identity, addition, monus in either operand order, and multiplication. The admitted unary function must consume its one Nat argument exactly once. An unused argument or a duplicated live argument is rejected; closed operands may be separately reconstructed.
+
+This is not yet general higher-order PureCake support: no closure environment, multiple independent live parameters, user-defined call graph, finite ADT/list lowering, recursive semantics, stateful thunk sharing, or effect handlers are implemented. The Agda proof establishes the formal unary core and abstract token machine, not the Haskell printer or real Gforth implementation.
 
 ## Implementation frontier
 

@@ -1149,10 +1149,45 @@ module StrictNatCompiler where
   evalNatExpr (binary op left right) =
     applyNatOp op (evalNatExpr left) (evalNatExpr right)
 
-  -- Indexed postfix combinators. There is no constructor for DUP, DROP,
-  -- weakening, contraction, a heap address, or a closure.
+  -- A unary function consumes exactly one live Nat input. All other operands
+  -- are closed derivations. Separate constructors make duplication and
+  -- discard of the live assumption unrepresentable.
+  data NatLinearExpr : Set where
+    natArgument : NatLinearExpr
+    natLinearLeft :
+      NatOp →
+      NatLinearExpr →
+      NatExpr →
+      NatLinearExpr
+    natLinearRight :
+      NatOp →
+      NatExpr →
+      NatLinearExpr →
+      NatLinearExpr
+
+  evalNatLinearExpr : NatLinearExpr → Nat → Nat
+  evalNatLinearExpr natArgument argument = argument
+  evalNatLinearExpr (natLinearLeft operation input right) argument =
+    applyNatOp operation
+      (evalNatLinearExpr input argument)
+      (evalNatExpr right)
+  evalNatLinearExpr (natLinearRight operation left input) argument =
+    applyNatOp operation
+      (evalNatExpr left)
+      (evalNatLinearExpr input argument)
+
+  -- Indexed postfix code. SWAP is an exchange, not duplication or discard.
   data ForthCode : List StackType → List StackType → Set where
-    pushNat : {Γ : List StackType} → Nat → ForthCode Γ (natCell ∷ Γ)
+    identityNat :
+      {Γ : List StackType} →
+      ForthCode Γ Γ
+    pushNat :
+      {Γ : List StackType} →
+      Nat →
+      ForthCode Γ (natCell ∷ Γ)
+    swapNat :
+      {Γ : List StackType} →
+      ForthCode (natCell ∷ natCell ∷ Γ) (natCell ∷ natCell ∷ Γ)
     binaryWord :
       {Γ : List StackType} →
       NatOp →
@@ -1162,15 +1197,33 @@ module StrictNatCompiler where
       ForthCode Γ Δ →
       ForthCode Δ Ε →
       ForthCode Γ Ε
-
   compileNat : {Γ : List StackType} → NatExpr → ForthCode Γ (natCell ∷ Γ)
   compileNat (literal n) = pushNat n
   compileNat (binary op left right) =
     sequence (compileNat left)
       (sequence (compileNat right) (binaryWord op))
 
+  -- Compile a Nat expression with exactly one live input. Any closed
+  -- subexpression may be computed independently; the live input itself
+  -- is consumed exactly once. The right-input case uses exchange only.
+  compileNatLinear :
+    {Γ : List StackType} →
+    NatLinearExpr →
+    ForthCode (natCell ∷ Γ) (natCell ∷ Γ)
+  compileNatLinear natArgument = identityNat
+  compileNatLinear (natLinearLeft operation input right) =
+    sequence (compileNatLinear input)
+      (sequence (compileNat right) (binaryWord operation))
+  compileNatLinear (natLinearRight operation left input) =
+    sequence (compileNat left)
+      (sequence swapNat
+        (sequence (compileNatLinear input) (binaryWord operation)))
+
   execForthCode : {Γ Δ : List StackType} → ForthCode Γ Δ → Stack Γ → Stack Δ
+  execForthCode identityNat stack = stack
   execForthCode (pushNat n) stack = pushCell n stack
+  execForthCode swapNat (pushCell top (pushCell next stack)) =
+    pushCell next (pushCell top stack)
   execForthCode (binaryWord addOp) (pushCell right (pushCell left stack)) =
     pushCell (left + right) stack
   execForthCode (binaryWord monusOp) (pushCell right (pushCell left stack)) =
@@ -1198,9 +1251,32 @@ module StrictNatCompiler where
           | execForthCode-correct right (pushCell (evalNatExpr left) stack) =
       execForthCode-binary-correct op (evalNatExpr left) (evalNatExpr right) stack
 
+  execNatLinear-correct :
+    (expression : NatLinearExpr) →
+    (argument : Nat) →
+    {Γ : List StackType} →
+    (stack : Stack Γ) →
+    execForthCode (compileNatLinear expression) (pushCell argument stack) ≡
+    pushCell (evalNatLinearExpr expression argument) stack
+  execNatLinear-correct natArgument argument stack = refl
+  execNatLinear-correct
+    (natLinearLeft operation input right) argument stack
+      rewrite execNatLinear-correct input argument stack
+            | execForthCode-correct right
+                (pushCell (evalNatLinearExpr input argument) stack) =
+        execForthCode-binary-correct operation
+          (evalNatLinearExpr input argument) (evalNatExpr right) stack
+  execNatLinear-correct
+    (natLinearRight operation left input) argument stack
+      rewrite execForthCode-correct left (pushCell argument stack)
+            | execNatLinear-correct input argument
+                (pushCell (evalNatExpr left) stack) =
+        execForthCode-binary-correct operation
+          (evalNatExpr left) (evalNatLinearExpr input argument) stack
+
   data ForthToken : Set where
     pushLiteral : Nat → ForthToken
-    addWord monusWord multiplyWord : ForthToken
+    addWord monusWord multiplyWord swapWord : ForthToken
 
   _++ᴳ_ : {A : Set} → List A → List A → List A
   [] ++ᴳ ys = ys
@@ -1212,7 +1288,9 @@ module StrictNatCompiler where
   renderNatOp multiplyOp = multiplyWord
 
   renderForth : {Γ Δ : List StackType} → ForthCode Γ Δ → List ForthToken
+  renderForth identityNat = []
   renderForth (pushNat n) = pushLiteral n ∷ []
+  renderForth swapNat = swapWord ∷ []
   renderForth (binaryWord op) = renderNatOp op ∷ []
   renderForth (sequence first second) =
     renderForth first ++ᴳ renderForth second
@@ -1232,6 +1310,9 @@ module StrictNatCompiler where
   execToken multiplyWord (right ∷ left ∷ stack) =
     just (left * right ∷ stack)
   execToken multiplyWord _ = nothing
+
+  execToken swapWord (top ∷ next ∷ stack) = just (next ∷ top ∷ stack)
+  execToken swapWord _ = nothing
 
   maybeBind : {A B : Set} → Maybe A → (A → Maybe B) → Maybe B
   maybeBind nothing continuation = nothing
@@ -1257,7 +1338,9 @@ module StrictNatCompiler where
     {Γ Δ : List StackType} (code : ForthCode Γ Δ) (stack : Stack Γ) →
     execTokens (renderForth code) (forgetStack stack) ≡
     just (forgetStack (execForthCode code stack))
+  renderForth-sound identityNat stack = refl
   renderForth-sound (pushNat n) stack = refl
+  renderForth-sound swapNat (pushCell top (pushCell next stack)) = refl
   renderForth-sound (binaryWord addOp) (pushCell right (pushCell left stack)) = refl
   renderForth-sound (binaryWord monusOp) (pushCell right (pushCell left stack)) = refl
   renderForth-sound (binaryWord multiplyOp) (pushCell right (pushCell left stack)) = refl
@@ -1297,6 +1380,12 @@ module StrictNatCompiler where
       MALLPNatTheory (natAssumption ∷ Δ) (just natFormula) →
       MALLPNatTheory (Γ ++ᴸ Δ) (just natFormula)
 
+    mallp-nat-exchange :
+      {Γ Δ : Context} →
+      ContextPermutation Γ Δ →
+      MALLPNatTheory Γ (just natFormula) →
+      MALLPNatTheory Δ (just natFormula)
+
     mallp-nat-transport :
       {Γ Δ : Context} →
       Γ ≡ Δ →
@@ -1316,6 +1405,13 @@ module StrictNatCompiler where
 
     natPrimitiveProof :
       NatOp → MALLPNatProof (suc (suc zero))
+
+    natArgumentProof :
+      MALLPNatProof (suc zero)
+
+    natExchangeProof :
+      MALLPNatProof (suc (suc zero)) →
+      MALLPNatProof (suc (suc zero))
 
     natCutProof :
       {n m : Nat} →
@@ -1341,6 +1437,10 @@ module StrictNatCompiler where
   embedNatProof (natLiteralProof value) = mallp-nat-literal value
   embedNatProof (natPrimitiveProof operation) =
     mallp-nat-primitive operation
+  embedNatProof natArgumentProof =
+    mallp-nat-logical mallp-ax
+  embedNatProof (natExchangeProof proof) =
+    mallp-nat-exchange permutation-swap (embedNatProof proof)
   embedNatProof (natCutProof {n = n} {m = m} first second) =
     mallp-nat-transport
       (sym (natContext-append n m))
@@ -1377,6 +1477,12 @@ module StrictNatCompiler where
     (natEnvironmentCons right
       (natEnvironmentCons left natEnvironmentNil)) =
         applyNatOp operation left right
+  interpretMALLPNatProof natArgumentProof
+    (natEnvironmentCons argument natEnvironmentNil) = argument
+  interpretMALLPNatProof (natExchangeProof proof)
+    (natEnvironmentCons first (natEnvironmentCons second natEnvironmentNil)) =
+      interpretMALLPNatProof proof
+        (natEnvironmentCons second (natEnvironmentCons first natEnvironmentNil))
   interpretMALLPNatProof
     (natCutProof {n = n} {m = m} first second) environment
     with splitNatEnvironment n m environment
@@ -1404,6 +1510,42 @@ module StrictNatCompiler where
     rewrite natExprProof-adequate left
           | natExprProof-adequate right = refl
 
+  -- A unary source function is linear when its sole argument occurs once.
+  -- Its proof term is an MALLP derivation with exactly one Nat assumption.
+  natLinearProof : NatLinearExpr → MALLPNatProof (suc zero)
+  natLinearProof natArgument = natArgumentProof
+  natLinearProof (natLinearLeft operation input right) =
+    natCutProof
+      (natLinearProof input)
+      (natCutProof (natExprProof right) (natPrimitiveProof operation))
+  natLinearProof (natLinearRight operation left input) =
+    natCutProof
+      (natLinearProof input)
+      (natCutProof (natExprProof left)
+        (natExchangeProof (natPrimitiveProof operation)))
+
+  natLinear-proof-derivation :
+    (expression : NatLinearExpr) →
+    MALLPNatTheory (natContext (suc zero)) (just natFormula)
+  natLinear-proof-derivation expression =
+    embedNatProof (natLinearProof expression)
+
+  natLinearProof-adequate :
+    (expression : NatLinearExpr) →
+    (argument : Nat) →
+    interpretMALLPNatProof (natLinearProof expression)
+      (natEnvironmentCons argument natEnvironmentNil) ≡
+    evalNatLinearExpr expression argument
+  natLinearProof-adequate natArgument argument = refl
+  natLinearProof-adequate
+    (natLinearLeft operation input right) argument
+      rewrite natLinearProof-adequate input argument
+            | natExprProof-adequate right = refl
+  natLinearProof-adequate
+    (natLinearRight operation left input) argument
+      rewrite natExprProof-adequate left
+            | natLinearProof-adequate input argument = refl
+
   -- Composition of the proof-term interpretation, the typed Forth stack
   -- machine, and the rendered postfix-token interpreter. This theorem is for
   -- the mathematical token machine, not yet the Haskell printer or real Gforth.
@@ -1425,6 +1567,42 @@ module StrictNatCompiler where
           (cong forgetStack (execForthCode-correct expression stack)))
         (cong (λ value → just (value ∷ forgetStack stack))
           (sym (natExprProof-adequate expression))))
+
+  natLinear-forth-sound :
+    (expression : NatLinearExpr) →
+    (argument : Nat) →
+    {Γ : List StackType} →
+    (stack : Stack Γ) →
+    execTokens
+      (renderForth (compileNatLinear expression))
+      (forgetStack (pushCell argument stack)) ≡
+    just (evalNatLinearExpr expression argument ∷ forgetStack stack)
+  natLinear-forth-sound expression argument stack =
+    trans
+      (renderForth-sound
+        (compileNatLinear expression)
+        (pushCell argument stack))
+      (cong (λ values → just values)
+        (cong forgetStack (execNatLinear-correct expression argument stack)))
+
+  natLinearMALLP-forth-sound :
+    (expression : NatLinearExpr) →
+    (argument : Nat) →
+    {Γ : List StackType} →
+    (stack : Stack Γ) →
+    execTokens
+      (renderForth (compileNatLinear expression))
+      (forgetStack (pushCell argument stack)) ≡
+    just
+      (interpretMALLPNatProof (natLinearProof expression)
+        (natEnvironmentCons argument natEnvironmentNil) ∷
+        forgetStack stack)
+  natLinearMALLP-forth-sound expression argument stack =
+    trans
+      (natLinear-forth-sound expression argument stack)
+      (cong
+        (λ value → just (value ∷ forgetStack stack))
+        (sym (natLinearProof-adequate expression argument)))
 
   ----------------------------------------------------------------------
   -- Closed PureLang lets: substitution without weakening or contraction.
