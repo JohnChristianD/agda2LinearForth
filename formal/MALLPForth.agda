@@ -1184,9 +1184,24 @@ deriveMALLP (linearLambda body) =
     (mallp-par
       (mallp-exchange permutation-swap
         (mallp-up (deriveMALLP body))))
-deriveMALLP (linearClosureTerm environment body) =
-  mallp-tensor (deriveMALLP environment)
-    (deriveMALLP (linearLambda {Γ = []} body))
+deriveMALLP
+  (linearClosureTerm
+    {Γ = Γ}
+    {Environment = Environment}
+    {Argument = Argument}
+    {Result = Result}
+    environment body) =
+  subst
+    (λ context → MALLP context
+      (just (linearSourceFormula
+        (linearTensorType Environment
+          (linearArrowType (linearTensorType Environment Argument) Result)))))
+    (sym (linearSourceContext-append Γ []))
+    (mallp-tensor
+      {Γ = linearSourceContext Γ}
+      {Δ = []}
+      (deriveMALLP environment)
+      (deriveMALLP (linearLambda {Γ = []} body)))
 
 -- General tensor permutation is a derived source term, not a special rule.
 linearTensorSwap :
