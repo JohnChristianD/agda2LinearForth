@@ -21,8 +21,9 @@ open import Agda.Builtin.Sigma using (Σ; _,_)
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import Agda.Builtin.String using (String; primStringAppend; primShowNat)
 open import Agda.Builtin.Equality.Rewrite public
-open import Agda.Builtin.Word.Word64 public
-open import Agda.Builtin.Tuple public
+open import Agda.Builtin.Word using (Word64; primWord64ToNat; primWord64FromNat) public
+-- Agda 2.8.0.2 has no Agda.Builtin.Tuple module; the product record _×_ below
+-- is the explicit project-owned pair, while Sigma supplies dependent pairs.
 open import Agda.Builtin.IO public
 open import Agda.Builtin.Unit public
 open import Agda.Builtin.Strict public
