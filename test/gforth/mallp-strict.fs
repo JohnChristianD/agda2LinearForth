@@ -45,3 +45,9 @@ answerUnit
 assert-empty-stack
 cr ." mallp-strict-tests-passed" cr
 BYE
+
+7 13 answerAddTwo 20 strict-assert-natural
+2 5 answerMonusTwo 0 strict-assert-natural
+5 2 answerMonusTwo 3 strict-assert-natural
+2 5 answerReverseMonusTwo 3 strict-assert-natural
+4 5 answerMultiplyTwo 20 strict-assert-natural
