@@ -86,6 +86,19 @@ These are implementation tasks, not categorical bans. Each feature graduates to 
 6. **Forth target:** replace direct text construction with a typed, stack-indexed instruction AST, canonical renderer, and explicit runtime contracts for data, state, exceptions, and resource failure.
 7. **End-to-end correctness:** prove correspondence from typed Treeless through each lowering pass to the emitted Forth, then prove the relevant Gforth execution simulation.
 
+## C-series correspondence chain
+
+“C-series” is used here as the compiler's correspondence chain: each transition preserves a named invariant, and the final identity is a theorem rather than a resemblance.
+
+- **C0 — Source judgment:** resolve the pinned Agda 2.8.0.2 Treeless term and its result/argument types. The current decoder establishes this for the admitted Nat, Bool, and Unit cases.
+- **C1 — Resource judgment:** associate live Nat arguments with labelled resources; check exact-once use and construct the corresponding Laurent MALLP proof over the declared Nat primitive signature. Closed pure values are closed derivations, not reusable live assumptions.
+- **C2 — Target construction:** lower the accepted resource expression into a Forth definition and a parallel typed `ForthTextToken` sequence. ROLL denotes exchange/reordering of an owned resource; it does not duplicate or discard one.
+- **C3 — Target semantics:** the Agda postfix-token machine proves execution for its indexed Nat code and stack operations. Separate Bool and Unit proof slices cover their additive and multiplicative encodings.
+- **C4 — Renderer identity:** Haskell emits `MALLPEmittedRenderer.agda`. For every generated word, Agda checks `actualWord ≡ renderForthWordText name tokens` by `refl`. Thus the actual Haskell-rendered definition text and the formal text renderer coincide exactly for the generated fixture.
+- **C5 — Concrete runtime:** Gforth executes the generated module and regression fixture. This is currently tested, not yet established by a mechanized refinement theorem for Gforth or the upstream runtime.
+
+The chain is intentionally conjunctive: C4 does not prove C0/C1 correctness, and C5 does not by itself prove formal equivalence. Full end-to-end correctness requires a proof at every adjacent boundary, including Haskell Treeless decoding → formal source/resource AST, general linear-resource compilation → indexed Forth code, the pinned runtime → a formal stack machine, and that machine → concrete Gforth behavior.
+
 ## Formal and build boundaries
 
 - Agda and the Haskell backend use pinned Agda **2.8.0.2** from `cabal.project`.
