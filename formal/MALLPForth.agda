@@ -328,7 +328,7 @@ negativeObservation-run-adequate : (n : Conat) {R : Set} →
 negativeObservation-run-adequate n consume = refl
 
 ------------------------------------------------------------------------
--- MODULE 1: SIX FOUNDATIONAL PACKAGES AND LAURENT MALLP
+-- MODULE 1: FIVE FOUNDATIONAL PACKAGES AND LAURENT MALLP
 ------------------------------------------------------------------------
 
 module Foundations where
