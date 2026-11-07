@@ -1662,6 +1662,20 @@ module StrictNatCompiler where
     addWord monusWord multiplyWord swapWord : ForthToken
     rollWord : Nat → ForthToken
 
+  -- Word64 is represented at the current Gforth boundary by two unsigned
+  -- 32-bit cells (high, low). The source resource remains indivisible.
+  word64StackShape : List StackType
+  word64StackShape = natCell ∷ natCell ∷ []
+
+  word64IdentityCode :
+    ForthCode word64StackShape word64StackShape
+  word64IdentityCode = identityNat
+
+  word64IdentityCode-correct :
+    (stack : Stack word64StackShape) →
+    execForthCode word64IdentityCode stack ≡ stack
+  word64IdentityCode-correct stack = refl
+
   -- Text tokens are deliberately separate from the Nat execution machine:
   -- TRUE/FALSE have Gforth's Bool representation, not a Nat stack meaning.
   _++ᴳ_ : {A : Set} → List A → List A → List A
@@ -3384,6 +3398,28 @@ module StrictLinearDataCompiler where
           (linearArrowType A (linearArrowType B C))
           (linearArrowType B (linearArrowType A C)))))
   bciExchangeMALLP = deriveLinearApplication bciExchange
+
+  word64Radix : Nat
+  word64Radix = 4294967296
+
+  -- Representation relation for a Word64 value carried by two Gforth cells.
+  -- A complete literal converter must construct this witness for every word;
+  -- identity preserves any such witness exactly.
+  record Word64Representation (word : Word64) : Set where
+    constructor word64Representation
+    field
+      highLimb lowLimb : Nat
+      highLimbBound : highLimb < word64Radix
+      lowLimbBound : lowLimb < word64Radix
+      word64Denotation :
+        primWord64ToNat word ≡ highLimb * word64Radix + lowLimb
+  open Word64Representation public
+
+  word64IdentityPreservesRepresentation :
+    {word : Word64} →
+    (representation : Word64Representation word) →
+    Word64Representation word
+  word64IdentityPreservesRepresentation representation = representation
 
   data NatListValue : Set where
     natListNil : NatListValue
