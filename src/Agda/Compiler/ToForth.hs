@@ -903,6 +903,8 @@ rendererCertificate definitions = T.unlines $
   , "open import ForthRenderer using"
   , "  (ForthTextToken; textPushLiteral; textAddWord; textMonusWord; textMultiplyWord;"
   , "   textSwapWord; textRollWord; textTrueWord; textFalseWord; textIf; renderForthWordText)"
+  , "open import MALLPForth using"
+  , "  (mapBoolForthTokensAsText; renderBoolCode; compileBoolCaseWithResidual)"
   , ""
   ] ++ concat
     [ let index = T.pack (show position)
@@ -924,6 +926,21 @@ rendererCertificate definitions = T.unlines $
          , ""
          ]
     | (position, definition) <- zip [0 :: Int ..] definitions
+    ] ++ concat
+    [ [ "chooseBoolCompilerTokens : List ForthTextToken"
+      , "chooseBoolCompilerTokens = " <> formalTokenList (compiledTokens definition)
+      , ""
+      , "chooseBoolMALLPTokens : List ForthTextToken"
+      , "chooseBoolMALLPTokens = mapBoolForthTokensAsText"
+          <> " (renderBoolCode compileBoolCaseWithResidual)"
+      , ""
+      , "chooseBoolTokenCorrespondence :"
+      , "  chooseBoolCompilerTokens ≡ chooseBoolMALLPTokens"
+      , "chooseBoolTokenCorrespondence = refl"
+      , ""
+      ]
+    | definition <- definitions
+    , safeForthName (compiledName definition) == "chooseBool"
     ]
 
 emitForthModule :: () -> () -> IsMain -> TopLevelModuleName -> [Maybe CompiledDefinition] -> TCM ()
