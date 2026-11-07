@@ -8,6 +8,17 @@
   THEN
 ;
 
+: strict-assert-bool-pair { actual-bottom actual-top expected-bottom expected-top -- }
+  actual-bottom expected-bottom <> IF
+    ." strict MALLP pair bottom mismatch" cr
+    -4204 THROW
+  THEN
+  actual-top expected-top <> IF
+    ." strict MALLP pair top mismatch" cr
+    -4205 THROW
+  THEN
+;
+
 : strict-assert-natural { actual expected -- }
   actual expected <> IF
     ." strict MALLP natural mismatch" cr
@@ -29,6 +40,7 @@ TRUE invertBool FALSE strict-assert-boolean
 FALSE invertBool TRUE strict-assert-boolean
 TRUE FALSE chooseBool FALSE strict-assert-boolean
 FALSE TRUE chooseBool TRUE strict-assert-boolean
+TRUE FALSE swapBoolPair FALSE TRUE strict-assert-bool-pair
 answerUnit
 10 answerIdentity 10 strict-assert-natural
 10 answerAddFive 15 strict-assert-natural
