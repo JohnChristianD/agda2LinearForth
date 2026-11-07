@@ -153,18 +153,15 @@ decodeNatTerm environment term = do
                 _ -> decodeNatTerm (value : environment) body
     TPrim primitive -> do
       operands <- traverse (decodeNatTerm environment) args
-      case operands of
-        [left, right] ->
-          either unsupported pure (combineNatTerms (case primitive of
-            PAdd -> NatAdd
-            PMul -> NatMultiply
-            _ -> NatAdd) left right)
-            >>= \result -> case primitive of
-              PAdd -> pure result
-              PMul -> pure result
-              PSub -> unsupported "PSub is signed integer subtraction; Nat monus is lowered only from builtin NatMinus"
-              _ -> unsupported ("unsupported Nat primitive: " ++ show primitive)
-        _ -> unsupported ("unsupported Nat primitive arity: " ++ show primitive)
+      case (primitive, operands) of
+        (PAdd, [left, right]) ->
+          either unsupported pure (combineNatTerms NatAdd left right)
+        (PMul, [left, right]) ->
+          either unsupported pure (combineNatTerms NatMultiply left right)
+        (PSub, [_, _]) ->
+          unsupported "PSub is signed integer subtraction; Nat monus is lowered only from builtin NatMinus"
+        (_, _) ->
+          unsupported ("unsupported Nat primitive or arity: " ++ show primitive)
     TDef name -> do
       plusName <- getBuiltinName builtinNatPlus
       minusName <- getBuiltinName builtinNatMinus
@@ -302,8 +299,9 @@ compileDefinition definition
                 NatOpen _ -> unsupported "nullary Nat definition unexpectedly contains an open argument"
             (Just 1, Just term) -> do
               let (arity, bodyTerm) = tLamView term
-              unless (arity == 1) $
-                unsupported ("expected one Treeless lambda for unary Nat definition, received " ++ show arity)
+              if arity /= 1
+                then unsupported ("expected one Treeless lambda for unary Nat definition, received " ++ show arity)
+                else pure ()
               expression <- decodeNatTerm [NatOpen NatArgument] bodyTerm
               case expression of
                 NatOpen linear -> pure (Just (strictWord (defName definition) (renderNatLinearExpr linear)))
