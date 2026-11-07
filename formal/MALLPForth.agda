@@ -1512,30 +1512,6 @@ module StrictNatCompiler where
 
   -- A unary source function is linear when its sole argument occurs once.
   -- Its proof term is an MALLP derivation with exactly one Nat assumption.
-  data NatLinearExpr : Set where
-    natArgument : NatLinearExpr
-    natLinearLeft :
-      NatOp →
-      NatLinearExpr →
-      NatExpr →
-      NatLinearExpr
-    natLinearRight :
-      NatOp →
-      NatExpr →
-      NatLinearExpr →
-      NatLinearExpr
-
-  evalNatLinearExpr : NatLinearExpr → Nat → Nat
-  evalNatLinearExpr natArgument argument = argument
-  evalNatLinearExpr (natLinearLeft operation input right) argument =
-    applyNatOp operation
-      (evalNatLinearExpr input argument)
-      (evalNatExpr right)
-  evalNatLinearExpr (natLinearRight operation left input) argument =
-    applyNatOp operation
-      (evalNatExpr left)
-      (evalNatLinearExpr input argument)
-
   natLinearProof : NatLinearExpr → MALLPNatProof (suc zero)
   natLinearProof natArgument = natArgumentProof
   natLinearProof (natLinearLeft operation input right) =
