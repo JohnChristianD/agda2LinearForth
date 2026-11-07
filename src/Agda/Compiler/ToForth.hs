@@ -864,6 +864,49 @@ boolFunctionArity definition = do
         then Just (length argumentTypes)
         else Nothing
 
+word64FunctionArity :: Definition -> TCM (Maybe Int)
+word64FunctionArity definition = do
+  word64Name <- getBuiltinName builtinWord64
+  TelV telescope resultType <- telView (defType definition)
+  case word64Name of
+    Nothing -> pure Nothing
+    Just name -> do
+      resultIsWord64 <- isBuiltinType name resultType
+      argumentTypes <- traverse
+        (\domain -> isBuiltinType name (snd (I.unDom domain)))
+        (I.telToList telescope)
+      pure $ if resultIsWord64 && and argumentTypes
+        then Just (length argumentTypes)
+        else Nothing
+
+decodeWord64Identity :: TTerm -> TCM ()
+decodeWord64Identity term =
+  case tAppView term of
+    (TVar 0, []) -> pure ()
+    (TCoerce inner, []) -> decodeWord64Identity inner
+    (headTerm, arguments) ->
+      unsupported
+        ("Word64 identity is the admitted exact two-limb fragment; unsupported term: "
+          ++ show (headTerm, arguments))
+
+compileWord64IdentityFunction
+  :: QName
+  -> Int
+  -> TTerm
+  -> TCM (FthForm, [FormalToken])
+compileWord64IdentityFunction owner arity term = do
+  let (actualArity, body) = tLamView term
+  if arity /= 1 || actualArity /= 1
+    then unsupported
+      ("Word64 target representation currently admits one owned two-limb argument: "
+        ++ prettyShow owner)
+    else pure ()
+  decodeWord64Identity body
+  -- Word64 is one source resource represented by (high low) cells. The
+  -- identity function consumes and returns that pair unchanged.
+  pure (RSList [], [])
+
+
 -- Recognize a closed, non-indexed one-constructor product of exactly two
 -- Bool fields. This is a small tensor slice driven by Agda's resolved type
 -- and constructor declarations, not a source-name whitelist.
@@ -936,6 +979,7 @@ compileDefinition definition
         isBool <- hasBoolResult definition
         boolArity <- boolFunctionArity definition
         boolPairConstructor <- boolPairFunctionConstructor definition
+        word64Arity <- word64FunctionArity definition
         isUnit <- hasUnitResult definition
         if isNat then do
           body <- toTreeless EagerEvaluation (defName definition)
@@ -968,26 +1012,40 @@ compileDefinition definition
                 (defName definition) (strictWord (defName definition) code) tokens))
             (Just _, Nothing) -> pure Nothing
             _ -> unsupported "Bool function arity classification changed during compilation"
-        else case boolPairConstructor of
-          Just constructor -> do
-            body <- toTreeless EagerEvaluation (defName definition)
-            case body of
-              Nothing -> pure Nothing
-              Just term -> do
-                (code, tokens) <-
-                  compileBoolPairFunction (defName definition) constructor term
-                pure (Just (CompiledDefinition
-                  (defName definition) (strictWord (defName definition) code) tokens))
-          Nothing ->
-            if isUnit then do
+        else if word64Arity == Just 1 then do
+          body <- toTreeless EagerEvaluation (defName definition)
+          case body of
+            Just term -> do
+              (code, tokens) <-
+                compileWord64IdentityFunction (defName definition) 1 term
+              pure (Just (CompiledDefinition
+                (defName definition) (strictWord (defName definition) code) tokens))
+            Nothing -> pure Nothing
+        else case word64Arity of
+          Just 0 -> unsupported
+            "closed Word64 literals need a proved two-limb numeric renderer"
+          Just _ -> unsupported
+            "Word64 functions currently require one live owned two-limb argument"
+          Nothing -> case boolPairConstructor of
+            Just constructor -> do
               body <- toTreeless EagerEvaluation (defName definition)
               case body of
                 Nothing -> pure Nothing
                 Just term -> do
-                  decodeUnitTerm term
+                  (code, tokens) <-
+                    compileBoolPairFunction (defName definition) constructor term
                   pure (Just (CompiledDefinition
-                    (defName definition) (strictWord (defName definition) (RSList [])) []))
-            else pure Nothing
+                    (defName definition) (strictWord (defName definition) code) tokens))
+            Nothing ->
+              if isUnit then do
+                body <- toTreeless EagerEvaluation (defName definition)
+                case body of
+                  Nothing -> pure Nothing
+                  Just term -> do
+                    decodeUnitTerm term
+                    pure (Just (CompiledDefinition
+                      (defName definition) (strictWord (defName definition) (RSList [])) []))
+              else pure Nothing
       _ -> pure Nothing
 
 readStrictRuntime :: IO String
