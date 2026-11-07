@@ -2346,6 +2346,13 @@ module StrictBoolCompiler where
     boolSwapToken ∷
       boolIfToken (renderBoolCode whenTrue) (renderBoolCode whenFalse) ∷ []
 
+  bindBoolTokens :
+    Maybe (List Bool) →
+    (List Bool → Maybe (List Bool)) →
+    Maybe (List Bool)
+  bindBoolTokens nothing continuation = nothing
+  bindBoolTokens (just stack) continuation = continuation stack
+
   execBoolTokens :
     List BoolForthToken →
     List Bool →
@@ -2359,15 +2366,13 @@ module StrictBoolCompiler where
     execBoolTokens tokens (next ∷ top ∷ stack)
   execBoolTokens (boolSwapToken ∷ tokens) _ = nothing
   execBoolTokens (boolIfToken whenTrue whenFalse ∷ tokens)
-    (true ∷ stack)
-      with execBoolTokens whenTrue stack
-  ... | nothing = nothing
-  ... | just branchStack = execBoolTokens tokens branchStack
+    (true ∷ stack) =
+      bindBoolTokens (execBoolTokens whenTrue stack)
+        (λ branchStack → execBoolTokens tokens branchStack)
   execBoolTokens (boolIfToken whenTrue whenFalse ∷ tokens)
-    (false ∷ stack)
-      with execBoolTokens whenFalse stack
-  ... | nothing = nothing
-  ... | just branchStack = execBoolTokens tokens branchStack
+    (false ∷ stack) =
+      bindBoolTokens (execBoolTokens whenFalse stack)
+        (λ branchStack → execBoolTokens tokens branchStack)
   execBoolTokens (boolIfToken whenTrue whenFalse ∷ tokens) [] = nothing
 
   renderBoolCode-sound :
