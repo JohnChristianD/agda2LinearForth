@@ -2253,6 +2253,33 @@ module StrictBoolCompiler where
   boolFormula : PolType posPolarity
   boolFormula = one⁺ ⊕⁺ one⁺
 
+  -- Pair is a multiplicative tensor of two Bool values. Its negative
+  -- occurrence in the input context is the dual par; tensor introduction,
+  -- exchange, and par introduction give the field-swapping linear map.
+  boolPairFormula : PolType posPolarity
+  boolPairFormula = boolFormula ⊗⁺ boolFormula
+
+  boolPairAssumption : PolType negPolarity
+  boolPairAssumption = dualPos boolPairFormula
+
+  boolPairSwapMALLP :
+    MALLP (boolPairAssumption ∷ []) (just boolPairFormula)
+  boolPairSwapMALLP =
+    mallp-par
+      (mallp-exchange permutation-swap
+        (mallp-tensor mallp-ax mallp-ax))
+
+  compileBoolPairSwap :
+    BoolForthCode (boolCell ∷ boolCell ∷ [])
+      (boolCell ∷ boolCell ∷ [])
+  compileBoolPairSwap = boolSwapCode
+
+  boolPairSwapMALLP-forth-sound :
+    (first second : Bool) →
+    execBoolTokens (renderBoolCode compileBoolPairSwap)
+      (second ∷ first ∷ []) ≡ just (first ∷ second ∷ [])
+  boolPairSwapMALLP-forth-sound first second = refl
+
   data BoolProof : Set where
     boolTrueProof boolFalseProof : BoolProof
 
@@ -2286,6 +2313,12 @@ module StrictBoolCompiler where
       {Γ : List BoolStackType} →
       BoolForthCode Γ Γ
 
+    -- Tensor-field permutation: both Boolean cells remain live.
+    boolSwapCode :
+      {Γ : List BoolStackType} →
+      BoolForthCode (boolCell ∷ boolCell ∷ Γ)
+        (boolCell ∷ boolCell ∷ Γ)
+
     pushBoolean :
       {Γ : List BoolStackType} →
       Bool →
@@ -2314,6 +2347,9 @@ module StrictBoolCompiler where
     BoolStack Γ →
     BoolStack Δ
   execBoolCode boolIdentity stack = stack
+  execBoolCode boolSwapCode
+    (pushBooleanValue top (pushBooleanValue next stack)) =
+      pushBooleanValue next (pushBooleanValue top stack)
   execBoolCode (pushBoolean value) stack =
     pushBooleanValue value stack
   execBoolCode (boolIfCode whenTrue whenFalse)
@@ -2338,6 +2374,7 @@ module StrictBoolCompiler where
     BoolForthCode Γ Δ →
     List BoolForthToken
   renderBoolCode boolIdentity = []
+  renderBoolCode boolSwapCode = boolSwapToken ∷ []
   renderBoolCode (pushBoolean true) = pushTrueToken ∷ []
   renderBoolCode (pushBoolean false) = pushFalseToken ∷ []
   renderBoolCode (boolIfCode whenTrue whenFalse) =
@@ -2388,6 +2425,8 @@ module StrictBoolCompiler where
     execBoolTokens (renderBoolCode code) (forgetBoolStack stack) ≡
     just (forgetBoolStack (execBoolCode code stack))
   renderBoolCode-sound boolIdentity stack = refl
+  renderBoolCode-sound boolSwapCode
+    (pushBooleanValue top (pushBooleanValue next stack)) = refl
   renderBoolCode-sound (pushBoolean true) stack = refl
   renderBoolCode-sound (pushBoolean false) stack = refl
   renderBoolCode-sound (boolIfCode whenTrue whenFalse)
@@ -2444,6 +2483,11 @@ module StrictBoolCompiler where
     mapBoolForthTokensAsText [] = []
     mapBoolForthTokensAsText (token ∷ tokens) =
       boolForthTokenAsText token ∷ mapBoolForthTokensAsText tokens
+
+  boolPairSwap-token-correspondence :
+    mapBoolForthTokensAsText (renderBoolCode compileBoolPairSwap) ≡
+    (textSwapWord ∷ [])
+  boolPairSwap-token-correspondence = refl
 
   -- A Boolean case split is the additive MALLP elimination rule:
   -- the same residual context is available in each mutually exclusive branch.
