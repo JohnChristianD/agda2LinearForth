@@ -1116,8 +1116,8 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
   dualPositiveValue (atom⁺ index) value = value
   dualPositiveValue one⁺ value = value
   dualPositiveValue zero⁺ ()
-  dualPositiveValue (left ⊗⁺ right) (leftValue , rightValue) =
-    dualPositiveValue left leftValue , dualPositiveValue right rightValue
+  dualPositiveValue (left ⊗⁺ right) (pair leftValue rightValue) =
+    pair (dualPositiveValue left leftValue) (dualPositiveValue right rightValue)
   dualPositiveValue (left ⊕⁺ right) (denLeft value) =
     denLeft (dualPositiveValue left value)
   dualPositiveValue (left ⊕⁺ right) (denRight value) =
@@ -1128,8 +1128,8 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
   dualNegativeValue (atom⁻ index) value = value
   dualNegativeValue bot⁻ value = value
   dualNegativeValue top⁻ ()
-  dualNegativeValue (left ⅋⁻ right) (leftValue , rightValue) =
-    dualNegativeValue left leftValue , dualNegativeValue right rightValue
+  dualNegativeValue (left ⅋⁻ right) (pair leftValue rightValue) =
+    pair (dualNegativeValue left leftValue) (dualNegativeValue right rightValue)
   dualNegativeValue (left &⁻ right) (denLeft value) =
     denLeft (dualNegativeValue left value)
   dualNegativeValue (left &⁻ right) (denRight value) =
@@ -1156,20 +1156,20 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
     {Γ Δ : Context} →
     ContextValues (Γ ++ᴸ Δ) →
     ContextValues Γ × ContextValues Δ
-  splitContextValues {Γ = []} {Δ} values = tt , values
-  splitContextValues {Γ = negative ∷ Γ} {Δ} (head , tail)
+  splitContextValues {Γ = []} {Δ} values = pair tt values
+  splitContextValues {Γ = negative ∷ Γ} {Δ} (pair head tail)
     with splitContextValues {Γ = Γ} {Δ = Δ} tail
-  ... | prefix , suffix = (head , prefix) , suffix
+  ... | pair prefix suffix = pair (pair head prefix) suffix
 
   permuteContextValues :
     {Γ Δ : Context} →
     ContextPermutation Γ Δ →
     ContextValues Γ → ContextValues Δ
   permuteContextValues permutation-nil tt = tt
-  permuteContextValues (permutation-cons permutation) (head , tail) =
+  permuteContextValues (permutation-cons permutation) (pair head tail) =
     head , permuteContextValues permutation tail
-  permuteContextValues permutation-swap (first , (second , tail)) =
-    second , (first , tail)
+  permuteContextValues permutation-swap (pair first (pair second tail)) =
+    pair second (pair first tail)
   permuteContextValues (permutation-trans first second) values =
     permuteContextValues second (permuteContextValues first values)
 
@@ -1177,19 +1177,19 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
     {Γ : Context} {S : Stoup} →
     MALLP Γ S → ContextValues Γ → StoupValue S → Set
 
-  MALLPRelation mallp-ax (source , tt) result =
+  MALLPRelation mallp-ax (pair source tt) result =
     result ≡ recoverPositiveValue source
 
   MALLPRelation
     (mallp-cut {Γ = Γ} {Δ = Δ} {P = positive} producer consumer)
     environment result
     with splitContextValues {Γ = Γ} {Δ = Δ} environment
-  ... | producerEnvironment , consumerEnvironment =
+  ... | pair producerEnvironment consumerEnvironment =
     DenotationWitness (PosValue positive)
       (λ intermediate →
         MALLPRelation producer producerEnvironment intermediate ×
         MALLPRelation consumer
-          (dualPositiveValue positive intermediate , consumerEnvironment)
+          pair (dualPositiveValue positive intermediate) consumerEnvironment
           result)
 
   MALLPRelation (mallp-exchange permutation proof) environment result =
@@ -1199,9 +1199,9 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
 
   MALLPRelation
     (mallp-tensor {Γ = Γ} {Δ = Δ} left right)
-    environment (leftValue , rightValue)
+    environment (pair leftValue rightValue)
     with splitContextValues {Γ = Γ} {Δ = Δ} environment
-  ... | leftEnvironment , rightEnvironment =
+  ... | pair leftEnvironment rightEnvironment =
     MALLPRelation left leftEnvironment leftValue ×
     MALLPRelation right rightEnvironment rightValue
 
@@ -1215,23 +1215,23 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
   MALLPRelation (mallp-plus-right proof) environment (denRight value) =
     MALLPRelation proof environment value
 
-  MALLPRelation (mallp-par proof) ((leftValue , rightValue) , rest) result =
-    MALLPRelation proof (leftValue , (rightValue , rest)) result
+  MALLPRelation (mallp-par proof) ((pair leftValue rightValue) , rest) result =
+    MALLPRelation proof pair leftValue (pair rightValue rest) result
 
-  MALLPRelation (mallp-with left right) (denLeft value , rest) result =
+  MALLPRelation (mallp-with left right) (pair (denLeft value) rest) result =
     MALLPRelation left (value , rest) result
-  MALLPRelation (mallp-with left right) (denRight value , rest) result =
+  MALLPRelation (mallp-with left right) (pair (denRight value) rest) result =
     MALLPRelation right (value , rest) result
 
-  MALLPRelation (mallp-bottom proof) (tt , rest) result =
+  MALLPRelation (mallp-bottom proof) (pair tt rest) result =
     MALLPRelation proof rest result
 
   MALLPRelation mallp-top (() , rest) result
 
   MALLPRelation (mallp-down proof) environment result =
-    MALLPRelation proof (result , environment) tt
+    MALLPRelation proof (pair result environment) tt
 
-  MALLPRelation (mallp-up proof) (result , environment) tt =
+  MALLPRelation (mallp-up proof) (pair result environment) tt =
     MALLPRelation proof environment result
 
   interpretMALLP :
