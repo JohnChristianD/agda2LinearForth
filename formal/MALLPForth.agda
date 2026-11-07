@@ -1386,12 +1386,28 @@ module StrictNatCompiler where
     execTokens (first ++ᴳ second) stack ≡
     maybeBind (execTokens first stack) (λ nextStack → execTokens second nextStack)
   execTokens-append [] second stack = refl
-  execTokens-append (rollWord depth ∷ first) second stack
-    with rollList depth stack
+  execTokens-append (pushLiteral value ∷ first) second stack
+    with execToken (pushLiteral value) stack
   ... | nothing = refl
   ... | just nextStack = execTokens-append first second nextStack
-  execTokens-append (token ∷ first) second stack
-    with execToken token stack
+  execTokens-append (addWord ∷ first) second stack
+    with execToken addWord stack
+  ... | nothing = refl
+  ... | just nextStack = execTokens-append first second nextStack
+  execTokens-append (monusWord ∷ first) second stack
+    with execToken monusWord stack
+  ... | nothing = refl
+  ... | just nextStack = execTokens-append first second nextStack
+  execTokens-append (multiplyWord ∷ first) second stack
+    with execToken multiplyWord stack
+  ... | nothing = refl
+  ... | just nextStack = execTokens-append first second nextStack
+  execTokens-append (swapWord ∷ first) second stack
+    with execToken swapWord stack
+  ... | nothing = refl
+  ... | just nextStack = execTokens-append first second nextStack
+  execTokens-append (rollWord depth ∷ first) second stack
+    with rollList depth stack
   ... | nothing = refl
   ... | just nextStack = execTokens-append first second nextStack
 
