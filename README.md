@@ -62,9 +62,44 @@ The backend and proof modules are pinned to Agda 2.8.0.2. Use the actual modules
 | Signed integers | `Agda.Builtin.Int` | The builtin is `Int`, with `pos` and `negsuc`; there is no `Agda.Builtin.Integer`. |
 | Unit and lists | `Agda.Builtin.Unit`, `Agda.Builtin.List` | Use these canonical builtin declarations. |
 | Coinduction | `Agda.Builtin.Coinduction` | Provides `∞`, `♯_`, and `♭`; productivity still needs guarded definitions and observation proofs. |
+| String primitives and injectivity | `Agda.Builtin.String`, `Agda.Builtin.String.Properties` | `primStringUncons`, `primStringToList`, and `primStringFromList` support scanning and conversion; the two injectivity lemmas prove round-trip identity, not parsing. |
+| Reflection primitive properties | `Agda.Builtin.Reflection.Properties` | Supplies injectivity for `primMetaToNat` and `primQNameToWord64s`; useful for decidable equality on reflected identifiers. |
+| Word primitive properties | `Agda.Builtin.Word.Properties` | Supplies `primWord64ToNatInjective`, already used by the Word64 equality proof. |
 | Compile-time reflection | `Agda.Builtin.Reflection` | Available for macros that inspect resolved `Term`, `Type`, `Definition`, `Clause`, and `Pattern`, then generate typed declarations or witnesses. |
 
 Reflection is a compile-time elaboration facility, not a replacement for a typed source IR or a semantics proof. A reflection macro can derive a datatype description and construct a proposed MALLP witness; Agda then type-checks that witness. Runtime values, resource ownership, thunk updates, and Forth execution still require explicit syntax, interpretation, and simulation theorems. The current Haskell backend already reads resolved Agda definitions, telescopes, and Treeless terms; reflection should be introduced where a generated Agda declaration removes duplicated metadata or proof boilerplate, not merely to move a whitelist into a macro.
+
+## Quotients, extensionality, reflection, and rewrite scope
+
+**There is no Martin Hofmann-style quotient implementation or quotient reflection in this repository.** Nor does `formal/MALLPForth.agda` import a separate external `Foundations.*` library. It defines a local module named `Foundations` in the same source file. That local module contains five foundational packages—`ForsterEnumerability`, `MarkovLeastWitness`, `MacLaneCoherence`, `CohesiveRetractions`, and `SymmetricBarRecursion`—plus the sixth nested module `LaurentPolarizedMALLP`, which defines the logical calculus. The `open Foundations.… public` declarations re-export those local modules; they do not establish the presence of an imported quotient library. There is no `Hofmann` or `Hoffmann` implementation in the checked source. Any earlier implication that quotient reflection was already present was inaccurate.
+
+The relevant literature is Martin Hofmann, *Extensional Concepts in Intensional Type Theory* (PhD thesis, 1995), and *A Simple Model for Quotient Types* (TLCA 1995). Hofmann's work studies how extensional concepts such as functional extensionality and quotient types can be represented within an intensional type theory. This is more substantial than syntactic reflection: a quotient development needs an equivalence relation, a quotient presentation, eliminators/recursors that respect the relation, and the intended computation and extensionality principles. The local `reflectDataShape` macro only inspects a datatype declaration and produces kernel-checked parameter/index/constructor-arity metadata. It does not define quotient equality, quotient reflection, functional extensionality, or quotient elimination. The local `--with-K` option is also not a quotient implementation.
+
+A sound route for this compiler is a **proof-relevant quotient boundary** for representations that should be extensionally identified, such as context permutations or equivalent MALLP surface spellings. Retain the original representative together with its typing/resource evidence; prove each compiler pass respects the equivalence before using a quotient interface to shorten downstream proofs. In particular, quotienting contexts must preserve the ordered ownership accounting needed by linearity. The new `IndexedNatResourceProgram` keeps the occurrence-order-to-source-order permutation as explicit evidence rather than erasing it.
+
+### The actual global rewrite system
+
+The file enables `--rewriting` and `--confluence-check`. Its only global `REWRITE` registrations are `μ-step-true`, `μ-step-false`, `sBR-stop`, and `sBR-step`. The cohesive-retraction equations are ordinary named equality theorems, not additional rewrite registrations. The μ-search and symmetric-bar-recursion computation equations are postulated contracts; the false μ-search branch intentionally continues searching when no witness has appeared.
+
+Agda's confluence check is useful, but it does not establish termination. Rewrite rules also have transitive import scope: importing a module imports its rewrite rules, including rules declared privately or in submodules, and rules imported by that module. A public nested module is therefore not a rewrite-rule sandbox. Keep globally active rules small and canonical, prove the intended equations, and isolate expensive/unbounded computation behind ordinary functions rather than registering it just to make conversion solve more goals. Agda documents both the confluence conditions and transitive rewrite-rule imports in its [2.8.0.2 rewriting reference](https://agda.readthedocs.io/en/stable/language/rewriting.html).
+
+### Builtins are useful, but not a proof shortcut
+
+For pinned Agda 2.8.0.2, the primitive property modules are real and small:
+
+- `Agda.Builtin.String.Properties` exports `primStringToListInjective` and `primStringFromListInjective`. These prove injectivity of the primitive conversions between strings and character lists.
+- `Agda.Builtin.Reflection.Properties` exports `primMetaToNatInjective` and `primQNameToWord64sInjective`.
+- `Agda.Builtin.Word.Properties` exports `primWord64ToNatInjective`; the existing Word64 equality proof already uses it.
+
+Import a property module when its theorem replaces a local proof or gives a useful boundary invariant. Avoid importing modules just for their names, and avoid re-proving primitive facts. These modules do not provide general parser combinators, quotient types, a complete arithmetic theory, or a general reflection solver. Use an explicitly declared standard-library dependency where a larger theorem library is genuinely needed.
+
+### MALLP syntax and strings
+
+There is **no textual MALLP lexer or parser** at present. The logical syntax is the Agda `MALLP` datatype and its constructors; the Haskell backend consumes Agda's resolved Treeless terms, not MALLP source strings.
+
+The String builtins are sufficient as low-level ingredients for a lexer: `primStringUncons` can scan one character at a time, while `primStringToList` and `primStringFromList` allow list-based scanning and reconstruction. `Agda.Builtin.String.Properties` contributes only the two injectivity theorems above. It does not tokenize operators, parse precedence, check a context, or construct a linear derivation. A MALLP text front end still needs a lexer, parser, typed AST, context/resource checker, and a soundness theorem mapping parsed syntax into `MALLP`.
+
+Agda 2.8.0 added `Reflection.checkFromStringTC : String → Type → TC Term`. It parses and type-checks **Agda source text** against a supplied expected type. It is useful for staged, kernel-checked Agda code generation, but it is not a parser for a separate MALLP grammar. See the [Agda 2.8.0 reflection reference](https://agda.readthedocs.io/en/v2.8.0/language/reflection.html) and the [Agda 2.8.0 release notes](https://github.com/agda/agda/releases/tag/v2.8.0).
 
 ## Relational denotation of bare MALLP
 
@@ -176,13 +211,15 @@ These are implementation tasks, not categorical bans. Each feature graduates to 
 “C-series” is used here as the compiler's correspondence chain: each transition preserves a named invariant, and the final identity is a theorem rather than a resemblance.
 
 - **C0 — Source judgment:** resolve the pinned Agda 2.8.0.2 Treeless term and its result/argument types. The current decoder establishes this for the admitted Nat, Bool, and Unit cases.
-- **C1 — Resource judgment:** associate live Nat and Bool arguments with labelled resources; check exact-once use on every additive Bool path and construct Laurent MALLP derivations over the declared primitive signatures. Closed pure values are closed derivations, not reusable live assumptions.
+- **C1 — Resource judgment:** the Agda `IndexedNatResourceExpr` retains live source-argument labels in left-to-right occurrence order. `IndexedNatResourceProgram n` carries an explicit `ContextPermutation` from those occurrences to canonical labels `0 .. n − 1`; `deriveIndexedNatResourceProgram` maps that evidence into the Nat primitive MALLP theory, and `indexedNatResourceProgram-adequate` relates proof interpretation to evaluation under the correspondingly permuted environment. This formal model rejects missing, repeated, and out-of-scope source resources by construction. The Haskell decoder does not yet emit this Agda AST/permutation certificate automatically, so the Haskell-decoder → Agda-witness boundary remains open. Additive Bool branches separately preserve a common residual context. Closed pure values are closed derivations, not reusable live assumptions.
 - **C2 — Target construction:** lower the accepted resource expression into a Forth definition and a parallel typed `ForthTextToken` sequence. ROLL denotes exchange/reordering of an owned resource; it does not duplicate or discard one.
 - **C3 — Target semantics:** the Agda postfix-token machine proves execution for indexed Nat code and stack operations. The Bool proof slice covers literals, additive branching, and preservation of a shared residual stack; Unit covers the multiplicative unit.
 - **C4 — Renderer identity:** Haskell emits `MALLPEmittedRenderer.agda`. For every generated word, Agda checks `actualWord ≡ renderForthWordText name tokens` by `refl`. For `chooseBool`, a second generated theorem, `chooseBoolTokenCorrespondence`, checks that the Haskell compiler's token sequence is exactly the token sequence rendered from the Agda `BoolForthCode` proof.
 - **C5 — Concrete runtime:** Gforth executes the generated module and regression fixture. This is currently tested, not yet established by a mechanized refinement theorem for Gforth or the upstream runtime.
 
-The chain is intentionally conjunctive: C4 does not prove C0/C1 correctness, and C5 does not by itself prove formal equivalence. Full end-to-end correctness requires a proof at every adjacent boundary, including Haskell Treeless decoding → formal source/resource AST, general linear-resource compilation → indexed Forth code, the pinned runtime → a formal stack machine, and that machine → concrete Gforth behavior.
+C-series is a boundary-by-boundary compiler-correctness architecture, not a competing logic or combinator basis. It is more determinate for compiler verification than a BCI-only account because it names the representations, maps, invariants, and proof obligations that connect source, proof, target, renderer, and runtime. BCI I/B/C remain useful linear examples inside that architecture; they do not characterize Laurent MALLP's expressive power or derive general application from bare MALLP. The maximal strict language is determined by the unchanged MALLP rules together with an explicitly declared primitive signature and a proof of each primitive's operational and resource contract. C-series records the correspondence obligations needed to verify its implementation; it does not, by itself, prove that a proposed source language is maximally expressive.
+
+The chain remains conjunctive: C4 does not prove C0/C1 correctness, and C5 does not by itself prove formal equivalence. The new labelled-resource model gives a formal source-AST → MALLP derivation and an environment-reindexing adequacy theorem. Still open are automatic Haskell-decoder → Agda-program/permutation certificates; a general Agda simulation of Haskell's dynamic `ROLL` resource compiler; a proof that actual emitted instructions refine the indexed target code; the pinned runtime → formal Forth-machine theorem; and the formal-machine → concrete-Gforth simulation.
 
 ## Formal and build boundaries
 
