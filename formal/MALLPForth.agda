@@ -1127,6 +1127,13 @@ data LinearTerm : List LinearSourceType → LinearSourceType → Set where
   linearUnit :
     LinearTerm [] linearUnitType
 
+  -- Eliminating the unique Unit value consumes its linear assumption by
+  -- MALLP bottom-left; the residual context and result are preserved.
+  linearUnitCaseTerm :
+    {Γ : List LinearSourceType} {A : LinearSourceType} →
+    LinearTerm Γ A →
+    LinearTerm (linearUnitType ∷ Γ) A
+
   linearInl :
     {Γ : List LinearSourceType} {A B : LinearSourceType} →
     LinearTerm Γ A →
@@ -1203,6 +1210,8 @@ deriveMALLP
     (sym (linearSourceContext-append Γ Δ))
     (mallp-tensor (deriveMALLP left) (deriveMALLP right))
 deriveMALLP linearUnit = mallp-one
+deriveMALLP (linearUnitCaseTerm body) =
+  mallp-bottom (deriveMALLP body)
 deriveMALLP (linearInl term) = mallp-plus-left (deriveMALLP term)
 deriveMALLP (linearInr term) = mallp-plus-right (deriveMALLP term)
 deriveMALLP (linearTensorElim body) = mallp-par (deriveMALLP body)
@@ -1251,6 +1260,27 @@ linearTensorSwapMALLP :
     (linearSourceContext (linearTensorType A B ∷ []))
     (just (linearSourceFormula (linearTensorType B A)))
 linearTensorSwapMALLP = deriveMALLP linearTensorSwap
+
+-- A finite Maybe-like ADT is the additive sum 1 ⊕ A. Both branches
+-- consume the same residual context; the absent branch consumes its Unit
+-- payload and the present branch consumes its A payload.
+linearMaybeType : LinearSourceType → LinearSourceType
+linearMaybeType A = linearSumType linearUnitType A
+
+linearMaybeIdentity :
+  {A : LinearSourceType} →
+  LinearTerm (linearMaybeType A ∷ []) (linearMaybeType A)
+linearMaybeIdentity =
+  linearSumCaseTerm
+    (linearUnitCaseTerm (linearInl linearUnit))
+    (linearInr linearVariable)
+
+linearMaybeIdentityMALLP :
+  {A : LinearSourceType} →
+  MALLP
+    (linearSourceContext (linearMaybeType A ∷ []))
+    (just (linearSourceFormula (linearMaybeType A)))
+linearMaybeIdentityMALLP = deriveMALLP linearMaybeIdentity
 
 {-# REWRITE
   μ-step-true
@@ -2423,9 +2453,9 @@ module StrictBoolCompiler where
   boolPairSwapMALLP :
     MALLP (boolPairAssumption ∷ []) (just boolPairFormula)
   boolPairSwapMALLP =
-    mallp-par
-      (mallp-exchange permutation-swap
-        (mallp-tensor mallp-ax mallp-ax))
+    linearTensorSwapMALLP
+      {A = linearBoolType}
+      {B = linearBoolType}
 
   data BoolProof : Set where
     boolTrueProof boolFalseProof : BoolProof
