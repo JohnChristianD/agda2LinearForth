@@ -354,6 +354,7 @@ compileDefinition definition
                 else pure ()
               expression <- decodeNatBinaryLinearTerm bodyTerm
               pure (Just (strictWord (defName definition) (renderNatBinaryLinearExpr expression)))
+            (Just 2, Nothing) -> pure Nothing
             (Just arity, _) | arity > 2 ->
               unsupported "Nat functions with more than two live arguments require a general indexed resource-stack lowering"
             (Nothing, _) -> unsupported "Nat definition has a non-Nat argument or result"
