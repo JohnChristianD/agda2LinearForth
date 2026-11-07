@@ -791,6 +791,7 @@ compileDefinition definition
         isNat <- hasNatResult definition
         natArity <- natFunctionArity definition
         isBool <- hasBoolResult definition
+        boolArity <- boolFunctionArity definition
         isUnit <- hasUnitResult definition
         if isNat then do
           body <- toTreeless EagerEvaluation (defName definition)
@@ -813,6 +814,16 @@ compileDefinition definition
                 (defName definition)
                 (strictWord (defName definition) (RSAtom forthBoolean))
                 [formalBoolean]))
+        else if maybe False (> 0) boolArity then do
+          body <- toTreeless EagerEvaluation (defName definition)
+          case (boolArity, body) of
+            (Just arity, Just term) -> do
+              (code, tokens) <-
+                compileBoolResourceFunction (defName definition) arity term
+              pure (Just (CompiledDefinition
+                (defName definition) (strictWord (defName definition) code) tokens))
+            (Just _, Nothing) -> pure Nothing
+            _ -> unsupported "Bool function arity classification changed during compilation"
         else if isUnit then do
           body <- toTreeless EagerEvaluation (defName definition)
           case body of
@@ -860,6 +871,9 @@ formalTokenTerm (FormalRollWord depth) =
   "textRollWord " <> T.pack (show depth)
 formalTokenTerm FormalTrueWord = "textTrueWord"
 formalTokenTerm FormalFalseWord = "textFalseWord"
+formalTokenTerm (FormalIf whenTrue whenFalse) =
+  "textIf (" <> formalTokenList whenTrue <> ") (" <>
+    formalTokenList whenFalse <> ")"
 
 formalTokenList :: [FormalToken] -> Text
 formalTokenList [] = "[]"
@@ -875,7 +889,7 @@ rendererCertificate definitions = T.unlines $
   , "open import Agda.Builtin.Equality using (_≡_; refl)"
   , "open import ForthRenderer using"
   , "  (ForthTextToken; textPushLiteral; textAddWord; textMonusWord; textMultiplyWord;"
-  , "   textSwapWord; textRollWord; textTrueWord; textFalseWord; renderForthWordText)"
+  , "   textSwapWord; textRollWord; textTrueWord; textFalseWord; textIf; renderForthWordText)"
   , ""
   ] ++ concat
     [ let index = T.pack (show position)
