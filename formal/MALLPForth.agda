@@ -1169,6 +1169,23 @@ data LinearTerm : List LinearSourceType → LinearSourceType → Set where
       (linearTensorType Environment
         (linearArrowType (linearTensorType Environment Argument) Result))
 
+-- Proof-level lambda introduction. Keeping this transformation separate
+-- lets closure introduction reuse a body derivation without recursively
+-- asking deriveMALLP to inspect a newly constructed source term.
+deriveLinearLambda :
+  {Γ : List LinearSourceType} {A B : LinearSourceType} →
+  MALLP
+    (dualPos (linearSourceFormula A) ∷ linearSourceContext Γ)
+    (just (linearSourceFormula B)) →
+  MALLP
+    (linearSourceContext Γ)
+    (just (linearSourceFormula (linearArrowType A B)))
+deriveLinearLambda bodyProof =
+  mallp-down
+    (mallp-par
+      (mallp-exchange permutation-swap
+        (mallp-up bodyProof)))
+
 deriveMALLP :
   {Γ : List LinearSourceType} {A : LinearSourceType} →
   LinearTerm Γ A →
@@ -1195,10 +1212,7 @@ deriveMALLP (linearCut {Γ = Γ} {Δ = Δ} {B = B} producer consumer) =
     (sym (linearSourceContext-append Γ Δ))
     (mallp-cut (deriveMALLP producer) (deriveMALLP consumer))
 deriveMALLP (linearLambda body) =
-  mallp-down
-    (mallp-par
-      (mallp-exchange permutation-swap
-        (mallp-up (deriveMALLP body))))
+  deriveLinearLambda (deriveMALLP body)
 deriveMALLP
   (linearClosureTerm
     {Γ = Γ}
@@ -1216,7 +1230,7 @@ deriveMALLP
       {Γ = linearSourceContext Γ}
       {Δ = []}
       (deriveMALLP environment)
-      (deriveMALLP (linearLambda {Γ = []} body)))
+      (deriveLinearLambda (deriveMALLP body)))
 
 -- General tensor permutation is a derived source term, not a special rule.
 linearTensorSwap :
