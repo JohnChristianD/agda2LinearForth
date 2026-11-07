@@ -1379,7 +1379,7 @@ data ReflectionPair : Set where
   reflectionPair : Nat → Bool → ReflectionPair
 
 reflectedPairShape : ReflectedDataShape
-reflectedPairShape = reflectDataShape (quote ReflectionPair)
+reflectedPairShape = reflectDataShape ReflectionPair
 
 reflectedPairArityWitness :
   reflectedParameterCount reflectedPairShape ≡ zero ×
@@ -1392,7 +1392,7 @@ data ReflectionBox (A : Set) : Set where
   reflectionBox : A → ReflectionBox A
 
 reflectedBoxShape : ReflectedDataShape
-reflectedBoxShape = reflectDataShape (quote ReflectionBox)
+reflectedBoxShape = reflectDataShape ReflectionBox
 
 reflectedBoxArityWitness :
   reflectedParameterCount reflectedBoxShape ≡ suc zero ×
