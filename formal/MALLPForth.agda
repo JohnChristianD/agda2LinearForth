@@ -19,8 +19,51 @@ open import Agda.Builtin.List using (List; []; _∷_)
 open import Agda.Builtin.Maybe using (Maybe; just; nothing)
 open import Agda.Builtin.Sigma using (Σ; _,_)
 open import Agda.Builtin.Equality using (_≡_; refl)
-open import ForthRenderer public
+open import Agda.Builtin.String using (String; primStringAppend; primShowNat)
 open import Agda.Builtin.Equality.Rewrite
+
+-- Proof-carrying Forth instruction vocabulary and canonical renderer.
+-- Kept here so generated compiler witnesses and MALLP derivations share
+-- one source-level interface.
+data ForthTextToken : Set where
+  textPushLiteral : Nat → ForthTextToken
+  textAddWord textMonusWord textMultiplyWord textSwapWord : ForthTextToken
+  textRollWord : Nat → ForthTextToken
+  textTrueWord textFalseWord : ForthTextToken
+  textIf : List ForthTextToken → List ForthTextToken → ForthTextToken
+
+mutual
+  renderForthTokenText : ForthTextToken → String
+  renderForthTokenText (textPushLiteral value) =
+    primStringAppend "s\\\" "
+      (primStringAppend (primShowNat value) "\\\" MALLP-PARSE-NAT ")
+  renderForthTokenText textAddWord = "MALLP-NAT-ADD "
+  renderForthTokenText textMonusWord = "MALLP-NAT-MONUS "
+  renderForthTokenText textMultiplyWord = "MALLP-NAT-MUL "
+  renderForthTokenText textSwapWord = "SWAP "
+  renderForthTokenText (textRollWord depth) =
+    primStringAppend (primShowNat depth) " ROLL "
+  renderForthTokenText textTrueWord = "TRUE "
+  renderForthTokenText textFalseWord = "FALSE "
+  renderForthTokenText (textIf whenTrue whenFalse) =
+    primStringAppend "IF "
+      (primStringAppend (renderForthTokensText whenTrue)
+        (primStringAppend "ELSE "
+          (primStringAppend (renderForthTokensText whenFalse) "THEN ")))
+
+  renderForthTokensText : List ForthTextToken → String
+  renderForthTokensText [] = ""
+  renderForthTokensText (token ∷ tokens) =
+    primStringAppend (renderForthTokenText token)
+      (renderForthTokensText tokens)
+
+renderForthWordText : String → List ForthTextToken → String
+renderForthWordText name tokens =
+  primStringAppend ": "
+    (primStringAppend name
+      (primStringAppend " "
+        (primStringAppend (renderForthTokensText tokens) ";")))
+
 -- Agda 2.8 has no Agda.Builtin.Empty module; define the empty type locally.
 data ⊥ : Set where
 
