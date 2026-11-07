@@ -206,6 +206,9 @@ decodeUnitTerm term = do
   case headTerm of
     TCon name | null args && matches name -> pure ()
     TDef name | null args && matches name -> pure ()
+    -- Agda erases the unique unit constructor in Treeless output. The
+    -- result-type gate has already established that this is a Unit value.
+    TErased | null args -> pure ()
     TCoerce inner | null args -> decodeUnitTerm inner
     _ -> unsupported ("Treeless term is outside the closed Unit fragment: " ++ show headTerm)
 
