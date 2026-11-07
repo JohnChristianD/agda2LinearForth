@@ -36,6 +36,10 @@ answerUnit
 2 5 answerReverseMonusTwo 3 strict-assert-natural
 4 5 answerMultiplyTwo 20 strict-assert-natural
 
+2 3 4 answerThree 18 strict-assert-natural
+2 3 4 answerThreeLet 18 strict-assert-natural
+2 3 4 5 answerFour 48 strict-assert-natural
+
 : testStrictOverflow ( -- )
   MALLP-MAX-NAT 1 MALLP-NAT-ADD { ignored }
 ;
