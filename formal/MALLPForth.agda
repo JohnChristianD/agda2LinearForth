@@ -2439,6 +2439,18 @@ module StrictStatefulProtocol where
   effectTokenFormula : PolType posPolarity
   effectTokenFormula = atom⁺ 19
 
+  listNatFormula : PolType posPolarity
+  listNatFormula = atom⁺ 20
+
+  -- A linear function owns each captured resource in its surrounding
+  -- context. Domain and codomain are represented with MALLP polarity shifts.
+  linearClosureFormula :
+    PolType posPolarity →
+    PolType posPolarity →
+    PolType posPolarity
+  linearClosureFormula domain codomain =
+    down⁺ (up⁻ codomain ⅋⁻ dualPos domain)
+
   -- Computation signatures are layered over MALLP.  The only extra axioms
   -- below are declared operations with explicit resource/stack contracts.
   data MALLPProtocolTheory : Context → Stoup → Set where
@@ -2473,6 +2485,31 @@ module StrictStatefulProtocol where
       MALLPProtocolTheory
         (dualPos effectTokenFormula ∷ dualPos natFormula ∷ [])
         (just effectTokenFormula)
+
+    -- Linear closure application consumes the closure and its argument once.
+    primitive-linear-apply :
+      {domain codomain : PolType posPolarity} →
+      MALLPProtocolTheory
+        (dualPos (linearClosureFormula domain codomain) ∷
+         dualPos domain ∷ [])
+        (just codomain)
+
+    primitive-list-nil :
+      MALLPProtocolTheory [] (just listNatFormula)
+
+    primitive-list-cons :
+      MALLPProtocolTheory
+        (dualPos natFormula ∷ dualPos listNatFormula ∷ [])
+        (just listNatFormula)
+
+    -- The fold operation is static code. The list and accumulator are the
+    -- dynamic linear inputs; recursion is structurally justified by the
+    -- finite Agda list semantics below.
+    primitive-list-fold :
+      NatOp →
+      MALLPProtocolTheory
+        (dualPos listNatFormula ∷ dualPos natFormula ∷ [])
+        (just natFormula)
 
   ----------------------------------------------------------------------
   -- A total PureLang thunk fragment with explicit call-by-need update.
@@ -2593,4 +2630,106 @@ module StrictStatefulProtocol where
   effectEmitSignature = primitive-effect-emit
 
 open StrictStatefulProtocol public
+
+
+------------------------------------------------------------------------
+-- Linear closures, tensor/sum data, and finite list recursors
+--
+-- The proof terms below use existing MALLP introduction/elimination rules.
+-- Primitive application and list runtime operations are isolated in explicit
+-- MALLPProtocolTheory signatures.  This does not add a recursive connective
+-- to MALLP: list recursion is structural over finite Agda values.
+------------------------------------------------------------------------
+
+module StrictLinearDataCompiler where
+
+  linearProductIntro :
+    {Γ Δ : Context} {A B : PolType posPolarity} →
+    MALLP Γ (just A) →
+    MALLP Δ (just B) →
+    MALLP (Γ ++ᴸ Δ) (just (A ⊗⁺ B))
+  linearProductIntro = mallp-tensor
+
+  linearProductElim :
+    {Γ : Context} {A B : PolType posPolarity} {S : Stoup} →
+    MALLP (dualPos A ∷ dualPos B ∷ Γ) S →
+    MALLP (dualPos (A ⊗⁺ B) ∷ Γ) S
+  linearProductElim = mallp-par
+
+  linearSumIntroLeft :
+    {Γ : Context} {A B : PolType posPolarity} →
+    MALLP Γ (just A) →
+    MALLP Γ (just (A ⊕⁺ B))
+  linearSumIntroLeft = mallp-plus-left
+
+  linearSumIntroRight :
+    {Γ : Context} {A B : PolType posPolarity} →
+    MALLP Γ (just B) →
+    MALLP Γ (just (A ⊕⁺ B))
+  linearSumIntroRight = mallp-plus-right
+
+  linearSumElim :
+    {Γ : Context} {A B : PolType posPolarity} {S : Stoup} →
+    MALLP (dualPos A ∷ Γ) S →
+    MALLP (dualPos B ∷ Γ) S →
+    MALLP (dualPos (A ⊕⁺ B) ∷ Γ) S
+  linearSumElim = mallp-with
+
+  -- Γ remains present while the domain resource is abstracted.  The closure
+  -- introduction consumes the argument resource once and preserves captures.
+  linearClosureIntro :
+    {Γ : Context} {A B : PolType posPolarity} →
+    MALLP (dualPos A ∷ Γ) (just B) →
+    MALLP Γ (just (linearClosureFormula A B))
+  linearClosureIntro body =
+    mallp-down (mallp-par (mallp-up body))
+
+  linearClosureApplicationSignature :
+    {A B : PolType posPolarity} →
+    MALLPProtocolTheory
+      (dualPos (linearClosureFormula A B) ∷ dualPos A ∷ [])
+      (just B)
+  linearClosureApplicationSignature = primitive-linear-apply
+
+  data NatListValue : Set where
+    natListNil : NatListValue
+    natListCons : Nat → NatListValue → NatListValue
+
+  foldNatList : NatOp → Nat → NatListValue → Nat
+  foldNatList operation initial natListNil = initial
+  foldNatList operation initial (natListCons head tail) =
+    applyNatOp operation head (foldNatList operation initial tail)
+
+  foldNatList-step :
+    (operation : NatOp) →
+    (initial head : Nat) →
+    (tail : NatListValue) →
+    foldNatList operation initial (natListCons head tail) ≡
+    applyNatOp operation head (foldNatList operation initial tail)
+  foldNatList-step operation initial head tail = refl
+
+  foldNatList-empty :
+    (operation : NatOp) →
+    (initial : Nat) →
+    foldNatList operation initial natListNil ≡ initial
+  foldNatList-empty operation initial = refl
+
+  listNilSignature :
+    MALLPProtocolTheory [] (just listNatFormula)
+  listNilSignature = primitive-list-nil
+
+  listConsSignature :
+    MALLPProtocolTheory
+      (dualPos natFormula ∷ dualPos listNatFormula ∷ [])
+      (just listNatFormula)
+  listConsSignature = primitive-list-cons
+
+  listFoldSignature :
+    (operation : NatOp) →
+    MALLPProtocolTheory
+      (dualPos listNatFormula ∷ dualPos natFormula ∷ [])
+      (just natFormula)
+  listFoldSignature = primitive-list-fold
+
+open StrictLinearDataCompiler public
 
