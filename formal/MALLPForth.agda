@@ -1018,7 +1018,6 @@ open Foundations.ForsterEnumerability public
 open Foundations.MarkovLeastWitness public
 open Foundations.MacLaneCoherence public
 open Foundations.CohesiveRetractions public
-open Foundations.QuotientReflection public
 open Foundations.SymmetricBarRecursion public
 open Foundations.LaurentPolarizedMALLP public
 
