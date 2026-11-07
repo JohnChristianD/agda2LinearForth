@@ -122,6 +122,8 @@ jobs:
           fi
           cat agda2forth.log
           test -s MALLPStrict.fth
+          test -s MALLPEmittedRenderer.agda
+          "$AGDA_BIN" -i formal -i . MALLPEmittedRenderer.agda
           grep -Fq 'MALLP-NAT-ADD' MALLPStrict.fth
           grep -Fq 'MALLP-PARSE-NAT' MALLPStrict.fth
           grep -Fq ': answerTrue TRUE ;' MALLPStrict.fth
