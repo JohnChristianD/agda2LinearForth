@@ -2370,18 +2370,19 @@ module StrictBoolCompiler where
   -- Convert the proof-level Boolean program into the independent text-token
   -- renderer's nested IF representation. The renderer's Agda certificate
   -- checks the actual text emitted by Haskell against this token algebra.
-  boolForthTokenAsText : BoolForthToken → ForthTextToken
-  boolForthTokenAsText pushTrueToken = textTrueWord
-  boolForthTokenAsText pushFalseToken = textFalseWord
-  boolForthTokenAsText (boolIfToken whenTrue whenFalse) =
-    textIf (mapBoolForthTokensAsText whenTrue)
-      (mapBoolForthTokensAsText whenFalse)
+  mutual
+    boolForthTokenAsText : BoolForthToken → ForthTextToken
+    boolForthTokenAsText pushTrueToken = textTrueWord
+    boolForthTokenAsText pushFalseToken = textFalseWord
+    boolForthTokenAsText (boolIfToken whenTrue whenFalse) =
+      textIf (mapBoolForthTokensAsText whenTrue)
+        (mapBoolForthTokensAsText whenFalse)
 
-  mapBoolForthTokensAsText :
-    List BoolForthToken → List ForthTextToken
-  mapBoolForthTokensAsText [] = []
-  mapBoolForthTokensAsText (token ∷ tokens) =
-    boolForthTokenAsText token ∷ mapBoolForthTokensAsText tokens
+    mapBoolForthTokensAsText :
+      List BoolForthToken → List ForthTextToken
+    mapBoolForthTokensAsText [] = []
+    mapBoolForthTokensAsText (token ∷ tokens) =
+      boolForthTokenAsText token ∷ mapBoolForthTokensAsText tokens
 
   -- A Boolean case split is the additive MALLP elimination rule:
   -- the same residual context is available in each mutually exclusive branch.
