@@ -189,6 +189,27 @@ hasBoolResult definition = do
     (Just expected, I.Def actual []) -> expected == actual
     _ -> False
 
+hasUnitResult :: Definition -> TCM Bool
+hasUnitResult definition = do
+  unitName <- getBuiltinName builtinUnit
+  TelV _ resultType <- telView (defType definition)
+  reducedResultType <- reduce resultType
+  pure $ case (unitName, I.unEl reducedResultType) of
+    (Just expected, I.Def actual []) -> expected == actual
+    _ -> False
+
+decodeUnitTerm :: TTerm -> TCM ()
+decodeUnitTerm term = do
+  unitConstructor <- getBuiltinName builtinUnitUnit
+  let (headTerm, args) = tAppView term
+      matches constructor = Just constructor == unitConstructor
+  case headTerm of
+    TCon name | null args && matches name -> pure ()
+    TDef name | null args && matches name -> pure ()
+    TCoerce inner | null args -> decodeUnitTerm inner
+    _ -> unsupported ("Treeless term is outside the closed Unit fragment: " ++ show headTerm)
+
+
 compileDefinition :: Definition -> TCM (Maybe FthForm)
 compileDefinition definition
   | defNoCompilation definition || not (usableModality (getModality definition)) =
@@ -197,6 +218,7 @@ compileDefinition definition
       Function{} -> do
         isNat <- hasNatResult definition
         isBool <- hasBoolResult definition
+        isUnit <- hasUnitResult definition
         if isNat then do
           body <- toTreeless EagerEvaluation (defName definition)
           case body of
@@ -212,6 +234,13 @@ compileDefinition definition
               value <- decodeBoolTerm term
               let forthBoolean = if value then "TRUE" else "FALSE"
               pure (Just (strictWord (defName definition) (RSAtom forthBoolean)))
+        else if isUnit then do
+          body <- toTreeless EagerEvaluation (defName definition)
+          case body of
+            Nothing -> pure Nothing
+            Just term -> do
+              decodeUnitTerm term
+              pure (Just (strictWord (defName definition) (RSList [])))
         else pure Nothing
       _ -> pure Nothing
 
