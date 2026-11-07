@@ -2592,19 +2592,24 @@ module StrictStatefulProtocol where
   data EffectToken : List Nat → Set where
     ownEffectToken : {trace : List Nat} → EffectToken trace
 
+  traceLength : List Nat → Nat
+  traceLength [] = zero
+  traceLength (_ ∷ events) = suc (traceLength events)
+
+  appendEvent-length :
+    (trace : List Nat) →
+    (event : Nat) →
+    traceLength (appendEvent trace event) ≡ suc (traceLength trace)
+  appendEvent-length [] event = refl
+  appendEvent-length (head ∷ rest) event =
+    cong suc (appendEvent-length rest event)
+
   emitEffect :
     {trace : List Nat} →
     EffectToken trace →
-    Nat →
-    EffectToken (appendEvent trace _)
-  emitEffect ownEffectToken event = ownEffectToken
-
-  emitEffect-trace :
-    {trace : List Nat} →
-    (token : EffectToken trace) →
     (event : Nat) →
-    appendEvent trace event ≡ appendEvent trace event
-  emitEffect-trace token event = refl
+    EffectToken (appendEvent trace event)
+  emitEffect ownEffectToken event = ownEffectToken
 
   -- Public witnesses for the computation signatures.
   thunkForceSignature :
