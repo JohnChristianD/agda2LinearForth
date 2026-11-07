@@ -128,6 +128,8 @@ jobs:
           grep -Fq 'MALLP-PARSE-NAT' MALLPStrict.fth
           grep -Fq ': answerTrue TRUE ;' MALLPStrict.fth
           grep -Fq ': answerFalse FALSE ;' MALLPStrict.fth
+          grep -Fq ': answerMatchedTrue FALSE ;' MALLPStrict.fth
+          grep -Fq ': answerMatchedFalse TRUE ;' MALLPStrict.fth
           grep -Fq ': answerUnit ;' MALLPStrict.fth
           grep -Eq '^: answerIdentity[[:space:]]*;' MALLPStrict.fth
           grep -Fq 'answerAddFive' MALLPStrict.fth
