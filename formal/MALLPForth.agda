@@ -2427,6 +2427,273 @@ module StrictNatCompiler where
     rewrite natResourceProof-adequate left leftEnvironment
           | natResourceProof-adequate right rightEnvironment = refl
 
+
+  ----------------------------------------------------------------------
+  -- Labelled Nat resources: exact-once source context → MALLP derivation.
+  --
+  -- Unlike NatResourceExpr, whose leaves are positional and whose binary
+  -- nodes split a contiguous context, this syntax retains the source
+  -- argument labels carried by ToForth.hs. The context index is the exact
+  -- left-to-right occurrence order of those labels.
+  ----------------------------------------------------------------------
+
+  infixr 5 _++ᴿ_
+  _++ᴿ_ : List Nat → List Nat → List Nat
+  [] ++ᴿ ys = ys
+  (x ∷ xs) ++ᴿ ys = x ∷ (xs ++ᴿ ys)
+
+  resourceMap : {A B : Set} → (A → B) → List A → List B
+  resourceMap f [] = []
+  resourceMap f (x ∷ xs) = f x ∷ resourceMap f xs
+
+  resourceListLength : List Nat → Nat
+  resourceListLength [] = zero
+  resourceListLength (_ ∷ xs) = suc (resourceListLength xs)
+
+  resourceListLength-append :
+    (Γ Δ : List Nat) →
+    resourceListLength (Γ ++ᴿ Δ) ≡
+      resourceListLength Γ + resourceListLength Δ
+  resourceListLength-append [] Δ = refl
+  resourceListLength-append (x ∷ Γ) Δ =
+    cong suc (resourceListLength-append Γ Δ)
+
+  resourceIndices : Nat → List Nat
+  resourceIndices zero = []
+  resourceIndices (suc n) =
+    zero ∷ resourceMap suc (resourceIndices n)
+
+  resourceListLength-map :
+    {A B : Set} →
+    (f : A → B) →
+    (xs : List A) →
+    resourceListLengthNat (resourceMap f xs) ≡ resourceListLengthNat xs
+    where
+    resourceListLengthNat : {X : Set} → List X → Nat
+    resourceListLengthNat [] = zero
+    resourceListLengthNat (_ ∷ xs) = suc (resourceListLengthNat xs)
+    resourceListLength-map f [] = refl
+    resourceListLength-map f (x ∷ xs) =
+      cong suc (resourceListLength-map f xs)
+
+  resourceListLength-indices : (n : Nat) →
+    resourceListLength (resourceIndices n) ≡ n
+  resourceListLength-indices zero = refl
+  resourceListLength-indices (suc n) =
+    cong suc
+      (trans
+        (resourceListLength-map suc (resourceIndices n))
+        (resourceListLength-indices n))
+
+  resourceAssumptions : List Nat → Context
+  resourceAssumptions [] = []
+  resourceAssumptions (_ ∷ labels) =
+    natAssumption ∷ resourceAssumptions labels
+
+  resourceAssumptions-length :
+    (labels : List Nat) →
+    resourceAssumptions labels ≡ natContext (resourceListLength labels)
+  resourceAssumptions-length [] = refl
+  resourceAssumptions-length (label ∷ labels) =
+    cong (natAssumption ∷_) (resourceAssumptions-length labels)
+
+  resourceAssumptions-map :
+    (f : Nat → Nat) →
+    (labels : List Nat) →
+    resourceAssumptions (resourceMap f labels) ≡
+      resourceAssumptions labels
+  resourceAssumptions-map f [] = refl
+  resourceAssumptions-map f (label ∷ labels) =
+    cong (natAssumption ∷_) (resourceAssumptions-map f labels)
+
+  resourceAssumptions-indices :
+    (n : Nat) →
+    resourceAssumptions (resourceIndices n) ≡ natContext n
+  resourceAssumptions-indices zero = refl
+  resourceAssumptions-indices (suc n) =
+    trans
+      (cong (natAssumption ∷_)
+        (resourceAssumptions-map suc (resourceIndices n)))
+      (cong (natAssumption ∷_)
+        (resourceAssumptions-indices n))
+
+  resourcePermutationToContext :
+    {Γ Δ : List Nat} →
+    ContextPermutation Γ Δ →
+    ContextPermutation (resourceAssumptions Γ) (resourceAssumptions Δ)
+  resourcePermutationToContext permutation-nil = permutation-nil
+  resourcePermutationToContext (permutation-cons permutation) =
+    permutation-cons (resourcePermutationToContext permutation)
+  resourcePermutationToContext permutation-swap = permutation-swap
+  resourcePermutationToContext (permutation-trans first second) =
+    permutation-trans
+      (resourcePermutationToContext first)
+      (resourcePermutationToContext second)
+
+  transportContextPermutation :
+    {Γ Δ Ε Ζ : Context} →
+    Γ ≡ Δ →
+    Ε ≡ Ζ →
+    ContextPermutation Γ Ε →
+    ContextPermutation Δ Ζ
+  transportContextPermutation refl refl permutation = permutation
+
+  resourcePermutationToNatContext :
+    {Γ Δ : List Nat} →
+    ContextPermutation Γ Δ →
+    ContextPermutation
+      (natContext (resourceListLength Γ))
+      (natContext (resourceListLength Δ))
+  resourcePermutationToNatContext {Γ} {Δ} permutation =
+    transportContextPermutation
+      (resourceAssumptions-length Γ)
+      (resourceAssumptions-length Δ)
+      (resourcePermutationToContext permutation)
+
+  -- Forward transport of values along an explicit context permutation.
+  permuteNatEnvironment :
+    {n m : Nat} →
+    ContextPermutation (natContext n) (natContext m) →
+    NatEnvironment n →
+    NatEnvironment m
+  permuteNatEnvironment permutation-nil natEnvironmentNil =
+    natEnvironmentNil
+  permuteNatEnvironment (permutation-cons permutation)
+    (natEnvironmentCons value environment) =
+      natEnvironmentCons value
+        (permuteNatEnvironment permutation environment)
+  permuteNatEnvironment permutation-swap
+    (natEnvironmentCons first
+      (natEnvironmentCons second environment)) =
+        natEnvironmentCons second (natEnvironmentCons first environment)
+  permuteNatEnvironment (permutation-trans first second) environment =
+    permuteNatEnvironment second
+      (permuteNatEnvironment first environment)
+
+  data IndexedNatResourceExpr : List Nat → Set where
+    indexedResourceLiteral :
+      Nat →
+      IndexedNatResourceExpr []
+
+    indexedResourceVariable :
+      (label : Nat) →
+      IndexedNatResourceExpr (label ∷ [])
+
+    indexedResourceBinary :
+      {Γ Δ : List Nat} →
+      NatOp →
+      IndexedNatResourceExpr Γ →
+      IndexedNatResourceExpr Δ →
+      IndexedNatResourceExpr (Γ ++ᴿ Δ)
+
+  -- Erase labels while retaining the exact number and nesting of live
+  -- resources. This feeds the existing focused Nat proof interpreter.
+  forgetIndexedNatResource :
+    {Γ : List Nat} →
+    IndexedNatResourceExpr Γ →
+    NatResourceExpr (resourceListLength Γ)
+  forgetIndexedNatResource (indexedResourceLiteral value) =
+    resourceLiteral value
+  forgetIndexedNatResource (indexedResourceVariable label) =
+    resourceArgument
+  forgetIndexedNatResource
+    (indexedResourceBinary {Γ = Γ} {Δ = Δ} operation left right) =
+      subst NatResourceExpr
+        (sym (resourceListLength-append Γ Δ))
+        (resourceBinary operation
+          (forgetIndexedNatResource left)
+          (forgetIndexedNatResource right))
+
+  indexedNatResourceTree-adequate :
+    {Γ : List Nat} →
+    (expression : IndexedNatResourceExpr Γ) →
+    (environment : NatEnvironment (resourceListLength Γ)) →
+    interpretMALLPNatProof
+      (natResourceProof (forgetIndexedNatResource expression))
+      environment
+    ≡
+    evalNatResourceExpr
+      (forgetIndexedNatResource expression)
+      environment
+  indexedNatResourceTree-adequate expression environment =
+    natResourceProof-adequate
+      (forgetIndexedNatResource expression)
+      environment
+
+  -- A program carries an explicit permutation from the left-to-right
+  -- variable occurrence order to the canonical source argument order.
+  -- This rules out missing, duplicated, and out-of-scope live arguments.
+  record IndexedNatResourceProgram (arity : Nat) : Set where
+    constructor indexedNatResourceProgram
+    field
+      indexedResourceLabels : List Nat
+      indexedResourceExpression :
+        IndexedNatResourceExpr indexedResourceLabels
+      indexedResourceUsage :
+        ContextPermutation indexedResourceLabels (resourceIndices arity)
+  open IndexedNatResourceProgram public
+
+  deriveIndexedNatResource :
+    {Γ : List Nat} →
+    IndexedNatResourceExpr Γ →
+    MALLPNatTheory (resourceAssumptions Γ) (just natFormula)
+  deriveIndexedNatResource {Γ} expression =
+    subst
+      (λ context → MALLPNatTheory context (just natFormula))
+      (sym (resourceAssumptions-length Γ))
+      (embedNatProof
+        (natResourceProof (forgetIndexedNatResource expression)))
+
+  deriveIndexedNatResourceProgram :
+    {arity : Nat} →
+    IndexedNatResourceProgram arity →
+    MALLPNatTheory (natContext arity) (just natFormula)
+  deriveIndexedNatResourceProgram {arity} program =
+    subst
+      (λ context → MALLPNatTheory context (just natFormula))
+      (resourceAssumptions-indices arity)
+      (mallp-nat-exchange
+        (resourcePermutationToContext (indexedResourceUsage program))
+        (deriveIndexedNatResource (indexedResourceExpression program)))
+
+  indexedNatResourceProgramEnvironment :
+    {arity : Nat} →
+    (program : IndexedNatResourceProgram arity) →
+    NatEnvironment arity →
+    NatEnvironment (resourceListLength (indexedResourceLabels program))
+  indexedNatResourceProgramEnvironment {arity} program environment =
+    permuteNatEnvironment
+      (contextPermutation-sym
+        (resourcePermutationToNatContext (indexedResourceUsage program)))
+      (subst NatEnvironment
+        (sym (resourceListLength-indices arity))
+        environment)
+
+  indexedNatResourceProgramSemantics :
+    {arity : Nat} →
+    IndexedNatResourceProgram arity →
+    NatEnvironment arity →
+    Nat
+  indexedNatResourceProgramSemantics program environment =
+    evalNatResourceExpr
+      (forgetIndexedNatResource (indexedResourceExpression program))
+      (indexedNatResourceProgramEnvironment program environment)
+
+  indexedNatResourceProgram-adequate :
+    {arity : Nat} →
+    (program : IndexedNatResourceProgram arity) →
+    (environment : NatEnvironment arity) →
+    interpretMALLPNatProof
+      (natResourceProof
+        (forgetIndexedNatResource (indexedResourceExpression program)))
+      (indexedNatResourceProgramEnvironment program environment)
+    ≡
+    indexedNatResourceProgramSemantics program environment
+  indexedNatResourceProgram-adequate program environment =
+    indexedNatResourceTree-adequate
+      (indexedResourceExpression program)
+      (indexedNatResourceProgramEnvironment program environment)
+
   -- A unary source function is linear when its sole argument occurs once.
   -- Its proof term is an MALLP derivation with exactly one Nat assumption.
   natLinearProof : NatLinearExpr → MALLPNatProof (suc zero)
