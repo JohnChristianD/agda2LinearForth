@@ -31,7 +31,7 @@ jobs:
           done < <(git ls-tree -r --name-only HEAD | grep -E "\\.hs$")
           test "$(git ls-files '*.hs' | grep -v '^src/Agda/Compiler/ToForth.hs$' | wc -l | tr -d ' ')" -ge 1
           test "$(git ls-files '*.agda' | paste -sd ' ')" = "formal/MALLPForth.agda formal/SovereignRationalSEDPhysics.agda"
-          expected_markdown_files="$(printf '%s\n' '.scratch/wayfinder/verified-agda-forth/MAP.md' 'README.md' | LC_ALL=C sort)"
+          expected_markdown_files="README.md"
           actual_markdown_files="$(git ls-files '*.md' | LC_ALL=C sort)"
           test "$actual_markdown_files" = "$expected_markdown_files"
           test -z "$(git ls-files '*.sh' '*.bash' '*.ps1')"
