@@ -116,7 +116,12 @@ jobs:
         run: |
           cp test/MALLPStrict.agda.src test/MALLPStrict.agda
           trap 'rm -f test/MALLPStrict.agda' EXIT
-          cabal run agda2forth -- -i test test/MALLPStrict.agda
+          if ! cabal run agda2forth -- -i test test/MALLPStrict.agda > agda2forth.log 2>&1; then
+            cat agda2forth.log
+            exit 1
+          fi
+          cat agda2forth.log
+          test -s MALLPStrict.fth
           grep -Fq 'MALLP-NAT-ADD' MALLPStrict.fth
           grep -Fq 'MALLP-PARSE-NAT' MALLPStrict.fth
           grep -Fq ': answerTrue TRUE ;' MALLPStrict.fth
