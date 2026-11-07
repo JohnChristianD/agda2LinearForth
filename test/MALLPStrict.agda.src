@@ -53,3 +53,15 @@ open import Agda.Builtin.Int using (Int; pos)
 
 answerInt : Int
 answerInt = pos 2
+
+answerAddTwo : Nat → Nat → Nat
+answerAddTwo x y = x + y
+
+answerMonusTwo : Nat → Nat → Nat
+answerMonusTwo x y = x - y
+
+answerReverseMonusTwo : Nat → Nat → Nat
+answerReverseMonusTwo x y = y - x
+
+answerMultiplyTwo : Nat → Nat → Nat
+answerMultiplyTwo x y = x * y
