@@ -1,7 +1,9 @@
 name: build
 on:
   push:
-    branches: [master]
+    branches:
+      - master
+      - wayfinder/mallp-purecake-linear-functions
   pull_request:
 
 concurrency:
