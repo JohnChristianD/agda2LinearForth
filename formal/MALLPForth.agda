@@ -1385,8 +1385,8 @@ module StrictNatCompiler where
       (natEnvironmentCons (interpretMALLPNatProof first prefix) suffix)
 
   natExprProof : NatExpr → MALLPNatProof zero
-  natExprProof (NatLiteral value) = natLiteralProof value
-  natExprProof (NatBinary operation left right) =
+  natExprProof (literal value) = natLiteralProof value
+  natExprProof (binary operation left right) =
     natCutProof (natExprProof left)
       (natCutProof (natExprProof right) (natPrimitiveProof operation))
 
@@ -1399,8 +1399,8 @@ module StrictNatCompiler where
     (expression : NatExpr) →
     interpretMALLPNatProof (natExprProof expression) natEnvironmentNil ≡
     evalNatExpr expression
-  natExprProof-adequate (NatLiteral value) = refl
-  natExprProof-adequate (NatBinary operation left right)
+  natExprProof-adequate (literal value) = refl
+  natExprProof-adequate (binary operation left right)
     rewrite natExprProof-adequate left
           | natExprProof-adequate right = refl
 
