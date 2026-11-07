@@ -131,6 +131,10 @@ jobs:
           grep -Fq 'answerMonusTwo' MALLPStrict.fth
           grep -Fq 'answerReverseMonusTwo' MALLPStrict.fth
           grep -Fq 'answerMultiplyTwo' MALLPStrict.fth
+          grep -Fq 'answerThree' MALLPStrict.fth
+          grep -Fq 'answerThreeLet' MALLPStrict.fth
+          grep -Fq 'answerFour' MALLPStrict.fth
+          grep -Fq 'ROLL' MALLPStrict.fth
           grep -Fq 'SWAP' MALLPStrict.fth
           if grep -Eq '^: answerInt ' MALLPStrict.fth; then
             echo "non-admitted Int definition escaped the result-type gate"
