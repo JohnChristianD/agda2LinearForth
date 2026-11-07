@@ -15,14 +15,13 @@ module MALLPForth where
 
 --Required for Polymorphism:
 open import Agda.Primitive using (Level; lsuc; _⊔_) public
-open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _*_)
-open import Agda.Builtin.Bool using (Bool; true; false)
-open import Agda.Builtin.List using (List; []; _∷_)
-open import Agda.Builtin.Maybe using (Maybe; just; nothing)
-open import Agda.Builtin.Sigma using (Σ; _,_)
-open import Agda.Builtin.Equality using (_≡_; refl)
-open import Agda.Builtin.String using (String; primStringAppend; primShowNat)
-import Agda.Builtin.Reflection as Reflection
+open import Agda.Builtin.Nat public
+open import Agda.Builtin.Bool public
+open import Agda.Builtin.List public
+open import Agda.Builtin.Maybe public
+open import Agda.Builtin.Sigma public
+open import Agda.Builtin.Equality public
+open import Agda.Builtin.String public
 open import Agda.Builtin.Equality.Rewrite public
 open import Agda.Builtin.Word using (Word64; primWord64ToNat; primWord64FromNat) public
 -- Agda 2.8.0.2 has no Agda.Builtin.Tuple module; the product record _×_ below
@@ -30,6 +29,8 @@ open import Agda.Builtin.Word using (Word64; primWord64ToNat; primWord64FromNat)
 open import Agda.Builtin.IO public
 open import Agda.Builtin.Unit public
 open import Agda.Builtin.Strict public
+open import Agda.Builtin.Coinduction public
+open import Agda.Builtin.Reflection public
 -- Agda 2.8 has no Agda.Builtin.Empty module; define the empty type locally.
 data ⊥ : Set where
 
