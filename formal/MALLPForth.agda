@@ -19,7 +19,7 @@ open import Agda.Builtin.List using (List; []; _∷_)
 open import Agda.Builtin.Maybe using (Maybe; just; nothing)
 open import Agda.Builtin.Sigma using (Σ; _,_)
 open import Agda.Builtin.Equality using (_≡_; refl)
-open import Agda.Builtin.String using (String; primStringAppend; primShowNat)
+open import ForthRenderer public
 open import Agda.Builtin.Equality.Rewrite
 -- Agda 2.8 has no Agda.Builtin.Empty module; define the empty type locally.
 data ⊥ : Set where
@@ -1318,38 +1318,6 @@ module StrictNatCompiler where
 
   -- Text tokens are deliberately separate from the Nat execution machine:
   -- TRUE/FALSE have Gforth's Bool representation, not a Nat stack meaning.
-  data ForthTextToken : Set where
-    textPushLiteral : Nat → ForthTextToken
-    textAddWord textMonusWord textMultiplyWord textSwapWord : ForthTextToken
-    textRollWord : Nat → ForthTextToken
-    textTrueWord textFalseWord : ForthTextToken
-
-  renderForthTokenText : ForthTextToken → String
-  renderForthTokenText (textPushLiteral value) =
-    primStringAppend "s\" "
-      (primStringAppend (primShowNat value) "\" MALLP-PARSE-NAT ")
-  renderForthTokenText textAddWord = "MALLP-NAT-ADD "
-  renderForthTokenText textMonusWord = "MALLP-NAT-MONUS "
-  renderForthTokenText textMultiplyWord = "MALLP-NAT-MUL "
-  renderForthTokenText textSwapWord = "SWAP "
-  renderForthTokenText (textRollWord depth) =
-    primStringAppend (primShowNat depth) " ROLL "
-  renderForthTokenText textTrueWord = "TRUE "
-  renderForthTokenText textFalseWord = "FALSE "
-
-  renderForthTokensText : List ForthTextToken → String
-  renderForthTokensText [] = ""
-  renderForthTokensText (token ∷ tokens) =
-    primStringAppend (renderForthTokenText token)
-      (renderForthTokensText tokens)
-
-  renderForthWordText : String → List ForthTextToken → String
-  renderForthWordText name tokens =
-    primStringAppend ": "
-      (primStringAppend name
-        (primStringAppend " "
-          (primStringAppend (renderForthTokensText tokens) ";")))
-
   _++ᴳ_ : {A : Set} → List A → List A → List A
   [] ++ᴳ ys = ys
   (x ∷ xs) ++ᴳ ys = x ∷ (xs ++ᴳ ys)
