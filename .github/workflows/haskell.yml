@@ -129,6 +129,7 @@ jobs:
           cat agda2forth.log
           test -s MALLPStrict.fth
           test -s MALLPEmittedRenderer.agda
+          grep -Fq 'chooseBoolTokenCorrespondence = refl' MALLPEmittedRenderer.agda
           cat MALLPEmittedRenderer.agda
           echo "Generated Forth module:"
           cat MALLPStrict.fth
