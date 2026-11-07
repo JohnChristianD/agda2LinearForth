@@ -130,6 +130,7 @@ jobs:
           test -s MALLPStrict.fth
           test -s MALLPEmittedRenderer.agda
           grep -Fq 'chooseBoolTokenCorrespondence = refl' MALLPEmittedRenderer.agda
+          grep -Fq 'swapBoolPairTokenCorrespondence = refl' MALLPEmittedRenderer.agda
           cat MALLPEmittedRenderer.agda
           echo "Generated Forth module:"
           cat MALLPStrict.fth
@@ -148,6 +149,7 @@ jobs:
           grep -Fq ': answerMatchedTrue FALSE ;' MALLPStrict.fth
           grep -Fq ': answerMatchedFalse TRUE ;' MALLPStrict.fth
           grep -Fq ': invertBool IF FALSE ELSE TRUE THEN ;' MALLPStrict.fth
+          grep -Fq ': swapBoolPair SWAP ;' MALLPStrict.fth
           grep -Fq ': answerUnit ;' MALLPStrict.fth
           grep -Eq '^: answerIdentity[[:space:]]*;' MALLPStrict.fth
           grep -Fq 'answerAddFive' MALLPStrict.fth
