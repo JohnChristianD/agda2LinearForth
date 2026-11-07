@@ -657,13 +657,12 @@ formalTokenList tokens =
 
 rendererCertificate :: [CompiledDefinition] -> Text
 rendererCertificate definitions = T.unlines $
-  [ "{-# OPTIONS --with-K --rewriting --confluence-check --polarity --lossy-unification --exact-split --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}"
-  , "module MALLPEmittedRenderer where"
+  [ "module MALLPEmittedRenderer where"
   , ""
   , "open import Agda.Builtin.String using (String)"
   , "open import Agda.Builtin.List using (List; []; _∷_)"
   , "open import Agda.Builtin.Equality using (_≡_; refl)"
-  , "open import MALLPForth using"
+  , "open import ForthRenderer using"
   , "  (ForthTextToken; textPushLiteral; textAddWord; textMonusWord; textMultiplyWord;"
   , "   textSwapWord; textRollWord; textTrueWord; textFalseWord; renderForthWordText)"
   , ""
