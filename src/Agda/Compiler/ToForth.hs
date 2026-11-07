@@ -76,19 +76,64 @@ strictWord name body =
 unsupported :: String -> TCM a
 unsupported message = fail ("agda2MALLPForth: " ++ message)
 
-decodeNatTerm :: TTerm -> TCM NatExpr
-decodeNatTerm term = do
+-- Count references to one de Bruijn variable.  TLam, TLet, and constructor
+-- alternatives extend the local binder depth; a TCase scrutinee itself is
+-- also a use of its indexed variable.
+natVariableUses :: Int -> TTerm -> Int
+natVariableUses target = count 0
+  where
+    count depth (TVar index)
+      | index == target + depth = 1
+      | otherwise = 0
+    count depth (TApp function arguments) =
+      count depth function + sum (map (count depth) arguments)
+    count depth (TLam body) = count (depth + 1) body
+    count depth (TLet bound body) =
+      count depth bound + count (depth + 1) body
+    count depth (TCase index _ fallback alternatives) =
+      (if index == target + depth then 1 else 0)
+        + count depth fallback
+        + sum (map (countAlternative depth) alternatives)
+    count depth (TCoerce inner) = count depth inner
+    count _ _ = 0
+
+    countAlternative depth (TACon _ arity body) =
+      count (depth + arity) body
+    countAlternative depth (TAGuard guard body) =
+      count depth guard + count depth body
+    countAlternative depth (TALit _ body) = count depth body
+
+-- Closed Nat let-bindings can be substituted at every use.  The environment
+-- contains only closed NatExpr values: this decoder rejects top-level
+-- lambdas, and every accepted binding is built solely from total, pure Nat
+-- operations.  Reusing one of these expressions duplicates a closed proof
+-- tree, not a live MALLP assumption; an unused lazy binding consumes no
+-- resource and is skipped without decoding or evaluating its body.
+decodeNatTerm :: [NatExpr] -> TTerm -> TCM NatExpr
+decodeNatTerm environment term = do
   let (headTerm, args) = tAppView term
   case headTerm of
     TLit (LitNat n)
       | null args && n >= 0 -> pure (NatLiteral (fromInteger n))
+    TVar index
+      | null args ->
+          case drop index environment of
+            value : _ -> pure value
+            [] -> unsupported ("unbound Treeless variable: " ++ show index)
+    TLet bound body
+      | null args ->
+          if natVariableUses 0 body == 0
+            then decodeNatTerm environment body
+            else do
+              value <- decodeNatTerm environment bound
+              decodeNatTerm (value : environment) body
     TPrim primitive -> do
-      operands <- traverse decodeNatTerm args
+      operands <- traverse (decodeNatTerm environment) args
       either unsupported pure (decodeNatPrimitive primitive operands)
     TDef name -> do
       plusName <- getBuiltinName builtinNatPlus
       minusName <- getBuiltinName builtinNatMinus
-      operands <- traverse decodeNatTerm args
+      operands <- traverse (decodeNatTerm environment) args
       case operands of
         [left, right] | Just name == plusName ->
           pure (NatBinary NatAdd left right)
@@ -96,7 +141,7 @@ decodeNatTerm term = do
           pure (NatBinary NatMonus left right)
         _ -> unsupported "user functions and non-binary definitions are outside the closed Nat fragment"
     TCoerce inner
-      | null args -> decodeNatTerm inner
+      | null args -> decodeNatTerm environment inner
     _ -> unsupported ("Treeless term is outside the closed Nat fragment: " ++ show headTerm)
 
 renderNatExpr :: NatExpr -> FthForm
@@ -132,7 +177,7 @@ compileDefinition definition
             case body of
               Nothing -> pure Nothing
               Just term -> do
-                expression <- decodeNatTerm term
+                expression <- decodeNatTerm [] term
                 pure (Just (strictWord (defName definition) (renderNatExpr expression)))
       _ -> pure Nothing
 
