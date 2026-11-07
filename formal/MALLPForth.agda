@@ -3051,6 +3051,23 @@ module StrictStatefulProtocol where
       MALLPProtocolTheory Γ S →
       MALLPProtocolTheory Δ S
 
+    -- Structural rules below are the corresponding existing Laurent MALLP
+    -- inferences lifted over the declared primitive protocol signatures.
+    protocol-par :
+      {Γ : Context} {M N : PolType negPolarity} {S : Stoup} →
+      MALLPProtocolTheory (M ∷ N ∷ Γ) S →
+      MALLPProtocolTheory ((M ⅋⁻ N) ∷ Γ) S
+
+    protocol-up :
+      {Γ : Context} {P : PolType posPolarity} →
+      MALLPProtocolTheory Γ (just P) →
+      MALLPProtocolTheory (up⁻ P ∷ Γ) nothing
+
+    protocol-down :
+      {Γ : Context} {N : PolType negPolarity} →
+      MALLPProtocolTheory (N ∷ Γ) nothing →
+      MALLPProtocolTheory Γ (just (down⁺ N))
+
     -- Forcing consumes the unique store capability and returns the demanded
     -- Nat together with the updated capability.
     primitive-thunk-force :
@@ -3290,6 +3307,11 @@ module StrictLinearDataCompiler where
       LinearApplicationTerm Γ A →
       LinearApplicationTerm Δ A
 
+    application-lambda :
+      {Γ : List LinearSourceType} {A B : LinearSourceType} →
+      LinearApplicationTerm (A ∷ Γ) B →
+      LinearApplicationTerm Γ (linearArrowType A B)
+
     linearApplication :
       {Γ Δ : List LinearSourceType} {A B : LinearSourceType} →
       LinearApplicationTerm Δ A →
@@ -3323,6 +3345,11 @@ module StrictLinearDataCompiler where
     protocol-exchange
       (linearContextPermutation permutation)
       (deriveLinearApplication term)
+  deriveLinearApplication (application-lambda body) =
+    protocol-down
+      (protocol-par
+        (protocol-exchange permutation-swap
+          (protocol-up (deriveLinearApplication body))))
   deriveLinearApplication
     (linearApplication {Γ = Γ} {Δ = Δ} {A = A} {B = B} argument function) =
     subst
@@ -3345,7 +3372,7 @@ module StrictLinearDataCompiler where
     {A : LinearSourceType} →
     LinearApplicationTerm [] (linearArrowType A A)
   bciIdentity =
-    application-source (linearLambda linearVariable)
+    application-lambda (application-source linearVariable)
 
   bciComposition :
     {A B C : LinearSourceType} →
@@ -3356,10 +3383,15 @@ module StrictLinearDataCompiler where
           (linearArrowType A B)
           (linearArrowType A C)))
   bciComposition =
-    application-source
-      (linearLambda
-        (linearLambda
-          (linearLambda
+    application-lambda
+      (application-lambda
+        (application-lambda
+          (application-exchange
+            (permutation-trans
+              permutation-swap
+              (permutation-trans
+                (permutation-cons permutation-swap)
+                permutation-swap))
             (linearApplication
               (linearApplication
                 (application-source linearVariable)
@@ -3373,16 +3405,18 @@ module StrictLinearDataCompiler where
         (linearArrowType A (linearArrowType B C))
         (linearArrowType B (linearArrowType A C)))
   bciExchange =
-    application-source
-      (linearLambda
-        (linearLambda
-          (linearLambda
-            (application-exchange permutation-swap
+    application-lambda
+      (application-lambda
+        (application-lambda
+          (application-exchange
+            (permutation-trans
+              (permutation-cons permutation-swap)
+              permutation-swap)
+            (linearApplication
+              (application-source linearVariable)
               (linearApplication
                 (application-source linearVariable)
-                (linearApplication
-                  (application-source linearVariable)
-                  (application-source linearVariable)))))))
+                (application-source linearVariable))))))
 
   bciIdentityMALLP :
     {A : LinearSourceType} →
