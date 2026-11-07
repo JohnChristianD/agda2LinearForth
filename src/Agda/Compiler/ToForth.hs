@@ -968,24 +968,26 @@ compileDefinition definition
                 (defName definition) (strictWord (defName definition) code) tokens))
             (Just _, Nothing) -> pure Nothing
             _ -> unsupported "Bool function arity classification changed during compilation"
-        else if Just constructor <- boolPairConstructor then do
-          body <- toTreeless EagerEvaluation (defName definition)
-          case body of
-            Nothing -> pure Nothing
-            Just term -> do
-              (code, tokens) <-
-                compileBoolPairFunction (defName definition) constructor term
-              pure (Just (CompiledDefinition
-                (defName definition) (strictWord (defName definition) code) tokens))
-        else if isUnit then do
-          body <- toTreeless EagerEvaluation (defName definition)
-          case body of
-            Nothing -> pure Nothing
-            Just term -> do
-              decodeUnitTerm term
-              pure (Just (CompiledDefinition
-                (defName definition) (strictWord (defName definition) (RSList [])) []))
-        else pure Nothing
+        else case boolPairConstructor of
+          Just constructor -> do
+            body <- toTreeless EagerEvaluation (defName definition)
+            case body of
+              Nothing -> pure Nothing
+              Just term -> do
+                (code, tokens) <-
+                  compileBoolPairFunction (defName definition) constructor term
+                pure (Just (CompiledDefinition
+                  (defName definition) (strictWord (defName definition) code) tokens))
+          Nothing ->
+            if isUnit then do
+              body <- toTreeless EagerEvaluation (defName definition)
+              case body of
+                Nothing -> pure Nothing
+                Just term -> do
+                  decodeUnitTerm term
+                  pure (Just (CompiledDefinition
+                    (defName definition) (strictWord (defName definition) (RSList [])) []))
+            else pure Nothing
       _ -> pure Nothing
 
 readStrictRuntime :: IO String
