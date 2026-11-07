@@ -1310,8 +1310,8 @@ module StrictNatCompiler where
 
   renderForthTokenText : ForthToken → String
   renderForthTokenText (pushLiteral value) =
-    primStringAppend "s\\" "
-      (primStringAppend (primShowNat value) "\\" MALLP-PARSE-NAT ")
+    primStringAppend "s\" "
+      (primStringAppend (primShowNat value) "\" MALLP-PARSE-NAT ")
   renderForthTokenText addWord = "MALLP-NAT-ADD "
   renderForthTokenText monusWord = "MALLP-NAT-MONUS "
   renderForthTokenText multiplyWord = "MALLP-NAT-MUL "
