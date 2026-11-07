@@ -1567,6 +1567,14 @@ module StrictNatCompiler where
       MALLPNatProof (suc m) →
       MALLPNatProof (n + m)
 
+    -- Derived primitive composition: consume a closed/live result once,
+    -- then the remaining linear argument once, with the result at stack top.
+    natPrimitiveComposeProof :
+      {n : Nat} →
+      MALLPNatProof n →
+      NatOp →
+      MALLPNatProof (suc n)
+
   natContext : Nat → Context
   natContext zero = []
   natContext (suc n) = natAssumption ∷ natContext n
@@ -1589,12 +1597,24 @@ module StrictNatCompiler where
     natContext (n + suc zero) ≡ natAssumption ∷ natContext n
   natContextPlusOne n rewrite natPlusOne n = refl
 
-  natProofPlusOne :
+  natContextAppendLast :
     (n : Nat) →
-    MALLPNatProof (n + suc zero) →
-    MALLPNatProof (suc n)
-  natProofPlusOne n proof =
-    subst MALLPNatProof (natPlusOne n) proof
+    natContext n ++ᴸ (natAssumption ∷ []) ≡
+    natAssumption ∷ natContext n
+  natContextAppendLast zero = refl
+  natContextAppendLast (suc n) =
+    cong (natAssumption ∷_) (natContextAppendLast n)
+
+  natLastToHeadPermutation :
+    (n : Nat) →
+    ContextPermutation
+      (natContext n ++ᴸ (natAssumption ∷ []))
+      (natAssumption ∷ natContext n)
+  natLastToHeadPermutation n =
+    subst
+      (λ context → ContextPermutation context (natAssumption ∷ natContext n))
+      (sym (natContextAppendLast n))
+      (contextPermutation-refl (natAssumption ∷ natContext n))
 
   natRotateHeadToLastPermutationPlus :
     (n : Nat) →
@@ -1629,6 +1649,10 @@ module StrictNatCompiler where
     mallp-nat-exchange
       (natRotateHeadToLastPermutationPlus n)
       (embedNatProof proof)
+  embedNatProof (natPrimitiveComposeProof {n = n} proof operation) =
+    mallp-nat-exchange
+      (natLastToHeadPermutation n)
+      (mallp-nat-cut (embedNatProof proof) (mallp-nat-primitive operation))
   embedNatProof (natCutProof {n = n} {m = m} first second) =
     mallp-nat-transport
       (sym (natContext-append n m))
@@ -1724,6 +1748,10 @@ module StrictNatCompiler where
     (natRotateHeadToLastProof {n = n} proof) environment =
       interpretMALLPNatProof proof
         (rotateHeadToLastEnvironmentPlus {n = n} environment)
+  interpretMALLPNatProof (natPrimitiveComposeProof proof operation)
+    (natEnvironmentCons leftValue rightEnvironment) =
+      applyNatOp operation leftValue
+        (interpretMALLPNatProof proof rightEnvironment)
   interpretMALLPNatProof
     (natCutProof {n = n} {m = m} first second) environment
     with splitNatEnvironment n m environment
@@ -1798,13 +1826,10 @@ module StrictNatCompiler where
   natResourceProof (resourceLiteral value) = natLiteralProof value
   natResourceProof resourceArgument = natArgumentProof
   natResourceProof
-    (resourceBinary {n = n} {m = m} operation left right) =
+    (resourceBinary operation left right) =
       natCutProof
         (natResourceProof left)
-        (natProofPlusOne m
-          (natRotateHeadToLastProof
-            (natCutProof (natResourceProof right)
-              (natPrimitiveProof operation))))
+        (natPrimitiveComposeProof (natResourceProof right) operation)
 
   natResource-proof-derivation :
     {n : Nat} →
@@ -1827,8 +1852,6 @@ module StrictNatCompiler where
     with splitNatEnvironment n m environment
   ... | pair leftEnvironment rightEnvironment
     rewrite natResourceProof-adequate left leftEnvironment
-          | splitNatEnvironment-append m rightEnvironment
-              (evalNatResourceExpr left leftEnvironment)
           | natResourceProof-adequate right rightEnvironment = refl
 
   -- A unary source function is linear when its sole argument occurs once.
