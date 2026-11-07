@@ -11,6 +11,9 @@
 answerAdd 20 strict-assert-natural
 answerMonus 0 strict-assert-natural
 answerMultiply 20 strict-assert-natural
+answerLet 40 strict-assert-natural
+answerLetShared 169 strict-assert-natural
+answerLetUnused 7 strict-assert-natural
 : testStrictOverflow ( -- )
   MALLP-MAX-NAT 1 MALLP-NAT-ADD { ignored }
 ;
