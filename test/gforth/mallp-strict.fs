@@ -1,6 +1,13 @@
 \ Strict Laurent-MALLP scalar-stack runtime checks.
 \ Loaded after MALLPStrict.fth, which must contain only the strict runtime.
 
+: strict-assert-boolean { actual expected -- }
+  actual expected <> IF
+    ." strict MALLP boolean mismatch" cr
+    -4202 THROW
+  THEN
+;
+
 : strict-assert-natural { actual expected -- }
   actual expected <> IF
     ." strict MALLP natural mismatch" cr
@@ -14,6 +21,8 @@ answerMultiply 20 strict-assert-natural
 answerLet 40 strict-assert-natural
 answerLetShared 169 strict-assert-natural
 answerLetUnused 7 strict-assert-natural
+answerTrue TRUE strict-assert-boolean
+answerFalse FALSE strict-assert-boolean
 : testStrictOverflow ( -- )
   MALLP-MAX-NAT 1 MALLP-NAT-ADD { ignored }
 ;
