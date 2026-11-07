@@ -31,7 +31,7 @@ open import Agda.Builtin.IO public
 open import Agda.Builtin.Unit public
 open import Agda.Builtin.Strict public
 open import Agda.Builtin.Coinduction public
-open import Agda.Builtin.Reflection public
+import Agda.Builtin.Reflection as Reflection
 -- Agda 2.8 has no Agda.Builtin.Empty module; define the empty type locally.
 data ⊥ : Set where
 
