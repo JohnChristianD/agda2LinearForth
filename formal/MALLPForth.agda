@@ -3255,6 +3255,136 @@ module StrictLinearDataCompiler where
       (just B)
   linearClosureApplicationSignature = primitive-linear-apply
 
+  -- Application is a declared typed operation over unchanged MALLP.
+  -- Source arguments are ordered before the function's captured context.
+  data LinearApplicationTerm :
+    List LinearSourceType → LinearSourceType → Set where
+
+    application-source :
+      {Γ : List LinearSourceType} {A : LinearSourceType} →
+      LinearTerm Γ A →
+      LinearApplicationTerm Γ A
+
+    application-exchange :
+      {Γ Δ : List LinearSourceType} {A : LinearSourceType} →
+      ContextPermutation Γ Δ →
+      LinearApplicationTerm Γ A →
+      LinearApplicationTerm Δ A
+
+    linearApplication :
+      {Γ Δ : List LinearSourceType} {A B : LinearSourceType} →
+      LinearApplicationTerm Δ A →
+      LinearApplicationTerm Γ (linearArrowType A B) →
+      LinearApplicationTerm (appendLinearContext Δ Γ) B
+
+  rotateLastContext :
+    {A : Set} (prefix : List A) (last : A) →
+    ContextPermutation (prefix ++ᴸ (last ∷ [])) (last ∷ prefix)
+  rotateLastContext [] last = permutation-cons permutation-nil
+  rotateLastContext (head ∷ prefix) last =
+    permutation-trans
+      (permutation-cons (rotateLastContext prefix last))
+      permutation-swap
+
+  deriveLinearApplication :
+    {Γ : List LinearSourceType} {A : LinearSourceType} →
+    LinearApplicationTerm Γ A →
+    MALLPProtocolTheory
+      (linearSourceContext Γ)
+      (just (linearSourceFormula A))
+  deriveLinearApplication (application-source term) =
+    protocol-logical (deriveMALLP term)
+  deriveLinearApplication (application-exchange permutation term) =
+    protocol-exchange
+      (linearContextPermutation permutation)
+      (deriveLinearApplication term)
+  deriveLinearApplication
+    (linearApplication {Γ = Γ} {Δ = Δ} {A = A} {B = B} argument function) =
+    subst
+      (λ context → MALLPProtocolTheory context
+        (just (linearSourceFormula B)))
+      (sym (linearSourceContext-append Δ Γ))
+      (protocol-cut
+        (deriveLinearApplication argument)
+        (protocol-exchange
+          (rotateLastContext
+            (linearSourceContext Γ)
+            (dualPos (linearSourceFormula A)))
+          (protocol-cut
+            (deriveLinearApplication function)
+            primitive-linear-apply)))
+
+  -- BCI: I is identity, B is composition, and C exchanges the first
+  -- two arguments. Every input variable occurs exactly once.
+  bciIdentity :
+    {A : LinearSourceType} →
+    LinearApplicationTerm [] (linearArrowType A A)
+  bciIdentity =
+    application-source (linearLambda linearVariable)
+
+  bciComposition :
+    {A B C : LinearSourceType} →
+    LinearApplicationTerm []
+      (linearArrowType
+        (linearArrowType B C)
+        (linearArrowType
+          (linearArrowType A B)
+          (linearArrowType A C)))
+  bciComposition =
+    application-source
+      (linearLambda
+        (linearLambda
+          (linearLambda
+            (linearApplication
+              (linearApplication
+                (application-source linearVariable)
+                (application-source linearVariable))
+              (application-source linearVariable))))
+
+  bciExchange :
+    {A B C : LinearSourceType} →
+    LinearApplicationTerm []
+      (linearArrowType
+        (linearArrowType A (linearArrowType B C))
+        (linearArrowType B (linearArrowType A C)))
+  bciExchange =
+    application-source
+      (linearLambda
+        (linearLambda
+          (linearLambda
+            (application-exchange permutation-swap
+              (linearApplication
+                (application-source linearVariable)
+                (linearApplication
+                  (application-source linearVariable)
+                  (application-source linearVariable))))))
+
+  bciIdentityMALLP :
+    {A : LinearSourceType} →
+    MALLPProtocolTheory []
+      (just (linearSourceFormula (linearArrowType A A)))
+  bciIdentityMALLP = deriveLinearApplication bciIdentity
+
+  bciCompositionMALLP :
+    {A B C : LinearSourceType} →
+    MALLPProtocolTheory []
+      (just (linearSourceFormula
+        (linearArrowType
+          (linearArrowType B C)
+          (linearArrowType
+            (linearArrowType A B)
+            (linearArrowType A C)))))
+  bciCompositionMALLP = deriveLinearApplication bciComposition
+
+  bciExchangeMALLP :
+    {A B C : LinearSourceType} →
+    MALLPProtocolTheory []
+      (just (linearSourceFormula
+        (linearArrowType
+          (linearArrowType A (linearArrowType B C))
+          (linearArrowType B (linearArrowType A C)))))
+  bciExchangeMALLP = deriveLinearApplication bciExchange
+
   data NatListValue : Set where
     natListNil : NatListValue
     natListCons : Nat → NatListValue → NatListValue
