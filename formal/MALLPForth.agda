@@ -1466,6 +1466,13 @@ module StrictNatCompiler where
       MALLPNatProof (suc (suc zero)) →
       MALLPNatProof (suc (suc zero))
 
+    -- Move the first live Nat assumption behind the remaining n resources.
+    -- This is a finite sequence of Laurent MALLP exchanges, not contraction.
+    natRotateHeadToLastProof :
+      {n : Nat} →
+      MALLPNatProof (suc n) →
+      MALLPNatProof (suc n)
+
     natCutProof :
       {n m : Nat} →
       MALLPNatProof n →
@@ -1475,6 +1482,15 @@ module StrictNatCompiler where
   natContext : Nat → Context
   natContext zero = []
   natContext (suc n) = natAssumption ∷ natContext n
+
+  natRotateHeadToLastPermutation :
+    (n : Nat) →
+    ContextPermutation (natContext (suc n)) (natContext (suc n))
+  natRotateHeadToLastPermutation zero =
+    contextPermutation-refl (natContext (suc zero))
+  natRotateHeadToLastPermutation (suc n) =
+    permutation-trans permutation-swap
+      (permutation-cons (natRotateHeadToLastPermutation n))
 
   natContext-append :
     (n m : Nat) →
@@ -1494,6 +1510,10 @@ module StrictNatCompiler where
     mallp-nat-logical mallp-ax
   embedNatProof (natExchangeProof proof) =
     mallp-nat-exchange permutation-swap (embedNatProof proof)
+  embedNatProof (natRotateHeadToLastProof {n = n} proof) =
+    mallp-nat-exchange
+      (natRotateHeadToLastPermutation n)
+      (embedNatProof proof)
   embedNatProof (natCutProof {n = n} {m = m} first second) =
     mallp-nat-transport
       (sym (natContext-append n m))
@@ -1518,6 +1538,23 @@ module StrictNatCompiler where
   ... | pair prefix suffix =
     pair (natEnvironmentCons value prefix) suffix
 
+  appendNatEnvironment :
+    {n : Nat} →
+    NatEnvironment n →
+    Nat →
+    NatEnvironment (suc n)
+  appendNatEnvironment natEnvironmentNil value =
+    natEnvironmentCons value natEnvironmentNil
+  appendNatEnvironment (natEnvironmentCons head rest) value =
+    natEnvironmentCons head (appendNatEnvironment rest value)
+
+  rotateHeadToLastEnvironment :
+    {n : Nat} →
+    NatEnvironment (suc n) →
+    NatEnvironment (suc n)
+  rotateHeadToLastEnvironment (natEnvironmentCons head rest) =
+    appendNatEnvironment rest head
+
   -- Environments are ordered like the target stack, with its top first.
   -- A primitive therefore sees right above left and computes left op right.
   interpretMALLPNatProof :
@@ -1536,6 +1573,10 @@ module StrictNatCompiler where
     (natEnvironmentCons first (natEnvironmentCons second natEnvironmentNil)) =
       interpretMALLPNatProof proof
         (natEnvironmentCons second (natEnvironmentCons first natEnvironmentNil))
+  interpretMALLPNatProof
+    (natRotateHeadToLastProof proof) environment =
+      interpretMALLPNatProof proof
+        (rotateHeadToLastEnvironment environment)
   interpretMALLPNatProof
     (natCutProof {n = n} {m = m} first second) environment
     with splitNatEnvironment n m environment
@@ -1562,6 +1603,83 @@ module StrictNatCompiler where
   natExprProof-adequate (binary operation left right)
     rewrite natExprProof-adequate left
           | natExprProof-adequate right = refl
+
+  ----------------------------------------------------------------------
+  -- General finite linear Nat trees.
+  --
+  -- The index n counts live Nat assumptions. Literal leaves consume zero
+  -- resources; an argument leaf consumes exactly one; binary composition
+  -- partitions n+m assumptions between its two premises. This makes
+  -- duplication and discard unrepresentable in this source core.
+  ----------------------------------------------------------------------
+
+  data NatResourceExpr : Nat → Set where
+    resourceLiteral :
+      Nat →
+      NatResourceExpr zero
+
+    resourceArgument :
+      NatResourceExpr (suc zero)
+
+    resourceBinary :
+      {n m : Nat} →
+      NatOp →
+      NatResourceExpr n →
+      NatResourceExpr m →
+      NatResourceExpr (n + m)
+
+  evalNatResourceExpr :
+    {n : Nat} →
+    NatResourceExpr n →
+    NatEnvironment n →
+    Nat
+  evalNatResourceExpr (resourceLiteral value) natEnvironmentNil = value
+  evalNatResourceExpr resourceArgument
+    (natEnvironmentCons value natEnvironmentNil) = value
+  evalNatResourceExpr
+    (resourceBinary {n = n} {m = m} operation left right) environment
+    with splitNatEnvironment n m environment
+  ... | pair leftEnvironment rightEnvironment =
+    applyNatOp operation
+      (evalNatResourceExpr left leftEnvironment)
+      (evalNatResourceExpr right rightEnvironment)
+
+  natResourceProof :
+    {n : Nat} →
+    NatResourceExpr n →
+    MALLPNatProof n
+  natResourceProof (resourceLiteral value) = natLiteralProof value
+  natResourceProof resourceArgument = natArgumentProof
+  natResourceProof
+    (resourceBinary {n = n} {m = m} operation left right) =
+      natCutProof
+        (natResourceProof left)
+        (natRotateHeadToLastProof
+          (natCutProof (natResourceProof right)
+            (natPrimitiveProof operation)))
+
+  natResource-proof-derivation :
+    {n : Nat} →
+    (expression : NatResourceExpr n) →
+    MALLPNatTheory (natContext n) (just natFormula)
+  natResource-proof-derivation expression =
+    embedNatProof (natResourceProof expression)
+
+  natResourceProof-adequate :
+    {n : Nat} →
+    (expression : NatResourceExpr n) →
+    (environment : NatEnvironment n) →
+    interpretMALLPNatProof (natResourceProof expression) environment ≡
+    evalNatResourceExpr expression environment
+  natResourceProof-adequate (resourceLiteral value) natEnvironmentNil = refl
+  natResourceProof-adequate resourceArgument
+    (natEnvironmentCons value natEnvironmentNil) = refl
+  natResourceProof-adequate
+    (resourceBinary {n = n} {m = m} operation left right) environment
+    with splitNatEnvironment n m environment
+  ... | pair leftEnvironment rightEnvironment
+    rewrite natResourceProof-adequate left leftEnvironment
+          | natResourceProof-adequate right rightEnvironment = refl
 
   -- A unary source function is linear when its sole argument occurs once.
   -- Its proof term is an MALLP derivation with exactly one Nat assumption.
