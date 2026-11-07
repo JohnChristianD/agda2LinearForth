@@ -1346,10 +1346,12 @@ module StrictNatCompiler where
     just (forgetStack (rollStack proof stack))
   rollList-correct stackAtHere (pushCell value stack) = refl
   rollList-correct (stackAtThere proof) (pushCell head rest)
-    with rollStack proof rest
-  ... | pushCell selected remaining
-    with rollList-correct proof rest
-  ... | refl = refl
+    with rollList (stackAtDepth proof) (forgetStack rest)
+       | rollStack proof rest
+       | rollList-correct proof rest
+  ... | nothing | _ | ()
+  ... | just [] | _ | ()
+  ... | just (selected ∷ restValues) | pushCell selected′ remaining | refl = refl
 
   execToken : ForthToken → List Nat → Maybe (List Nat)
   execToken (pushLiteral n) stack = just (n ∷ stack)
