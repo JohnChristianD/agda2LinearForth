@@ -1110,7 +1110,7 @@ data LinearTerm : List LinearSourceType → LinearSourceType → Set where
     LinearTerm (A ∷ B ∷ Γ) C →
     LinearTerm (linearTensorType A B ∷ Γ) C
 
-  linearSumElim :
+  linearSumCaseTerm :
     {Γ : List LinearSourceType} {A B C : LinearSourceType} →
     LinearTerm (A ∷ Γ) C →
     LinearTerm (B ∷ Γ) C →
@@ -1152,7 +1152,7 @@ deriveMALLP linearUnit = mallp-one
 deriveMALLP (linearInl term) = mallp-plus-left (deriveMALLP term)
 deriveMALLP (linearInr term) = mallp-plus-right (deriveMALLP term)
 deriveMALLP (linearTensorElim body) = mallp-par (deriveMALLP body)
-deriveMALLP (linearSumElim whenLeft whenRight) =
+deriveMALLP (linearSumCaseTerm whenLeft whenRight) =
   mallp-with (deriveMALLP whenLeft) (deriveMALLP whenRight)
 deriveMALLP (linearCut producer consumer) =
   mallp-cut (deriveMALLP producer) (deriveMALLP consumer)
