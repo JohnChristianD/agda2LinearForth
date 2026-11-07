@@ -19,6 +19,7 @@ open import Agda.Builtin.List using (List; []; _∷_)
 open import Agda.Builtin.Maybe using (Maybe; just; nothing)
 open import Agda.Builtin.Sigma using (Σ; _,_)
 open import Agda.Builtin.Equality using (_≡_; refl)
+open import Agda.Builtin.String using (String; primStringAppend; primShowNat)
 open import Agda.Builtin.Equality.Rewrite
 -- Agda 2.8 has no Agda.Builtin.Empty module; define the empty type locally.
 data ⊥ : Set where
@@ -1305,6 +1306,33 @@ module StrictNatCompiler where
     pushLiteral : Nat → ForthToken
     addWord monusWord multiplyWord swapWord : ForthToken
     rollWord : Nat → ForthToken
+    trueWord falseWord : ForthToken
+
+  renderForthTokenText : ForthToken → String
+  renderForthTokenText (pushLiteral value) =
+    primStringAppend "s\\" "
+      (primStringAppend (primShowNat value) "\\" MALLP-PARSE-NAT ")
+  renderForthTokenText addWord = "MALLP-NAT-ADD "
+  renderForthTokenText monusWord = "MALLP-NAT-MONUS "
+  renderForthTokenText multiplyWord = "MALLP-NAT-MUL "
+  renderForthTokenText swapWord = "SWAP "
+  renderForthTokenText (rollWord depth) =
+    primStringAppend (primShowNat depth) " ROLL "
+  renderForthTokenText trueWord = "TRUE "
+  renderForthTokenText falseWord = "FALSE "
+
+  renderForthTokensText : List ForthToken → String
+  renderForthTokensText [] = ""
+  renderForthTokensText (token ∷ tokens) =
+    primStringAppend (renderForthTokenText token)
+      (renderForthTokensText tokens)
+
+  renderForthWordText : String → List ForthToken → String
+  renderForthWordText name tokens =
+    primStringAppend ": "
+      (primStringAppend name
+        (primStringAppend " "
+          (primStringAppend (renderForthTokensText tokens) ";")))
 
   _++ᴳ_ : {A : Set} → List A → List A → List A
   [] ++ᴳ ys = ys
