@@ -1062,6 +1062,15 @@ appendLinearContext : List LinearSourceType → List LinearSourceType →
 appendLinearContext [] Δ = Δ
 appendLinearContext (A ∷ Γ) Δ = A ∷ appendLinearContext Γ Δ
 
+linearSourceContext-append :
+  (Γ Δ : List LinearSourceType) →
+  linearSourceContext (appendLinearContext Γ Δ) ≡
+  (linearSourceContext Γ ++ᴸ linearSourceContext Δ)
+linearSourceContext-append [] Δ = refl
+linearSourceContext-append (A ∷ Γ) Δ =
+  cong (λ context → dualPos (linearSourceFormula A) ∷ context)
+    (linearSourceContext-append Γ Δ)
+
 linearContextPermutation :
   {Γ Δ : List LinearSourceType} →
   ContextPermutation Γ Δ →
@@ -1146,16 +1155,24 @@ deriveMALLP :
 deriveMALLP linearVariable = mallp-ax
 deriveMALLP (linearExchange permutation term) =
   mallp-exchange (linearContextPermutation permutation) (deriveMALLP term)
-deriveMALLP (linearTensor left right) =
-  mallp-tensor (deriveMALLP left) (deriveMALLP right)
+deriveMALLP
+  (linearTensor {Γ = Γ} {Δ = Δ} {A = A} {B = B} left right) =
+  subst
+    (λ context → MALLP context
+      (just (linearSourceFormula (linearTensorType A B))))
+    (sym (linearSourceContext-append Γ Δ))
+    (mallp-tensor (deriveMALLP left) (deriveMALLP right))
 deriveMALLP linearUnit = mallp-one
 deriveMALLP (linearInl term) = mallp-plus-left (deriveMALLP term)
 deriveMALLP (linearInr term) = mallp-plus-right (deriveMALLP term)
 deriveMALLP (linearTensorElim body) = mallp-par (deriveMALLP body)
 deriveMALLP (linearSumCaseTerm whenLeft whenRight) =
   mallp-with (deriveMALLP whenLeft) (deriveMALLP whenRight)
-deriveMALLP (linearCut producer consumer) =
-  mallp-cut (deriveMALLP producer) (deriveMALLP consumer)
+deriveMALLP (linearCut {Γ = Γ} {Δ = Δ} {B = B} producer consumer) =
+  subst
+    (λ context → MALLP context (just (linearSourceFormula B)))
+    (sym (linearSourceContext-append Γ Δ))
+    (mallp-cut (deriveMALLP producer) (deriveMALLP consumer))
 deriveMALLP (linearLambda body) =
   mallp-down
     (mallp-par
