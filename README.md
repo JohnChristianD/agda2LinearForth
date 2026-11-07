@@ -94,6 +94,61 @@ The Gforth fixture includes unary identity, addition, monus in either operand or
 
 This is not yet general higher-order PureCake support: no closure environment, user-defined call graph, finite ADT/list lowering, recursive semantics, stateful thunk sharing, or effect handlers are implemented. The Agda proof establishes the formal unary core and abstract token machine, not the Haskell printer or real Gforth implementation.
 
+## PR #33: typed MALLP core and C-series witnesses
+
+This PR adds several formal foundations and one narrow new backend case. Keep the distinction between a formal source model, an implemented decoder, and an end-to-end verified compiler explicit.
+
+### BCI and the linear closure model
+
+The source type former `linearArrowType A B` is interpreted as the polarized MALLP formula
+`↓(A⊥ ⅋ ↑B)`. The linear term core has context-indexed variables, exchange, tensor introduction/elimination, additive injection/case, unit, cut, lambda abstraction, and an environment-owning closure constructor. `deriveMALLP` maps the implemented `LinearTerm` constructors structurally to Laurent's existing rules.
+
+The new BCI witnesses represent:
+
+- **I:** identity, with its sole input consumed once.
+- **B:** composition, with three function/argument resources each used once.
+- **C:** exchange, implemented by the explicit context permutation.
+
+Application itself is represented in `LinearApplicationTerm` and interpreted through the explicitly declared `primitive-linear-apply` signature in `MALLPProtocolTheory`. This is a typed primitive operation over unchanged MALLP, not a new logical inference rule and not a claim that a Forth closure-call implementation is already verified. The I/B/C terms and their protocol derivations are Agda witnesses; Haskell does not yet compile general higher-order closures or application.
+
+This follows the resource interpretation associated with Henry Baker's permutation-stack work: an environment and its argument are owned resources, and stack permutations express exchange. The symmetric monoidal closed interpretation of tensor, unit and internal hom is the separate categorical semantics; Baker's stack-machine construction is not itself the Hamano–Scott categorical model. A full closure compiler still needs an executable closure layout, captured-environment relation, application semantics, and a pass simulation.
+
+### Word64: exact source equality, deliberately narrow target support
+
+The pinned Agda 2.8.0.2 API is `Agda.Builtin.Word`, not an `Agda.Builtin.Word64` module. The formal file imports `Word64`, `primWord64ToNat`, `primWord64FromNat`, and the primitive injectivity theorem `primWord64ToNatInjective`.
+
+The Agda witness `word64EqualityByNat` establishes equivalence between equality of Word64 values and equality of their Nat denotations. `linearWord64IdentityMALLP` gives Word64 one atomic linear resource in the source calculus. The target model treats that source resource as two owned 32-bit cells; `word64IdentityCode-correct` proves the identity program preserves both cells, and `Word64Representation` records the required limb bounds and denotation equation.
+
+The Haskell backend admits only the exact unary identity shape `Word64 → Word64`, emitting an empty body that preserves the two incoming cells. The Gforth fixture checks preservation of a pair of maximum 32-bit limbs. **Word64 literal construction, arbitrary Word64 arithmetic, conversions, division, comparison, and a total representation theorem for every Word64 are not implemented.** The representation record is conditional evidence, not a proof that every Word64 already has a valid pair of Gforth cells.
+
+### Reflection, metaprogramming, and equality
+
+The `reflectDataShape` Agda macro uses `Reflection.getDefinition`, `getType`, constructor metadata, `quoteTC`, and `unify` to inspect a resolved data declaration and construct a typed shape description. Agda then kernel-checks the generated witness. The pair and parameterized-box examples verify constructor arities and parameter/index counts by equality proofs.
+
+This is compile-time metaprogramming over a quoted representation of Agda syntax. It is a useful homoiconic-style interface—programs can inspect and construct descriptions of programs—but reflection is not definitionally identical to object-language equality. The current macro establishes datatype-shape metadata, not arbitrary constructor layouts, linear usage, or a compiler derivation for every reflected datatype.
+
+### Strictness, delay, and call-by-need
+
+The file records Agda's strictness equation using `primForceLemma`: forcing a value before passing it to a continuation has the specified observable equation. PureCake distinguishes call-by-name PureLang evaluation, explicit delay/force in ThunkLang, environment-based execution in EnvLang, and stateful thunk allocation/update in StateLang. These are distinct semantic stages, not synonyms for one eager evaluator.
+
+The project formalizes a total Nat-only `ThunkExpr`, suspended/memoized states, a linearly indexed store token, `forceThunk`, cache idempotence, and stable repeated observations after update. A separate one-token trace protocol specifies resource-preserving effect emission without placing Agda IO sites in the admitted source fragment. These are formal protocol examples, not yet a general PureCake ThunkLang/EnvLang/StateLang lowering in `ToForth.hs`; the current Forth runtime does not allocate or update general heap thunks.
+
+### Data, lists, recursion, and effects
+
+The Agda core derives tensor and sum rules from existing MALLP rules. It includes a Maybe-like `1 ⊕ A` identity witness, reflection-derived constructor-shape metadata, and a finite `NatListValue` with a structurally recursive fold and step/empty equations. The protocol theory contains declared list nil/cons/fold signatures. These establish useful formal vocabulary for linear ADTs and finite recursion.
+
+The Haskell backend still does **not** compile arbitrary reflected ADTs, generic pattern matches, lists, folds, structurally recursive function definitions, delay/force, call-by-need heap updates, or effect protocols. The current list fold is an Agda formal model and signature, not an implementation of PureCake list compilation. General recursion and coinduction need a precise termination/productivity semantics and an admitted derivation/primitive-recursion contract; no new μ/ν connective is added to Laurent MALLP. An explicit state/effect token is the only current effect model; there are no direct IO sites or IO runtime operations.
+
+### Rewrite-system boundary
+
+Agda's user rewrite declarations belong to source conversion/type checking. Agda checks the configured rewrite system for confluence and uses it during normalization; the Haskell backend receives Agda's resolved/normalized Treeless output through `toTreeless`. The backend does not contain an independent, unproved symbolic rewrite engine. `FLib.fth` is the target's operational runtime library: its Nat words define executable arithmetic and error behavior, not Agda's type-theoretic conversion relation. A theorem must relate each admitted source rewrite equation to the denotation of its target operation. Adding rewrite-like text processing to `FLib.fth` would not establish confluence and would conflate compile-time conversion with runtime execution.
+
+### What this PR proves, and what it does not
+
+The new Agda declarations establish source-level equality/resource witnesses for Word64 identity, a BCI application theory, reflection shape examples, strict-force equality, a Nat-only stateful thunk protocol, explicit effect-token transitions, and finite Nat-list fold equations. The Haskell addition compiles only `Word64 → Word64` identity, in addition to previously supported Nat/Bool/BoolPair/Unit slices. CI's generated renderer certificate compares actual emitted definition text with the formal text renderer by `refl`; it does not prove that every Haskell Treeless decoder branch has a formal source derivation, that the Haskell resource analysis is sound for all terms, or that the whole upstream Gforth implementation refines the Agda machine.
+
+The PureCake port remains incomplete. In particular, there is no general higher-order closure code generation, generic ADT/list code generation, certified recursive-call lowering, stateful thunk heap implementation, effect execution backend, or mechanized Gforth refinement theorem. The current PR must not be described as a complete PureCake compiler or an end-to-end verified compiler.
+
 ## Implementation frontier
 
 These are implementation tasks, not categorical bans. Each feature graduates to supported only with a typed source representation, usage evidence, lowering, tests, and a semantic-preservation argument.
