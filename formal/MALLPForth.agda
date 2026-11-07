@@ -1652,12 +1652,6 @@ module StrictNatCompiler where
   rotateHeadToLastEnvironment (natEnvironmentCons head rest) =
     appendNatEnvironment rest head
 
-  natPlusOne :
-    (n : Nat) →
-    n + suc zero ≡ suc n
-  natPlusOne zero = refl
-  natPlusOne (suc n) = cong suc (natPlusOne n)
-
   rotateHeadToLastEnvironmentPlus :
     {n : Nat} →
     NatEnvironment (n + suc zero) →
