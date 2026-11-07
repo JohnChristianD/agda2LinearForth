@@ -2526,6 +2526,15 @@ module StrictBoolCompiler where
   compileBoolCaseWithResidual =
     boolIfPreserving boolIdentity boolIdentity
 
+  -- The compiler's concrete instruction stream for chooseBool is SWAP
+  -- followed by an additive IF whose branches each preserve the same
+  -- remaining Bool. This equality links the proof-level control-flow code
+  -- with the ForthTextToken algebra used by the emitted-source certificate.
+  boolCaseWithResidual-token-correspondence :
+    mapBoolForthTokensAsText (renderBoolCode compileBoolCaseWithResidual) ≡
+    (textSwapWord ∷ textIf [] [] ∷ [])
+  boolCaseWithResidual-token-correspondence = refl
+
   boolCaseWithResidualMALLP-forth-sound :
     (condition value : Bool) →
     execBoolTokens
