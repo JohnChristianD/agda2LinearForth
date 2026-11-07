@@ -1204,43 +1204,44 @@ rendererCertificate definitions = T.unlines $
          ]
     | (position, definition) <- zip [0 :: Int ..] definitions
     ] ++ concat
-    [ let expressionName = "natLinearExpression" <> index
-            derivationName = "natLinearDerivation" <> index
-            compilerTokensName = "natLinearCompilerTokens" <> index
-            modelTokensName = "natLinearModelTokens" <> index
-            tokenProofName = "natLinearTokenCorrespondence" <> index
-            executionName = "natLinearCompiledExecution" <> index
-        in [ expressionName <> " : NatLinearExpr"
-           , expressionName <> " = " <> agdaNatLinearExprTerm expression
-           , ""
-           , derivationName <> " : MALLPNatTheory (natContext (suc zero)) (just natFormula)"
-           , derivationName <> " = natLinear-proof-derivation " <> expressionName
-           , ""
-           , compilerTokensName <> " : List ForthToken"
-           , compilerTokensName <> " = " <> formalNatTokenList (compiledTokens definition)
-           , ""
-           , modelTokensName <> " : List ForthToken"
-           , modelTokensName <> " = renderForth (compileNatLinear " <> expressionName <> ")"
-           , ""
-           , tokenProofName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
-           , tokenProofName <> " = refl"
-           , ""
-           , executionName <> " :"
-           , "  (argument : Nat) →"
-           , "  {Γ : List StackType} →"
-           , "  (stack : Stack Γ) →"
-           , "  execTokens " <> compilerTokensName
-           , "    (forgetStack (pushCell argument stack)) ≡"
-           , "  just"
-           , "    (interpretMALLPNatProof (natLinearProof " <> expressionName <> ")"
-           , "      (natEnvironmentCons argument (natEnvironmentNil)) ∷ forgetStack stack)"
-           , executionName <> " argument stack ="
-           , "  trans"
-           , "    (cong (λ tokens → execTokens tokens (forgetStack (pushCell argument stack)))"
-           , "      " <> tokenProofName <> ")"
-           , "    (natLinearMALLP-forth-sound " <> expressionName <> " argument stack)"
-           , ""
-           ]
+    [ let { expressionName = "natLinearExpression" <> index
+          ; derivationName = "natLinearDerivation" <> index
+          ; compilerTokensName = "natLinearCompilerTokens" <> index
+          ; modelTokensName = "natLinearModelTokens" <> index
+          ; tokenProofName = "natLinearTokenCorrespondence" <> index
+          ; executionName = "natLinearCompiledExecution" <> index
+          }
+      in [ expressionName <> " : NatLinearExpr"
+         , expressionName <> " = " <> agdaNatLinearExprTerm expression
+         , ""
+         , derivationName <> " : MALLPNatTheory (natContext (suc zero)) (just natFormula)"
+         , derivationName <> " = natLinear-proof-derivation " <> expressionName
+         , ""
+         , compilerTokensName <> " : List ForthToken"
+         , compilerTokensName <> " = " <> formalNatTokenList (compiledTokens definition)
+         , ""
+         , modelTokensName <> " : List ForthToken"
+         , modelTokensName <> " = renderForth (compileNatLinear " <> expressionName <> ")"
+         , ""
+         , tokenProofName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
+         , tokenProofName <> " = refl"
+         , ""
+         , executionName <> " :"
+         , "  (argument : Nat) →"
+         , "  {Γ : List StackType} →"
+         , "  (stack : Stack Γ) →"
+         , "  execTokens " <> compilerTokensName
+         , "    (forgetStack (pushCell argument stack)) ≡"
+         , "  just"
+         , "    (interpretMALLPNatProof (natLinearProof " <> expressionName <> ")"
+         , "      (natEnvironmentCons argument (natEnvironmentNil)) ∷ forgetStack stack)"
+         , executionName <> " argument stack ="
+         , "  trans"
+         , "    (cong (λ tokens → execTokens tokens (forgetStack (pushCell argument stack)))"
+         , "      " <> tokenProofName <> ")"
+         , "    (natLinearMALLP-forth-sound " <> expressionName <> " argument stack)"
+         , ""
+         ]
       | (index, definition, expression) <-
           [ (T.pack (show position), definition, expression)
           | (position, definition) <- zip [0 :: Int ..] definitions
