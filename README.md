@@ -34,6 +34,12 @@ MALLP resource discipline:
 
 The reference language is [PureLang in CakeML/PureCake](https://github.com/CakeML/pure). Its lazy semantics and compilation pipeline are the specification to preserve, not optional features to approximate.
 
+The reference pipeline is staged: PureLang source and interaction semantics lower through ThunkLang, then EnvLang, then StateLang, and finally CakeML. PureLang-to-ThunkLang makes delay/force explicit; ThunkLang-to-EnvLang introduces environment-based execution; EnvLang-to-StateLang makes mutable thunk allocation, forcing and update explicit. The PureCake proof development establishes preservation across those passes (including the PureLang-to-CakeML theorem chain). This project must mirror those semantic boundaries instead of treating them as a collection of syntax cases.
+
+Reference source: [PureLang semantics](https://github.com/CakeML/pure/blob/master/compiler/backend/languages/semantics/pureLangScript.sml), [ThunkLang semantics](https://github.com/CakeML/pure/blob/master/compiler/backend/languages/semantics/thunkLangScript.sml), [PureLang-to-ThunkLang](https://github.com/CakeML/pure/blob/master/compiler/backend/passes/pure_to_thunkScript.sml), [ThunkLang-to-EnvLang](https://github.com/CakeML/pure/blob/master/compiler/backend/passes/thunk_to_envScript.sml), [EnvLang-to-StateLang](https://github.com/CakeML/pure/blob/master/compiler/backend/passes/env_to_stateScript.sml), and [PureCake correctness proofs](https://github.com/CakeML/pure/blob/master/compiler/backend/passes/proofs/pure_to_cakeProofScript.sml).
+
+A stateless delayed expression and a stateful memoized thunk are different semantics: repeated forcing of a pure delayed expression may re-run it, while the stateful translation updates and reuses a stored result. The MALLP target must prove ownership of the state token whenever it represents this sharing. A closed-expression substitution is not a substitute for a memoized thunk.
+
 - **Functions and closures:** a closure owns its captured environment. Application consumes the function/argument resources according to the MALLP judgement.
 - **Local bindings:** unused closed pure bindings can be skipped; closed pure bindings can be inlined at multiple uses. Bindings that capture resources need a usage proof.
 - **Data and pattern matching:** constructors own their fields; elimination consumes the scrutinee; case alternatives must satisfy the additive branch contract.
