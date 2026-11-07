@@ -1646,5 +1646,110 @@ module StrictNatCompiler where
     resultCells (stackContractOf e) ≡ suc zero
   compiledNat-result e = refl
 
+------------------------------------------------------------------------
+-- Pure Boolean values as additive MALLP proofs
+--
+-- Bool = 1 ⊕ 1.  True and False are the two additive introductions; their
+-- proofs consume no linear assumptions.  The target uses Forth's canonical
+-- TRUE/FALSE values and preserves any caller-owned residual stack.
+------------------------------------------------------------------------
+
+module StrictBoolCompiler where
+
+  boolFormula : PolType posPolarity
+  boolFormula = one⁺ ⊕⁺ one⁺
+
+  data BoolProof : Set where
+    boolTrueProof boolFalseProof : BoolProof
+
+  boolProofDerivation : BoolProof → MALLP [] (just boolFormula)
+  boolProofDerivation boolTrueProof = mallp-plus-left mallp-one
+  boolProofDerivation boolFalseProof = mallp-plus-right mallp-one
+
+  interpretBoolProof : BoolProof → Bool
+  interpretBoolProof boolTrueProof = true
+  interpretBoolProof boolFalseProof = false
+
+  data BoolStackType : Set where
+    boolCell : BoolStackType
+
+  data BoolStack : List BoolStackType → Set where
+    emptyBoolStack : BoolStack []
+    pushBooleanValue :
+      {Γ : List BoolStackType} →
+      Bool →
+      BoolStack Γ →
+      BoolStack (boolCell ∷ Γ)
+
+  forgetBoolStack : {Γ : List BoolStackType} → BoolStack Γ → List Bool
+  forgetBoolStack emptyBoolStack = []
+  forgetBoolStack (pushBooleanValue value stack) =
+    value ∷ forgetBoolStack stack
+
+  data BoolForthCode :
+    List BoolStackType → List BoolStackType → Set where
+    pushBoolean :
+      {Γ : List BoolStackType} →
+      Bool →
+      BoolForthCode Γ (boolCell ∷ Γ)
+
+  execBoolCode :
+    {Γ Δ : List BoolStackType} →
+    BoolForthCode Γ Δ →
+    BoolStack Γ →
+    BoolStack Δ
+  execBoolCode (pushBoolean value) stack =
+    pushBooleanValue value stack
+
+  data BoolForthToken : Set where
+    pushTrueToken pushFalseToken : BoolForthToken
+
+  renderBoolCode :
+    {Γ Δ : List BoolStackType} →
+    BoolForthCode Γ Δ →
+    List BoolForthToken
+  renderBoolCode (pushBoolean true) = pushTrueToken ∷ []
+  renderBoolCode (pushBoolean false) = pushFalseToken ∷ []
+
+  execBoolToken :
+    BoolForthToken →
+    List Bool →
+    List Bool
+  execBoolToken pushTrueToken stack = true ∷ stack
+  execBoolToken pushFalseToken stack = false ∷ stack
+
+  execBoolTokens :
+    List BoolForthToken →
+    List Bool →
+    List Bool
+  execBoolTokens [] stack = stack
+  execBoolTokens (token ∷ tokens) stack =
+    execBoolTokens tokens (execBoolToken token stack)
+
+  renderBoolCode-sound :
+    {Γ Δ : List BoolStackType} →
+    (code : BoolForthCode Γ Δ) →
+    (stack : BoolStack Γ) →
+    execBoolTokens (renderBoolCode code) (forgetBoolStack stack) ≡
+    forgetBoolStack (execBoolCode code stack)
+  renderBoolCode-sound (pushBoolean true) stack = refl
+  renderBoolCode-sound (pushBoolean false) stack = refl
+
+  compileBoolProof :
+    BoolProof →
+    BoolForthCode [] (boolCell ∷ [])
+  compileBoolProof boolTrueProof = pushBoolean true
+  compileBoolProof boolFalseProof = pushBoolean false
+
+  boolMALLP-forth-sound :
+    (proof : BoolProof) →
+    execBoolTokens
+      (renderBoolCode (compileBoolProof proof))
+      [] ≡ just (interpretBoolProof proof ∷ [])
+  boolMALLP-forth-sound boolTrueProof = refl
+  boolMALLP-forth-sound boolFalseProof = refl
+
+open StrictBoolCompiler public
+
 open StrictNatCompiler public
 
