@@ -2502,10 +2502,14 @@ module StrictBoolCompiler where
       (renderBoolCode (compileBoolRuntimeCase proof))
       (scrutinee ∷ []) ≡
     just (interpretBoolCaseProof proof scrutinee ∷ [])
-  boolCaseRuntimeMALLP-forth-sound true (boolCaseProof whenTrue whenFalse) =
-    boolMALLP-forth-sound whenTrue
-  boolCaseRuntimeMALLP-forth-sound false (boolCaseProof whenTrue whenFalse) =
-    boolMALLP-forth-sound whenFalse
+  boolCaseRuntimeMALLP-forth-sound true (boolCaseProof whenTrue whenFalse)
+    rewrite bindBoolTokens-identity
+      (execBoolTokens (renderBoolCode (compileBoolProof whenTrue)) []) =
+        boolMALLP-forth-sound whenTrue
+  boolCaseRuntimeMALLP-forth-sound false (boolCaseProof whenTrue whenFalse)
+    rewrite bindBoolTokens-identity
+      (execBoolTokens (renderBoolCode (compileBoolProof whenFalse)) []) =
+        boolMALLP-forth-sound whenFalse
 
   -- The additive left rule consumes the condition while both branches
   -- consume the same residual Bool assumption. This is the MALLP judgment
