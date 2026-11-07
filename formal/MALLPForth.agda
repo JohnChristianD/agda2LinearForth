@@ -24,6 +24,7 @@ open import Agda.Builtin.Equality public
 open import Agda.Builtin.String public
 open import Agda.Builtin.Equality.Rewrite public
 open import Agda.Builtin.Word using (Word64; primWord64ToNat; primWord64FromNat) public
+open import Agda.Builtin.Word.Properties using (primWord64ToNatInjective) public
 -- Agda 2.8.0.2 has no Agda.Builtin.Tuple module; the product record _×_ below
 -- is the explicit project-owned pair, while Sigma supplies dependent pairs.
 open import Agda.Builtin.Unit public
@@ -33,11 +34,30 @@ import Agda.Builtin.Reflection as Reflection
 -- Agda 2.8 has no Agda.Builtin.Empty module; define the empty type locally.
 data ⊥ : Set where
 
+-- Word64 equality is reflected exactly by its unsigned Nat interpretation.
+record Equivalence (A B : Set) : Set where
+  constructor equivalence
+  field
+    toForward : A → B
+    toBackward : B → A
+open Equivalence public
+
+word64EqualityByNat :
+  {left right : Word64} →
+  Equivalence
+    (left ≡ right)
+    (primWord64ToNat left ≡ primWord64ToNat right)
+word64EqualityByNat =
+  equivalence
+    (cong primWord64ToNat)
+    (primWord64ToNatInjective _ _)
+
 -- Proof-carrying Forth instruction vocabulary and canonical renderer.
 -- Kept here so generated compiler witnesses and MALLP derivations share
 -- one source-level interface.
 data ForthTextToken : Set where
   textPushLiteral : Nat → ForthTextToken
+  textPushWord64 : Nat → Nat → ForthTextToken
   textAddWord textMonusWord textMultiplyWord textSwapWord : ForthTextToken
   textRollWord : Nat → ForthTextToken
   textTrueWord textFalseWord : ForthTextToken
@@ -48,6 +68,11 @@ mutual
   renderForthTokenText (textPushLiteral value) =
     primStringAppend "s\" "
       (primStringAppend (primShowNat value) "\" MALLP-PARSE-NAT ")
+  renderForthTokenText (textPushWord64 high low) =
+    primStringAppend "s\\" "
+      (primStringAppend (primShowNat high)
+        (primStringAppend "\\" MALLP-PARSE-NAT s\\" "
+          (primStringAppend (primShowNat low) "\\" MALLP-PARSE-NAT ")))
   renderForthTokenText textAddWord = "MALLP-NAT-ADD "
   renderForthTokenText textMonusWord = "MALLP-NAT-MONUS "
   renderForthTokenText textMultiplyWord = "MALLP-NAT-MUL "
@@ -1045,13 +1070,14 @@ open Foundations.LaurentPolarizedMALLP public
 ------------------------------------------------------------------------
 
 data LinearSourceType : Set where
-  linearNatType linearIntType linearBoolType linearUnitType : LinearSourceType
+  linearNatType linearIntType linearWord64Type linearBoolType linearUnitType : LinearSourceType
   linearTensorType linearSumType linearArrowType :
     LinearSourceType → LinearSourceType → LinearSourceType
 
 linearSourceFormula : LinearSourceType → PolType posPolarity
 linearSourceFormula linearNatType = atom⁺ zero
 linearSourceFormula linearIntType = atom⁺ (suc zero)
+linearSourceFormula linearWord64Type = atom⁺ (suc (suc zero))
 linearSourceFormula linearBoolType = one⁺ ⊕⁺ one⁺
 linearSourceFormula linearUnitType = one⁺
 linearSourceFormula (linearTensorType A B) =
@@ -1262,6 +1288,19 @@ linearTensorSwapMALLP :
     (just (linearSourceFormula (linearTensorType B A)))
 linearTensorSwapMALLP = deriveMALLP linearTensorSwap
 
+-- Word64 is one source-level resource, even though its current target
+-- representation is two 32-bit limbs.
+linearWord64Identity :
+  LinearTerm (linearWord64Type ∷ []) linearWord64Type
+linearWord64Identity = linearVariable
+
+linearWord64IdentityMALLP :
+  MALLP
+    (linearSourceContext (linearWord64Type ∷ []))
+    (just (linearSourceFormula linearWord64Type))
+linearWord64IdentityMALLP = deriveMALLP linearWord64Identity
+
+
 -- A finite Maybe-like ADT is the additive sum 1 ⊕ A. Both branches
 -- consume the same residual context; the absent branch consumes its Unit
 -- payload and the present branch consumes its A payload.
@@ -1386,7 +1425,7 @@ reflectedPairArityWitness :
   reflectedIndexCount reflectedPairShape ≡ zero ×
   reflectedConstructorArities
     (reflectedConstructors reflectedPairShape) ≡ (suc (suc zero) ∷ [])
-reflectedPairArityWitness = refl
+reflectedPairArityWitness = pair refl (pair refl refl)
 
 data ReflectionBox (A : Set) : Set where
   reflectionBox : A → ReflectionBox A
@@ -1399,7 +1438,7 @@ reflectedBoxArityWitness :
   reflectedIndexCount reflectedBoxShape ≡ zero ×
   reflectedConstructorArities
     (reflectedConstructors reflectedBoxShape) ≡ (suc zero ∷ [])
-reflectedBoxArityWitness = refl
+reflectedBoxArityWitness = pair refl (pair refl refl)
 
 {-# REWRITE
   μ-step-true
@@ -2947,6 +2986,14 @@ open StrictUnitCompiler public
 
 module StrictStatefulProtocol where
 
+  strictForceObservation :
+    {value : Nat} →
+    (continuation : Nat → Nat) →
+    primForce value continuation ≡ continuation value
+  strictForceObservation continuation =
+    primForceLemma _ continuation
+
+
   thunkStoreFormula : PolType posPolarity
   thunkStoreFormula = atom⁺ 18
 
@@ -2963,7 +3010,7 @@ module StrictStatefulProtocol where
     PolType posPolarity →
     PolType posPolarity
   linearClosureFormula domain codomain =
-    down⁺ (up⁻ codomain ⅋⁻ dualPos domain)
+    down⁺ (dualPos domain ⅋⁻ up⁻ codomain)
 
   -- Computation signatures are layered over MALLP.  The only extra axioms
   -- below are declared operations with explicit resource/stack contracts.
@@ -3196,7 +3243,10 @@ module StrictLinearDataCompiler where
     MALLP (dualPos A ∷ Γ) (just B) →
     MALLP Γ (just (linearClosureFormula A B))
   linearClosureIntro body =
-    mallp-down (mallp-par (mallp-up body))
+    mallp-down
+      (mallp-par
+        (mallp-exchange permutation-swap
+          (mallp-up body)))
 
   linearClosureApplicationSignature :
     {A B : PolType posPolarity} →
