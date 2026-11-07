@@ -146,6 +146,7 @@ jobs:
           grep -Fq ': answerFalse FALSE ;' MALLPStrict.fth
           grep -Fq ': answerMatchedTrue FALSE ;' MALLPStrict.fth
           grep -Fq ': answerMatchedFalse TRUE ;' MALLPStrict.fth
+          grep -Fq ': invertBool IF FALSE ELSE TRUE THEN ;' MALLPStrict.fth
           grep -Fq ': answerUnit ;' MALLPStrict.fth
           grep -Eq '^: answerIdentity[[:space:]]*;' MALLPStrict.fth
           grep -Fq 'answerAddFive' MALLPStrict.fth
