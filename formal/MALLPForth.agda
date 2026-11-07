@@ -2534,10 +2534,10 @@ module StrictBoolCompiler where
     just (value ∷ [])
   boolCaseWithResidualMALLP-forth-sound true value
     rewrite bindBoolTokens-identity
-      (execBoolTokens (renderBoolCode boolIdentity) (value ∷ [])) = refl
+      (execBoolTokens [] (value ∷ [])) = refl
   boolCaseWithResidualMALLP-forth-sound false value
     rewrite bindBoolTokens-identity
-      (execBoolTokens (renderBoolCode boolIdentity) (value ∷ [])) = refl
+      (execBoolTokens [] (value ∷ [])) = refl
 
 open StrictBoolCompiler public
 
