@@ -42,6 +42,12 @@ record Equivalence (A B : Set) : Set where
     toBackward : B → A
 open Equivalence public
 
+word64EqualityCong :
+  {A B : Set} {left right : A} →
+  (function : A → B) →
+  left ≡ right → function left ≡ function right
+word64EqualityCong function refl = refl
+
 word64EqualityByNat :
   {left right : Word64} →
   Equivalence
@@ -49,7 +55,7 @@ word64EqualityByNat :
     (primWord64ToNat left ≡ primWord64ToNat right)
 word64EqualityByNat =
   equivalence
-    (cong primWord64ToNat)
+    (word64EqualityCong primWord64ToNat)
     (primWord64ToNatInjective _ _)
 
 -- Proof-carrying Forth instruction vocabulary and canonical renderer.
