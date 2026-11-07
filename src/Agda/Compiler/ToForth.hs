@@ -566,6 +566,10 @@ decodeBoolTerm callStack environment term = do
           selected <- decodeBoolTerm callStack environment condition
           decodeBoolTerm callStack environment
             (if selected then whenTrue else whenFalse)
+    TPrim PSeq
+      | [strictTerm, continuation] <- arguments -> do
+          _ <- decodeBoolTerm callStack environment strictTerm
+          decodeBoolTerm callStack environment continuation
     TDef name -> inlineBoolFunction callStack environment name arguments
     _ -> unsupported ("Treeless term is outside the closed Bool fragment: " ++ show headTerm)
 
@@ -653,6 +657,15 @@ decodeBoolResourceTerm callStack environment term = do
           decodedTrue <- decodeBoolResourceTerm callStack environment whenTrue
           decodedFalse <- decodeBoolResourceTerm callStack environment whenFalse
           pure (BoolConditional decodedCondition decodedTrue decodedFalse)
+    -- Agda's Uncase pass erases a case with identical branches while keeping
+    -- PSeq (scrutinee) body to preserve strict pattern-match evaluation.
+    -- Reconstitute the additive elimination so the scrutinee remains a
+    -- linearly consumed resource and each branch shares the same context.
+    TPrim PSeq
+      | [strictTerm, continuation] <- arguments -> do
+          condition <- decodeBoolResourceTerm callStack environment strictTerm
+          branch <- decodeBoolResourceTerm callStack environment continuation
+          pure (BoolConditional condition branch branch)
     TDef name -> inlineBoolResourceFunction callStack environment name arguments
     _ -> unsupported
       ("Treeless term is outside the linear Bool fragment: " ++ show headTerm)
