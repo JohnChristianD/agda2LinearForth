@@ -66,6 +66,16 @@ The backend and proof modules are pinned to Agda 2.8.0.2. Use the actual modules
 
 Reflection is a compile-time elaboration facility, not a replacement for a typed source IR or a semantics proof. A reflection macro can derive a datatype description and construct a proposed MALLP witness; Agda then type-checks that witness. Runtime values, resource ownership, thunk updates, and Forth execution still require explicit syntax, interpretation, and simulation theorems. The current Haskell backend already reads resolved Agda definitions, telescopes, and Treeless terms; reflection should be introduced where a generated Agda declaration removes duplicated metadata or proof boilerplate, not merely to move a whitelist into a macro.
 
+## Relational denotation of bare MALLP
+
+The Agda module `MALLPRelationalDenotation` is now a proof-recursive, Set-valued relational interpretation parameterized by atomic meanings. It assigns positive and negative values compositionally: multiplicatives are paired resources, additives are tagged alternatives, `1`/`⊥` are interpreted by the unit object, `0`/`⊤` by the empty type, and polarity shifts exchange the positive and negative value interpretations.
+
+`MALLPRelation` interprets every constructor of the existing `MALLP` datatype. Axiom uses the duality conversion; cut carries an explicit intermediate value witness; exchange reindexes an environment by the inverse context permutation; tensor splits its environment; plus introduces a tagged result; par unpacks a pair; with selects an alternative; bottom and top use their unit/empty denotations; down and up transport the value across the polarity shift. This gives a compositional relational meaning to arbitrary *bare MALLP derivations*, rather than relying on I/B/C combinators as a substitute for the logic.
+
+This is a concrete relational semantics for the proof system, **not yet the full Hamano–Scott categorical model**. That model requires an explicit ambient *-autonomous category with products, reflective/coreflective full subcategories, and the adjunction data connecting the two polarities. The Agda development does not yet define those categories, functors, units/counits, naturality/coherence laws, or the completeness results from Hamano–Scott. Do not call the current relational interpretation a completed Hamano–Scott model.
+
+The BCI witnesses remain useful examples of linear terms and explicit exchange. Their application contract still resides in `MALLPProtocolTheory` under `primitive-linear-apply`; those witnesses are not derivations of application from bare MALLP. The new relational interpretation supplies semantics for the actual MALLP proof rules, but does not silently discharge that separate application contract or connect it to Haskell closure code generation.
+
 ## Current implementation
 
 The checked end-to-end fragment remains intentionally small:
