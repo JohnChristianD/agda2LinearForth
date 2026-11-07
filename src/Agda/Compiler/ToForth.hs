@@ -37,6 +37,23 @@ data NatOp
   | NatMultiply
   deriving (Eq, Show)
 
+data FormalToken
+  = FormalPushLiteral Natural
+  | FormalAddWord
+  | FormalMonusWord
+  | FormalMultiplyWord
+  | FormalSwapWord
+  | FormalRollWord Natural
+  | FormalTrueWord
+  | FormalFalseWord
+  deriving (Eq, Show)
+
+data CompiledDefinition = CompiledDefinition
+  { compiledName :: QName
+  , compiledForm :: FthForm
+  , compiledTokens :: [FormalToken]
+  }
+
 data NatExpr
   = NatLiteral Natural
   | NatBinary NatOp NatExpr NatExpr
@@ -165,26 +182,40 @@ inlineNatResourceFunction callStack environment name arguments
 -- Compile a resource tree against current live input order. The active depth
 -- counts already-built sibling results above those inputs. ROLL moves one
 -- selected resource to the top without copying or discarding it.
+formalNatToken :: NatOp -> FormalToken
+formalNatToken NatAdd = FormalAddWord
+formalNatToken NatMonus = FormalMonusWord
+formalNatToken NatMultiply = FormalMultiplyWord
+
 compileNatResourceExpr
   :: Int
   -> [Int]
   -> NatResourceExpr
-  -> Either String (FthForm, [Int])
+  -> Either String (FthForm, [FormalToken], [Int])
 compileNatResourceExpr _ context (NatResourceLiteral value) =
-  Right (renderNatExpr (NatLiteral value), context)
+  Right (renderNatExpr (NatLiteral value), [FormalPushLiteral value], context)
 compileNatResourceExpr active context (NatResourceVariable index) =
   case elemIndex index context of
     Nothing -> Left ("MALLP resource is missing, duplicated, or out of scope: " ++ show index)
     Just position ->
       let depth = active + position
           remaining = take position context ++ drop (position + 1) context
-      in Right (RSList [RSAtom (T.pack (show depth)), RSAtom "ROLL"], remaining)
+      in Right
+          ( RSList [RSAtom (T.pack (show depth)), RSAtom "ROLL"]
+          , [FormalRollWord (fromIntegral depth)]
+          , remaining
+          )
 compileNatResourceExpr active context (NatResourceBinary operation left right) = do
-  (leftCode, afterLeft) <- compileNatResourceExpr active context left
-  (rightCode, afterRight) <- compileNatResourceExpr (active + 1) afterLeft right
-  pure (RSList [leftCode, rightCode, renderNatOp operation], afterRight)
+  (leftCode, leftTokens, afterLeft) <- compileNatResourceExpr active context left
+  (rightCode, rightTokens, afterRight) <-
+    compileNatResourceExpr (active + 1) afterLeft right
+  pure
+    ( RSList [leftCode, rightCode, renderNatOp operation]
+    , leftTokens ++ rightTokens ++ [formalNatToken operation]
+    , afterRight
+    )
 
-compileNatResourceFunction :: QName -> Int -> TTerm -> TCM FthForm
+compileNatResourceFunction :: QName -> Int -> TTerm -> TCM (FthForm, [FormalToken])
 compileNatResourceFunction owner arity term = do
   let (actualArity, body) = tLamView term
   if actualArity /= arity
@@ -198,10 +229,10 @@ compileNatResourceFunction owner arity term = do
   if actualResources /= expectedResources
     then unsupported "MALLP linearity violation: each live Nat argument must occur exactly once"
     else pure ()
-  (code, remaining) <- either unsupported pure
+  (code, tokens, remaining) <- either unsupported pure
     (compileNatResourceExpr 0 expectedResources expression)
   if null remaining
-    then pure code
+    then pure (code, tokens)
     else unsupported ("MALLP resource leak: unconsumed arguments " ++ show remaining)
 
 decodeNatPrimitive :: TPrim -> [NatExpr] -> Either String NatExpr
@@ -465,7 +496,7 @@ decodeUnitTerm term = do
     _ -> unsupported ("Treeless term is outside the closed Unit fragment: " ++ show headTerm)
 
 
-compileDefinition :: Definition -> TCM (Maybe FthForm)
+compileDefinition :: Definition -> TCM (Maybe CompiledDefinition)
 compileDefinition definition
   | defNoCompilation definition || not (usableModality (getModality definition)) =
       pure Nothing
@@ -479,8 +510,9 @@ compileDefinition definition
           body <- toTreeless EagerEvaluation (defName definition)
           case (natArity, body) of
             (Just arity, Just term) -> do
-              code <- compileNatResourceFunction (defName definition) arity term
-              pure (Just (strictWord (defName definition) code))
+              (code, tokens) <- compileNatResourceFunction (defName definition) arity term
+              pure (Just (CompiledDefinition
+                (defName definition) (strictWord (defName definition) code) tokens))
             (Just _, Nothing) -> pure Nothing
             (Nothing, _) -> unsupported "Nat definition has a non-Nat argument or result"
         else if isBool then do
@@ -489,15 +521,20 @@ compileDefinition definition
             Nothing -> pure Nothing
             Just term -> do
               value <- decodeBoolTerm term
-              let forthBoolean = if value then "TRUE" else "FALSE"
-              pure (Just (strictWord (defName definition) (RSAtom forthBoolean)))
+              let (forthBoolean, formalBoolean) =
+                    if value then ("TRUE", FormalTrueWord) else ("FALSE", FormalFalseWord)
+              pure (Just (CompiledDefinition
+                (defName definition)
+                (strictWord (defName definition) (RSAtom forthBoolean))
+                [formalBoolean]))
         else if isUnit then do
           body <- toTreeless EagerEvaluation (defName definition)
           case body of
             Nothing -> pure Nothing
             Just term -> do
               decodeUnitTerm term
-              pure (Just (strictWord (defName definition) (RSList [])))
+              pure (Just (CompiledDefinition
+                (defName definition) (strictWord (defName definition) (RSList [])) []))
         else pure Nothing
       _ -> pure Nothing
 
@@ -523,18 +560,76 @@ renderForm = encodeOne printer . fromRich
     printer :: SExprPrinter Text (SExpr Text)
     printer = basicPrint id
 
-emitForthModule :: () -> () -> IsMain -> TopLevelModuleName -> [Maybe FthForm] -> TCM ()
-emitForthModule _ _ _ moduleName definitions = do
+agdaStringLiteral :: Text -> Text
+agdaStringLiteral value = T.pack (show (T.unpack value))
+
+formalTokenTerm :: FormalToken -> Text
+formalTokenTerm (FormalPushLiteral value) =
+  "pushLiteral " <> T.pack (show value)
+formalTokenTerm FormalAddWord = "addWord"
+formalTokenTerm FormalMonusWord = "monusWord"
+formalTokenTerm FormalMultiplyWord = "multiplyWord"
+formalTokenTerm FormalSwapWord = "swapWord"
+formalTokenTerm (FormalRollWord depth) =
+  "rollWord " <> T.pack (show depth)
+formalTokenTerm FormalTrueWord = "trueWord"
+formalTokenTerm FormalFalseWord = "falseWord"
+
+formalTokenList :: [FormalToken] -> Text
+formalTokenList [] = "[]"
+formalTokenList tokens =
+  T.intercalate " ∷ " (map formalTokenTerm tokens) <> " ∷ []"
+
+rendererCertificate :: [CompiledDefinition] -> Text
+rendererCertificate definitions = T.unlines $
+  [ "module MALLPEmittedRenderer where"
+  , ""
+  , "open import Agda.Builtin.String using (String)"
+  , "open import Agda.Builtin.List using (List; []; _∷_)"
+  , "open import Agda.Builtin.Equality using (_≡_; refl)"
+  , "open import MALLPForth using"
+  , "  (ForthToken; pushLiteral; addWord; monusWord; multiplyWord;"
+  , "   swapWord; rollWord; trueWord; falseWord; renderForthWordText)"
+  , ""
+  ] ++ concat
+    [ let index = T.pack (show position)
+          actualName = "actualWord" <> index
+          formalName = "formalWord" <> index
+          proofName = "wordRendererCorrect" <> index
+          actualText = renderForm (compiledForm definition)
+          expectedName = safeForthName (compiledName definition)
+      in [ actualName <> " : String"
+         , actualName <> " = " <> agdaStringLiteral actualText
+         , ""
+         , formalName <> " : String"
+         , formalName <> " = renderForthWordText "
+             <> agdaStringLiteral expectedName <> " ("
+             <> formalTokenList (compiledTokens definition) <> ")"
+         , ""
+         , proofName <> " : " <> actualName <> " ≡ " <> formalName
+         , proofName <> " = refl"
+         , ""
+         ]
+    | (position, definition) <- zip [0 :: Int ..] definitions
+    ]
+
+emitForthModule :: () -> () -> IsMain -> TopLevelModuleName -> [Maybe CompiledDefinition] -> TCM ()
+emitForthModule _ _ _ moduleName maybeDefinitions = do
   runtime <- IO.liftIO readStrictRuntime
-  let body = T.intercalate "\n\n" (map renderForm (catMaybes definitions))
+  let definitions = catMaybes maybeDefinitions
+      body = T.intercalate "\n\n"
+        (map (renderForm . compiledForm) definitions)
       output = T.pack runtime <> "\n" <> body <> "\n"
-      filename = prettyShow (NE.last (moduleNameParts moduleName)) ++ ".fth"
-  IO.liftIO $ TIO.writeFile filename output
+      baseName = prettyShow (NE.last (moduleNameParts moduleName))
+      filename = baseName ++ ".fth"
+  IO.liftIO $ do
+    TIO.writeFile filename output
+    TIO.writeFile "MALLPEmittedRenderer.agda" (rendererCertificate definitions)
 
 backend :: Backend
 backend = Backend backend'
 
-backend' :: Backend' () () () () (Maybe FthForm)
+backend' :: Backend' () () () () (Maybe CompiledDefinition)
 backend' = Backend'
   { backendName = "agda2forth"
   , options = ()
