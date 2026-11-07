@@ -1348,7 +1348,8 @@ module StrictNatCompiler where
   rollList-correct (stackAtThere proof) (pushCell head rest)
     with rollStack proof rest
   ... | pushCell selected remaining
-    rewrite rollList-correct proof rest = refl
+    with rollList-correct proof rest
+  ... | refl = refl
 
   execToken : ForthToken → List Nat → Maybe (List Nat)
   execToken (pushLiteral n) stack = just (n ∷ stack)
