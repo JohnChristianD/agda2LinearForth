@@ -28,6 +28,16 @@ answerTrue = true
 answerFalse : Bool
 answerFalse = false
 
+invertBool : Bool → Bool
+invertBool true = false
+invertBool false = true
+
+answerMatchedTrue : Bool
+answerMatchedTrue = invertBool true
+
+answerMatchedFalse : Bool
+answerMatchedFalse = invertBool false
+
 open import Agda.Builtin.Unit using (⊤; tt)
 
 answerUnit : ⊤
