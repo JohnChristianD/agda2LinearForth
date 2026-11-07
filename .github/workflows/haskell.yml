@@ -134,6 +134,8 @@ jobs:
           grep -Fq 'answerThree' MALLPStrict.fth
           grep -Fq 'answerThreeLet' MALLPStrict.fth
           grep -Fq 'answerFour' MALLPStrict.fth
+          grep -Fq 'answerCallThree' MALLPStrict.fth
+          grep -Fq 'answerCallNested' MALLPStrict.fth
           grep -Fq 'ROLL' MALLPStrict.fth
           grep -Fq 'SWAP' MALLPStrict.fth
           if grep -Eq '^: answerInt ' MALLPStrict.fth; then
