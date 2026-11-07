@@ -1235,11 +1235,11 @@ rendererCertificate definitions = T.unlines $
          , "  just"
          , "    (interpretMALLPNatProof (natLinearProof " <> expressionName <> ")"
          , "      (natEnvironmentCons argument (natEnvironmentNil)) ∷ forgetStack stack)"
-         , executionName <> " argument stack ="
+         , executionName <> " argument {Γ} stack ="
          , "  trans"
          , "    (cong (λ tokens → execTokens tokens (forgetStack (pushCell argument stack)))"
          , "      " <> tokenProofName <> ")"
-         , "    (natLinearMALLP-forth-sound " <> expressionName <> " argument stack)"
+         , "    (natLinearMALLP-forth-sound {Γ = Γ} " <> expressionName <> " argument stack)"
          , ""
          ]
       | (index, definition, expression) <-
