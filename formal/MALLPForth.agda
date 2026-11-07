@@ -1077,6 +1077,21 @@ linearSourceContext-append (A ∷ Γ) Δ =
   cong (λ context → dualPos (linearSourceFormula A) ∷ context)
     (linearSourceContext-append Γ Δ)
 
+appendLinearContext-right-unit :
+  (Γ : List LinearSourceType) →
+  appendLinearContext Γ [] ≡ Γ
+appendLinearContext-right-unit [] = refl
+appendLinearContext-right-unit (A ∷ Γ) =
+  cong (A ∷_) (appendLinearContext-right-unit Γ)
+
+linearSourceContext-right-unit :
+  (Γ : List LinearSourceType) →
+  linearSourceContext Γ ≡ (linearSourceContext Γ ++ᴸ [])
+linearSourceContext-right-unit Γ =
+  trans
+    (sym (cong linearSourceContext (appendLinearContext-right-unit Γ)))
+    (linearSourceContext-append Γ [])
+
 linearContextPermutation :
   {Γ Δ : List LinearSourceType} →
   ContextPermutation Γ Δ →
@@ -1196,7 +1211,7 @@ deriveMALLP
       (just (linearSourceFormula
         (linearTensorType Environment
           (linearArrowType (linearTensorType Environment Argument) Result)))))
-    (sym (linearSourceContext-append Γ []))
+    (sym (linearSourceContext-right-unit Γ))
     (mallp-tensor
       {Γ = linearSourceContext Γ}
       {Δ = []}
