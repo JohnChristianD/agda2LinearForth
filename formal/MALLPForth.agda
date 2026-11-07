@@ -2412,8 +2412,10 @@ module StrictBoolCompiler where
     execBoolTokens
       (renderBoolCode (compileBoolCaseProof scrutinee proof))
       [] ≡ just (interpretBoolCaseProof proof scrutinee ∷ [])
-  boolCaseMALLP-forth-sound true (boolCaseProof whenTrue whenFalse) = refl
-  boolCaseMALLP-forth-sound false (boolCaseProof whenTrue whenFalse) = refl
+  boolCaseMALLP-forth-sound true (boolCaseProof whenTrue whenFalse) =
+    boolMALLP-forth-sound whenTrue
+  boolCaseMALLP-forth-sound false (boolCaseProof whenTrue whenFalse) =
+    boolMALLP-forth-sound whenFalse
 
 open StrictBoolCompiler public
 
