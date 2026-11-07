@@ -44,6 +44,15 @@ open _×_ public
 cong : {A B : Set} {x y : A} (f : A → B) → x ≡ y → f x ≡ f y
 cong f refl = refl
 
+subst :
+  {A : Set} →
+  (P : A → Set) →
+  {x y : A} →
+  x ≡ y →
+  P x →
+  P y
+subst P refl value = value
+
 cong₂ : {A B C : Set} (f : A → B → C) {a a′ : A} {b b′ : B} →
         a ≡ a′ → b ≡ b′ → f a b ≡ f a′ b′
 cong₂ f refl refl = refl
@@ -1585,9 +1594,11 @@ module StrictNatCompiler where
     ContextPermutation
       (natContext (n + suc zero))
       (natContext (n + suc zero))
-  natRotateHeadToLastPermutationPlus n
-    with natContextPlusOne n
-  ... | refl = natRotateHeadToLastPermutation n
+  natRotateHeadToLastPermutationPlus n =
+    subst
+      (λ context → ContextPermutation context context)
+      (sym (natContextPlusOne n))
+      (natRotateHeadToLastPermutation n)
 
   natContext-append :
     (n m : Nat) →
