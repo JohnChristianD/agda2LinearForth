@@ -3370,7 +3370,7 @@ module StrictLinearDataCompiler where
                 (application-source linearVariable)
                 (linearApplication
                   (application-source linearVariable)
-                  (application-source linearVariable))))))))
+                  (application-source linearVariable)))))))
 
   bciIdentityMALLP :
     {A : LinearSourceType} →
