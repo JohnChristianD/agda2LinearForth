@@ -1403,26 +1403,24 @@ module StrictNatCompiler where
     execTokens (first ++ᴳ second) stack ≡
     maybeBind (execTokens first stack) (λ nextStack → execTokens second nextStack)
   execTokens-append [] second stack = refl
-  execTokens-append (pushLiteral value ∷ first) second stack
-    with execToken (pushLiteral value) stack
-  ... | nothing = refl
-  ... | just nextStack = execTokens-append first second nextStack
-  execTokens-append (addWord ∷ first) second stack
-    with execToken addWord stack
-  ... | nothing = refl
-  ... | just nextStack = execTokens-append first second nextStack
-  execTokens-append (monusWord ∷ first) second stack
-    with execToken monusWord stack
-  ... | nothing = refl
-  ... | just nextStack = execTokens-append first second nextStack
-  execTokens-append (multiplyWord ∷ first) second stack
-    with execToken multiplyWord stack
-  ... | nothing = refl
-  ... | just nextStack = execTokens-append first second nextStack
-  execTokens-append (swapWord ∷ first) second stack
-    with execToken swapWord stack
-  ... | nothing = refl
-  ... | just nextStack = execTokens-append first second nextStack
+  execTokens-append (pushLiteral value ∷ first) second stack =
+    execTokens-append first second (value ∷ stack)
+  execTokens-append (addWord ∷ first) second (right ∷ left ∷ stack) =
+    execTokens-append first second ((left + right) ∷ stack)
+  execTokens-append (addWord ∷ first) second [] = refl
+  execTokens-append (addWord ∷ first) second (value ∷ []) = refl
+  execTokens-append (monusWord ∷ first) second (right ∷ left ∷ stack) =
+    execTokens-append first second (applyNatOp monusOp left right ∷ stack)
+  execTokens-append (monusWord ∷ first) second [] = refl
+  execTokens-append (monusWord ∷ first) second (value ∷ []) = refl
+  execTokens-append (multiplyWord ∷ first) second (right ∷ left ∷ stack) =
+    execTokens-append first second ((left * right) ∷ stack)
+  execTokens-append (multiplyWord ∷ first) second [] = refl
+  execTokens-append (multiplyWord ∷ first) second (value ∷ []) = refl
+  execTokens-append (swapWord ∷ first) second (top ∷ next ∷ stack) =
+    execTokens-append first second (next ∷ top ∷ stack)
+  execTokens-append (swapWord ∷ first) second [] = refl
+  execTokens-append (swapWord ∷ first) second (value ∷ []) = refl
   execTokens-append (rollWord depth ∷ first) second stack
     with rollList depth stack
   ... | nothing = refl
