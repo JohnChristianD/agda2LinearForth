@@ -1536,12 +1536,14 @@ module StrictNatCompiler where
     permutation-trans permutation-swap
       (permutation-cons (natRotateHeadToLastPermutation n))
 
+  natPlusOne : (n : Nat) → n + suc zero ≡ suc n
+  natPlusOne zero = refl
+  natPlusOne (suc n) = cong suc (natPlusOne n)
+
   natContextPlusOne :
     (n : Nat) →
     natContext (n + suc zero) ≡ natAssumption ∷ natContext n
-  natContextPlusOne zero = refl
-  natContextPlusOne (suc n) =
-    cong (natAssumption ∷_) (natContextPlusOne n)
+  natContextPlusOne n rewrite natPlusOne n = refl
 
   natRotateHeadToLastPermutationPlus :
     (n : Nat) →
