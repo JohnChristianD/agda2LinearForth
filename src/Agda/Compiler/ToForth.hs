@@ -46,6 +46,7 @@ data FormalToken
   | FormalRollWord Natural
   | FormalTrueWord
   | FormalFalseWord
+  | FormalIf [FormalToken] [FormalToken]
   deriving (Eq, Show)
 
 data CompiledDefinition = CompiledDefinition
@@ -58,6 +59,28 @@ data NatExpr
   = NatLiteral Natural
   | NatBinary NatOp NatExpr NatExpr
   deriving (Eq, Show)
+
+data BoolExpr
+  = BoolLiteral Bool
+  | BoolVariable Int
+  | BoolConditional BoolExpr BoolExpr BoolExpr
+  deriving (Eq, Show)
+
+-- Each path is one possible additive branch. The same live resource must
+-- occur exactly once along every path; branch alternatives share a context.
+boolExprResourcePaths :: BoolExpr -> [[Int]]
+boolExprResourcePaths (BoolLiteral _) = [[]]
+boolExprResourcePaths (BoolVariable index) = [[index]]
+boolExprResourcePaths (BoolConditional condition whenTrue whenFalse) =
+  [ conditionPath ++ branchPath
+  | conditionPath <- boolExprResourcePaths condition
+  , branchPath <- boolExprResourcePaths whenTrue
+  ]
+  ++
+  [ conditionPath ++ branchPath
+  | conditionPath <- boolExprResourcePaths condition
+  , branchPath <- boolExprResourcePaths whenFalse
+  ]
 
 data NatLinearExpr
   = NatArgument
@@ -218,6 +241,77 @@ compileNatResourceExpr active context (NatResourceBinary operation left right) =
     , leftTokens ++ rightTokens ++ [formalNatToken operation]
     , afterRight
     )
+
+compileBoolResourceExpr
+  :: [Int]
+  -> BoolExpr
+  -> Either String (FthForm, [FormalToken], [Int])
+compileBoolResourceExpr context (BoolLiteral value) =
+  let (forth, token) = if value
+        then ("TRUE", FormalTrueWord)
+        else ("FALSE", FormalFalseWord)
+  in Right (RSAtom forth, [token], context)
+compileBoolResourceExpr context (BoolVariable index) =
+  case elemIndex index context of
+    Nothing -> Left ("MALLP Bool resource is missing, duplicated, or out of scope: " ++ show index)
+    Just position ->
+      let depth = position
+          remaining = take position context ++ drop (position + 1) context
+      in if depth == 0
+           then Right (RSList [], [], remaining)
+           else if depth == 1
+             then Right (RSAtom "SWAP", [FormalSwapWord], remaining)
+             else Right
+               ( RSList [RSAtom (T.pack (show depth)), RSAtom "ROLL"]
+               , [FormalRollWord (fromIntegral depth)]
+               , remaining
+               )
+compileBoolResourceExpr context (BoolConditional condition whenTrue whenFalse) = do
+  (conditionCode, conditionTokens, afterCondition) <-
+    compileBoolResourceExpr context condition
+  (trueCode, trueTokens, afterTrue) <-
+    compileBoolResourceExpr afterCondition whenTrue
+  (falseCode, falseTokens, afterFalse) <-
+    compileBoolResourceExpr afterCondition whenFalse
+  if afterTrue /= afterFalse
+    then Left "MALLP additive case branches consume different resource contexts"
+    else Right
+      ( RSList
+          [ conditionCode
+          , RSAtom "IF"
+          , trueCode
+          , RSAtom "ELSE"
+          , falseCode
+          , RSAtom "THEN"
+          ]
+      , conditionTokens ++ [FormalIf trueTokens falseTokens]
+      , afterTrue
+      )
+
+compileBoolResourceFunction
+  :: QName
+  -> Int
+  -> TTerm
+  -> TCM (FthForm, [FormalToken])
+compileBoolResourceFunction owner arity term = do
+  let (actualArity, body) = tLamView term
+      expectedResources = [0 .. arity - 1]
+  if actualArity /= arity
+    then unsupported ("expected " ++ show arity ++ " Bool Treeless lambdas, received " ++ show actualArity)
+    else pure ()
+  expression <- decodeBoolResourceTerm [owner]
+    [BoolVariable index | index <- expectedResources]
+    body
+  let invalidPaths =
+        filter ((/= expectedResources) . sort) (boolExprResourcePaths expression)
+  if not (null invalidPaths)
+    then unsupported "MALLP linearity violation: every Bool argument must occur exactly once on every additive branch"
+    else pure ()
+  (code, tokens, remaining) <-
+    either unsupported pure (compileBoolResourceExpr expectedResources expression)
+  if null remaining
+    then pure (code, tokens)
+    else unsupported ("MALLP Bool resource leak: unconsumed arguments " ++ show remaining)
 
 compileNatResourceFunction :: QName -> Int -> TTerm -> TCM (FthForm, [FormalToken])
 compileNatResourceFunction owner arity term = do
