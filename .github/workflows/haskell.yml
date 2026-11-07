@@ -118,8 +118,9 @@ jobs:
           grep -Fq 'MALLP-PARSE-NAT' MALLPStrict.fth
           grep -Fq ': answerTrue TRUE ;' MALLPStrict.fth
           grep -Fq ': answerFalse FALSE ;' MALLPStrict.fth
+          grep -Fq ': answerUnit ;' MALLPStrict.fth
           if grep -Eq '^: answerInt ' MALLPStrict.fth; then
-            echo "non-Nat definition escaped the Nat result-type gate"
+            echo "non-admitted Int definition escaped the result-type gate"
             exit 1
           fi
           if grep -Eq '(^|[[:space:]])(:noname|makeTHUNK|dethunk|foldThunks|pass|HERE|ALLOT|CREATE)([[:space:]]|$)' MALLPStrict.fth; then
