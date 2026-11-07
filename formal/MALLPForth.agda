@@ -2287,6 +2287,14 @@ module StrictBoolCompiler where
       Bool →
       BoolForthCode Γ (boolCell ∷ Γ)
 
+    -- A conditional consumes one Boolean condition. Both branches begin
+    -- with the same residual linear stack and return one Boolean result.
+    boolIfCode :
+      {Γ : List BoolStackType} →
+      BoolForthCode Γ (boolCell ∷ Γ) →
+      BoolForthCode Γ (boolCell ∷ Γ) →
+      BoolForthCode (boolCell ∷ Γ) (boolCell ∷ Γ)
+
   execBoolCode :
     {Γ Δ : List BoolStackType} →
     BoolForthCode Γ Δ →
@@ -2294,9 +2302,16 @@ module StrictBoolCompiler where
     BoolStack Δ
   execBoolCode (pushBoolean value) stack =
     pushBooleanValue value stack
+  execBoolCode (boolIfCode whenTrue whenFalse)
+    (pushBooleanValue true stack) =
+      execBoolCode whenTrue stack
+  execBoolCode (boolIfCode whenTrue whenFalse)
+    (pushBooleanValue false stack) =
+      execBoolCode whenFalse stack
 
   data BoolForthToken : Set where
     pushTrueToken pushFalseToken : BoolForthToken
+    boolIfToken : List BoolForthToken → List BoolForthToken → BoolForthToken
 
   renderBoolCode :
     {Γ Δ : List BoolStackType} →
@@ -2304,21 +2319,24 @@ module StrictBoolCompiler where
     List BoolForthToken
   renderBoolCode (pushBoolean true) = pushTrueToken ∷ []
   renderBoolCode (pushBoolean false) = pushFalseToken ∷ []
-
-  execBoolToken :
-    BoolForthToken →
-    List Bool →
-    List Bool
-  execBoolToken pushTrueToken stack = true ∷ stack
-  execBoolToken pushFalseToken stack = false ∷ stack
+  renderBoolCode (boolIfCode whenTrue whenFalse) =
+    boolIfToken (renderBoolCode whenTrue) (renderBoolCode whenFalse) ∷ []
 
   execBoolTokens :
     List BoolForthToken →
     List Bool →
     Maybe (List Bool)
   execBoolTokens [] stack = just stack
-  execBoolTokens (token ∷ tokens) stack =
-    execBoolTokens tokens (execBoolToken token stack)
+  execBoolTokens (pushTrueToken ∷ tokens) stack =
+    execBoolTokens tokens (true ∷ stack)
+  execBoolTokens (pushFalseToken ∷ tokens) stack =
+    execBoolTokens tokens (false ∷ stack)
+  execBoolTokens (boolIfToken whenTrue whenFalse ∷ tokens)
+    (condition ∷ stack)
+      with execBoolTokens (if condition then whenTrue else whenFalse) stack
+  ... | nothing = nothing
+  ... | just branchStack = execBoolTokens tokens branchStack
+  execBoolTokens (boolIfToken whenTrue whenFalse ∷ tokens) [] = nothing
 
   renderBoolCode-sound :
     {Γ Δ : List BoolStackType} →
@@ -2328,6 +2346,12 @@ module StrictBoolCompiler where
     just (forgetBoolStack (execBoolCode code stack))
   renderBoolCode-sound (pushBoolean true) stack = refl
   renderBoolCode-sound (pushBoolean false) stack = refl
+  renderBoolCode-sound (boolIfCode whenTrue whenFalse)
+    (pushBooleanValue true stack) =
+      renderBoolCode-sound whenTrue stack
+  renderBoolCode-sound (boolIfCode whenTrue whenFalse)
+    (pushBooleanValue false stack) =
+      renderBoolCode-sound whenFalse stack
 
   compileBoolProof :
     BoolProof →
@@ -2342,6 +2366,22 @@ module StrictBoolCompiler where
       [] ≡ just (interpretBoolProof proof ∷ [])
   boolMALLP-forth-sound boolTrueProof = refl
   boolMALLP-forth-sound boolFalseProof = refl
+
+  -- Convert the proof-level Boolean program into the independent text-token
+  -- renderer's nested IF representation. The renderer's Agda certificate
+  -- checks the actual text emitted by Haskell against this token algebra.
+  boolForthTokenAsText : BoolForthToken → ForthTextToken
+  boolForthTokenAsText pushTrueToken = textTrueWord
+  boolForthTokenAsText pushFalseToken = textFalseWord
+  boolForthTokenAsText (boolIfToken whenTrue whenFalse) =
+    textIf (mapBoolForthTokensAsText whenTrue)
+      (mapBoolForthTokensAsText whenFalse)
+
+  mapBoolForthTokensAsText :
+    List BoolForthToken → List ForthTextToken
+  mapBoolForthTokensAsText [] = []
+  mapBoolForthTokensAsText (token ∷ tokens) =
+    boolForthTokenAsText token ∷ mapBoolForthTokensAsText tokens
 
   -- A Boolean case split is the additive MALLP elimination rule:
   -- the same residual context is available in each mutually exclusive branch.
