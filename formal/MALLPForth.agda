@@ -1167,7 +1167,7 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
     ContextValues Γ → ContextValues Δ
   permuteContextValues permutation-nil tt = tt
   permuteContextValues (permutation-cons permutation) (pair head tail) =
-    head , permuteContextValues permutation tail
+    pair head (permuteContextValues permutation tail)
   permuteContextValues permutation-swap (pair first (pair second tail)) =
     pair second (pair first tail)
   permuteContextValues (permutation-trans first second) values =
@@ -1189,7 +1189,7 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
       (λ intermediate →
         MALLPRelation producer producerEnvironment intermediate ×
         MALLPRelation consumer
-          pair (dualPositiveValue positive intermediate) consumerEnvironment
+          (pair (dualPositiveValue positive intermediate) consumerEnvironment)
           result)
 
   MALLPRelation (mallp-exchange permutation proof) environment result =
@@ -1215,18 +1215,18 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
   MALLPRelation (mallp-plus-right proof) environment (denRight value) =
     MALLPRelation proof environment value
 
-  MALLPRelation (mallp-par proof) ((pair leftValue rightValue) , rest) result =
-    MALLPRelation proof pair leftValue (pair rightValue rest) result
+  MALLPRelation (mallp-par proof) (pair (pair leftValue rightValue) rest) result =
+    MALLPRelation proof (pair leftValue (pair rightValue rest)) result
 
   MALLPRelation (mallp-with left right) (pair (denLeft value) rest) result =
-    MALLPRelation left (value , rest) result
+    MALLPRelation left (pair value rest) result
   MALLPRelation (mallp-with left right) (pair (denRight value) rest) result =
-    MALLPRelation right (value , rest) result
+    MALLPRelation right (pair value rest) result
 
   MALLPRelation (mallp-bottom proof) (pair tt rest) result =
     MALLPRelation proof rest result
 
-  MALLPRelation mallp-top (() , rest) result
+  MALLPRelation mallp-top (pair () rest) result
 
   MALLPRelation (mallp-down proof) environment result =
     MALLPRelation proof (pair result environment) tt
