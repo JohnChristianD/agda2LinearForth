@@ -20,7 +20,14 @@ open import Agda.Builtin.Maybe using (Maybe; just; nothing)
 open import Agda.Builtin.Sigma using (Σ; _,_)
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import Agda.Builtin.String using (String; primStringAppend; primShowNat)
-open import Agda.Builtin.Equality.Rewrite
+open import Agda.Builtin.Equality.Rewrite public
+open import Agda.Builtin.Word.Word64 public
+open import Agda.Builtin.Tuple public
+open import Agda.Builtin.IO public
+open import Agda.Builtin.Unit public
+open import Agda.Builtin.Strict public
+-- Agda 2.8 has no Agda.Builtin.Empty module; define the empty type locally.
+data ⊥ : Set where
 
 -- Proof-carrying Forth instruction vocabulary and canonical renderer.
 -- Kept here so generated compiler witnesses and MALLP derivations share
@@ -64,8 +71,6 @@ renderForthWordText name tokens =
       (primStringAppend " "
         (primStringAppend (renderForthTokensText tokens) ";")))
 
--- Agda 2.8 has no Agda.Builtin.Empty module; define the empty type locally.
-data ⊥ : Set where
 
 ------------------------------------------------------------------------
 -- Small utilities
