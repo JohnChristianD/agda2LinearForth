@@ -1557,6 +1557,18 @@ module StrictNatCompiler where
   rotateHeadToLastEnvironment (natEnvironmentCons head rest) =
     appendNatEnvironment rest head
 
+  splitNatEnvironment-append :
+    (n : Nat) →
+    (environment : NatEnvironment n) →
+    (value : Nat) →
+    splitNatEnvironment n (suc zero)
+      (appendNatEnvironment environment value) ≡
+    pair environment (natEnvironmentCons value natEnvironmentNil)
+  splitNatEnvironment-append zero natEnvironmentNil value = refl
+  splitNatEnvironment-append (suc n)
+    (natEnvironmentCons head rest) value
+    rewrite splitNatEnvironment-append n rest value = refl
+
   -- Environments are ordered like the target stack, with its top first.
   -- A primitive therefore sees right above left and computes left op right.
   interpretMALLPNatProof :
@@ -1681,6 +1693,8 @@ module StrictNatCompiler where
     with splitNatEnvironment n m environment
   ... | pair leftEnvironment rightEnvironment
     rewrite natResourceProof-adequate left leftEnvironment
+          | splitNatEnvironment-append m rightEnvironment
+              (evalNatResourceExpr left leftEnvironment)
           | natResourceProof-adequate right rightEnvironment = refl
 
   -- A unary source function is linear when its sole argument occurs once.
