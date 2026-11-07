@@ -417,7 +417,7 @@ renderNatBinaryLinearExpr (NatBinaryArguments operation) =
 renderNatBinaryLinearExpr (NatBinaryArgumentsExchanged operation) =
   RSList [RSAtom "SWAP", renderNatOp operation]
 
-decodeBoolTerm :: [QName] -> [QName] -> [Bool] -> TTerm -> TCM Bool
+decodeBoolTerm :: [QName] -> [Bool] -> TTerm -> TCM Bool
 decodeBoolTerm callStack environment term = do
   trueName <- getBuiltinName builtinTrue
   falseName <- getBuiltinName builtinFalse
