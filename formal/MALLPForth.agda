@@ -1130,6 +1130,28 @@ module StrictNatCompiler where
     emptyStack : Stack []
     pushCell : {Γ : List StackType} → Nat → Stack Γ → Stack (natCell ∷ Γ)
 
+  -- A depth witness makes ROLL stack-safe: the selected resource exists.
+  data StackAt : Nat → List StackType → Set where
+    stackAtHere : {Γ : List StackType} → StackAt zero (natCell ∷ Γ)
+    stackAtThere :
+      {depth : Nat} {Γ : List StackType} →
+      StackAt depth Γ →
+      StackAt (suc depth) (natCell ∷ Γ)
+
+  stackAtDepth : {depth : Nat} {Γ : List StackType} →
+    StackAt depth Γ → Nat
+  stackAtDepth stackAtHere = zero
+  stackAtDepth (stackAtThere proof) = suc (stackAtDepth proof)
+
+  rollStack :
+    {depth : Nat} {Γ : List StackType} →
+    StackAt depth Γ → Stack Γ → Stack Γ
+  rollStack stackAtHere stack = stack
+  rollStack (stackAtThere proof) (pushCell head rest)
+    with rollStack proof rest
+  ... | pushCell selected remaining =
+    pushCell selected (pushCell head remaining)
+
   data NatOp : Set where
     addOp monusOp multiplyOp : NatOp
 
@@ -1188,6 +1210,10 @@ module StrictNatCompiler where
     swapNat :
       {Γ : List StackType} →
       ForthCode (natCell ∷ natCell ∷ Γ) (natCell ∷ natCell ∷ Γ)
+    rollNat :
+      {depth : Nat} {Γ : List StackType} →
+      StackAt depth Γ →
+      ForthCode Γ Γ
     binaryWord :
       {Γ : List StackType} →
       NatOp →
@@ -1224,6 +1250,7 @@ module StrictNatCompiler where
   execForthCode (pushNat n) stack = pushCell n stack
   execForthCode swapNat (pushCell top (pushCell next stack)) =
     pushCell next (pushCell top stack)
+  execForthCode (rollNat proof) stack = rollStack proof stack
   execForthCode (binaryWord addOp) (pushCell right (pushCell left stack)) =
     pushCell (left + right) stack
   execForthCode (binaryWord monusOp) (pushCell right (pushCell left stack)) =
@@ -1277,6 +1304,7 @@ module StrictNatCompiler where
   data ForthToken : Set where
     pushLiteral : Nat → ForthToken
     addWord monusWord multiplyWord swapWord : ForthToken
+    rollWord : Nat → ForthToken
 
   _++ᴳ_ : {A : Set} → List A → List A → List A
   [] ++ᴳ ys = ys
@@ -1291,6 +1319,7 @@ module StrictNatCompiler where
   renderForth identityNat = []
   renderForth (pushNat n) = pushLiteral n ∷ []
   renderForth swapNat = swapWord ∷ []
+  renderForth (rollNat proof) = rollWord (stackAtDepth proof) ∷ []
   renderForth (binaryWord op) = renderNatOp op ∷ []
   renderForth (sequence first second) =
     renderForth first ++ᴳ renderForth second
@@ -1299,6 +1328,26 @@ module StrictNatCompiler where
   forgetStack : {Γ : List StackType} → Stack Γ → List Nat
   forgetStack emptyStack = []
   forgetStack (pushCell n stack) = n ∷ forgetStack stack
+
+  rollList : Nat → List Nat → Maybe (List Nat)
+  rollList zero [] = nothing
+  rollList zero (x ∷ xs) = just (x ∷ xs)
+  rollList (suc depth) [] = nothing
+  rollList (suc depth) (x ∷ xs) with rollList depth xs
+  ... | nothing = nothing
+  ... | just [] = nothing
+  ... | just (selected ∷ rest) = just (selected ∷ x ∷ rest)
+
+  rollList-correct :
+    {depth : Nat} {Γ : List StackType} →
+    (proof : StackAt depth Γ) →
+    (stack : Stack Γ) →
+    rollList (stackAtDepth proof) (forgetStack stack) ≡
+    just (forgetStack (rollStack proof stack))
+  rollList-correct stackAtHere (pushCell value stack) = refl
+  rollList-correct (stackAtThere proof) (pushCell head rest)
+    with rollStack proof rest | rollList-correct proof rest
+  ... | pushCell selected remaining | refl = refl
 
   execToken : ForthToken → List Nat → Maybe (List Nat)
   execToken (pushLiteral n) stack = just (n ∷ stack)
@@ -1313,6 +1362,7 @@ module StrictNatCompiler where
 
   execToken swapWord (top ∷ next ∷ stack) = just (next ∷ top ∷ stack)
   execToken swapWord _ = nothing
+  execToken (rollWord depth) stack = rollList depth stack
 
   maybeBind : {A B : Set} → Maybe A → (A → Maybe B) → Maybe B
   maybeBind nothing continuation = nothing
@@ -1341,6 +1391,7 @@ module StrictNatCompiler where
   renderForth-sound identityNat stack = refl
   renderForth-sound (pushNat n) stack = refl
   renderForth-sound swapNat (pushCell top (pushCell next stack)) = refl
+  renderForth-sound (rollNat proof) stack = rollList-correct proof stack
   renderForth-sound (binaryWord addOp) (pushCell right (pushCell left stack)) = refl
   renderForth-sound (binaryWord monusOp) (pushCell right (pushCell left stack)) = refl
   renderForth-sound (binaryWord multiplyOp) (pushCell right (pushCell left stack)) = refl
