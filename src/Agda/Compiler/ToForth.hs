@@ -171,20 +171,23 @@ decodeBoolTerm term = do
       | null args -> decodeBoolTerm inner
     _ -> unsupported ("Treeless term is outside the closed Bool fragment: " ++ show headTerm)
 
-hasResult :: QName -> Definition -> TCM Bool
-hasResult builtin definition = do
-  expectedName <- getBuiltinName builtin
+hasNatResult :: Definition -> TCM Bool
+hasNatResult definition = do
+  natName <- getBuiltinName builtinNat
   TelV _ resultType <- telView (defType definition)
   reducedResultType <- reduce resultType
-  pure $ case (expectedName, I.unEl reducedResultType) of
+  pure $ case (natName, I.unEl reducedResultType) of
     (Just expected, I.Def actual []) -> expected == actual
     _ -> False
 
-hasNatResult :: Definition -> TCM Bool
-hasNatResult = hasResult builtinNat
-
 hasBoolResult :: Definition -> TCM Bool
-hasBoolResult = hasResult builtinBool
+hasBoolResult definition = do
+  boolName <- getBuiltinName builtinBool
+  TelV _ resultType <- telView (defType definition)
+  reducedResultType <- reduce resultType
+  pure $ case (boolName, I.unEl reducedResultType) of
+    (Just expected, I.Def actual []) -> expected == actual
+    _ -> False
 
 compileDefinition :: Definition -> TCM (Maybe FthForm)
 compileDefinition definition
