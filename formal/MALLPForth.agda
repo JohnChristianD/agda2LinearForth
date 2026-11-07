@@ -2375,6 +2375,46 @@ module StrictBoolCompiler where
   boolMALLP-forth-sound boolTrueProof = refl
   boolMALLP-forth-sound boolFalseProof = refl
 
+  -- A Boolean case split is the additive MALLP elimination rule:
+  -- the same residual context is available in each mutually exclusive branch.
+  data BoolCaseProof : Set where
+    boolCaseProof : BoolProof → BoolProof → BoolCaseProof
+
+  selectBoolCaseProof : BoolCaseProof → Bool → BoolProof
+  selectBoolCaseProof (boolCaseProof whenTrue whenFalse) true = whenTrue
+  selectBoolCaseProof (boolCaseProof whenTrue whenFalse) false = whenFalse
+
+  interpretBoolCaseProof : BoolCaseProof → Bool → Bool
+  interpretBoolCaseProof proof scrutinee =
+    interpretBoolProof (selectBoolCaseProof proof scrutinee)
+
+  boolCaseMALLP-derivation :
+    (proof : BoolCaseProof) →
+    MALLP (dualPos boolFormula ∷ []) (just boolFormula)
+  boolCaseMALLP-derivation (boolCaseProof whenTrue whenFalse) =
+    mallp-with
+      (mallp-bottom (boolProofDerivation whenTrue))
+      (mallp-bottom (boolProofDerivation whenFalse))
+
+  -- Closed branch selection is compiled to the corresponding Boolean literal.
+  -- The MALLP derivation above proves the eliminator consumes one Bool resource;
+  -- this theorem connects compile-time branch selection to target execution.
+  compileBoolCaseProof :
+    (scrutinee : Bool) →
+    BoolCaseProof →
+    BoolForthCode [] (boolCell ∷ [])
+  compileBoolCaseProof scrutinee proof =
+    compileBoolProof (selectBoolCaseProof proof scrutinee)
+
+  boolCaseMALLP-forth-sound :
+    (scrutinee : Bool) →
+    (proof : BoolCaseProof) →
+    execBoolTokens
+      (renderBoolCode (compileBoolCaseProof scrutinee proof))
+      [] ≡ just (interpretBoolCaseProof proof scrutinee ∷ [])
+  boolCaseMALLP-forth-sound true (boolCaseProof whenTrue whenFalse) = refl
+  boolCaseMALLP-forth-sound false (boolCaseProof whenTrue whenFalse) = refl
+
 open StrictBoolCompiler public
 
 open StrictNatCompiler public
