@@ -2454,3 +2454,170 @@ module StrictUnitCompiler where
 open StrictUnitCompiler public
 
 
+
+------------------------------------------------------------------------
+-- Linear call-by-need state and explicit effect protocols
+--
+-- These are primitive *signatures over unchanged MALLP*, not additions to
+-- Laurent's logical rules.  A store/effect token is an ordinary linear
+-- resource: every operation consumes one token and returns exactly one.
+------------------------------------------------------------------------
+
+module StrictStatefulProtocol where
+
+  thunkStoreFormula : PolType posPolarity
+  thunkStoreFormula = atom⁺ 18
+
+  effectTokenFormula : PolType posPolarity
+  effectTokenFormula = atom⁺ 19
+
+  -- Computation signatures are layered over MALLP.  The only extra axioms
+  -- below are declared operations with explicit resource/stack contracts.
+  data MALLPProtocolTheory : Context → Stoup → Set where
+    protocol-logical :
+      {Γ : Context} {S : Stoup} →
+      MALLP Γ S →
+      MALLPProtocolTheory Γ S
+
+    protocol-cut :
+      {Γ Δ : Context} {P : PolType posPolarity} {S : Stoup} →
+      MALLPProtocolTheory Γ (just P) →
+      MALLPProtocolTheory (dualPos P ∷ Δ) S →
+      MALLPProtocolTheory (Γ ++ᴸ Δ) S
+
+    protocol-exchange :
+      {Γ Δ : Context} {S : Stoup} →
+      ContextPermutation Γ Δ →
+      MALLPProtocolTheory Γ S →
+      MALLPProtocolTheory Δ S
+
+    -- Forcing consumes the unique store capability and returns the demanded
+    -- Nat together with the updated capability.
+    primitive-thunk-force :
+      MALLPProtocolTheory
+        (dualPos thunkStoreFormula ∷ [])
+        (just (natFormula ⊗⁺ thunkStoreFormula))
+
+    -- Emission consumes exactly one event payload and one effect capability,
+    -- returning the updated capability.  No ambient unrestricted effect is
+    -- available in this signature.
+    primitive-effect-emit :
+      MALLPProtocolTheory
+        (dualPos effectTokenFormula ∷ dualPos natFormula ∷ [])
+        (just effectTokenFormula)
+
+  ----------------------------------------------------------------------
+  -- A total PureLang thunk fragment with explicit call-by-need update.
+  ----------------------------------------------------------------------
+
+  data ThunkExpr : Set where
+    thunkLiteral : Nat → ThunkExpr
+    thunkAdd : ThunkExpr → ThunkExpr → ThunkExpr
+    thunkMonus : ThunkExpr → ThunkExpr → ThunkExpr
+    thunkMultiply : ThunkExpr → ThunkExpr → ThunkExpr
+
+  evalThunkExpr : ThunkExpr → Nat
+  evalThunkExpr (thunkLiteral value) = value
+  evalThunkExpr (thunkAdd left right) =
+    evalThunkExpr left + evalThunkExpr right
+  evalThunkExpr (thunkMonus left right) =
+    applyNatOp monusOp (evalThunkExpr left) (evalThunkExpr right)
+  evalThunkExpr (thunkMultiply left right) =
+    evalThunkExpr left * evalThunkExpr right
+
+  data ThunkState : Set where
+    suspended : ThunkExpr → ThunkState
+    memoized : Nat → ThunkState
+
+  cacheThunkState : ThunkState → ThunkState
+  cacheThunkState (suspended expression) =
+    memoized (evalThunkExpr expression)
+  cacheThunkState (memoized value) = memoized value
+
+  data ThunkStoreToken : ThunkState → Set where
+    ownThunkStore : {state : ThunkState} → ThunkStoreToken state
+
+  -- The transition type consumes the old capability and returns one new
+  -- capability indexed by the post-update heap state.
+  forceThunk :
+    {state : ThunkState} →
+    ThunkStoreToken state →
+    Nat × ThunkStoreToken (cacheThunkState state)
+  forceThunk {suspended expression} ownThunkStore =
+    pair (evalThunkExpr expression) ownThunkStore
+  forceThunk {memoized value} ownThunkStore =
+    pair value ownThunkStore
+
+  forceThunkValue :
+    {state : ThunkState} →
+    ThunkStoreToken state →
+    Nat
+  forceThunkValue token = fst (forceThunk token)
+
+  forceThunkNext :
+    {state : ThunkState} →
+    (token : ThunkStoreToken state) →
+    ThunkStoreToken (cacheThunkState state)
+  forceThunkNext token = snd (forceThunk token)
+
+  cacheThunkState-idempotent :
+    (state : ThunkState) →
+    cacheThunkState (cacheThunkState state) ≡ cacheThunkState state
+  cacheThunkState-idempotent (suspended expression) = refl
+  cacheThunkState-idempotent (memoized value) = refl
+
+  forceThunk-stable :
+    {state : ThunkState} →
+    (token : ThunkStoreToken state) →
+    forceThunkValue (forceThunkNext token) ≡ forceThunkValue token
+  forceThunk-stable {suspended expression} ownThunkStore = refl
+  forceThunk-stable {memoized value} ownThunkStore = refl
+
+  forceThunk-caches :
+    {state : ThunkState} →
+    (token : ThunkStoreToken state) →
+    cacheThunkState state ≡
+    cacheThunkState (cacheThunkState state)
+  forceThunk-caches stateToken =
+    sym (cacheThunkState-idempotent _)
+
+  ----------------------------------------------------------------------
+  -- An explicit linear event protocol.
+  ----------------------------------------------------------------------
+
+  appendEvent : List Nat → Nat → List Nat
+  appendEvent [] event = event ∷ []
+  appendEvent (head ∷ rest) event = head ∷ appendEvent rest event
+
+  data EffectToken : List Nat → Set where
+    ownEffectToken : {trace : List Nat} → EffectToken trace
+
+  emitEffect :
+    {trace : List Nat} →
+    EffectToken trace →
+    Nat →
+    EffectToken (appendEvent trace _)
+  emitEffect ownEffectToken event = ownEffectToken
+
+  emitEffect-trace :
+    {trace : List Nat} →
+    (token : EffectToken trace) →
+    (event : Nat) →
+    appendEvent trace event ≡ appendEvent trace event
+  emitEffect-trace token event = refl
+
+  -- Public witnesses for the computation signatures.
+  thunkForceSignature :
+    MALLPProtocolTheory
+      (dualPos thunkStoreFormula ∷ [])
+      (just (natFormula ⊗⁺ thunkStoreFormula))
+  thunkForceSignature = primitive-thunk-force
+
+  effectEmitSignature :
+    MALLPProtocolTheory
+      (dualPos effectTokenFormula ∷ dualPos natFormula ∷ [])
+      (just effectTokenFormula)
+  effectEmitSignature = primitive-effect-emit
+
+open StrictStatefulProtocol public
+
