@@ -92,8 +92,9 @@ These are implementation tasks, not categorical bans. Each feature graduates to 
 - `formal/MALLPForth.agda` contains the MALLP specification, Nat proof terms, and abstract Forth machine.
 - `formal/SovereignRationalSEDPhysics.agda` remains a separate library and is not a compiler proof dependency.
 - The MALLP proof options and existing postulate boundary are retained; this project does not claim an axiom-free or `--safe` development.
-- The Agda theorem covers the formal ASTs and token interpreter. Haskell decoding/rendering and real Gforth behavior need separate correspondence proofs.
-- CI checks repository provenance, both Agda files, the Haskell backend, the Nat/let fixture, generated-code restrictions, and the Gforth integration fixture.
+- The backend emits a generated `MALLPEmittedRenderer.agda` certificate beside the Forth module. For each emitted colon definition, the certificate records the actual string produced by Haskell `renderForm`, constructs the formal `ForthTextToken` stream, and asks Agda to prove by `refl` that the emitted definition equals `renderForthWordText`. CI type-checks this generated certificate with pinned Agda 2.8.0.2. This establishes exact text equality for emitted definitions in the fixture, including Nat literals, arithmetic tokens, SWAP, ROLL, Bool literals, and Unit words.
+- This renderer certificate is one link in the correspondence chain, not the whole compiler-correctness theorem: the Haskell Treeless decoder's translation into the formal resource AST is still not kernel-checked; the general labelled-resource ROLL compiler still needs a matching Agda derivation/simulation theorem; the upstream `FLib.fth` runtime and concrete Gforth execution still lack a formal refinement theorem. The generated equality theorem certifies actual emitted definition text against the Agda renderer, while Gforth fixtures validate concrete execution on tested examples.
+- CI checks repository provenance, both tracked Agda files, the Haskell backend, the generated Agda renderer certificate, the Nat/let fixture, generated-code restrictions, and the Gforth integration fixture.
 
 ## Wayfinder decisions
 
