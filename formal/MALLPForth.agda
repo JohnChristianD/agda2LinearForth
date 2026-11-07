@@ -1589,6 +1589,13 @@ module StrictNatCompiler where
     natContext (n + suc zero) ≡ natAssumption ∷ natContext n
   natContextPlusOne n rewrite natPlusOne n = refl
 
+  natProofPlusOne :
+    (n : Nat) →
+    MALLPNatProof (n + suc zero) →
+    MALLPNatProof (suc n)
+  natProofPlusOne n proof =
+    subst MALLPNatProof (natPlusOne n) proof
+
   natRotateHeadToLastPermutationPlus :
     (n : Nat) →
     ContextPermutation
@@ -1794,9 +1801,10 @@ module StrictNatCompiler where
     (resourceBinary {n = n} {m = m} operation left right) =
       natCutProof
         (natResourceProof left)
-        (natRotateHeadToLastProof
-          (natCutProof (natResourceProof right)
-            (natPrimitiveProof operation)))
+        (natProofPlusOne m
+          (natRotateHeadToLastProof
+            (natCutProof (natResourceProof right)
+              (natPrimitiveProof operation))))
 
   natResource-proof-derivation :
     {n : Nat} →
