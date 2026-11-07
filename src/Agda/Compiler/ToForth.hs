@@ -17,6 +17,7 @@ import Agda.TypeChecking.Reduce (reduce)
 import Agda.TypeChecking.Substitute (TelV(..))
 import Agda.TypeChecking.Telescope (telView)
 import Data.Char (isAlphaNum, isDigit)
+import Data.List (elemIndex, sort)
 import qualified Data.List.NonEmpty as NE
 import Data.SCargot
 import Data.SCargot.Repr
@@ -58,6 +59,109 @@ data NatBinaryLinearExpr
   = NatBinaryArguments NatOp
   | NatBinaryArgumentsExchanged NatOp
   deriving (Eq, Show)
+
+-- A general arithmetic tree over labelled linear resources. Labels are
+-- Treeless de Bruijn indices; admission requires each top-level argument
+-- label exactly once before any target code is emitted.
+data NatResourceExpr
+  = NatResourceLiteral Natural
+  | NatResourceVariable Int
+  | NatResourceBinary NatOp NatResourceExpr NatResourceExpr
+  deriving (Eq, Show)
+
+natResourceVariables :: NatResourceExpr -> [Int]
+natResourceVariables (NatResourceLiteral _) = []
+natResourceVariables (NatResourceVariable index) = [index]
+natResourceVariables (NatResourceBinary _ left right) =
+  natResourceVariables left ++ natResourceVariables right
+
+decodeNatResourceTerm :: [NatResourceExpr] -> TTerm -> TCM NatResourceExpr
+decodeNatResourceTerm environment term = do
+  let (headTerm, arguments) = tAppView term
+  case headTerm of
+    TLit (LitNat n)
+      | null arguments && n >= 0 ->
+          pure (NatResourceLiteral (fromInteger n))
+    TVar index
+      | null arguments ->
+          case drop index environment of
+            expression : _ -> pure expression
+            [] -> unsupported ("unbound Treeless Nat resource: " ++ show index)
+    TLet bound body
+      | null arguments ->
+          let uses = natVariableUses 0 body
+          in if uses == 0
+               then decodeNatResourceTerm environment body
+               else do
+                 value <- decodeNatResourceTerm environment bound
+                 if uses > 1 && not (null (natResourceVariables value))
+                   then unsupported "MALLP linearity violation: a let-bound expression capturing live resources is reused"
+                   else decodeNatResourceTerm (value : environment) body
+    TPrim primitive -> do
+      operands <- traverse (decodeNatResourceTerm environment) arguments
+      case (primitive, operands) of
+        (PAdd, [left, right]) ->
+          pure (NatResourceBinary NatAdd left right)
+        (PMul, [left, right]) ->
+          pure (NatResourceBinary NatMultiply left right)
+        (PSub, [_, _]) ->
+          unsupported "PSub is signed integer subtraction; Nat monus uses builtin NatMinus"
+        _ -> unsupported ("unsupported Nat resource primitive or arity: " ++ show primitive)
+    TDef name -> do
+      plusName <- getBuiltinName builtinNatPlus
+      minusName <- getBuiltinName builtinNatMinus
+      operands <- traverse (decodeNatResourceTerm environment) arguments
+      case operands of
+        [left, right] | Just name == plusName ->
+          pure (NatResourceBinary NatAdd left right)
+        [left, right] | Just name == minusName ->
+          pure (NatResourceBinary NatMonus left right)
+        _ -> unsupported "Nat resource tree contains a non-primitive definition"
+    TCoerce inner
+      | null arguments -> decodeNatResourceTerm environment inner
+    _ -> unsupported ("Treeless term is outside the linear Nat expression core: " ++ show headTerm)
+
+-- Compile a resource tree against current live input order. The active depth
+-- counts already-built sibling results above those inputs. ROLL moves one
+-- selected resource to the top without copying or discarding it.
+compileNatResourceExpr
+  :: Int
+  -> [Int]
+  -> NatResourceExpr
+  -> Either String (FthForm, [Int])
+compileNatResourceExpr _ context (NatResourceLiteral value) =
+  Right (renderNatExpr (NatLiteral value), context)
+compileNatResourceExpr active context (NatResourceVariable index) =
+  case elemIndex index context of
+    Nothing -> Left ("MALLP resource is missing, duplicated, or out of scope: " ++ show index)
+    Just position ->
+      let depth = active + position
+          remaining = take position context ++ drop (position + 1) context
+      in Right (RSList [RSAtom (T.pack (show depth)), RSAtom "ROLL"], remaining)
+compileNatResourceExpr active context (NatResourceBinary operation left right) = do
+  (leftCode, afterLeft) <- compileNatResourceExpr active context left
+  (rightCode, afterRight) <- compileNatResourceExpr (active + 1) afterLeft right
+  pure (RSList [leftCode, rightCode, renderNatOp operation], afterRight)
+
+compileNatResourceFunction :: Int -> TTerm -> TCM FthForm
+compileNatResourceFunction arity term = do
+  let (actualArity, body) = tLamView term
+  if actualArity /= arity
+    then unsupported ("expected " ++ show arity ++ " Treeless lambdas, received " ++ show actualArity)
+    else pure ()
+  expression <- decodeNatResourceTerm
+    [NatResourceVariable index | index <- [0 .. arity - 1]]
+    body
+  let actualResources = sort (natResourceVariables expression)
+      expectedResources = [0 .. arity - 1]
+  if actualResources /= expectedResources
+    then unsupported "MALLP linearity violation: each live Nat argument must occur exactly once"
+    else pure ()
+  (code, remaining) <- either unsupported pure
+    (compileNatResourceExpr 0 expectedResources expression)
+  if null remaining
+    then pure code
+    else unsupported ("MALLP resource leak: unconsumed arguments " ++ show remaining)
 
 decodeNatPrimitive :: TPrim -> [NatExpr] -> Either String NatExpr
 decodeNatPrimitive PAdd [left, right] =
@@ -354,9 +458,12 @@ compileDefinition definition
                 else pure ()
               expression <- decodeNatBinaryLinearTerm bodyTerm
               pure (Just (strictWord (defName definition) (renderNatBinaryLinearExpr expression)))
+            (Just arity, Just term) | arity > 2 -> do
+              code <- compileNatResourceFunction arity term
+              pure (Just (strictWord (defName definition) code))
             (Just 2, Nothing) -> pure Nothing
             (Just arity, _) | arity > 2 ->
-              unsupported "Nat functions with more than two live arguments require a general indexed resource-stack lowering"
+              unsupported "Nat function body is unavailable to the linear resource compiler"
             (Nothing, _) -> unsupported "Nat definition has a non-Nat argument or result"
             (_, Nothing) -> pure Nothing
             _ -> unsupported "unsupported Nat function arity"
