@@ -3421,7 +3421,7 @@ module StrictLinearDataCompiler where
                 (application-source
                   {Γ = linearArrowType A (linearArrowType B C) ∷ []}
                   {A = linearArrowType A (linearArrowType B C)}
-                  linearVariable)))))
+                  linearVariable))))))
 
   bciIdentityMALLP :
     {A : LinearSourceType} →
