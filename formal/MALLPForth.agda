@@ -22,6 +22,7 @@ open import Agda.Builtin.Maybe using (Maybe; just; nothing)
 open import Agda.Builtin.Sigma using (Σ; _,_)
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import Agda.Builtin.String using (String; primStringAppend; primShowNat)
+import Agda.Builtin.Reflection as Reflection
 open import Agda.Builtin.Equality.Rewrite public
 open import Agda.Builtin.Word using (Word64; primWord64ToNat; primWord64FromNat) public
 -- Agda 2.8.0.2 has no Agda.Builtin.Tuple module; the product record _×_ below
@@ -1281,6 +1282,124 @@ linearMaybeIdentityMALLP :
     (linearSourceContext (linearMaybeType A ∷ []))
     (just (linearSourceFormula (linearMaybeType A)))
 linearMaybeIdentityMALLP = deriveMALLP linearMaybeIdentity
+
+------------------------------------------------------------------------
+-- REFLECTION-GENERATED ADT SHAPES
+--
+-- Reflection inspects the kernel-resolved datatype declaration and its
+-- constructor Pi telescopes, then emits a quoted description. This is
+-- compile-time metadata only: it does not decide linearity, runtime layout,
+-- or a MALLP derivation. Those are checked by the typed source core above.
+------------------------------------------------------------------------
+
+record ReflectedConstructorShape : Set where
+  constructor reflectedConstructorShape
+  field
+    reflectedConstructorName : Reflection.Name
+    reflectedConstructorArity : Nat
+open ReflectedConstructorShape public
+
+record ReflectedDataShape : Set where
+  constructor reflectedDataShape
+  field
+    reflectedParameterCount : Nat
+    reflectedIndexCount : Nat
+    reflectedConstructors : List ReflectedConstructorShape
+open ReflectedDataShape public
+
+reflectedConstructorArities :
+  List ReflectedConstructorShape → List Nat
+reflectedConstructorArities [] = []
+reflectedConstructorArities (constructor ∷ constructors) =
+  reflectedConstructorArity constructor ∷
+    reflectedConstructorArities constructors
+
+reflectionPiArity : Reflection.Term → Nat
+reflectionPiArity (Reflection.pi _ (Reflection.abs _ body)) =
+  suc (reflectionPiArity body)
+reflectionPiArity _ = zero
+
+reflectionNatDifference : Nat → Nat → Nat
+reflectionNatDifference n zero = n
+reflectionNatDifference zero (suc m) = zero
+reflectionNatDifference (suc n) (suc m) =
+  reflectionNatDifference n m
+
+reflectConstructorShapes :
+  Nat →
+  List Reflection.Name →
+  Reflection.TC (List ReflectedConstructorShape)
+reflectConstructorShapes parameters [] =
+  Reflection.returnTC []
+reflectConstructorShapes parameters (constructor ∷ constructors) =
+  Reflection.bindTC (Reflection.getType constructor)
+    (λ constructorType →
+      Reflection.bindTC
+        (reflectConstructorShapes parameters constructors)
+        (λ rest →
+          Reflection.returnTC
+            (reflectedConstructorShape constructor
+              (reflectionNatDifference
+                (reflectionPiArity constructorType) parameters)
+              ∷ rest)))
+
+reflectDataShapeImpl :
+  Reflection.Name →
+  Reflection.Term →
+  Reflection.Definition →
+  Reflection.TC ⊤
+reflectDataShapeImpl name hole (Reflection.data-type parameters constructors) =
+  Reflection.bindTC (Reflection.getType name)
+    (λ datatypeType →
+      Reflection.bindTC
+        (reflectConstructorShapes parameters constructors)
+        (λ constructorShapes →
+          Reflection.bindTC
+            (Reflection.quoteTC
+              (reflectedDataShape
+                parameters
+                (reflectionNatDifference
+                  (reflectionPiArity datatypeType) parameters)
+                constructorShapes))
+            (λ witness → Reflection.unify hole witness)))
+reflectDataShapeImpl name hole _ =
+  Reflection.typeError
+    (Reflection.strErr
+      "reflectDataShape: expected the name of an Agda data type" ∷ [])
+
+macro
+  reflectDataShape : Reflection.Name → Reflection.Term → Reflection.TC ⊤
+  reflectDataShape name hole =
+    Reflection.bindTC (Reflection.getDefinition name)
+      (reflectDataShapeImpl name hole)
+
+-- Kernel-checked examples: the pair has two post-parameter constructor
+-- binders; the parameterized box has one parameter and one additional binder.
+data ReflectionPair : Set where
+  reflectionPair : Nat → Bool → ReflectionPair
+
+reflectedPairShape : ReflectedDataShape
+reflectedPairShape = reflectDataShape (quote ReflectionPair)
+
+reflectedPairArityWitness :
+  reflectedParameterCount reflectedPairShape ≡ zero ×
+  reflectedIndexCount reflectedPairShape ≡ zero ×
+  reflectedConstructorArities
+    (reflectedConstructors reflectedPairShape) ≡ (suc (suc zero) ∷ [])
+reflectedPairArityWitness = refl
+
+data ReflectionBox (A : Set) : Set where
+  reflectionBox : A → ReflectionBox A
+
+reflectedBoxShape : ReflectedDataShape
+reflectedBoxShape = reflectDataShape (quote ReflectionBox)
+
+reflectedBoxArityWitness :
+  reflectedParameterCount reflectedBoxShape ≡ suc zero ×
+  reflectedIndexCount reflectedBoxShape ≡ zero ×
+  reflectedConstructorArities
+    (reflectedConstructors reflectedBoxShape) ≡ (suc zero ∷ [])
+reflectedBoxArityWitness = refl
 
 {-# REWRITE
   μ-step-true
