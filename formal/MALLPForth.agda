@@ -1186,7 +1186,7 @@ deriveMALLP (linearLambda body) =
         (mallp-up (deriveMALLP body))))
 deriveMALLP (linearClosureTerm environment body) =
   mallp-tensor (deriveMALLP environment)
-    (deriveMALLP (linearLambda body))
+    (deriveMALLP (linearLambda {Γ = []} body))
 
 -- General tensor permutation is a derived source term, not a special rule.
 linearTensorSwap :
