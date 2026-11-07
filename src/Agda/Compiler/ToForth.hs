@@ -41,6 +41,17 @@ data NatExpr
   | NatBinary NatOp NatExpr NatExpr
   deriving (Eq, Show)
 
+data NatLinearExpr
+  = NatArgument
+  | NatLinearLeft NatOp NatLinearExpr NatExpr
+  | NatLinearRight NatOp NatExpr NatLinearExpr
+  deriving (Eq, Show)
+
+data NatTerm
+  = NatClosed NatExpr
+  | NatOpen NatLinearExpr
+  deriving (Eq, Show)
+
 decodeNatPrimitive :: TPrim -> [NatExpr] -> Either String NatExpr
 decodeNatPrimitive PAdd [left, right] =
   Right (NatBinary NatAdd left right)
@@ -109,12 +120,22 @@ natVariableUses target = count 0
 -- operations.  Reusing one of these expressions duplicates a closed proof
 -- tree, not a live MALLP assumption; an unused lazy binding consumes no
 -- resource and is skipped without decoding or evaluating its body.
-decodeNatTerm :: [NatExpr] -> TTerm -> TCM NatExpr
+combineNatTerms :: NatOp -> NatTerm -> NatTerm -> Either String NatTerm
+combineNatTerms operation (NatClosed left) (NatClosed right) =
+  Right (NatClosed (NatBinary operation left right))
+combineNatTerms operation (NatOpen left) (NatClosed right) =
+  Right (NatOpen (NatLinearLeft operation left right))
+combineNatTerms operation (NatClosed left) (NatOpen right) =
+  Right (NatOpen (NatLinearRight operation left right))
+combineNatTerms _ (NatOpen _) (NatOpen _) =
+  Left "MALLP linearity violation: one live Nat resource is used twice"
+
+decodeNatTerm :: [NatTerm] -> TTerm -> TCM NatTerm
 decodeNatTerm environment term = do
   let (headTerm, args) = tAppView term
   case headTerm of
     TLit (LitNat n)
-      | null args && n >= 0 -> pure (NatLiteral (fromInteger n))
+      | null args && n >= 0 -> pure (NatClosed (NatLiteral (fromInteger n)))
     TVar index
       | null args ->
           case drop index environment of
@@ -126,33 +147,60 @@ decodeNatTerm environment term = do
             then decodeNatTerm environment body
             else do
               value <- decodeNatTerm environment bound
-              decodeNatTerm (value : environment) body
+              case value of
+                NatOpen _ | natVariableUses 0 body > 1 ->
+                  unsupported "MALLP linearity violation: a binding that captures a live resource is used more than once"
+                _ -> decodeNatTerm (value : environment) body
     TPrim primitive -> do
       operands <- traverse (decodeNatTerm environment) args
-      either unsupported pure (decodeNatPrimitive primitive operands)
+      case operands of
+        [left, right] ->
+          either unsupported pure (combineNatTerms (case primitive of
+            PAdd -> NatAdd
+            PMul -> NatMultiply
+            _ -> NatAdd) left right)
+            >>= \result -> case primitive of
+              PAdd -> pure result
+              PMul -> pure result
+              PSub -> unsupported "PSub is signed integer subtraction; Nat monus is lowered only from builtin NatMinus"
+              _ -> unsupported ("unsupported Nat primitive: " ++ show primitive)
+        _ -> unsupported ("unsupported Nat primitive arity: " ++ show primitive)
     TDef name -> do
       plusName <- getBuiltinName builtinNatPlus
       minusName <- getBuiltinName builtinNatMinus
       operands <- traverse (decodeNatTerm environment) args
       case operands of
         [left, right] | Just name == plusName ->
-          pure (NatBinary NatAdd left right)
+          either unsupported pure (combineNatTerms NatAdd left right)
         [left, right] | Just name == minusName ->
-          pure (NatBinary NatMonus left right)
-        _ -> unsupported "user functions and non-binary definitions are outside the closed Nat fragment"
+          either unsupported pure (combineNatTerms NatMonus left right)
+        _ -> unsupported "user functions and non-binary definitions are outside the admitted Nat core"
     TCoerce inner
       | null args -> decodeNatTerm environment inner
-    _ -> unsupported ("Treeless term is outside the closed Nat fragment: " ++ show headTerm)
+    _ -> unsupported ("Treeless term is outside the admitted Nat core: " ++ show headTerm)
+
+renderNatOp :: NatOp -> FthForm
+renderNatOp operation = RSAtom $ case operation of
+  NatAdd -> "MALLP-NAT-ADD"
+  NatMonus -> "MALLP-NAT-MONUS"
+  NatMultiply -> "MALLP-NAT-MUL"
 
 renderNatExpr :: NatExpr -> FthForm
 renderNatExpr (NatLiteral n) =
   RSAtom $ T.concat ["s\" ", T.pack (show n), "\" MALLP-PARSE-NAT"]
 renderNatExpr (NatBinary operation left right) =
-  let word = case operation of
-        NatAdd -> "MALLP-NAT-ADD"
-        NatMonus -> "MALLP-NAT-MONUS"
-        NatMultiply -> "MALLP-NAT-MUL"
-  in RSList [renderNatExpr left, renderNatExpr right, RSAtom word]
+  RSList [renderNatExpr left, renderNatExpr right, renderNatOp operation]
+
+renderNatLinearExpr :: NatLinearExpr -> FthForm
+renderNatLinearExpr NatArgument = RSList []
+renderNatLinearExpr (NatLinearLeft operation input right) =
+  RSList [renderNatLinearExpr input, renderNatExpr right, renderNatOp operation]
+renderNatLinearExpr (NatLinearRight operation left input) =
+  RSList [renderNatExpr left, RSAtom "SWAP", renderNatLinearExpr input, renderNatOp operation]
+
+renderNatTerm :: NatTerm -> FthForm
+renderNatTerm (NatClosed expression) = renderNatExpr expression
+renderNatTerm (NatOpen expression) = renderNatLinearExpr expression
 
 decodeBoolTerm :: TTerm -> TCM Bool
 decodeBoolTerm term = do
@@ -171,14 +219,35 @@ decodeBoolTerm term = do
       | null args -> decodeBoolTerm inner
     _ -> unsupported ("Treeless term is outside the closed Bool fragment: " ++ show headTerm)
 
+isBuiltinType :: QName -> I.Type -> TCM Bool
+isBuiltinType builtinName ty = do
+  reduced <- reduce ty
+  pure $ case I.unEl reduced of
+    I.Def actual [] -> actual == builtinName
+    _ -> False
+
 hasNatResult :: Definition -> TCM Bool
 hasNatResult definition = do
   natName <- getBuiltinName builtinNat
   TelV _ resultType <- telView (defType definition)
-  reducedResultType <- reduce resultType
-  pure $ case (natName, I.unEl reducedResultType) of
-    (Just expected, I.Def actual []) -> expected == actual
-    _ -> False
+  case natName of
+    Nothing -> pure False
+    Just name -> isBuiltinType name resultType
+
+natFunctionArity :: Definition -> TCM (Maybe Int)
+natFunctionArity definition = do
+  natName <- getBuiltinName builtinNat
+  TelV telescope resultType <- telView (defType definition)
+  case natName of
+    Nothing -> pure Nothing
+    Just name -> do
+      resultIsNat <- isBuiltinType name resultType
+      argumentTypes <- traverse (\domain -> isBuiltinType name (snd (I.unDom domain)))
+        (I.telToList telescope)
+      pure $ case (resultIsNat, argumentTypes) of
+        (True, []) -> Just 0
+        (True, [True]) -> Just 1
+        _ -> Nothing
 
 hasBoolResult :: Definition -> TCM Bool
 hasBoolResult definition = do
@@ -220,15 +289,28 @@ compileDefinition definition
   | otherwise = case theDef definition of
       Function{} -> do
         isNat <- hasNatResult definition
+        natArity <- natFunctionArity definition
         isBool <- hasBoolResult definition
         isUnit <- hasUnitResult definition
         if isNat then do
           body <- toTreeless EagerEvaluation (defName definition)
-          case body of
-            Nothing -> pure Nothing
-            Just term -> do
+          case (natArity, body) of
+            (Just 0, Just term) -> do
               expression <- decodeNatTerm [] term
-              pure (Just (strictWord (defName definition) (renderNatExpr expression)))
+              case expression of
+                NatClosed closed -> pure (Just (strictWord (defName definition) (renderNatExpr closed)))
+                NatOpen _ -> unsupported "nullary Nat definition unexpectedly contains an open argument"
+            (Just 1, Just term) -> do
+              let (arity, bodyTerm) = tLamView term
+              unless (arity == 1) $
+                unsupported ("expected one Treeless lambda for unary Nat definition, received " ++ show arity)
+              expression <- decodeNatTerm [NatOpen NatArgument] bodyTerm
+              case expression of
+                NatOpen linear -> pure (Just (strictWord (defName definition) (renderNatLinearExpr linear)))
+                NatClosed _ -> unsupported "MALLP linearity violation: unary Nat argument is unused"
+            (Nothing, _) -> unsupported "Nat definition must have zero arguments or one linear Nat argument"
+            (_, Nothing) -> pure Nothing
+            _ -> unsupported "unsupported Nat function arity"
         else if isBool then do
           body <- toTreeless EagerEvaluation (defName definition)
           case body of
