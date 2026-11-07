@@ -1149,6 +1149,33 @@ module StrictNatCompiler where
   evalNatExpr (binary op left right) =
     applyNatOp op (evalNatExpr left) (evalNatExpr right)
 
+  -- A unary function consumes exactly one live Nat input. All other operands
+  -- are closed derivations. Separate constructors make duplication and
+  -- discard of the live assumption unrepresentable.
+  data NatLinearExpr : Set where
+    natArgument : NatLinearExpr
+    natLinearLeft :
+      NatOp →
+      NatLinearExpr →
+      NatExpr →
+      NatLinearExpr
+    natLinearRight :
+      NatOp →
+      NatExpr →
+      NatLinearExpr →
+      NatLinearExpr
+
+  evalNatLinearExpr : NatLinearExpr → Nat → Nat
+  evalNatLinearExpr natArgument argument = argument
+  evalNatLinearExpr (natLinearLeft operation input right) argument =
+    applyNatOp operation
+      (evalNatLinearExpr input argument)
+      (evalNatExpr right)
+  evalNatLinearExpr (natLinearRight operation left input) argument =
+    applyNatOp operation
+      (evalNatExpr left)
+      (evalNatLinearExpr input argument)
+
   -- Indexed postfix code. SWAP is an exchange, not duplication or discard.
   data ForthCode : List StackType → List StackType → Set where
     identityNat :
@@ -1283,6 +1310,9 @@ module StrictNatCompiler where
   execToken multiplyWord (right ∷ left ∷ stack) =
     just (left * right ∷ stack)
   execToken multiplyWord _ = nothing
+
+  execToken swapWord (top ∷ next ∷ stack) = just (next ∷ top ∷ stack)
+  execToken swapWord _ = nothing
 
   maybeBind : {A B : Set} → Maybe A → (A → Maybe B) → Maybe B
   maybeBind nothing continuation = nothing
