@@ -1667,9 +1667,10 @@ module StrictNatCompiler where
     {n : Nat} →
     NatEnvironment (n + suc zero) →
     NatEnvironment (n + suc zero)
-  rotateHeadToLastEnvironmentPlus {n = n} environment
-    with natPlusOne n
-  ... | refl = rotateHeadToLastEnvironment environment
+  rotateHeadToLastEnvironmentPlus {n = n} environment =
+    subst NatEnvironment (sym (natPlusOne n))
+      (rotateHeadToLastEnvironment
+        (subst NatEnvironment (natPlusOne n) environment))
 
   appendNatEnvironmentPlus :
     {n : Nat} →
