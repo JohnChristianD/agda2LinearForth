@@ -13,20 +13,57 @@
 
 module MALLPForth where
 
-open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _*_)
-open import Agda.Builtin.Bool using (Bool; true; false)
-open import Agda.Builtin.List using (List; []; _∷_)
-open import Agda.Builtin.Maybe using (Maybe; just; nothing)
-open import Agda.Builtin.Sigma using (Σ; _,_)
-open import Agda.Builtin.Equality using (_≡_; refl)
-open import Agda.Builtin.String using (String; primStringAppend; primShowNat)
-open import Agda.Builtin.Equality.Rewrite
+--Required for Polymorphism:
+open import Agda.Primitive using (Level; lsuc; _⊔_) public
+open import Agda.Builtin.Nat public hiding (_<_)
+open import Agda.Builtin.Bool public
+open import Agda.Builtin.List public
+open import Agda.Builtin.Maybe public
+open import Agda.Builtin.Sigma public
+open import Agda.Builtin.Equality public
+open import Agda.Builtin.String public
+open import Agda.Builtin.Equality.Rewrite public
+open import Agda.Builtin.Word using (Word64; primWord64ToNat; primWord64FromNat) public
+open import Agda.Builtin.Word.Properties using (primWord64ToNatInjective) public
+-- Agda 2.8.0.2 has no Agda.Builtin.Tuple module; the product record _×_ below
+-- is the explicit project-owned pair, while Sigma supplies dependent pairs.
+open import Agda.Builtin.Unit public
+open import Agda.Builtin.Strict public
+open import Agda.Builtin.Coinduction public
+import Agda.Builtin.Reflection as Reflection
+-- Agda 2.8 has no Agda.Builtin.Empty module; define the empty type locally.
+data ⊥ : Set where
+
+-- Word64 equality is reflected exactly by its unsigned Nat interpretation.
+record Equivalence (A B : Set) : Set where
+  constructor equivalence
+  field
+    toForward : A → B
+    toBackward : B → A
+open Equivalence public
+
+word64EqualityCong :
+  {A B : Set} {left right : A} →
+  (function : A → B) →
+  left ≡ right → function left ≡ function right
+word64EqualityCong function refl = refl
+
+word64EqualityByNat :
+  {left right : Word64} →
+  Equivalence
+    (left ≡ right)
+    (primWord64ToNat left ≡ primWord64ToNat right)
+word64EqualityByNat =
+  equivalence
+    (word64EqualityCong primWord64ToNat)
+    (primWord64ToNatInjective _ _)
 
 -- Proof-carrying Forth instruction vocabulary and canonical renderer.
 -- Kept here so generated compiler witnesses and MALLP derivations share
 -- one source-level interface.
 data ForthTextToken : Set where
   textPushLiteral : Nat → ForthTextToken
+  textPushWord64 : Nat → Nat → ForthTextToken
   textAddWord textMonusWord textMultiplyWord textSwapWord : ForthTextToken
   textRollWord : Nat → ForthTextToken
   textTrueWord textFalseWord : ForthTextToken
@@ -37,6 +74,10 @@ mutual
   renderForthTokenText (textPushLiteral value) =
     primStringAppend "s\" "
       (primStringAppend (primShowNat value) "\" MALLP-PARSE-NAT ")
+  renderForthTokenText (textPushWord64 high low) =
+    primStringAppend
+      (renderForthTokenText (textPushLiteral high))
+      (renderForthTokenText (textPushLiteral low))
   renderForthTokenText textAddWord = "MALLP-NAT-ADD "
   renderForthTokenText textMonusWord = "MALLP-NAT-MONUS "
   renderForthTokenText textMultiplyWord = "MALLP-NAT-MUL "
@@ -64,8 +105,6 @@ renderForthWordText name tokens =
       (primStringAppend " "
         (primStringAppend (renderForthTokensText tokens) ";")))
 
--- Agda 2.8 has no Agda.Builtin.Empty module; define the empty type locally.
-data ⊥ : Set where
 
 ------------------------------------------------------------------------
 -- Small utilities
@@ -1021,6 +1060,631 @@ open Foundations.CohesiveRetractions public
 open Foundations.SymmetricBarRecursion public
 open Foundations.LaurentPolarizedMALLP public
 
+------------------------------------------------------------------------
+-- A relational denotation for every Laurent MALLP proof constructor.
+--
+-- Atoms are interpreted parametrically. Positive/negative tensor and
+-- par are paired resources; plus/with are tagged alternatives; one/bottom
+-- and zero/top are dual unit/empty objects. Polarity shifts exchange the
+-- two value interpretations. Cut is relational composition (an explicit
+-- intermediate witness), exchange reindexes the environment, and additive
+-- branches inspect one tagged alternative.
+--
+-- This is a concrete Rel-style sound interpretation of the proof rules.
+-- It is deliberately not labelled as the full Hamano-Scott categorical
+-- model: that stronger result needs the reflective/coreflective adjunction
+-- and its *-autonomous coherence data as explicit Agda structures.
+------------------------------------------------------------------------
+
+module MALLPRelationalDenotation (Atom : Nat → Set) where
+
+  data DenotationSum (A B : Set) : Set where
+    denLeft : A → DenotationSum A B
+    denRight : B → DenotationSum A B
+
+  record DenotationWitness (A : Set) (P : A → Set) : Set where
+    constructor denotationWitness
+    field
+      witnessValue : A
+      witnessEvidence : P witnessValue
+  open DenotationWitness public
+
+  mutual
+    PosValue : PolType posPolarity → Set
+    PosValue (atom⁺ index) = Atom index
+    PosValue one⁺ = ⊤
+    PosValue zero⁺ = ⊥
+    PosValue (left ⊗⁺ right) = PosValue left × PosValue right
+    PosValue (left ⊕⁺ right) = DenotationSum (PosValue left) (PosValue right)
+    PosValue (down⁺ negative) = NegValue negative
+
+    NegValue : PolType negPolarity → Set
+    NegValue (atom⁻ index) = Atom index
+    NegValue bot⁻ = ⊤
+    NegValue top⁻ = ⊥
+    NegValue (left ⅋⁻ right) = NegValue left × NegValue right
+    NegValue (left &⁻ right) = DenotationSum (NegValue left) (NegValue right)
+    NegValue (up⁻ positive) = PosValue positive
+
+  mutual
+    dualPositiveValue :
+      (positive : PolType posPolarity) →
+      PosValue positive → NegValue (dualPos positive)
+    dualNegativeValue :
+      (negative : PolType negPolarity) →
+      NegValue negative → PosValue (dualNeg negative)
+  
+    dualPositiveValue (atom⁺ index) value = value
+    dualPositiveValue one⁺ value = value
+    dualPositiveValue zero⁺ ()
+    dualPositiveValue (left ⊗⁺ right) (pair leftValue rightValue) =
+      pair (dualPositiveValue left leftValue) (dualPositiveValue right rightValue)
+    dualPositiveValue (left ⊕⁺ right) (denLeft value) =
+      denLeft (dualPositiveValue left value)
+    dualPositiveValue (left ⊕⁺ right) (denRight value) =
+      denRight (dualPositiveValue right value)
+    dualPositiveValue (down⁺ negative) value =
+      dualNegativeValue negative value
+  
+    dualNegativeValue (atom⁻ index) value = value
+    dualNegativeValue bot⁻ value = value
+    dualNegativeValue top⁻ ()
+    dualNegativeValue (left ⅋⁻ right) (pair leftValue rightValue) =
+      pair (dualNegativeValue left leftValue) (dualNegativeValue right rightValue)
+    dualNegativeValue (left &⁻ right) (denLeft value) =
+      denLeft (dualNegativeValue left value)
+    dualNegativeValue (left &⁻ right) (denRight value) =
+      denRight (dualNegativeValue right value)
+    dualNegativeValue (up⁻ positive) value =
+      dualPositiveValue positive value
+  
+  mutual
+    recoverPositiveValue :
+      (positive : PolType posPolarity) →
+      NegValue (dualPos positive) → PosValue positive
+    recoverPositiveValue (atom⁺ index) value = value
+    recoverPositiveValue one⁺ value = value
+    recoverPositiveValue zero⁺ ()
+    recoverPositiveValue (left ⊗⁺ right) (pair leftValue rightValue) =
+      pair (recoverPositiveValue left leftValue)
+        (recoverPositiveValue right rightValue)
+    recoverPositiveValue (left ⊕⁺ right) (denLeft value) =
+      denLeft (recoverPositiveValue left value)
+    recoverPositiveValue (left ⊕⁺ right) (denRight value) =
+      denRight (recoverPositiveValue right value)
+    recoverPositiveValue (down⁺ negative) value =
+      recoverNegativeValue negative value
+
+    recoverNegativeValue :
+      (negative : PolType negPolarity) →
+      PosValue (dualNeg negative) → NegValue negative
+    recoverNegativeValue (atom⁻ index) value = value
+    recoverNegativeValue bot⁻ value = value
+    recoverNegativeValue top⁻ ()
+    recoverNegativeValue (left ⅋⁻ right) (pair leftValue rightValue) =
+      pair (recoverNegativeValue left leftValue)
+        (recoverNegativeValue right rightValue)
+    recoverNegativeValue (left &⁻ right) (denLeft value) =
+      denLeft (recoverNegativeValue left value)
+    recoverNegativeValue (left &⁻ right) (denRight value) =
+      denRight (recoverNegativeValue right value)
+    recoverNegativeValue (up⁻ positive) value =
+      recoverPositiveValue positive value
+
+    recoverPositive-dualPositive :
+      (positive : PolType posPolarity) →
+      (value : PosValue positive) →
+      recoverPositiveValue positive (dualPositiveValue positive value) ≡ value
+    recoverPositive-dualPositive (atom⁺ index) value = refl
+    recoverPositive-dualPositive one⁺ value = refl
+    recoverPositive-dualPositive zero⁺ ()
+    recoverPositive-dualPositive (left ⊗⁺ right)
+      (pair leftValue rightValue) =
+      cong₂ pair
+        (recoverPositive-dualPositive left leftValue)
+        (recoverPositive-dualPositive right rightValue)
+    recoverPositive-dualPositive (left ⊕⁺ right) (denLeft value) =
+      cong denLeft (recoverPositive-dualPositive left value)
+    recoverPositive-dualPositive (left ⊕⁺ right) (denRight value) =
+      cong denRight (recoverPositive-dualPositive right value)
+    recoverPositive-dualPositive (down⁺ negative) value =
+      recoverNegative-dualNegative negative value
+
+    recoverNegative-dualNegative :
+      (negative : PolType negPolarity) →
+      (value : NegValue negative) →
+      recoverNegativeValue negative (dualNegativeValue negative value) ≡ value
+    recoverNegative-dualNegative (atom⁻ index) value = refl
+    recoverNegative-dualNegative bot⁻ value = refl
+    recoverNegative-dualNegative top⁻ ()
+    recoverNegative-dualNegative (left ⅋⁻ right)
+      (pair leftValue rightValue) =
+      cong₂ pair
+        (recoverNegative-dualNegative left leftValue)
+        (recoverNegative-dualNegative right rightValue)
+    recoverNegative-dualNegative (left &⁻ right) (denLeft value) =
+      cong denLeft (recoverNegative-dualNegative left value)
+    recoverNegative-dualNegative (left &⁻ right) (denRight value) =
+      cong denRight (recoverNegative-dualNegative right value)
+    recoverNegative-dualNegative (up⁻ positive) value =
+      recoverPositive-dualPositive positive value
+
+  ContextValues : Context → Set
+  ContextValues [] = ⊤
+  ContextValues (negative ∷ Γ) = NegValue negative × ContextValues Γ
+
+  StoupValue : Stoup → Set
+  StoupValue nothing = ⊤
+  StoupValue (just positive) = PosValue positive
+
+  splitContextValues :
+    {Γ Δ : Context} →
+    ContextValues (Γ ++ᴸ Δ) →
+    ContextValues Γ × ContextValues Δ
+  splitContextValues {Γ = []} {Δ} values = pair tt values
+  splitContextValues {Γ = negative ∷ Γ} {Δ} (pair head tail)
+    with splitContextValues {Γ = Γ} {Δ = Δ} tail
+  ... | pair prefix suffix = pair (pair head prefix) suffix
+
+  permuteContextValues :
+    {Γ Δ : Context} →
+    ContextPermutation Γ Δ →
+    ContextValues Γ → ContextValues Δ
+  permuteContextValues permutation-nil tt = tt
+  permuteContextValues (permutation-cons permutation) (pair head tail) =
+    pair head (permuteContextValues permutation tail)
+  permuteContextValues permutation-swap (pair first (pair second tail)) =
+    pair second (pair first tail)
+  permuteContextValues (permutation-trans first second) values =
+    permuteContextValues second (permuteContextValues first values)
+
+  MALLPRelation :
+    {Γ : Context} {S : Stoup} →
+    MALLP Γ S → ContextValues Γ → StoupValue S → Set
+
+  MALLPRelation {S = just positive} mallp-ax (pair source tt) result =
+    result ≡ recoverPositiveValue positive source
+
+  MALLPRelation
+    (mallp-cut {Γ = Γ} {Δ = Δ} {P = positive} producer consumer)
+    environment result
+    with splitContextValues {Γ = Γ} {Δ = Δ} environment
+  ... | pair producerEnvironment consumerEnvironment =
+    DenotationWitness (PosValue positive)
+      (λ intermediate →
+        MALLPRelation producer producerEnvironment intermediate ×
+        MALLPRelation consumer
+          (pair (dualPositiveValue positive intermediate) consumerEnvironment)
+          result)
+
+  MALLPRelation (mallp-exchange permutation proof) environment result =
+    MALLPRelation proof
+      (permuteContextValues (contextPermutation-sym permutation) environment)
+      result
+
+  MALLPRelation
+    (mallp-tensor {Γ = Γ} {Δ = Δ} left right)
+    environment (pair leftValue rightValue)
+    with splitContextValues {Γ = Γ} {Δ = Δ} environment
+  ... | pair leftEnvironment rightEnvironment =
+    MALLPRelation left leftEnvironment leftValue ×
+    MALLPRelation right rightEnvironment rightValue
+
+  MALLPRelation mallp-one tt tt = ⊤
+
+  MALLPRelation (mallp-plus-left proof) environment (denLeft value) =
+    MALLPRelation proof environment value
+  MALLPRelation (mallp-plus-left proof) environment (denRight value) = ⊥
+
+  MALLPRelation (mallp-plus-right proof) environment (denLeft value) = ⊥
+  MALLPRelation (mallp-plus-right proof) environment (denRight value) =
+    MALLPRelation proof environment value
+
+  MALLPRelation (mallp-par proof) (pair (pair leftValue rightValue) rest) result =
+    MALLPRelation proof (pair leftValue (pair rightValue rest)) result
+
+  MALLPRelation (mallp-with left right) (pair (denLeft value) rest) result =
+    MALLPRelation left (pair value rest) result
+  MALLPRelation (mallp-with left right) (pair (denRight value) rest) result =
+    MALLPRelation right (pair value rest) result
+
+  MALLPRelation (mallp-bottom proof) (pair tt rest) result =
+    MALLPRelation proof rest result
+
+  MALLPRelation mallp-top (pair () rest) result
+
+  MALLPRelation (mallp-down proof) environment result =
+    MALLPRelation proof (pair result environment) tt
+
+  MALLPRelation (mallp-up proof) (pair result environment) tt =
+    MALLPRelation proof environment result
+
+
+------------------------------------------------------------------------
+-- GENERIC LINEAR SOURCE TERMS: STRUCTURAL MALLP DERIVATION
+--
+-- This small, reusable source core indexes every term by its exact live
+-- context and result type. Its interpretation is a Laurent MALLP proof.
+-- Tensor elimination is par on the negative context; sum elimination is
+-- with over a shared branch context; cut is linear substitution; and
+-- lambda introduction uses the existing up/par/down rules.
+--
+-- A closure stores its environment once and its code expects that same
+-- environment paired with its explicit argument. No captured resource is
+-- copied into code or silently discarded at closure creation.
+------------------------------------------------------------------------
+
+data LinearSourceType : Set where
+  linearNatType linearIntType linearWord64Type linearBoolType linearUnitType : LinearSourceType
+  linearTensorType linearSumType linearArrowType :
+    LinearSourceType → LinearSourceType → LinearSourceType
+
+linearSourceFormula : LinearSourceType → PolType posPolarity
+linearSourceFormula linearNatType = atom⁺ zero
+linearSourceFormula linearIntType = atom⁺ (suc zero)
+linearSourceFormula linearWord64Type = atom⁺ (suc (suc zero))
+linearSourceFormula linearBoolType = one⁺ ⊕⁺ one⁺
+linearSourceFormula linearUnitType = one⁺
+linearSourceFormula (linearTensorType A B) =
+  linearSourceFormula A ⊗⁺ linearSourceFormula B
+linearSourceFormula (linearSumType A B) =
+  linearSourceFormula A ⊕⁺ linearSourceFormula B
+linearSourceFormula (linearArrowType A B) =
+  down⁺ (dualPos (linearSourceFormula A) ⅋⁻ up⁻ (linearSourceFormula B))
+
+linearSourceContext : List LinearSourceType → Context
+linearSourceContext [] = []
+linearSourceContext (A ∷ Γ) =
+  dualPos (linearSourceFormula A) ∷ linearSourceContext Γ
+
+appendLinearContext : List LinearSourceType → List LinearSourceType →
+  List LinearSourceType
+appendLinearContext [] Δ = Δ
+appendLinearContext (A ∷ Γ) Δ = A ∷ appendLinearContext Γ Δ
+
+linearSourceContext-append :
+  (Γ Δ : List LinearSourceType) →
+  linearSourceContext (appendLinearContext Γ Δ) ≡
+  (linearSourceContext Γ ++ᴸ linearSourceContext Δ)
+linearSourceContext-append [] Δ = refl
+linearSourceContext-append (A ∷ Γ) Δ =
+  cong (λ context → dualPos (linearSourceFormula A) ∷ context)
+    (linearSourceContext-append Γ Δ)
+
+appendLinearContext-right-unit :
+  (Γ : List LinearSourceType) →
+  appendLinearContext Γ [] ≡ Γ
+appendLinearContext-right-unit [] = refl
+appendLinearContext-right-unit (A ∷ Γ) =
+  cong (A ∷_) (appendLinearContext-right-unit Γ)
+
+linearSourceContext-right-unit :
+  (Γ : List LinearSourceType) →
+  linearSourceContext Γ ≡ (linearSourceContext Γ ++ᴸ [])
+linearSourceContext-right-unit Γ =
+  trans
+    (sym (cong linearSourceContext (appendLinearContext-right-unit Γ)))
+    (linearSourceContext-append Γ [])
+
+linearContextPermutation :
+  {Γ Δ : List LinearSourceType} →
+  ContextPermutation Γ Δ →
+  ContextPermutation (linearSourceContext Γ) (linearSourceContext Δ)
+linearContextPermutation permutation-nil = permutation-nil
+linearContextPermutation (permutation-cons permutation) =
+  permutation-cons (linearContextPermutation permutation)
+linearContextPermutation permutation-swap = permutation-swap
+linearContextPermutation (permutation-trans first second) =
+  permutation-trans
+    (linearContextPermutation first)
+    (linearContextPermutation second)
+
+data LinearTerm : List LinearSourceType → LinearSourceType → Set where
+  linearVariable :
+    {A : LinearSourceType} →
+    LinearTerm (A ∷ []) A
+
+  linearExchange :
+    {Γ Δ : List LinearSourceType} {A : LinearSourceType} →
+    ContextPermutation Γ Δ →
+    LinearTerm Γ A →
+    LinearTerm Δ A
+
+  linearTensor :
+    {Γ Δ : List LinearSourceType} {A B : LinearSourceType} →
+    LinearTerm Γ A →
+    LinearTerm Δ B →
+    LinearTerm (appendLinearContext Γ Δ) (linearTensorType A B)
+
+  linearUnit :
+    LinearTerm [] linearUnitType
+
+  -- Eliminating the unique Unit value consumes its linear assumption by
+  -- MALLP bottom-left; the residual context and result are preserved.
+  linearUnitCaseTerm :
+    {Γ : List LinearSourceType} {A : LinearSourceType} →
+    LinearTerm Γ A →
+    LinearTerm (linearUnitType ∷ Γ) A
+
+  linearInl :
+    {Γ : List LinearSourceType} {A B : LinearSourceType} →
+    LinearTerm Γ A →
+    LinearTerm Γ (linearSumType A B)
+
+  linearInr :
+    {Γ : List LinearSourceType} {A B : LinearSourceType} →
+    LinearTerm Γ B →
+    LinearTerm Γ (linearSumType A B)
+
+  linearTensorElim :
+    {Γ : List LinearSourceType} {A B C : LinearSourceType} →
+    LinearTerm (A ∷ B ∷ Γ) C →
+    LinearTerm (linearTensorType A B ∷ Γ) C
+
+  linearSumCaseTerm :
+    {Γ : List LinearSourceType} {A B C : LinearSourceType} →
+    LinearTerm (A ∷ Γ) C →
+    LinearTerm (B ∷ Γ) C →
+    LinearTerm (linearSumType A B ∷ Γ) C
+
+  linearCut :
+    {Γ Δ : List LinearSourceType} {A B : LinearSourceType} →
+    LinearTerm Γ A →
+    LinearTerm (A ∷ Δ) B →
+    LinearTerm (appendLinearContext Γ Δ) B
+
+  linearLambda :
+    {Γ : List LinearSourceType} {A B : LinearSourceType} →
+    LinearTerm (A ∷ Γ) B →
+    LinearTerm Γ (linearArrowType A B)
+
+  -- A closure owns one environment value. Its code receives that environment
+  -- explicitly paired with its argument, so captured fields stay linear.
+  linearClosureTerm :
+    {Γ : List LinearSourceType} {Environment Argument Result : LinearSourceType} →
+    LinearTerm Γ Environment →
+    LinearTerm
+      (linearTensorType Environment Argument ∷ [])
+      Result →
+    LinearTerm Γ
+      (linearTensorType Environment
+        (linearArrowType (linearTensorType Environment Argument) Result))
+
+-- Proof-level lambda introduction. Keeping this transformation separate
+-- lets closure introduction reuse a body derivation without recursively
+-- asking deriveMALLP to inspect a newly constructed source term.
+deriveLinearLambda :
+  {Γ : List LinearSourceType} {A B : LinearSourceType} →
+  MALLP
+    (dualPos (linearSourceFormula A) ∷ linearSourceContext Γ)
+    (just (linearSourceFormula B)) →
+  MALLP
+    (linearSourceContext Γ)
+    (just (linearSourceFormula (linearArrowType A B)))
+deriveLinearLambda bodyProof =
+  mallp-down
+    (mallp-par
+      (mallp-exchange permutation-swap
+        (mallp-up bodyProof)))
+
+deriveMALLP :
+  {Γ : List LinearSourceType} {A : LinearSourceType} →
+  LinearTerm Γ A →
+  MALLP (linearSourceContext Γ) (just (linearSourceFormula A))
+deriveMALLP linearVariable = mallp-ax
+deriveMALLP (linearExchange permutation term) =
+  mallp-exchange (linearContextPermutation permutation) (deriveMALLP term)
+deriveMALLP
+  (linearTensor {Γ = Γ} {Δ = Δ} {A = A} {B = B} left right) =
+  subst
+    (λ context → MALLP context
+      (just (linearSourceFormula (linearTensorType A B))))
+    (sym (linearSourceContext-append Γ Δ))
+    (mallp-tensor (deriveMALLP left) (deriveMALLP right))
+deriveMALLP linearUnit = mallp-one
+deriveMALLP (linearUnitCaseTerm body) =
+  mallp-bottom (deriveMALLP body)
+deriveMALLP (linearInl term) = mallp-plus-left (deriveMALLP term)
+deriveMALLP (linearInr term) = mallp-plus-right (deriveMALLP term)
+deriveMALLP (linearTensorElim body) = mallp-par (deriveMALLP body)
+deriveMALLP (linearSumCaseTerm whenLeft whenRight) =
+  mallp-with (deriveMALLP whenLeft) (deriveMALLP whenRight)
+deriveMALLP (linearCut {Γ = Γ} {Δ = Δ} {B = B} producer consumer) =
+  subst
+    (λ context → MALLP context (just (linearSourceFormula B)))
+    (sym (linearSourceContext-append Γ Δ))
+    (mallp-cut (deriveMALLP producer) (deriveMALLP consumer))
+deriveMALLP (linearLambda body) =
+  deriveLinearLambda (deriveMALLP body)
+deriveMALLP
+  (linearClosureTerm
+    {Γ = Γ}
+    {Environment = Environment}
+    {Argument = Argument}
+    {Result = Result}
+    environment body) =
+  subst
+    (λ context → MALLP context
+      (just (linearSourceFormula
+        (linearTensorType Environment
+          (linearArrowType (linearTensorType Environment Argument) Result)))))
+    (sym (linearSourceContext-right-unit Γ))
+    (mallp-tensor
+      {Γ = linearSourceContext Γ}
+      {Δ = []}
+      (deriveMALLP environment)
+      (deriveLinearLambda (deriveMALLP body)))
+
+-- General tensor permutation is a derived source term, not a special rule.
+linearTensorSwap :
+  {A B : LinearSourceType} →
+  LinearTerm
+    (linearTensorType A B ∷ [])
+    (linearTensorType B A)
+linearTensorSwap =
+  linearTensorElim
+    (linearExchange permutation-swap
+      (linearTensor linearVariable linearVariable))
+
+linearTensorSwapMALLP :
+  {A B : LinearSourceType} →
+  MALLP
+    (linearSourceContext (linearTensorType A B ∷ []))
+    (just (linearSourceFormula (linearTensorType B A)))
+linearTensorSwapMALLP = deriveMALLP linearTensorSwap
+
+-- Word64 is one source-level resource, even though its current target
+-- representation is two 32-bit limbs.
+linearWord64Identity :
+  LinearTerm (linearWord64Type ∷ []) linearWord64Type
+linearWord64Identity = linearVariable
+
+linearWord64IdentityMALLP :
+  MALLP
+    (linearSourceContext (linearWord64Type ∷ []))
+    (just (linearSourceFormula linearWord64Type))
+linearWord64IdentityMALLP = deriveMALLP linearWord64Identity
+
+
+-- A finite Maybe-like ADT is the additive sum 1 ⊕ A. Both branches
+-- consume the same residual context; the absent branch consumes its Unit
+-- payload and the present branch consumes its A payload.
+linearMaybeType : LinearSourceType → LinearSourceType
+linearMaybeType A = linearSumType linearUnitType A
+
+linearMaybeIdentity :
+  {A : LinearSourceType} →
+  LinearTerm (linearMaybeType A ∷ []) (linearMaybeType A)
+linearMaybeIdentity =
+  linearSumCaseTerm
+    (linearUnitCaseTerm (linearInl linearUnit))
+    (linearInr linearVariable)
+
+linearMaybeIdentityMALLP :
+  {A : LinearSourceType} →
+  MALLP
+    (linearSourceContext (linearMaybeType A ∷ []))
+    (just (linearSourceFormula (linearMaybeType A)))
+linearMaybeIdentityMALLP = deriveMALLP linearMaybeIdentity
+
+------------------------------------------------------------------------
+-- REFLECTION-GENERATED ADT SHAPES
+--
+-- Reflection inspects the kernel-resolved datatype declaration and its
+-- constructor Pi telescopes, then emits a quoted description. This is
+-- compile-time metadata only: it does not decide linearity, runtime layout,
+-- or a MALLP derivation. Those are checked by the typed source core above.
+------------------------------------------------------------------------
+
+record ReflectedConstructorShape : Set where
+  constructor reflectedConstructorShape
+  field
+    reflectedConstructorName : Reflection.Name
+    reflectedConstructorArity : Nat
+open ReflectedConstructorShape public
+
+record ReflectedDataShape : Set where
+  constructor reflectedDataShape
+  field
+    reflectedParameterCount : Nat
+    reflectedIndexCount : Nat
+    reflectedConstructors : List ReflectedConstructorShape
+open ReflectedDataShape public
+
+reflectedConstructorArities :
+  List ReflectedConstructorShape → List Nat
+reflectedConstructorArities [] = []
+reflectedConstructorArities (entry ∷ entries) =
+  reflectedConstructorArity entry ∷
+    reflectedConstructorArities entries
+
+reflectionPiArity : Reflection.Term → Nat
+reflectionPiArity (Reflection.pi _ (Reflection.abs _ body)) =
+  suc (reflectionPiArity body)
+reflectionPiArity _ = zero
+
+reflectionNatDifference : Nat → Nat → Nat
+reflectionNatDifference n zero = n
+reflectionNatDifference zero (suc m) = zero
+reflectionNatDifference (suc n) (suc m) =
+  reflectionNatDifference n m
+
+reflectConstructorShapes :
+  Nat →
+  List Reflection.Name →
+  Reflection.TC (List ReflectedConstructorShape)
+reflectConstructorShapes parameters [] =
+  Reflection.returnTC []
+reflectConstructorShapes parameters (entry ∷ entries) =
+  Reflection.bindTC (Reflection.getType entry)
+    (λ entryType →
+      Reflection.bindTC
+        (reflectConstructorShapes parameters entries)
+        (λ rest →
+          Reflection.returnTC
+            (reflectedConstructorShape entry
+              (reflectionNatDifference
+                (reflectionPiArity entryType) parameters)
+              ∷ rest)))
+
+reflectDataShapeImpl :
+  Reflection.Name →
+  Reflection.Term →
+  Reflection.Definition →
+  Reflection.TC ⊤
+reflectDataShapeImpl name hole (Reflection.data-type parameters constructors) =
+  Reflection.bindTC (Reflection.getType name)
+    (λ datatypeType →
+      Reflection.bindTC
+        (reflectConstructorShapes parameters constructors)
+        (λ constructorShapes →
+          Reflection.bindTC
+            (Reflection.quoteTC
+              (reflectedDataShape
+                parameters
+                (reflectionNatDifference
+                  (reflectionPiArity datatypeType) parameters)
+                constructorShapes))
+            (λ witness → Reflection.unify hole witness)))
+reflectDataShapeImpl name hole _ =
+  Reflection.typeError
+    (Reflection.strErr
+      "reflectDataShape: expected the name of an Agda data type" ∷ [])
+
+macro
+  reflectDataShape : Reflection.Name → Reflection.Term → Reflection.TC ⊤
+  reflectDataShape name hole =
+    Reflection.bindTC (Reflection.getDefinition name)
+      (reflectDataShapeImpl name hole)
+
+-- Kernel-checked examples: the pair has two post-parameter constructor
+-- binders; the parameterized box has one parameter and one additional binder.
+data ReflectionPair : Set where
+  reflectionPair : Nat → Bool → ReflectionPair
+
+reflectedPairShape : ReflectedDataShape
+reflectedPairShape = reflectDataShape ReflectionPair
+
+reflectedPairArityWitness :
+  reflectedParameterCount reflectedPairShape ≡ zero ×
+  reflectedIndexCount reflectedPairShape ≡ zero ×
+  reflectedConstructorArities
+    (reflectedConstructors reflectedPairShape) ≡ (suc (suc zero) ∷ [])
+reflectedPairArityWitness = pair refl (pair refl refl)
+
+data ReflectionBox (A : Set) : Set where
+  reflectionBox : A → ReflectionBox A
+
+reflectedBoxShape : ReflectedDataShape
+reflectedBoxShape = reflectDataShape ReflectionBox
+
+reflectedBoxArityWitness :
+  reflectedParameterCount reflectedBoxShape ≡ suc zero ×
+  reflectedIndexCount reflectedBoxShape ≡ zero ×
+  reflectedConstructorArities
+    (reflectedConstructors reflectedBoxShape) ≡ (suc zero ∷ [])
+reflectedBoxArityWitness = pair refl (pair refl refl)
+
 {-# REWRITE
   μ-step-true
   μ-step-false
@@ -1242,6 +1906,20 @@ module StrictNatCompiler where
     pushLiteral : Nat → ForthToken
     addWord monusWord multiplyWord swapWord : ForthToken
     rollWord : Nat → ForthToken
+
+  -- Word64 is represented at the current Gforth boundary by two unsigned
+  -- 32-bit cells (high, low). The source resource remains indivisible.
+  word64StackShape : List StackType
+  word64StackShape = natCell ∷ natCell ∷ []
+
+  word64IdentityCode :
+    ForthCode word64StackShape word64StackShape
+  word64IdentityCode = identityNat
+
+  word64IdentityCode-correct :
+    (stack : Stack word64StackShape) →
+    execForthCode word64IdentityCode stack ≡ stack
+  word64IdentityCode-correct stack = refl
 
   -- Text tokens are deliberately separate from the Nat execution machine:
   -- TRUE/FALSE have Gforth's Bool representation, not a Nat stack meaning.
@@ -2192,9 +2870,9 @@ module StrictBoolCompiler where
   boolPairSwapMALLP :
     MALLP (boolPairAssumption ∷ []) (just boolPairFormula)
   boolPairSwapMALLP =
-    mallp-par
-      (mallp-exchange permutation-swap
-        (mallp-tensor mallp-ax mallp-ax))
+    linearTensorSwapMALLP
+      {A = linearBoolType}
+      {B = linearBoolType}
 
   data BoolProof : Set where
     boolTrueProof boolFalseProof : BoolProof
@@ -2567,6 +3245,14 @@ open StrictUnitCompiler public
 
 module StrictStatefulProtocol where
 
+  strictForceObservation :
+    {value : Nat} →
+    (continuation : Nat → Nat) →
+    primForce value continuation ≡ continuation value
+  strictForceObservation continuation =
+    primForceLemma _ continuation
+
+
   thunkStoreFormula : PolType posPolarity
   thunkStoreFormula = atom⁺ 18
 
@@ -2583,7 +3269,7 @@ module StrictStatefulProtocol where
     PolType posPolarity →
     PolType posPolarity
   linearClosureFormula domain codomain =
-    down⁺ (up⁻ codomain ⅋⁻ dualPos domain)
+    down⁺ (dualPos domain ⅋⁻ up⁻ codomain)
 
   -- Computation signatures are layered over MALLP.  The only extra axioms
   -- below are declared operations with explicit resource/stack contracts.
@@ -2604,6 +3290,23 @@ module StrictStatefulProtocol where
       ContextPermutation Γ Δ →
       MALLPProtocolTheory Γ S →
       MALLPProtocolTheory Δ S
+
+    -- Structural rules below are the corresponding existing Laurent MALLP
+    -- inferences lifted over the declared primitive protocol signatures.
+    protocol-par :
+      {Γ : Context} {M N : PolType negPolarity} {S : Stoup} →
+      MALLPProtocolTheory (M ∷ N ∷ Γ) S →
+      MALLPProtocolTheory ((M ⅋⁻ N) ∷ Γ) S
+
+    protocol-up :
+      {Γ : Context} {P : PolType posPolarity} →
+      MALLPProtocolTheory Γ (just P) →
+      MALLPProtocolTheory (up⁻ P ∷ Γ) nothing
+
+    protocol-down :
+      {Γ : Context} {N : PolType negPolarity} →
+      MALLPProtocolTheory (N ∷ Γ) nothing →
+      MALLPProtocolTheory Γ (just (down⁺ N))
 
     -- Forcing consumes the unique store capability and returns the demanded
     -- Nat together with the updated capability.
@@ -2816,7 +3519,10 @@ module StrictLinearDataCompiler where
     MALLP (dualPos A ∷ Γ) (just B) →
     MALLP Γ (just (linearClosureFormula A B))
   linearClosureIntro body =
-    mallp-down (mallp-par (mallp-up body))
+    mallp-down
+      (mallp-par
+        (mallp-exchange permutation-swap
+          (mallp-up body)))
 
   linearClosureApplicationSignature :
     {A B : PolType posPolarity} →
@@ -2824,6 +3530,186 @@ module StrictLinearDataCompiler where
       (dualPos (linearClosureFormula A B) ∷ dualPos A ∷ [])
       (just B)
   linearClosureApplicationSignature = primitive-linear-apply
+
+  -- Application is a declared typed operation over unchanged MALLP.
+  -- Source arguments are ordered before the function's captured context.
+  data LinearApplicationTerm :
+    List LinearSourceType → LinearSourceType → Set where
+
+    application-source :
+      {Γ : List LinearSourceType} {A : LinearSourceType} →
+      LinearTerm Γ A →
+      LinearApplicationTerm Γ A
+
+    application-exchange :
+      {Γ Δ : List LinearSourceType} {A : LinearSourceType} →
+      ContextPermutation Γ Δ →
+      LinearApplicationTerm Γ A →
+      LinearApplicationTerm Δ A
+
+    application-lambda :
+      {Γ : List LinearSourceType} {A B : LinearSourceType} →
+      LinearApplicationTerm (A ∷ Γ) B →
+      LinearApplicationTerm Γ (linearArrowType A B)
+
+    linearApplication :
+      {Γ Δ : List LinearSourceType} {A B : LinearSourceType} →
+      LinearApplicationTerm Δ A →
+      LinearApplicationTerm Γ (linearArrowType A B) →
+      LinearApplicationTerm (appendLinearContext Δ Γ) B
+
+  rotateLastContext :
+    (prefix : List (PolType negPolarity)) →
+    (last : PolType negPolarity) →
+    ContextPermutation
+      (prefix ++ᴸ (last ∷ []))
+      (last ∷ prefix)
+  rotateLastContext [] last =
+    permutation-cons {A = PolType negPolarity} permutation-nil
+  rotateLastContext (head ∷ prefix) last =
+    permutation-trans
+      (permutation-cons
+        {A = PolType negPolarity}
+        (rotateLastContext prefix last))
+      (permutation-swap {A = PolType negPolarity})
+
+  deriveLinearApplication :
+    {Γ : List LinearSourceType} {A : LinearSourceType} →
+    LinearApplicationTerm Γ A →
+    MALLPProtocolTheory
+      (linearSourceContext Γ)
+      (just (linearSourceFormula A))
+  deriveLinearApplication (application-source term) =
+    protocol-logical (deriveMALLP term)
+  deriveLinearApplication (application-exchange permutation term) =
+    protocol-exchange
+      (linearContextPermutation permutation)
+      (deriveLinearApplication term)
+  deriveLinearApplication (application-lambda body) =
+    protocol-down
+      (protocol-par
+        (protocol-exchange permutation-swap
+          (protocol-up (deriveLinearApplication body))))
+  deriveLinearApplication
+    (linearApplication {Γ = Γ} {Δ = Δ} {A = A} {B = B} argument function) =
+    subst
+      (λ context → MALLPProtocolTheory context
+        (just (linearSourceFormula B)))
+      (sym (linearSourceContext-append Δ Γ))
+      (protocol-cut
+        (deriveLinearApplication argument)
+        (protocol-exchange
+          (rotateLastContext
+            (linearSourceContext Γ)
+            (dualPos (linearSourceFormula A)))
+          (protocol-cut
+            (deriveLinearApplication function)
+            primitive-linear-apply)))
+
+  -- BCI: I is identity, B is composition, and C exchanges the first
+  -- two arguments. Every input variable occurs exactly once.
+  bciIdentity :
+    {A : LinearSourceType} →
+    LinearApplicationTerm [] (linearArrowType A A)
+  bciIdentity =
+    application-lambda (application-source linearVariable)
+
+  bciComposition :
+    {A B C : LinearSourceType} →
+    LinearApplicationTerm []
+      (linearArrowType
+        (linearArrowType B C)
+        (linearArrowType
+          (linearArrowType A B)
+          (linearArrowType A C)))
+  bciComposition {A} {B} {C} =
+    application-lambda
+      (application-lambda
+        (application-lambda
+          (linearApplication
+            {A = B} {B = C}
+            (linearApplication
+              {A = A} {B = B}
+              (application-source {Γ = A ∷ []} {A = A} linearVariable)
+              (application-source
+                {Γ = linearArrowType A B ∷ []}
+                {A = linearArrowType A B}
+                linearVariable))
+            (application-source
+              {Γ = linearArrowType B C ∷ []}
+              {A = linearArrowType B C}
+              linearVariable))))
+
+  bciExchange :
+    {A B C : LinearSourceType} →
+    LinearApplicationTerm []
+      (linearArrowType
+        (linearArrowType A (linearArrowType B C))
+        (linearArrowType B (linearArrowType A C)))
+  bciExchange {A} {B} {C} =
+    application-lambda
+      (application-lambda
+        (application-lambda
+          (application-exchange
+            permutation-swap
+            (linearApplication
+              {A = B} {B = C}
+              (application-source {Γ = B ∷ []} {A = B} linearVariable)
+              (linearApplication
+                {A = A} {B = linearArrowType B C}
+                (application-source {Γ = A ∷ []} {A = A} linearVariable)
+                (application-source
+                  {Γ = linearArrowType A (linearArrowType B C) ∷ []}
+                  {A = linearArrowType A (linearArrowType B C)}
+                  linearVariable))))))
+
+  bciIdentityMALLP :
+    {A : LinearSourceType} →
+    MALLPProtocolTheory []
+      (just (linearSourceFormula (linearArrowType A A)))
+  bciIdentityMALLP = deriveLinearApplication bciIdentity
+
+  bciCompositionMALLP :
+    {A B C : LinearSourceType} →
+    MALLPProtocolTheory []
+      (just (linearSourceFormula
+        (linearArrowType
+          (linearArrowType B C)
+          (linearArrowType
+            (linearArrowType A B)
+            (linearArrowType A C)))))
+  bciCompositionMALLP = deriveLinearApplication bciComposition
+
+  bciExchangeMALLP :
+    {A B C : LinearSourceType} →
+    MALLPProtocolTheory []
+      (just (linearSourceFormula
+        (linearArrowType
+          (linearArrowType A (linearArrowType B C))
+          (linearArrowType B (linearArrowType A C)))))
+  bciExchangeMALLP = deriveLinearApplication bciExchange
+
+  word64Radix : Nat
+  word64Radix = 4294967296
+
+  -- Representation relation for a Word64 value carried by two Gforth cells.
+  -- A complete literal converter must construct this witness for every word;
+  -- identity preserves any such witness exactly.
+  record Word64Representation (word : Word64) : Set where
+    constructor word64Representation
+    field
+      highLimb lowLimb : Nat
+      highLimbBound : highLimb < word64Radix
+      lowLimbBound : lowLimb < word64Radix
+      word64Denotation :
+        primWord64ToNat word ≡ highLimb * word64Radix + lowLimb
+  open Word64Representation public
+
+  word64IdentityPreservesRepresentation :
+    {word : Word64} →
+    (representation : Word64Representation word) →
+    Word64Representation word
+  word64IdentityPreservesRepresentation representation = representation
 
   data NatListValue : Set where
     natListNil : NatListValue

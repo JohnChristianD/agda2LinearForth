@@ -48,6 +48,34 @@ A stateless delayed expression and a stateful memoized thunk are different seman
 - **Recursion:** admit source recursion when a finite MALLP derivation and the PureCake semantics can justify it (for example, through a specified primitive recursor). General recursive/fixpoint behavior is not added as a new MALLP connective.
 - **Effects:** monadic effects, arrays, exceptions, and FFI are not rejected merely by name. They require a declared operation signature, an explicit linear state/effect protocol, and a matching target semantics. The target remains free of direct IO sites; effect behavior must be represented by a proved explicit protocol. Unsupported effects fail with a diagnostic.
 
+## Agda 2.8.0.2 builtin and reflection choices
+
+The backend and proof modules are pinned to Agda 2.8.0.2. Use the actual modules from that release rather than guessed module names:
+
+| Need | Available module | Project decision |
+|---|---|---|
+| Universe levels | `Agda.Primitive` | No direct import is needed in `MALLPForth.agda` unless a declaration explicitly manipulates `Level`; `Agda.Builtin.Sigma` already imports it for universe-polymorphic pairs. |
+| Empty type | No `Agda.Builtin.Empty` or `Agda.Primitive.Empty` | Keep the small local `⊥` definition; use standard-library `Data.Empty` only when the library is an explicit dependency. |
+| Coercion | No `Agda.Builtin.Coercion` | Coercions are source/compiler constructs (for example, Agda's Treeless `TCoerce`), not a builtin source datatype to import. |
+| Universe alias | No `Agda.Builtin.Universe` | Use `Agda.Primitive` for `Set`, `Level`, and level operations. |
+| Pair / dependent pair | No `Agda.Builtin.Tuple` | Use `Agda.Builtin.Sigma` for dependent pairs, or an explicit project product type when its tensor/resource meaning matters. |
+| Signed integers | `Agda.Builtin.Int` | The builtin is `Int`, with `pos` and `negsuc`; there is no `Agda.Builtin.Integer`. |
+| Unit and lists | `Agda.Builtin.Unit`, `Agda.Builtin.List` | Use these canonical builtin declarations. |
+| Coinduction | `Agda.Builtin.Coinduction` | Provides `∞`, `♯_`, and `♭`; productivity still needs guarded definitions and observation proofs. |
+| Compile-time reflection | `Agda.Builtin.Reflection` | Available for macros that inspect resolved `Term`, `Type`, `Definition`, `Clause`, and `Pattern`, then generate typed declarations or witnesses. |
+
+Reflection is a compile-time elaboration facility, not a replacement for a typed source IR or a semantics proof. A reflection macro can derive a datatype description and construct a proposed MALLP witness; Agda then type-checks that witness. Runtime values, resource ownership, thunk updates, and Forth execution still require explicit syntax, interpretation, and simulation theorems. The current Haskell backend already reads resolved Agda definitions, telescopes, and Treeless terms; reflection should be introduced where a generated Agda declaration removes duplicated metadata or proof boilerplate, not merely to move a whitelist into a macro.
+
+## Relational denotation of bare MALLP
+
+The Agda module `MALLPRelationalDenotation` is now a proof-recursive, Set-valued relational interpretation parameterized by atomic meanings. It assigns positive and negative values compositionally: multiplicatives are paired resources, additives are tagged alternatives, `1`/`⊥` are interpreted by the unit object, `0`/`⊤` by the empty type, and polarity shifts exchange the positive and negative value interpretations.
+
+`MALLPRelation` interprets every constructor of the existing `MALLP` datatype. Axiom uses the duality conversion; cut carries an explicit intermediate value witness; exchange reindexes an environment by the inverse context permutation; tensor splits its environment; plus introduces a tagged result; par unpacks a pair; with selects an alternative; bottom and top use their unit/empty denotations; down and up transport the value across the polarity shift. This gives a compositional relational meaning to arbitrary *bare MALLP derivations*, rather than relying on I/B/C combinators as a substitute for the logic.
+
+This is a concrete relational semantics for the proof system, **not yet the full Hamano–Scott categorical model**. That model requires an explicit ambient *-autonomous category with products, reflective/coreflective full subcategories, and the adjunction data connecting the two polarities. The Agda development does not yet define those categories, functors, units/counits, naturality/coherence laws, or the completeness results from Hamano–Scott. Do not call the current relational interpretation a completed Hamano–Scott model.
+
+The BCI witnesses remain useful examples of linear terms and explicit exchange. Their application contract still resides in `MALLPProtocolTheory` under `primitive-linear-apply`; those witnesses are not derivations of application from bare MALLP. The new relational interpretation supplies semantics for the actual MALLP proof rules, but does not silently discharge that separate application contract or connect it to Haskell closure code generation.
+
 ## Current implementation
 
 The checked end-to-end fragment remains intentionally small:
@@ -60,20 +88,76 @@ The checked end-to-end fragment remains intentionally small:
 - Acyclic first-order Nat helper calls are recursively lowered by inlining their Treeless bodies and substituting argument resource trees in de Bruijn order. The caller's final resource check proves each original argument is consumed once across the expanded call. Recursive and mutually recursive call graphs are diagnosed pending a separately proved primitive-recursion lowering.
 - Closed Boolean constructors: `true` and `false`, represented by the additive MALLP formula `1 ⊕ 1` and emitted as Gforth `TRUE` / `FALSE` values.
 - Linear Bool-argument functions with additive pattern matching. Treeless `TCase` branches and Agda 2.8.0.2's equal-branch `PSeq` lowering are reconstructed as an additive conditional: the scrutinee is consumed exactly once, and both branches receive the same residual resource context. The `chooseBool : Bool → Bool → Bool` fixture compiles as `SWAP IF ELSE THEN` and returns the other live Boolean on either branch.
+- A two-field `BoolPair` product with a consuming pattern match and field swap. Agda's resolved datatype and constructor signatures establish the closed single-constructor product shape; the decoder checks both fields are used exactly once. Its function lowers as `SWAP`, and its source type is represented by MALLP tensor `Bool ⊗ Bool`; tensor introduction, exchange, and par introduction derive its proof without weakening or contraction.
 - Pure `Unit`: the MALLP multiplicative unit `1`, compiled as an empty Forth word that preserves the caller's stack.
 - Bounded-cell Gforth Nat runtime with explicit negative/overflow checks.
 
 `TPrim PSub` remains rejected as Nat monus: it denotes signed integer subtraction. Nat monus is handled through Agda's Nat subtraction builtin.
 
-The Agda specification contains Laurent's polarized MALLP proof-tree calculus, a focused Nat primitive theory, linear unary (`NatLinearExpr`) and binary (`NatBinaryLinearExpr`) Nat function proof terms with exactly one and two live assumptions respectively, plus a general count-indexed `NatResourceExpr` proof tree that partitions any finite number of live assumptions using MALLP cut and explicit exchange, indexed Forth `SWAP` exchange and depth-indexed `ROLL` resource selection, a Boolean encoding as the additive formula `1 ⊕ 1`, and Unit as the multiplicative formula `1`. `boolProofDerivation` builds the two Boolean introductions from `mallp-plus-left` / `mallp-plus-right` and `mallp-one`; `boolMALLP-forth-sound` proves the rendered Boolean token has the same value as its MALLP proof. `boolCaseWithResidualMALLP` uses the additive `mallp-with` rule to give both exclusive branches the same live residual assumption; `compileBoolCaseWithResidual` lowers that case to `SWAP IF ... ELSE ... THEN`; `boolCaseWithResidualMALLP-forth-sound` proves its token execution preserves the selected residual value; and `boolCaseWithResidual-token-correspondence` identifies the formal control-flow tokens. The generated renderer certificate additionally compares the Haskell compiler's actual `chooseBool` token list with `mapBoolForthTokensAsText (renderBoolCode compileBoolCaseWithResidual)` by `refl`. `unitProof` is `mallp-one`, and `unitMALLP-forth-sound` proves the empty Forth lowering preserves the caller's residual stack. `natMALLP-forth-sound` proves the closed Nat AST, indexed Forth stack code, and abstract postfix-token interpreter agree while preserving the residual stack. `natLinearMALLP-forth-sound` connects unary linear Nat proof interpretation with indexed Forth/token execution; `natBinaryMALLP-forth-sound` does the same for two-argument primitive functions and their two-assumption MALLP derivations. The indexed target adds `StackAt`, `rollNat`, `rollStack`, `rollWord`, and `rollList-correct`, proving the ROLL permutation for every witnessed live stack depth. The closed-local-let model adds `closedNatLocal-proof`, `closedNatLocal-proof-adequate`, and `closedNatLocal-forth-sound`: a closed PureLang-style let expression is inlined and receives a MALLP derivation without weakening or contraction.
+The Agda specification contains Laurent's polarized MALLP proof-tree calculus, a focused Nat primitive theory, linear unary (`NatLinearExpr`) and binary (`NatBinaryLinearExpr`) Nat function proof terms with exactly one and two live assumptions respectively, plus a general count-indexed `NatResourceExpr` proof tree that partitions any finite number of live assumptions using MALLP cut and explicit exchange, indexed Forth `SWAP` exchange and depth-indexed `ROLL` resource selection, a Boolean encoding as the additive formula `1 ⊕ 1`, and Unit as the multiplicative formula `1`. The formal module also includes a generic `LinearSourceType` / `LinearTerm` core (Nat, Int, Bool, Unit, tensor, sum, and linear-function types) with context-indexed variables, exchange, tensor introduction/elimination, additive introduction/case, cut, lambda introduction, and an environment-owning closure constructor; `deriveMALLP` translates each term constructor structurally into the existing MALLP rules. `boolProofDerivation` builds the two Boolean introductions from `mallp-plus-left` / `mallp-plus-right` and `mallp-one`; `boolMALLP-forth-sound` proves the rendered Boolean token has the same value as its MALLP proof. `boolCaseWithResidualMALLP` uses the additive `mallp-with` rule to give both exclusive branches the same live residual assumption; `compileBoolCaseWithResidual` lowers that case to `SWAP IF ... ELSE ... THEN`; `boolCaseWithResidualMALLP-forth-sound` proves its token execution preserves the selected residual value; and `boolCaseWithResidual-token-correspondence` identifies the formal control-flow tokens. The generated renderer certificate additionally compares the Haskell compiler's actual `chooseBool` token list with `mapBoolForthTokensAsText (renderBoolCode compileBoolCaseWithResidual)` by `refl`. `unitProof` is `mallp-one`, and `unitMALLP-forth-sound` proves the empty Forth lowering preserves the caller's residual stack. `natMALLP-forth-sound` proves the closed Nat AST, indexed Forth stack code, and abstract postfix-token interpreter agree while preserving the residual stack. `natLinearMALLP-forth-sound` connects unary linear Nat proof interpretation with indexed Forth/token execution; `natBinaryMALLP-forth-sound` does the same for two-argument primitive functions and their two-assumption MALLP derivations. The indexed target adds `StackAt`, `rollNat`, `rollStack`, `rollWord`, and `rollList-correct`, proving the ROLL permutation for every witnessed live stack depth. The closed-local-let model adds `closedNatLocal-proof`, `closedNatLocal-proof-adequate`, and `closedNatLocal-forth-sound`: a closed PureLang-style let expression is inlined and receives a MALLP derivation without weakening or contraction.
 
-The general resource-tree proof and ROLL token theorem are pending a successful CI run on the latest feature head. The newly added acyclic helper-call inliner is likewise pending the latest Haskell/Gforth integration run. This is not yet a proof that the Haskell decoder/printer or a real Gforth process implements the Agda model. The existing Gforth cell bound also differs from mathematical unbounded Agda Nat; the emitted runtime reports overflow rather than proving arbitrary-precision Nat semantics.
+The generic Nat resource-tree and ROLL token proofs, the integrated Forth renderer, the Bool additive-case witness, and the BoolPair tensor-swap witness all type-check in CI. The generic LinearTerm layer now derives MALLP proofs for its supported constructors, including closure introduction with an explicitly owned environment. This does not yet prove that the Haskell Treeless decoder maps arbitrary source terms into those typed terms, that the Forth runtime refines the formal machine, or that concrete Gforth is covered by a mechanized simulation theorem. The existing Gforth cell bound also differs from mathematical unbounded Agda Nat; the emitted runtime reports overflow rather than proving arbitrary-precision Nat semantics.
 
 ## Current expanded test slice
 
 The Gforth fixture includes unary identity, addition, monus in either operand order, and multiplication, plus binary addition, monus, reversed monus, and multiplication. It also exercises `invertBool` and `chooseBool` across both additive branches, with the second live Boolean preserved and returned. The admitted linear functions must consume each live argument exactly once on every branch. An unused argument or a duplicated live argument is rejected; closed operands may be separately reconstructed.
 
 This is not yet general higher-order PureCake support: no closure environment, user-defined call graph, finite ADT/list lowering, recursive semantics, stateful thunk sharing, or effect handlers are implemented. The Agda proof establishes the formal unary core and abstract token machine, not the Haskell printer or real Gforth implementation.
+
+## PR #33: typed MALLP core and C-series witnesses
+
+This PR adds several formal foundations and one narrow new backend case. Keep the distinction between a formal source model, an implemented decoder, and an end-to-end verified compiler explicit.
+
+### BCI and the linear closure model
+
+The source type former `linearArrowType A B` is interpreted as the polarized MALLP formula
+`↓(A⊥ ⅋ ↑B)`. The linear term core has context-indexed variables, exchange, tensor introduction/elimination, additive injection/case, unit, cut, lambda abstraction, and an environment-owning closure constructor. `deriveMALLP` maps the implemented `LinearTerm` constructors structurally to Laurent's existing rules.
+
+The new BCI witnesses represent:
+
+- **I:** identity, with its sole input consumed once.
+- **B:** composition, with three function/argument resources each used once.
+- **C:** exchange, implemented by the explicit context permutation.
+
+Application itself is represented in `LinearApplicationTerm` and interpreted through the explicitly declared `primitive-linear-apply` signature in `MALLPProtocolTheory`. This is a typed primitive operation over unchanged MALLP, not a new logical inference rule and not a claim that a Forth closure-call implementation is already verified. The I/B/C terms and their protocol derivations are Agda witnesses; Haskell does not yet compile general higher-order closures or application.
+
+This follows the resource interpretation associated with Henry Baker's permutation-stack work: an environment and its argument are owned resources, and stack permutations express exchange. The symmetric monoidal closed interpretation of tensor, unit and internal hom is the separate categorical semantics; Baker's stack-machine construction is not itself the Hamano–Scott categorical model. A full closure compiler still needs an executable closure layout, captured-environment relation, application semantics, and a pass simulation.
+
+### Word64: exact source equality, deliberately narrow target support
+
+The pinned Agda 2.8.0.2 API is `Agda.Builtin.Word`, not an `Agda.Builtin.Word64` module. The formal file imports `Word64`, `primWord64ToNat`, `primWord64FromNat`, and the primitive injectivity theorem `primWord64ToNatInjective`.
+
+The Agda witness `word64EqualityByNat` establishes equivalence between equality of Word64 values and equality of their Nat denotations. `linearWord64IdentityMALLP` gives Word64 one atomic linear resource in the source calculus. The target model treats that source resource as two owned 32-bit cells; `word64IdentityCode-correct` proves the identity program preserves both cells, and `Word64Representation` records the required limb bounds and denotation equation.
+
+The Haskell backend admits only the exact unary identity shape `Word64 → Word64`, emitting an empty body that preserves the two incoming cells. The Gforth fixture checks preservation of a pair of maximum 32-bit limbs. **Word64 literal construction, arbitrary Word64 arithmetic, conversions, division, comparison, and a total representation theorem for every Word64 are not implemented.** The representation record is conditional evidence, not a proof that every Word64 already has a valid pair of Gforth cells.
+
+### Reflection, metaprogramming, and equality
+
+The `reflectDataShape` Agda macro uses `Reflection.getDefinition`, `getType`, constructor metadata, `quoteTC`, and `unify` to inspect a resolved data declaration and construct a typed shape description. Agda then kernel-checks the generated witness. The pair and parameterized-box examples verify constructor arities and parameter/index counts by equality proofs.
+
+This is compile-time metaprogramming over a quoted representation of Agda syntax. It is a useful homoiconic-style interface—programs can inspect and construct descriptions of programs—but reflection is not definitionally identical to object-language equality. The current macro establishes datatype-shape metadata, not arbitrary constructor layouts, linear usage, or a compiler derivation for every reflected datatype.
+
+### Strictness, delay, and call-by-need
+
+The file records Agda's strictness equation using `primForceLemma`: forcing a value before passing it to a continuation has the specified observable equation. PureCake distinguishes call-by-name PureLang evaluation, explicit delay/force in ThunkLang, environment-based execution in EnvLang, and stateful thunk allocation/update in StateLang. These are distinct semantic stages, not synonyms for one eager evaluator.
+
+The project formalizes a total Nat-only `ThunkExpr`, suspended/memoized states, a linearly indexed store token, `forceThunk`, cache idempotence, and stable repeated observations after update. A separate one-token trace protocol specifies resource-preserving effect emission without placing Agda IO sites in the admitted source fragment. These are formal protocol examples, not yet a general PureCake ThunkLang/EnvLang/StateLang lowering in `ToForth.hs`; the current Forth runtime does not allocate or update general heap thunks.
+
+### Data, lists, recursion, and effects
+
+The Agda core derives tensor and sum rules from existing MALLP rules. It includes a Maybe-like `1 ⊕ A` identity witness, reflection-derived constructor-shape metadata, and a finite `NatListValue` with a structurally recursive fold and step/empty equations. The protocol theory contains declared list nil/cons/fold signatures. These establish useful formal vocabulary for linear ADTs and finite recursion.
+
+The Haskell backend still does **not** compile arbitrary reflected ADTs, generic pattern matches, lists, folds, structurally recursive function definitions, delay/force, call-by-need heap updates, or effect protocols. The current list fold is an Agda formal model and signature, not an implementation of PureCake list compilation. General recursion and coinduction need a precise termination/productivity semantics and an admitted derivation/primitive-recursion contract; no new μ/ν connective is added to Laurent MALLP. An explicit state/effect token is the only current effect model; there are no direct IO sites or IO runtime operations.
+
+### Rewrite-system boundary
+
+Agda's user rewrite declarations belong to source conversion/type checking. Agda checks the configured rewrite system for confluence and uses it during normalization; the Haskell backend receives Agda's resolved/normalized Treeless output through `toTreeless`. The backend does not contain an independent, unproved symbolic rewrite engine. `FLib.fth` is the target's operational runtime library: its Nat words define executable arithmetic and error behavior, not Agda's type-theoretic conversion relation. A theorem must relate each admitted source rewrite equation to the denotation of its target operation. Adding rewrite-like text processing to `FLib.fth` would not establish confluence and would conflate compile-time conversion with runtime execution.
+
+### What this PR proves, and what it does not
+
+The new Agda declarations establish source-level equality/resource witnesses for Word64 identity, a BCI application theory, reflection shape examples, strict-force equality, a Nat-only stateful thunk protocol, explicit effect-token transitions, and finite Nat-list fold equations. The Haskell addition compiles only `Word64 → Word64` identity, in addition to previously supported Nat/Bool/BoolPair/Unit slices. CI's generated renderer certificate compares actual emitted definition text with the formal text renderer by `refl`; it does not prove that every Haskell Treeless decoder branch has a formal source derivation, that the Haskell resource analysis is sound for all terms, or that the whole upstream Gforth implementation refines the Agda machine.
+
+The PureCake port remains incomplete. In particular, there is no general higher-order closure code generation, generic ADT/list code generation, certified recursive-call lowering, stateful thunk heap implementation, effect execution backend, or mechanized Gforth refinement theorem. The current PR must not be described as a complete PureCake compiler or an end-to-end verified compiler.
 
 ## Implementation frontier
 
@@ -103,7 +187,7 @@ The chain is intentionally conjunctive: C4 does not prove C0/C1 correctness, and
 ## Formal and build boundaries
 
 - Agda and the Haskell backend use pinned Agda **2.8.0.2** from `cabal.project`.
-- `formal/MALLPForth.agda` contains the MALLP specification, Nat proof terms, and abstract Forth machine.
+- `formal/MALLPForth.agda` contains the MALLP specification, generic linear source-term grammar and derivation function, coinductive Conat core, typed Forth token algebra, canonical text renderer, and abstract target machine. The former `formal/ForthRenderer.agda` has been retired so compiler terms and rendering witnesses share one module.
 - `formal/SovereignRationalSEDPhysics.agda` remains a separate library and is not a compiler proof dependency.
 - The MALLP proof options and existing postulate boundary are retained; this project does not claim an axiom-free or `--safe` development.
 - The backend emits a generated `MALLPEmittedRenderer.agda` certificate beside the Forth module. For each emitted colon definition, the certificate records the actual string produced by Haskell `renderForm`, constructs the formal `ForthTextToken` stream, and asks Agda to prove by `refl` that the emitted definition equals `renderForthWordText`. CI type-checks this generated certificate with pinned Agda 2.8.0.2. This establishes exact text equality for emitted definitions in the fixture, including Nat literals, arithmetic tokens, SWAP, ROLL, Bool literals, and Unit words. For the `chooseBool` additive case, the same certificate also proves the compiler token list equals the text-token image of `renderBoolCode compileBoolCaseWithResidual`, linking the compiler's control-flow lowering to a typed Agda program and its MALLP proof.
