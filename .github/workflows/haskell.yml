@@ -122,44 +122,16 @@ jobs:
           grep -Fq ': answerTrue TRUE ;' MALLPStrict.fth
           grep -Fq ': answerFalse FALSE ;' MALLPStrict.fth
           grep -Fq ': answerUnit ;' MALLPStrict.fth
-          grep -Eq '^: answerIdentity[[:space:]]*;          if grep -Eq '^: answerInt ' MALLPStrict.fth; then
-            echo "non-admitted Int definition escaped the result-type gate"
-            exit 1
-          fi
-          if grep -Eq '(^|[[:space:]])(:noname|makeTHUNK|dethunk|foldThunks|pass|HERE|ALLOT|CREATE)([[:space:]]|$)' MALLPStrict.fth; then
-            echo "generated strict MALLP code contains a legacy runtime dependency"
-            exit 1
-          fi
-          if grep -Eiq '(^|[[:space:]])(DUP|[?]DUP|2DUP|3DUP|OVER|2OVER|PICK|DROP|2DROP|3DROP|NIP|2NIP|TUCK)([[:space:]]|$)' data/FLib.fth MALLPStrict.fth test/gforth/mallp-strict.fs; then
-            echo "strict MALLP runtime/output contains a structural duplicate or discard word"
-            exit 1
-          fi
-          gforth MALLPStrict.fth test/gforth/mallp-strict.fs > mallp-strict.log
-          grep -Fq 'mallp-strict-tests-passed' mallp-strict.log
-
-      - name: Require every proof, backend, and execution gate
-        if: always()
-        env:
-          MALLP_CHECK: ${{ steps.mallp_proof.outcome }}
-          PHYSICS_CHECK: ${{ steps.physics_proof.outcome }}
-          BACKEND_CHECK: ${{ steps.forth_backend.outcome }}
-          FIXTURE_CHECK: ${{ steps.strict_fixture.outcome }}
-        run: |
-          printf 'MALLP proof: %s\nPhysics proof: %s\nBackend build: %s\nGforth fixture: %s\n' "$MALLP_CHECK" "$PHYSICS_CHECK" "$BACKEND_CHECK" "$FIXTURE_CHECK"
-          test "$MALLP_CHECK" = success
-          test "$PHYSICS_CHECK" = success
-          test "$BACKEND_CHECK" = success
-          test "$FIXTURE_CHECK" = success
- MALLPStrict.fth
+          grep -Eq '^: answerIdentity[[:space:]]*;' MALLPStrict.fth
           grep -Fq 'answerAddFive' MALLPStrict.fth
           grep -Fq 'answerMonusFive' MALLPStrict.fth
           grep -Fq 'answerFiveMonus' MALLPStrict.fth
           grep -Fq 'answerMultiplyFive' MALLPStrict.fth
-          grep -Fq 'SWAP' MALLPStrict.fth
           grep -Fq 'answerAddTwo' MALLPStrict.fth
           grep -Fq 'answerMonusTwo' MALLPStrict.fth
           grep -Fq 'answerReverseMonusTwo' MALLPStrict.fth
           grep -Fq 'answerMultiplyTwo' MALLPStrict.fth
+          grep -Fq 'SWAP' MALLPStrict.fth
           if grep -Eq '^: answerInt ' MALLPStrict.fth; then
             echo "non-admitted Int definition escaped the result-type gate"
             exit 1
@@ -183,7 +155,7 @@ jobs:
           BACKEND_CHECK: ${{ steps.forth_backend.outcome }}
           FIXTURE_CHECK: ${{ steps.strict_fixture.outcome }}
         run: |
-          printf 'MALLP proof: %s\nPhysics proof: %s\nBackend build: %s\nGforth fixture: %s\n' "$MALLP_CHECK" "$PHYSICS_CHECK" "$BACKEND_CHECK" "$FIXTURE_CHECK"
+          printf 'MALLP proof: %s\\nPhysics proof: %s\\nBackend build: %s\\nGforth fixture: %s\\n' "$MALLP_CHECK" "$PHYSICS_CHECK" "$BACKEND_CHECK" "$FIXTURE_CHECK"
           test "$MALLP_CHECK" = success
           test "$PHYSICS_CHECK" = success
           test "$BACKEND_CHECK" = success
