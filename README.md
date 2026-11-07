@@ -46,14 +46,14 @@ The reference language is [PureLang in CakeML/PureCake](https://github.com/CakeM
 
 The checked end-to-end fragment remains intentionally small:
 
-- Closed Nat literals.
-- Nat addition, natural subtraction (monus), and multiplication.
+- Closed Nat literals; Nat addition, natural subtraction (monus), and multiplication.
 - Nonrecursive closed Nat lets, including unused and multiply-used bindings. These are substituted before Forth rendering; multiple uses expand into separate copies of a closed expression.
-- Bounded-cell Gforth runtime with explicit negative/overflow checks.
+- Closed Boolean constructors: `true` and `false`, represented by the additive MALLP formula `1 ⊕ 1` and emitted as Gforth `TRUE` / `FALSE` values.
+- Bounded-cell Gforth Nat runtime with explicit negative/overflow checks.
 
 `TPrim PSub` remains rejected as Nat monus: it denotes signed integer subtraction. Nat monus is handled through Agda's Nat subtraction builtin.
 
-The Agda specification contains Laurent's polarized MALLP proof-tree calculus and a focused Nat primitive theory. `natMALLP-forth-sound` proves the Nat AST, indexed Forth stack code, and abstract postfix-token interpreter agree while preserving the residual stack. The closed-local-let model adds `closedNatLocal-proof`, `closedNatLocal-proof-adequate`, and `closedNatLocal-forth-sound`: a closed PureLang-style let expression is inlined and receives a MALLP derivation without weakening or contraction.
+The Agda specification contains Laurent's polarized MALLP proof-tree calculus, a focused Nat primitive theory, and a Boolean encoding as the additive formula `1 ⊕ 1`. `boolProofDerivation` builds the two Boolean introductions from `mallp-plus-left` / `mallp-plus-right` and `mallp-one`; `boolMALLP-forth-sound` proves the rendered Boolean token has the same value as its MALLP proof. `natMALLP-forth-sound` proves the Nat AST, indexed Forth stack code, and abstract postfix-token interpreter agree while preserving the residual stack. The closed-local-let model adds `closedNatLocal-proof`, `closedNatLocal-proof-adequate`, and `closedNatLocal-forth-sound`: a closed PureLang-style let expression is inlined and receives a MALLP derivation without weakening or contraction.
 
 This is not yet a proof that the Haskell decoder/printer or a real Gforth process implements the Agda model. The existing Gforth cell bound also differs from mathematical unbounded Agda Nat; the emitted runtime reports overflow rather than proving arbitrary-precision Nat semantics.
 
