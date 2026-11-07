@@ -1374,10 +1374,27 @@ module StrictNatCompiler where
 
   execTokens : List ForthToken → List Nat → Maybe (List Nat)
   execTokens [] stack = just stack
-  execTokens (rollWord depth ∷ tokens) stack with rollList depth stack
+  execTokens (pushLiteral value ∷ tokens) stack
+    with execToken (pushLiteral value) stack
   ... | nothing = nothing
   ... | just nextStack = execTokens tokens nextStack
-  execTokens (token ∷ tokens) stack with execToken token stack
+  execTokens (addWord ∷ tokens) stack
+    with execToken addWord stack
+  ... | nothing = nothing
+  ... | just nextStack = execTokens tokens nextStack
+  execTokens (monusWord ∷ tokens) stack
+    with execToken monusWord stack
+  ... | nothing = nothing
+  ... | just nextStack = execTokens tokens nextStack
+  execTokens (multiplyWord ∷ tokens) stack
+    with execToken multiplyWord stack
+  ... | nothing = nothing
+  ... | just nextStack = execTokens tokens nextStack
+  execTokens (swapWord ∷ tokens) stack
+    with execToken swapWord stack
+  ... | nothing = nothing
+  ... | just nextStack = execTokens tokens nextStack
+  execTokens (rollWord depth ∷ tokens) stack with rollList depth stack
   ... | nothing = nothing
   ... | just nextStack = execTokens tokens nextStack
 
