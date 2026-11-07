@@ -154,6 +154,7 @@ jobs:
           grep -Fq 'answerMonusFive' MALLPStrict.fth
           grep -Fq 'answerFiveMonus' MALLPStrict.fth
           grep -Fq 'answerMultiplyFive' MALLPStrict.fth
+          grep -Fq 'SWAP' MALLPStrict.fth
           if grep -Eq '^: answerInt ' MALLPStrict.fth; then
             echo "non-admitted Int definition escaped the result-type gate"
             exit 1
