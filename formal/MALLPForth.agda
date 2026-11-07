@@ -2282,24 +2282,38 @@ module StrictBoolCompiler where
 
   data BoolForthCode :
     List BoolStackType → List BoolStackType → Set where
+    boolIdentity :
+      {Γ : List BoolStackType} →
+      BoolForthCode Γ Γ
+
     pushBoolean :
       {Γ : List BoolStackType} →
       Bool →
       BoolForthCode Γ (boolCell ∷ Γ)
 
-    -- A conditional consumes one Boolean condition. Both branches begin
-    -- with the same residual linear stack and return one Boolean result.
+    -- A conditional consumes its condition. Both branches begin with the
+    -- same residual stack and may return an arbitrary stack of the same type.
     boolIfCode :
+      {Γ Δ : List BoolStackType} →
+      BoolForthCode Γ Δ →
+      BoolForthCode Γ Δ →
+      BoolForthCode (boolCell ∷ Γ) Δ
+
+    -- A source function may case-analyse the lower of two live Boolean
+    -- arguments, then return the remaining argument in either branch.
+    -- The concrete lowering is SWAP IF ... ELSE ... THEN.
+    boolIfPreserving :
       {Γ : List BoolStackType} →
-      BoolForthCode Γ (boolCell ∷ Γ) →
-      BoolForthCode Γ (boolCell ∷ Γ) →
-      BoolForthCode (boolCell ∷ Γ) (boolCell ∷ Γ)
+      BoolForthCode (boolCell ∷ Γ) (boolCell ∷ Γ) →
+      BoolForthCode (boolCell ∷ Γ) (boolCell ∷ Γ) →
+      BoolForthCode (boolCell ∷ boolCell ∷ Γ) (boolCell ∷ Γ)
 
   execBoolCode :
     {Γ Δ : List BoolStackType} →
     BoolForthCode Γ Δ →
     BoolStack Γ →
     BoolStack Δ
+  execBoolCode boolIdentity stack = stack
   execBoolCode (pushBoolean value) stack =
     pushBooleanValue value stack
   execBoolCode (boolIfCode whenTrue whenFalse)
@@ -2308,19 +2322,29 @@ module StrictBoolCompiler where
   execBoolCode (boolIfCode whenTrue whenFalse)
     (pushBooleanValue false stack) =
       execBoolCode whenFalse stack
+  execBoolCode (boolIfPreserving whenTrue whenFalse)
+    (pushBooleanValue value (pushBooleanValue true stack)) =
+      execBoolCode whenTrue (pushBooleanValue value stack)
+  execBoolCode (boolIfPreserving whenTrue whenFalse)
+    (pushBooleanValue value (pushBooleanValue false stack)) =
+      execBoolCode whenFalse (pushBooleanValue value stack)
 
   data BoolForthToken : Set where
-    pushTrueToken pushFalseToken : BoolForthToken
+    pushTrueToken pushFalseToken boolSwapToken : BoolForthToken
     boolIfToken : List BoolForthToken → List BoolForthToken → BoolForthToken
 
   renderBoolCode :
     {Γ Δ : List BoolStackType} →
     BoolForthCode Γ Δ →
     List BoolForthToken
+  renderBoolCode boolIdentity = []
   renderBoolCode (pushBoolean true) = pushTrueToken ∷ []
   renderBoolCode (pushBoolean false) = pushFalseToken ∷ []
   renderBoolCode (boolIfCode whenTrue whenFalse) =
     boolIfToken (renderBoolCode whenTrue) (renderBoolCode whenFalse) ∷ []
+  renderBoolCode (boolIfPreserving whenTrue whenFalse) =
+    boolSwapToken ∷
+      boolIfToken (renderBoolCode whenTrue) (renderBoolCode whenFalse) ∷ []
 
   execBoolTokens :
     List BoolForthToken →
@@ -2331,6 +2355,9 @@ module StrictBoolCompiler where
     execBoolTokens tokens (true ∷ stack)
   execBoolTokens (pushFalseToken ∷ tokens) stack =
     execBoolTokens tokens (false ∷ stack)
+  execBoolTokens (boolSwapToken ∷ tokens) (top ∷ next ∷ stack) =
+    execBoolTokens tokens (next ∷ top ∷ stack)
+  execBoolTokens (boolSwapToken ∷ tokens) _ = nothing
   execBoolTokens (boolIfToken whenTrue whenFalse ∷ tokens)
     (true ∷ stack)
       with execBoolTokens whenTrue stack
@@ -2349,6 +2376,7 @@ module StrictBoolCompiler where
     (stack : BoolStack Γ) →
     execBoolTokens (renderBoolCode code) (forgetBoolStack stack) ≡
     just (forgetBoolStack (execBoolCode code stack))
+  renderBoolCode-sound boolIdentity stack = refl
   renderBoolCode-sound (pushBoolean true) stack = refl
   renderBoolCode-sound (pushBoolean false) stack = refl
   renderBoolCode-sound (boolIfCode whenTrue whenFalse)
@@ -2357,6 +2385,14 @@ module StrictBoolCompiler where
   renderBoolCode-sound (boolIfCode whenTrue whenFalse)
     (pushBooleanValue false stack) =
       renderBoolCode-sound whenFalse stack
+  renderBoolCode-sound (boolIfPreserving whenTrue whenFalse)
+    (pushBooleanValue value (pushBooleanValue true stack))
+      with renderBoolCode-sound whenTrue (pushBooleanValue value stack)
+  ... | refl = refl
+  renderBoolCode-sound (boolIfPreserving whenTrue whenFalse)
+    (pushBooleanValue value (pushBooleanValue false stack))
+      with renderBoolCode-sound whenFalse (pushBooleanValue value stack)
+  ... | refl = refl
 
   compileBoolProof :
     BoolProof →
@@ -2379,6 +2415,7 @@ module StrictBoolCompiler where
     boolForthTokenAsText : BoolForthToken → ForthTextToken
     boolForthTokenAsText pushTrueToken = textTrueWord
     boolForthTokenAsText pushFalseToken = textFalseWord
+    boolForthTokenAsText boolSwapToken = textSwapWord
     boolForthTokenAsText (boolIfToken whenTrue whenFalse) =
       textIf (mapBoolForthTokensAsText whenTrue)
         (mapBoolForthTokensAsText whenFalse)
@@ -2450,6 +2487,30 @@ module StrictBoolCompiler where
     boolMALLP-forth-sound whenTrue
   boolCaseRuntimeMALLP-forth-sound false (boolCaseProof whenTrue whenFalse) =
     boolMALLP-forth-sound whenFalse
+
+  -- The additive left rule consumes the condition while both branches
+  -- consume the same residual Bool assumption. This is the MALLP judgment
+  -- for chooseBool : Bool ⊗ Bool ⊸ Bool, with no weakening or contraction.
+  boolCaseWithResidualMALLP :
+    MALLP
+      (dualPos boolFormula ∷ dualPos boolFormula ∷ [])
+      (just boolFormula)
+  boolCaseWithResidualMALLP =
+    mallp-with (mallp-bottom mallp-ax) (mallp-bottom mallp-ax)
+
+  compileBoolCaseWithResidual :
+    BoolForthCode (boolCell ∷ boolCell ∷ []) (boolCell ∷ [])
+  compileBoolCaseWithResidual =
+    boolIfPreserving boolIdentity boolIdentity
+
+  boolCaseWithResidualMALLP-forth-sound :
+    (condition value : Bool) →
+    execBoolTokens
+      (renderBoolCode compileBoolCaseWithResidual)
+      (value ∷ condition ∷ []) ≡
+    just (value ∷ [])
+  boolCaseWithResidualMALLP-forth-sound true value = refl
+  boolCaseWithResidualMALLP-forth-sound false value = refl
 
 open StrictBoolCompiler public
 
