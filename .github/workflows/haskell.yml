@@ -130,6 +130,8 @@ jobs:
           test -s MALLPStrict.fth
           test -s MALLPEmittedRenderer.agda
           cat MALLPEmittedRenderer.agda
+          echo "Generated Forth module:"
+          cat MALLPStrict.fth
           if "$AGDA_BIN" -i formal -i . MALLPEmittedRenderer.agda > renderer-certificate.log 2>&1; then
             cat renderer-certificate.log
           else
