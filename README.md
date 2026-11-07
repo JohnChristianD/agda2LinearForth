@@ -48,7 +48,8 @@ The checked end-to-end fragment remains intentionally small:
 
 - Closed Nat literals; Nat addition, natural subtraction (monus), and multiplication.
 - Nonrecursive closed Nat lets, including unused and multiply-used bindings. These are substituted before Forth rendering; multiple uses expand into separate copies of a closed expression.
-- Unary `Nat → Nat` functions with exactly one use of their live argument. The compiler recognizes a one-argument Nat telescope, checks the Treeless lambda arity, and lowers argument references through an indexed stack contract. Both operand orders are supported; a closed left operand uses `SWAP`, which is exchange rather than duplication or discard.
+- Unary `Nat → Nat` functions with exactly one use of their live argument. The compiler recognizes a one-argument Nat telescope, checks the Treeless lambda arity, and lowers argument references through an indexed stack contract. Both operand orders with closed operands are supported.
+- Binary `Nat → Nat → Nat` primitive functions whose body applies one declared Nat primitive to the two arguments exactly once each. The compiler checks the two-argument telescope and Treeless lambda arity, handles direct or exchanged de Bruijn argument order, and emits only the primitive operation plus `SWAP` when exchange is required.
 - Closed Boolean constructors: `true` and `false`, represented by the additive MALLP formula `1 ⊕ 1` and emitted as Gforth `TRUE` / `FALSE` values.
 - Pure `Unit`: the MALLP multiplicative unit `1`, compiled as an empty Forth word that preserves the caller's stack.
 - Bounded-cell Gforth Nat runtime with explicit negative/overflow checks.
@@ -61,7 +62,7 @@ This is not yet a proof that the Haskell decoder/printer or a real Gforth proces
 
 ## Current expanded test slice
 
-The Gforth fixture now includes unary identity, addition, monus in either operand order, and multiplication. The admitted unary function must consume its one Nat argument exactly once. An unused argument or a duplicated live argument is rejected; closed operands may be separately reconstructed.
+The Gforth fixture includes unary identity, addition, monus in either operand order, and multiplication, plus binary addition, monus, reversed monus, and multiplication. The admitted unary function must consume its one Nat argument exactly once. An unused argument or a duplicated live argument is rejected; closed operands may be separately reconstructed.
 
 This is not yet general higher-order PureCake support: no closure environment, multiple independent live parameters, user-defined call graph, finite ADT/list lowering, recursive semantics, stateful thunk sharing, or effect handlers are implemented. The Agda proof establishes the formal unary core and abstract token machine, not the Haskell printer or real Gforth implementation.
 
