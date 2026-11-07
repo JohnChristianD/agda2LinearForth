@@ -154,14 +154,37 @@ renderNatExpr (NatBinary operation left right) =
         NatMultiply -> "MALLP-NAT-MUL"
   in RSList [renderNatExpr left, renderNatExpr right, RSAtom word]
 
-hasNatResult :: Definition -> TCM Bool
-hasNatResult definition = do
-  natName <- getBuiltinName builtinNat
+decodeBoolTerm :: TTerm -> TCM Bool
+decodeBoolTerm term = do
+  trueName <- getBuiltinName builtinTrue
+  falseName <- getBuiltinName builtinFalse
+  let (headTerm, args) = tAppView term
+      matches expected actual = Just actual == expected
+  case headTerm of
+    TCon name
+      | null args && matches trueName name -> pure True
+      | null args && matches falseName name -> pure False
+    TDef name
+      | null args && matches trueName name -> pure True
+      | null args && matches falseName name -> pure False
+    TCoerce inner
+      | null args -> decodeBoolTerm inner
+    _ -> unsupported ("Treeless term is outside the closed Bool fragment: " ++ show headTerm)
+
+hasResult :: QName -> Definition -> TCM Bool
+hasResult builtin definition = do
+  expectedName <- getBuiltinName builtin
   TelV _ resultType <- telView (defType definition)
   reducedResultType <- reduce resultType
-  pure $ case (natName, I.unEl reducedResultType) of
+  pure $ case (expectedName, I.unEl reducedResultType) of
     (Just expected, I.Def actual []) -> expected == actual
     _ -> False
+
+hasNatResult :: Definition -> TCM Bool
+hasNatResult = hasResult builtinNat
+
+hasBoolResult :: Definition -> TCM Bool
+hasBoolResult = hasResult builtinBool
 
 compileDefinition :: Definition -> TCM (Maybe FthForm)
 compileDefinition definition
@@ -170,15 +193,23 @@ compileDefinition definition
   | otherwise = case theDef definition of
       Function{} -> do
         isNat <- hasNatResult definition
-        if not isNat
-          then pure Nothing
-          else do
-            body <- toTreeless EagerEvaluation (defName definition)
-            case body of
-              Nothing -> pure Nothing
-              Just term -> do
-                expression <- decodeNatTerm [] term
-                pure (Just (strictWord (defName definition) (renderNatExpr expression)))
+        isBool <- hasBoolResult definition
+        if isNat then do
+          body <- toTreeless EagerEvaluation (defName definition)
+          case body of
+            Nothing -> pure Nothing
+            Just term -> do
+              expression <- decodeNatTerm [] term
+              pure (Just (strictWord (defName definition) (renderNatExpr expression)))
+        else if isBool then do
+          body <- toTreeless EagerEvaluation (defName definition)
+          case body of
+            Nothing -> pure Nothing
+            Just term -> do
+              value <- decodeBoolTerm term
+              let forthBoolean = if value then "TRUE" else "FALSE"
+              pure (Just (strictWord (defName definition) (RSAtom forthBoolean)))
+        else pure Nothing
       _ -> pure Nothing
 
 readStrictRuntime :: IO String
