@@ -24,6 +24,11 @@ answerLetUnused 7 strict-assert-natural
 answerTrue TRUE strict-assert-boolean
 answerFalse FALSE strict-assert-boolean
 answerUnit
+10 answerIdentity 10 strict-assert-natural
+10 answerAddFive 15 strict-assert-natural
+3 answerMonusFive 0 strict-assert-natural
+3 answerFiveMonus 2 strict-assert-natural
+4 answerMultiplyFive 20 strict-assert-natural
 : testStrictOverflow ( -- )
   MALLP-MAX-NAT 1 MALLP-NAT-ADD { ignored }
 ;
