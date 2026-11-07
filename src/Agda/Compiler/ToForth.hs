@@ -565,15 +565,15 @@ agdaStringLiteral value = T.pack (show (T.unpack value))
 
 formalTokenTerm :: FormalToken -> Text
 formalTokenTerm (FormalPushLiteral value) =
-  "pushLiteral " <> T.pack (show value)
-formalTokenTerm FormalAddWord = "addWord"
-formalTokenTerm FormalMonusWord = "monusWord"
-formalTokenTerm FormalMultiplyWord = "multiplyWord"
-formalTokenTerm FormalSwapWord = "swapWord"
+  "textPushLiteral " <> T.pack (show value)
+formalTokenTerm FormalAddWord = "textAddWord"
+formalTokenTerm FormalMonusWord = "textMonusWord"
+formalTokenTerm FormalMultiplyWord = "textMultiplyWord"
+formalTokenTerm FormalSwapWord = "textSwapWord"
 formalTokenTerm (FormalRollWord depth) =
-  "rollWord " <> T.pack (show depth)
-formalTokenTerm FormalTrueWord = "trueWord"
-formalTokenTerm FormalFalseWord = "falseWord"
+  "textRollWord " <> T.pack (show depth)
+formalTokenTerm FormalTrueWord = "textTrueWord"
+formalTokenTerm FormalFalseWord = "textFalseWord"
 
 formalTokenList :: [FormalToken] -> Text
 formalTokenList [] = "[]"
@@ -588,8 +588,8 @@ rendererCertificate definitions = T.unlines $
   , "open import Agda.Builtin.List using (List; []; _∷_)"
   , "open import Agda.Builtin.Equality using (_≡_; refl)"
   , "open import MALLPForth using"
-  , "  (ForthToken; pushLiteral; addWord; monusWord; multiplyWord;"
-  , "   swapWord; rollWord; trueWord; falseWord; renderForthWordText)"
+  , "  (ForthTextToken; textPushLiteral; textAddWord; textMonusWord; textMultiplyWord;"
+  , "   textSwapWord; textRollWord; textTrueWord; textFalseWord; renderForthWordText)"
   , ""
   ] ++ concat
     [ let index = T.pack (show position)
