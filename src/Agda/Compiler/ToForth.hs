@@ -52,6 +52,13 @@ data NatTerm
   | NatOpen NatLinearExpr
   deriving (Eq, Show)
 
+-- Two-argument primitive functions consume both live arguments exactly once.
+-- The source argument order is x then y; the incoming Forth stack is y x.
+data NatBinaryLinearExpr
+  = NatBinaryArguments NatOp
+  | NatBinaryArgumentsExchanged NatOp
+  deriving (Eq, Show)
+
 decodeNatPrimitive :: TPrim -> [NatExpr] -> Either String NatExpr
 decodeNatPrimitive PAdd [left, right] =
   Right (NatBinary NatAdd left right)
@@ -199,6 +206,41 @@ renderNatTerm :: NatTerm -> FthForm
 renderNatTerm (NatClosed expression) = renderNatExpr expression
 renderNatTerm (NatOpen expression) = renderNatLinearExpr expression
 
+-- Admit the exact two-resource primitive shape.  De Bruijn index 1 is the
+-- first source argument and index 0 is the second.  Both must occur once;
+-- arbitrary expression trees require the general resource-indexed decoder.
+treelessVariableIndex :: TTerm -> Maybe Int
+treelessVariableIndex (TVar index) = Just index
+treelessVariableIndex (TCoerce inner) = treelessVariableIndex inner
+treelessVariableIndex _ = Nothing
+
+decodeNatBinaryLinearTerm :: TTerm -> TCM NatBinaryLinearExpr
+decodeNatBinaryLinearTerm term = do
+  let (headTerm, arguments) = tAppView term
+  operation <- case headTerm of
+    TPrim PAdd -> pure NatAdd
+    TPrim PMul -> pure NatMultiply
+    TPrim PSub ->
+      unsupported "PSub is signed integer subtraction; Nat monus uses builtin NatMinus"
+    TDef name -> do
+      plusName <- getBuiltinName builtinNatPlus
+      minusName <- getBuiltinName builtinNatMinus
+      case () of
+        _ | Just name == plusName -> pure NatAdd
+          | Just name == minusName -> pure NatMonus
+          | otherwise -> unsupported "two-argument Nat function must use a declared Nat primitive"
+    _ -> unsupported ("unsupported two-argument Nat function body: " ++ show headTerm)
+  case traverse treelessVariableIndex arguments of
+    Just [1, 0] -> pure (NatBinaryArguments operation)
+    Just [0, 1] -> pure (NatBinaryArgumentsExchanged operation)
+    _ -> unsupported "MALLP linearity violation: binary Nat primitive must consume each of its two arguments exactly once"
+
+renderNatBinaryLinearExpr :: NatBinaryLinearExpr -> FthForm
+renderNatBinaryLinearExpr (NatBinaryArguments operation) =
+  renderNatOp operation
+renderNatBinaryLinearExpr (NatBinaryArgumentsExchanged operation) =
+  RSList [RSAtom "SWAP", renderNatOp operation]
+
 decodeBoolTerm :: TTerm -> TCM Bool
 decodeBoolTerm term = do
   trueName <- getBuiltinName builtinTrue
@@ -241,10 +283,9 @@ natFunctionArity definition = do
       resultIsNat <- isBuiltinType name resultType
       argumentTypes <- traverse (\domain -> isBuiltinType name (snd (I.unDom domain)))
         (I.telToList telescope)
-      pure $ case (resultIsNat, argumentTypes) of
-        (True, []) -> Just 0
-        (True, [True]) -> Just 1
-        _ -> Nothing
+      pure $ if resultIsNat && and argumentTypes
+        then Just (length argumentTypes)
+        else Nothing
 
 hasBoolResult :: Definition -> TCM Bool
 hasBoolResult definition = do
@@ -306,7 +347,16 @@ compileDefinition definition
               case expression of
                 NatOpen linear -> pure (Just (strictWord (defName definition) (renderNatLinearExpr linear)))
                 NatClosed _ -> unsupported "MALLP linearity violation: unary Nat argument is unused"
-            (Nothing, _) -> unsupported "Nat definition must have zero arguments or one linear Nat argument"
+            (Just 2, Just term) -> do
+              let (arity, bodyTerm) = tLamView term
+              if arity /= 2
+                then unsupported ("expected two Treeless lambdas for binary Nat definition, received " ++ show arity)
+                else pure ()
+              expression <- decodeNatBinaryLinearTerm bodyTerm
+              pure (Just (strictWord (defName definition) (renderNatBinaryLinearExpr expression)))
+            (Just arity, _) | arity > 2 ->
+              unsupported "Nat functions with more than two live arguments require a general indexed resource-stack lowering"
+            (Nothing, _) -> unsupported "Nat definition has a non-Nat argument or result"
             (_, Nothing) -> pure Nothing
             _ -> unsupported "unsupported Nat function arity"
         else if isBool then do
