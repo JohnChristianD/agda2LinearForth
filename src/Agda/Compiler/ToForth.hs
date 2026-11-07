@@ -75,8 +75,8 @@ natResourceVariables (NatResourceVariable index) = [index]
 natResourceVariables (NatResourceBinary _ left right) =
   natResourceVariables left ++ natResourceVariables right
 
-decodeNatResourceTerm :: [NatResourceExpr] -> TTerm -> TCM NatResourceExpr
-decodeNatResourceTerm environment term = do
+decodeNatResourceTerm :: [QName] -> [NatResourceExpr] -> TTerm -> TCM NatResourceExpr
+decodeNatResourceTerm callStack environment term = do
   let (headTerm, arguments) = tAppView term
   case headTerm of
     TLit (LitNat n)
@@ -91,14 +91,14 @@ decodeNatResourceTerm environment term = do
       | null arguments ->
           let uses = natVariableUses 0 body
           in if uses == 0
-               then decodeNatResourceTerm environment body
+               then decodeNatResourceTerm callStack environment body
                else do
-                 value <- decodeNatResourceTerm environment bound
+                 value <- decodeNatResourceTerm callStack environment bound
                  if uses > 1 && not (null (natResourceVariables value))
                    then unsupported "MALLP linearity violation: a let-bound expression capturing live resources is reused"
-                   else decodeNatResourceTerm (value : environment) body
+                   else decodeNatResourceTerm callStack (value : environment) body
     TPrim primitive -> do
-      operands <- traverse (decodeNatResourceTerm environment) arguments
+      operands <- traverse (decodeNatResourceTerm callStack environment) arguments
       case (primitive, operands) of
         (PAdd, [left, right]) ->
           pure (NatResourceBinary NatAdd left right)
@@ -110,16 +110,57 @@ decodeNatResourceTerm environment term = do
     TDef name -> do
       plusName <- getBuiltinName builtinNatPlus
       minusName <- getBuiltinName builtinNatMinus
-      operands <- traverse (decodeNatResourceTerm environment) arguments
-      case operands of
-        [left, right] | Just name == plusName ->
-          pure (NatResourceBinary NatAdd left right)
-        [left, right] | Just name == minusName ->
-          pure (NatResourceBinary NatMonus left right)
-        _ -> unsupported "Nat resource tree contains a non-primitive definition"
+      case (Just name == plusName, Just name == minusName) of
+        (True, _) -> do
+          operands <- traverse (decodeNatResourceTerm callStack environment) arguments
+          case operands of
+            [left, right] -> pure (NatResourceBinary NatAdd left right)
+            _ -> unsupported "Agda Nat addition must have exactly two operands"
+        (_, True) -> do
+          operands <- traverse (decodeNatResourceTerm callStack environment) arguments
+          case operands of
+            [left, right] -> pure (NatResourceBinary NatMonus left right)
+            _ -> unsupported "Agda Nat subtraction must have exactly two operands"
+        _ -> inlineNatResourceFunction callStack environment name arguments
     TCoerce inner
-      | null arguments -> decodeNatResourceTerm environment inner
+      | null arguments -> decodeNatResourceTerm callStack environment inner
     _ -> unsupported ("Treeless term is outside the linear Nat expression core: " ++ show headTerm)
+
+-- Inline acyclic, first-order Nat helpers before resource checking.  This
+-- makes nonrecursive PureCake-style calls compositional: every argument is
+-- substituted as a resource tree, then the final caller is checked for exact
+-- once-only use.  Recursive call graphs require a separate recursor proof.
+inlineNatResourceFunction
+  :: [QName]
+  -> [NatResourceExpr]
+  -> QName
+  -> [TTerm]
+  -> TCM NatResourceExpr
+inlineNatResourceFunction callStack environment name arguments
+  | name `elem` callStack =
+      unsupported ("recursive Nat call requires a certified primitive recursor: " ++ prettyShow name)
+  | otherwise = do
+      definition <- getConstInfo name
+      case theDef definition of
+        Function{} -> do
+          arity <- natFunctionArity definition
+          case arity of
+            Just expected | expected == length arguments -> do
+              body <- toTreeless EagerEvaluation name
+              case body of
+                Nothing -> unsupported ("Nat helper has no Treeless body: " ++ prettyShow name)
+                Just functionTerm -> do
+                  let (actualArity, functionBody) = tLamView functionTerm
+                  if actualArity /= expected
+                    then unsupported ("Nat helper lambda arity mismatch: " ++ prettyShow name)
+                    else pure ()
+                  argumentValues <- traverse
+                    (decodeNatResourceTerm callStack environment) arguments
+                  -- De Bruijn index zero denotes the final source argument.
+                  decodeNatResourceTerm (name : callStack)
+                    (reverse argumentValues) functionBody
+            _ -> unsupported ("called definition is not a first-order Nat function: " ++ prettyShow name)
+        _ -> unsupported ("called Treeless definition is not a function: " ++ prettyShow name)
 
 -- Compile a resource tree against current live input order. The active depth
 -- counts already-built sibling results above those inputs. ROLL moves one
@@ -143,13 +184,13 @@ compileNatResourceExpr active context (NatResourceBinary operation left right) =
   (rightCode, afterRight) <- compileNatResourceExpr (active + 1) afterLeft right
   pure (RSList [leftCode, rightCode, renderNatOp operation], afterRight)
 
-compileNatResourceFunction :: Int -> TTerm -> TCM FthForm
-compileNatResourceFunction arity term = do
+compileNatResourceFunction :: QName -> Int -> TTerm -> TCM FthForm
+compileNatResourceFunction owner arity term = do
   let (actualArity, body) = tLamView term
   if actualArity /= arity
     then unsupported ("expected " ++ show arity ++ " Treeless lambdas, received " ++ show actualArity)
     else pure ()
-  expression <- decodeNatResourceTerm
+  expression <- decodeNatResourceTerm [owner]
     [NatResourceVariable index | index <- [0 .. arity - 1]]
     body
   let actualResources = sort (natResourceVariables expression)
@@ -437,36 +478,11 @@ compileDefinition definition
         if isNat then do
           body <- toTreeless EagerEvaluation (defName definition)
           case (natArity, body) of
-            (Just 0, Just term) -> do
-              expression <- decodeNatTerm [] term
-              case expression of
-                NatClosed closed -> pure (Just (strictWord (defName definition) (renderNatExpr closed)))
-                NatOpen _ -> unsupported "nullary Nat definition unexpectedly contains an open argument"
-            (Just 1, Just term) -> do
-              let (arity, bodyTerm) = tLamView term
-              if arity /= 1
-                then unsupported ("expected one Treeless lambda for unary Nat definition, received " ++ show arity)
-                else pure ()
-              expression <- decodeNatTerm [NatOpen NatArgument] bodyTerm
-              case expression of
-                NatOpen linear -> pure (Just (strictWord (defName definition) (renderNatLinearExpr linear)))
-                NatClosed _ -> unsupported "MALLP linearity violation: unary Nat argument is unused"
-            (Just 2, Just term) -> do
-              let (arity, bodyTerm) = tLamView term
-              if arity /= 2
-                then unsupported ("expected two Treeless lambdas for binary Nat definition, received " ++ show arity)
-                else pure ()
-              expression <- decodeNatBinaryLinearTerm bodyTerm
-              pure (Just (strictWord (defName definition) (renderNatBinaryLinearExpr expression)))
-            (Just arity, Just term) | arity > 2 -> do
-              code <- compileNatResourceFunction arity term
+            (Just arity, Just term) -> do
+              code <- compileNatResourceFunction (defName definition) arity term
               pure (Just (strictWord (defName definition) code))
-            (Just 2, Nothing) -> pure Nothing
-            (Just arity, _) | arity > 2 ->
-              unsupported "Nat function body is unavailable to the linear resource compiler"
+            (Just _, Nothing) -> pure Nothing
             (Nothing, _) -> unsupported "Nat definition has a non-Nat argument or result"
-            (_, Nothing) -> pure Nothing
-            _ -> unsupported "unsupported Nat function arity"
         else if isBool then do
           body <- toTreeless EagerEvaluation (defName definition)
           case body of
