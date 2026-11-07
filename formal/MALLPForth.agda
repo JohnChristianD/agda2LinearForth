@@ -2269,17 +2269,6 @@ module StrictBoolCompiler where
       (mallp-exchange permutation-swap
         (mallp-tensor mallp-ax mallp-ax))
 
-  compileBoolPairSwap :
-    BoolForthCode (boolCell ∷ boolCell ∷ [])
-      (boolCell ∷ boolCell ∷ [])
-  compileBoolPairSwap = boolSwapCode
-
-  boolPairSwapMALLP-forth-sound :
-    (first second : Bool) →
-    execBoolTokens (renderBoolCode compileBoolPairSwap)
-      (second ∷ first ∷ []) ≡ just (first ∷ second ∷ [])
-  boolPairSwapMALLP-forth-sound first second = refl
-
   data BoolProof : Set where
     boolTrueProof boolFalseProof : BoolProof
 
@@ -2417,6 +2406,17 @@ module StrictBoolCompiler where
       bindBoolTokens (execBoolTokens whenFalse stack)
         (λ branchStack → execBoolTokens tokens branchStack)
   execBoolTokens (boolIfToken whenTrue whenFalse ∷ tokens) [] = nothing
+
+  compileBoolPairSwap :
+    BoolForthCode (boolCell ∷ boolCell ∷ [])
+      (boolCell ∷ boolCell ∷ [])
+  compileBoolPairSwap = boolSwapCode
+
+  boolPairSwapMALLP-forth-sound :
+    (first second : Bool) →
+    execBoolTokens (renderBoolCode compileBoolPairSwap)
+      (second ∷ first ∷ []) ≡ just (first ∷ second ∷ [])
+  boolPairSwapMALLP-forth-sound first second = refl
 
   renderBoolCode-sound :
     {Γ Δ : List BoolStackType} →
