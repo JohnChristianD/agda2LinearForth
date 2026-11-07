@@ -1138,12 +1138,76 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
     dualNegativeValue (up⁻ positive) value =
       dualPositiveValue positive value
   
-  recoverPositiveValue :
-    {positive : PolType posPolarity} →
-    NegValue (dualPos positive) → PosValue positive
-  recoverPositiveValue {positive} value =
-    subst PosValue (dualPos-involutive positive)
-      (dualNegativeValue (dualPos positive) value)
+  mutual
+    recoverPositiveValue :
+      (positive : PolType posPolarity) →
+      NegValue (dualPos positive) → PosValue positive
+    recoverPositiveValue (atom⁺ index) value = value
+    recoverPositiveValue one⁺ value = value
+    recoverPositiveValue zero⁺ ()
+    recoverPositiveValue (left ⊗⁺ right) (pair leftValue rightValue) =
+      pair (recoverPositiveValue left leftValue)
+        (recoverPositiveValue right rightValue)
+    recoverPositiveValue (left ⊕⁺ right) (denLeft value) =
+      denLeft (recoverPositiveValue left value)
+    recoverPositiveValue (left ⊕⁺ right) (denRight value) =
+      denRight (recoverPositiveValue right value)
+    recoverPositiveValue (down⁺ negative) value =
+      recoverNegativeValue negative value
+
+    recoverNegativeValue :
+      (negative : PolType negPolarity) →
+      PosValue (dualNeg negative) → NegValue negative
+    recoverNegativeValue (atom⁻ index) value = value
+    recoverNegativeValue bot⁻ value = value
+    recoverNegativeValue top⁻ ()
+    recoverNegativeValue (left ⅋⁻ right) (pair leftValue rightValue) =
+      pair (recoverNegativeValue left leftValue)
+        (recoverNegativeValue right rightValue)
+    recoverNegativeValue (left &⁻ right) (denLeft value) =
+      denLeft (recoverNegativeValue left value)
+    recoverNegativeValue (left &⁻ right) (denRight value) =
+      denRight (recoverNegativeValue right value)
+    recoverNegativeValue (up⁻ positive) value =
+      recoverPositiveValue positive value
+
+    recoverPositive-dualPositive :
+      (positive : PolType posPolarity) →
+      (value : PosValue positive) →
+      recoverPositiveValue positive (dualPositiveValue positive value) ≡ value
+    recoverPositive-dualPositive (atom⁺ index) value = refl
+    recoverPositive-dualPositive one⁺ value = refl
+    recoverPositive-dualPositive zero⁺ ()
+    recoverPositive-dualPositive (left ⊗⁺ right)
+      (pair leftValue rightValue) =
+      cong₂ pair
+        (recoverPositive-dualPositive left leftValue)
+        (recoverPositive-dualPositive right rightValue)
+    recoverPositive-dualPositive (left ⊕⁺ right) (denLeft value) =
+      cong denLeft (recoverPositive-dualPositive left value)
+    recoverPositive-dualPositive (left ⊕⁺ right) (denRight value) =
+      cong denRight (recoverPositive-dualPositive right value)
+    recoverPositive-dualPositive (down⁺ negative) value =
+      recoverNegative-dualNegative negative value
+
+    recoverNegative-dualNegative :
+      (negative : PolType negPolarity) →
+      (value : NegValue negative) →
+      recoverNegativeValue negative (dualNegativeValue negative value) ≡ value
+    recoverNegative-dualNegative (atom⁻ index) value = refl
+    recoverNegative-dualNegative bot⁻ value = refl
+    recoverNegative-dualNegative top⁻ ()
+    recoverNegative-dualNegative (left ⅋⁻ right)
+      (pair leftValue rightValue) =
+      cong₂ pair
+        (recoverNegative-dualNegative left leftValue)
+        (recoverNegative-dualNegative right rightValue)
+    recoverNegative-dualNegative (left &⁻ right) (denLeft value) =
+      cong denLeft (recoverNegative-dualNegative left value)
+    recoverNegative-dualNegative (left &⁻ right) (denRight value) =
+      cong denRight (recoverNegative-dualNegative right value)
+    recoverNegative-dualNegative (up⁻ positive) value =
+      recoverPositive-dualPositive positive value
 
   ContextValues : Context → Set
   ContextValues [] = ⊤
