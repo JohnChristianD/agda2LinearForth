@@ -1033,7 +1033,10 @@ module Foundations where
       IdempotentMorphismEq
         (reflectMap (idempotentIdentity X))
         (idempotentIdentity (reflectObject X))
-    reflectFunctorIdentity X q = refl
+    reflectFunctorIdentity X (x , fixed) =
+      fixedPointPath identityEndomap refl
+        (cong (λ z → z) fixed)
+        fixed
 
     reflectFunctorComposition :
       {X Y Z : IdempotentObject} →
