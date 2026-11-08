@@ -704,7 +704,7 @@ module Foundations where
       {A : Set} {R : A → A → Set} →
       (N : NormalizerFor A R) → {x y : A} →
       normalizeFor N x ≡ normalizeFor N y → R x y
-    normalization-kernel-backward N {x} {y} equality =
+    normalization-kernel-backward {R = R} N {x} {y} equality =
       normalizer-trans N
         (normalizer-sym N (normalization-complete N x))
         (normalizer-trans N
