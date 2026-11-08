@@ -2015,6 +2015,14 @@ module StrictNatCompiler where
   ... | nothing = nothing
   ... | just nextStack = execTokens tokens nextStack
 
+  execTokens-roll-single :
+    (depth : Nat) →
+    (stack : List Nat) →
+    execTokens (rollWord depth ∷ []) stack ≡ rollList depth stack
+  execTokens-roll-single depth stack with rollList depth stack
+  ... | nothing = refl
+  ... | just nextStack = refl
+
   execTokens-append :
     (first second : List ForthToken) (stack : List Nat) →
     execTokens (first ++ᴳ second) stack ≡
@@ -2504,7 +2512,10 @@ module StrictNatCompiler where
     (natEnvironmentCons head natEnvironmentNil) value residual = refl
   resourceSelectTokens-correct (suc (suc n))
     active value residual =
-      rollList-activePrefix (suc (suc n)) active value residual
+      trans
+        (execTokens-roll-single (suc (suc n))
+          (natEnvironmentValues active ++ᴳ (value ∷ residual)))
+        (rollList-activePrefix (suc (suc n)) active value residual)
 
   natResourceForthTokens :
     {n : Nat} →
