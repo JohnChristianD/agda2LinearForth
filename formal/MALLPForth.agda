@@ -1344,6 +1344,27 @@ module Foundations where
     ... | true = inDomain membership
     ... | false = outDomain membership
 
+    threadEntries :
+      {X : Set} →
+      (entries : PartialMap X) →
+      (key : Nat) →
+      DomainDecision entries key →
+      X →
+      PartialMap X
+    threadEntries entries key (inDomain present) value = entries
+    threadEntries entries key (outDomain absent) value =
+      extendFresh entries key absent value
+
+    threadEntries-contains-zero :
+      {X : Set} →
+      (entries : PartialMap X) →
+      (decision : DomainDecision entries zero) →
+      (value : X) →
+      memberKey zero
+        (mapEntries (threadEntries entries zero decision value)) ≡ true
+    threadEntries-contains-zero entries (inDomain present) value = present
+    threadEntries-contains-zero entries (outDomain absent) value = refl
+
     omegaThread :
       {X : Set} →
       (omega : (Nat → X) → Nat) →
@@ -1352,56 +1373,28 @@ module Foundations where
       (initial : PartialMap X) →
       Nat → PartialMap X
     omegaThread omega default alpha initial zero = initial
-    omegaThread omega default alpha initial (suc n) with
-      omegaThread omega default alpha initial n
-    ... | entries with memberKey
-      (omega (streamOf (mapEntries entries) default))
-      (mapEntries entries) in membership
-    ...   | true = entries
-    ...   | false =
-      extendFresh entries
-        (omega (streamOf (mapEntries entries) default))
-        membership
-        (alpha (omega (streamOf (mapEntries entries) default)))
+    omegaThread omega default alpha initial (suc n) =
+      let entries = omegaThread omega default alpha initial n
+          key = omega (streamOf (mapEntries entries) default)
+      in threadEntries entries key (decideDomain entries key) (alpha key)
 
-    natEq-self : (key : Nat) → natEq key key ≡ true
-    natEq-self zero = refl
-    natEq-self (suc key) = natEq-self key
-
-    memberKey-extendFresh :
+    omegaThread-step-zero :
       {X : Set} →
-      (entries : PartialMap X) →
-      (key : Nat) →
-      (fresh : memberKey key (mapEntries entries) ≡ false) →
-      (value : X) →
-      memberKey key
-        (mapEntries (extendFresh entries key fresh value)) ≡ true
-    memberKey-extendFresh entries key fresh value
-      rewrite natEq-self key = refl
-
-    omegaThread-step-contains :
-      {X : Set} →
-      (omega : (Nat → X) → Nat) →
       (default : X) →
       (alpha : Nat → X) →
       (initial : PartialMap X) →
       (fuel : Nat) →
-      memberKey
-        (omega (streamOf
-          (mapEntries (omegaThread omega default alpha initial fuel)) default))
+      memberKey zero
         (mapEntries
-          (omegaThread omega default alpha initial (suc fuel))) ≡ true
-    omegaThread-step-contains omega default alpha initial fuel
-      with omegaThread omega default alpha initial fuel
-    ... | entries with memberKey
-      (omega (streamOf (mapEntries entries) default))
-      (mapEntries entries) in membership
-    ...   | true = membership
-    ...   | false =
-      memberKey-extendFresh entries
-        (omega (streamOf (mapEntries entries) default))
-        membership
-        (alpha (omega (streamOf (mapEntries entries) default)))
+          (omegaThread (λ stream → zero) default alpha initial (suc fuel)))
+        ≡ true
+    omegaThread-step-zero default alpha initial fuel =
+      threadEntries-contains-zero
+        (omegaThread (λ stream → zero) default alpha initial fuel)
+        (decideDomain
+          (omegaThread (λ stream → zero) default alpha initial fuel)
+          zero)
+        (alpha zero)
 
     SymmetricBarCondition :
       {X : Set} →
@@ -4555,7 +4548,7 @@ constantZeroBarCondition default initial alpha
 ... | true = zero , zeroPresent
 ... | false =
   suc zero ,
-  omegaThread-step-contains constantZeroOmega default alpha initial zero
+  omegaThread-step-zero default alpha initial zero
 
 zeroKeyMap : {X : Set} → X → PartialMap X
 zeroKeyMap value =
