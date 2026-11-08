@@ -865,6 +865,98 @@ module Foundations where
           (composeQuotientMorphism h g) f)
     quotientCategory-associative h g f x = refl
 
+    -- Bundle the hom-setoids, identity maps, composition, and category laws.
+    record SetoidCategory : Set₂ where
+      field
+        Obj : Set₁
+        Hom : Obj → Obj → Set
+        HomEq : {X Y : Obj} → Hom X Y → Hom X Y → Set
+        identity : (X : Obj) → Hom X X
+        compose :
+          {X Y Z : Obj} → Hom Y Z → Hom X Y → Hom X Z
+        homEq-refl :
+          {X Y : Obj} (f : Hom X Y) → HomEq f f
+        homEq-sym :
+          {X Y : Obj} {f g : Hom X Y} →
+          HomEq f g → HomEq g f
+        homEq-trans :
+          {X Y : Obj} {f g h : Hom X Y} →
+          HomEq f g → HomEq g h → HomEq f h
+        compose-respects :
+          {X Y Z : Obj} {f f′ : Hom X Y} {g g′ : Hom Y Z} →
+          HomEq g g′ → HomEq f f′ →
+          HomEq (compose g f) (compose g′ f′)
+        identity-left :
+          {X Y : Obj} (f : Hom X Y) →
+          HomEq (compose (identity Y) f) f
+        identity-right :
+          {X Y : Obj} (f : Hom X Y) →
+          HomEq (compose f (identity X)) f
+        compose-associative :
+          {W X Y Z : Obj} →
+          (h : Hom Y Z) → (g : Hom X Y) → (f : Hom W X) →
+          HomEq (compose h (compose g f))
+            (compose (compose h g) f)
+
+    quotientCategory : SetoidCategory
+    quotientCategory =
+      record
+        { Obj = QuotientObject
+        ; Hom = QuotientMorphism
+        ; HomEq = QuotientMorphismEq
+        ; identity = identityQuotientMorphism
+        ; compose = composeQuotientMorphism
+        ; homEq-refl = quotientMorphismEq-refl
+        ; homEq-sym = quotientMorphismEq-sym
+        ; homEq-trans = quotientMorphismEq-trans
+        ; compose-respects = quotientCompose-respects-equality
+        ; identity-left = quotientCategory-id-left
+        ; identity-right = quotientCategory-id-right
+        ; compose-associative = quotientCategory-associative
+        }
+
+    -- An ordinary monad record over a setoid-enriched category.  The final
+    -- two fields strengthen the monad laws with an explicit inverse for μ.
+    record IdempotentMonad (C : SetoidCategory) : Set₂ where
+      open SetoidCategory C
+      field
+        T₀ : Obj → Obj
+        T₁ :
+          {X Y : Obj} → Hom X Y → Hom (T₀ X) (T₀ Y)
+        η : (X : Obj) → Hom X (T₀ X)
+        μ : (X : Obj) → Hom (T₀ (T₀ X)) (T₀ X)
+        T-identity :
+          (X : Obj) → HomEq (T₁ (identity X)) (identity (T₀ X))
+        T-composition :
+          {X Y Z : Obj} (g : Hom Y Z) (f : Hom X Y) →
+          HomEq (T₁ (compose g f)) (compose (T₁ g) (T₁ f))
+        η-natural :
+          {X Y : Obj} (f : Hom X Y) →
+          HomEq (compose (T₁ f) (η X)) (compose (η Y) f)
+        μ-natural :
+          {X Y : Obj} (f : Hom X Y) →
+          HomEq (compose (μ Y) (T₁ (T₁ f)))
+            (compose (T₁ f) (μ X))
+        monad-left-unit :
+          (X : Obj) →
+          HomEq (compose (μ X) (T₁ (η X))) (identity (T₀ X))
+        monad-right-unit :
+          (X : Obj) →
+          HomEq (compose (μ X) (η (T₀ X))) (identity (T₀ X))
+        monad-associative :
+          (X : Obj) →
+          HomEq (compose (μ X) (T₁ (μ X)))
+            (compose (μ X) (μ (T₀ X)))
+        μ-inverse-left :
+          (X : Obj) →
+          HomEq (compose (η (T₀ X)) (μ X))
+            (identity (T₀ (T₀ X)))
+        μ-inverse-right :
+          (X : Obj) →
+          HomEq (compose (μ X) (η (T₀ X)))
+            (identity (T₀ X))
+    open IdempotentMonad public
+
     -- The reflector replaces the supplied relation by equality of normal
     -- forms.  Its values are the same carrier representatives: no second
     -- quotient carrier or proof-irrelevance axiom is introduced.
