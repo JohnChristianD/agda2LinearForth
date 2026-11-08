@@ -1,4 +1,4 @@
-{-# OPTIONS --with-K --rewriting --confluence-check --polarity --lossy-unification --exact-split --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
+{-# OPTIONS --with-K --rewriting --confluence-check --lossy-unification --exact-split --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
 -- ```Agda
 ------------------------------------------------------------------------
 -- SovereignRationalSED
@@ -1344,6 +1344,27 @@ module Foundations where
     ... | true = inDomain membership
     ... | false = outDomain membership
 
+    threadEntries :
+      {X : Set} →
+      (entries : PartialMap X) →
+      (key : Nat) →
+      DomainDecision entries key →
+      X →
+      PartialMap X
+    threadEntries entries key (inDomain present) value = entries
+    threadEntries entries key (outDomain absent) value =
+      extendFresh entries key absent value
+
+    threadEntries-contains-zero :
+      {X : Set} →
+      (entries : PartialMap X) →
+      (decision : DomainDecision entries zero) →
+      (value : X) →
+      memberKey zero
+        (mapEntries (threadEntries entries zero decision value)) ≡ true
+    threadEntries-contains-zero entries (inDomain present) value = present
+    threadEntries-contains-zero entries (outDomain absent) value = refl
+
     omegaThread :
       {X : Set} →
       (omega : (Nat → X) → Nat) →
@@ -1352,17 +1373,28 @@ module Foundations where
       (initial : PartialMap X) →
       Nat → PartialMap X
     omegaThread omega default alpha initial zero = initial
-    omegaThread omega default alpha initial (suc n) with
-      omegaThread omega default alpha initial n
-    ... | entries with memberKey
-      (omega (streamOf (mapEntries entries) default))
-      (mapEntries entries) in membership
-    ...   | true = entries
-    ...   | false =
-      extendFresh entries
-        (omega (streamOf (mapEntries entries) default))
-        membership
-        (alpha (omega (streamOf (mapEntries entries) default)))
+    omegaThread omega default alpha initial (suc n) =
+      let entries = omegaThread omega default alpha initial n
+          key = omega (streamOf (mapEntries entries) default)
+      in threadEntries entries key (decideDomain entries key) (alpha key)
+
+    omegaThread-step-zero :
+      {X : Set} →
+      (default : X) →
+      (alpha : Nat → X) →
+      (initial : PartialMap X) →
+      (fuel : Nat) →
+      memberKey zero
+        (mapEntries
+          (omegaThread (λ stream → zero) default alpha initial (suc fuel)))
+        ≡ true
+    omegaThread-step-zero default alpha initial fuel =
+      threadEntries-contains-zero
+        (omegaThread (λ stream → zero) default alpha initial fuel)
+        (decideDomain
+          (omegaThread (λ stream → zero) default alpha initial fuel)
+          zero)
+        (alpha zero)
 
     SymmetricBarCondition :
       {X : Set} →
@@ -4494,5 +4526,64 @@ module StrictLinearDataCompiler where
   listFoldSignature = primitive-list-fold
 
 open StrictLinearDataCompiler public
+
+------------------------------------------------------------------------
+-- Executable witnesses for the assumed symmetric bar-recursion equations.
+--
+-- A constant-zero control functional reaches its bar after at most one
+-- extension: an initial map either contains key zero already, or the first
+-- extension inserts it.  These examples force both registered rewrite rules
+-- to participate in Agda conversion, including step followed by stop.
+------------------------------------------------------------------------
+
+constantZeroOmega : {X : Set} → (Nat → X) → Nat
+constantZeroOmega stream = zero
+
+constantZeroBarCondition :
+  {X : Set} →
+  (default : X) →
+  SymmetricBarCondition constantZeroOmega default
+constantZeroBarCondition default initial alpha
+  with memberKey zero (mapEntries initial) in zeroPresent
+... | true = zero , zeroPresent
+... | false =
+  suc zero ,
+  omegaThread-step-zero default alpha initial zero
+
+zeroKeyMap : {X : Set} → X → PartialMap X
+zeroKeyMap value =
+  partialMap
+    (pair zero value ∷ [])
+    (unique-cons refl unique-empty)
+
+symmetricBarRec-stop-computes :
+  {X R : Set} →
+  (default : X) →
+  (base : PartialMap X → R) →
+  (step : PartialMap X → (X → R) → R) →
+  (value : X) →
+  symmetricBarRec constantZeroOmega default
+    (constantZeroBarCondition default)
+    base step
+    (zeroKeyMap value) zero
+    (inDomain refl)
+  ≡ base (zeroKeyMap value)
+symmetricBarRec-stop-computes default base step value = refl
+
+symmetricBarRec-step-then-stop-computes :
+  {X R : Set} →
+  (default : X) →
+  (base : PartialMap X → R) →
+  (step : PartialMap X → (X → R) → R) →
+  symmetricBarRec constantZeroOmega default
+    (constantZeroBarCondition default)
+    base step
+    emptyMap zero
+    (outDomain refl)
+  ≡
+  step emptyMap
+    (λ value → base (zeroKeyMap value))
+symmetricBarRec-step-then-stop-computes default base step = refl
+
 
 -- ```
