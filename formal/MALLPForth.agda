@@ -2707,7 +2707,8 @@ module StrictNatCompiler where
       (evalNatResourceExpr expression environment ∷
         (natEnvironmentValues activeValues ++ᴳ residual))
   natResourceForthTokens-correct
-    (resourceLiteral value) active activeValues environment residual = refl
+    (resourceLiteral value) active activeValues
+    natEnvironmentNil residual = refl
   natResourceForthTokens-correct
     resourceArgument active activeValues
     (natEnvironmentCons value natEnvironmentNil) residual =
