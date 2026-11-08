@@ -783,10 +783,7 @@ module Foundations where
     FiniteEntries X = List (Nat × X)
 
     natEq : Nat → Nat → Bool
-    natEq zero zero = true
-    natEq zero (suc n) = false
-    natEq (suc n) zero = false
-    natEq (suc m) (suc n) = natEq m n
+    natEq = _==_
 
     memberKey : {X : Set} → Nat → FiniteEntries X → Bool
     memberKey n [] = false
