@@ -1099,6 +1099,25 @@ module Foundations where
         (identityQuotientMorphism (quotientReflectionObject X))
     quotientReflectionMultiplication-inverse-right X x = refl
 
+    -- The actual categorical idempotent monad on quotientCategory.
+    quotientReflectionMonad : IdempotentMonad quotientCategory
+    quotientReflectionMonad =
+      record
+        { T₀ = quotientReflectionObject
+        ; T₁ = quotientReflectionMap
+        ; η = quotientReflectionUnit
+        ; μ = quotientReflectionMultiplication
+        ; T-identity = quotientReflectionFunctor-id
+        ; T-composition = quotientReflectionFunctor-compose
+        ; η-natural = quotientReflectionUnit-natural
+        ; μ-natural = quotientReflectionMultiplication-natural
+        ; monad-left-unit = quotientReflectionMonad-left-unit
+        ; monad-right-unit = quotientReflectionMonad-right-unit
+        ; monad-associative = quotientReflectionMonad-associative
+        ; μ-inverse-left = quotientReflectionMultiplication-inverse-left
+        ; μ-inverse-right = quotientReflectionMultiplication-inverse-right
+        }
+
     data QuotientExpr (A : Set) : Set where
       rawₑ canonicalizedₑ : A → QuotientExpr A
 
