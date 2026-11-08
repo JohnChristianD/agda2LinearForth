@@ -636,9 +636,17 @@ module Foundations where
                  ({x y : A} → R x y → R y x) →
                  ({x y z : A} → R x y → R y z → R x z) → Set
 
-      -- Explicit parameterization keeps the global rewrite rule fully
-      -- instantiated; the class map remains the package's primitive axiom.
-      quotientClass :
+      -- Opaque class denotations give raw and canonical syntax distinct
+      -- rewrite heads. The bracket notation below remains the raw class map.
+      rawQuotientClass :
+        (A : Set) →
+        (R : A → A → Set) →
+        (rflR : (x : A) → R x x) →
+        (symR : {x y : A} → R x y → R y x) →
+        (transR : {x y z : A} → R x y → R y z → R x z) →
+        A → Quotient A R rflR symR transR
+
+      canonicalQuotientClass :
         (A : Set) →
         (R : A → A → Set) →
         (rflR : (x : A) → R x x) →
@@ -658,9 +666,8 @@ module Foundations where
         {symR : {x y : A} → R x y → R y x}
         {transR : {x y z : A} → R x y → R y z → R x z} →
         (x : A) →
-        quotientClass A R rflR symR transR
-          (canonize {A} {R} {rflR} {symR} {transR} x) ≡
-        quotientClass A R rflR symR transR x
+        canonicalQuotientClass A R rflR symR transR x ≡
+        rawQuotientClass A R rflR symR transR x
 
       canonical-idempotent :
         {A : Set} {R : A → A → Set}
@@ -679,14 +686,14 @@ module Foundations where
         {transR : {x y z : A} → R x y → R y z → R x z} →
         (x : A) → R (canonize {A} {R} {rflR} {symR} {transR} x) x
 
-    -- Familiar quotient-class notation is a thin alias over the explicit map.
+    -- Familiar quotient-class notation remains the raw equivalence class.
     [_] : {A : Set} {R : A → A → Set}
           {rflR : (x : A) → R x x}
           {symR : {x y : A} → R x y → R y x}
           {transR : {x y z : A} → R x y → R y z → R x z} →
           A → Quotient A R rflR symR transR
     [_] {A} {R} {rflR} {symR} {transR} x =
-      quotientClass A R rflR symR transR x
+      rawQuotientClass A R rflR symR transR x
 
     -- Syntax for quotient normalization.  `canonicalizedₑ x` denotes the
     -- canonical representative; the quotient relation remains explicit.
@@ -694,28 +701,6 @@ module Foundations where
       rawₑ : A → QuotientExpr A
       canonicalizedₑ : A → QuotientExpr A
       classₑ : QuotientExpr A → QuotientExpr A
-
-    -- Distinct heads make the raw-to-canonical rewrite terminating.
-    rawQuotientClass :
-      (A : Set) →
-      (R : A → A → Set) →
-      (rflR : (x : A) → R x x) →
-      (symR : {x y : A} → R x y → R y x) →
-      (transR : {x y z : A} → R x y → R y z → R x z) →
-      A → Quotient A R rflR symR transR
-    rawQuotientClass A R rflR symR transR x =
-      quotientClass A R rflR symR transR x
-
-    canonicalQuotientClass :
-      (A : Set) →
-      (R : A → A → Set) →
-      (rflR : (x : A) → R x x) →
-      (symR : {x y : A} → R x y → R y x) →
-      (transR : {x y z : A} → R x y → R y z → R x z) →
-      A → Quotient A R rflR symR transR
-    canonicalQuotientClass A R rflR symR transR x =
-      quotientClass A R rflR symR transR
-        (canonize {A} {R} {rflR} {symR} {transR} x)
 
     denoteQuotient :
       {A : Set} {R : A → A → Set}
@@ -750,8 +735,8 @@ module Foundations where
       normalizeQuotient (classₑ (rawₑ x))
     quotient-class-canon x = refl
 
-    -- This rewrite has a raw-only head. Its canonical target has a
-    -- distinct head, so normalization takes one step and cannot loop.
+    -- The two quotient denotation heads are opaque and distinct;
+    -- this global rewrite reduces raw syntax to canonical syntax once.
     quotient-raw-sound :
       (A : Set) →
       (R : A → A → Set) →
@@ -772,7 +757,8 @@ module Foundations where
       (x : A) →
       denoteQuotient (classₑ (canonicalizedₑ x)) ≡
       denoteQuotient (classₑ (rawₑ x))
-    quotient-class-canon-sound x = quotient-canon x
+    quotient-class-canon-sound {A} {R} {rflR} {symR} {transR} x =
+      quotient-canon {A} {R} {rflR} {symR} {transR} x
 
   ----------------------------------------------------------------------
   -- 6. Spector-style symmetric bar recursion over finite partial maps.
