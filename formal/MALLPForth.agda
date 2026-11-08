@@ -641,10 +641,10 @@ module Foundations where
       quotientClass :
         (A : Set) →
         (R : A → A → Set) →
-        ((x : A) → R x x) →
-        ({x y : A} → R x y → R y x) →
-        ({x y z : A} → R x y → R y z → R x z) →
-        A → Quotient A R _ _ _
+        (rflR : (x : A) → R x x) →
+        (symR : {x y : A} → R x y → R y x) →
+        (transR : {x y z : A} → R x y → R y z → R x z) →
+        A → Quotient A R rflR symR transR
 
       canonize : {A : Set} {R : A → A → Set}
                  {rflR : (x : A) → R x x}
