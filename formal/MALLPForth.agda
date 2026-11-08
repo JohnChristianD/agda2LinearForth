@@ -665,14 +665,14 @@ module Foundations where
 
     qcoerce-qcanon :
       {A : Set} (f : IdempotentEndomap A) (x : A) →
-      qcoerce (qcanon f x) ≡ canonicalize f x
+      qcoerce {A} {f} (qcanon {A} f x) ≡ canonicalize f x
     qcoerce-qcanon f x = refl
 
     qcoerce-fixed :
       {A : Set} {f : IdempotentEndomap A} →
       (q : Quotient A f) →
-      canonicalize f (qcoerce q) ≡ qcoerce q
-    qcoerce-fixed (x , fixed) = fixed
+      canonicalize f (qcoerce {A} {f} q) ≡ qcoerce {A} {f} q
+    qcoerce-fixed {A} {f} (x , fixed) = fixed
 
     QuotientRelation :
       {A : Set} → IdempotentEndomap A → A → A → Set
