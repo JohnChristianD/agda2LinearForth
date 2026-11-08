@@ -681,9 +681,16 @@ module Foundations where
       {symR : {x y : A} → R x y → R y x}
       {transR : {x y z : A} → R x y → R y z → R x z} →
       QuotientExpr A → Quotient A R rflR symR transR
-    denoteQuotient (rawₑ x) = [ x ]
-    denoteQuotient (canonicalizedₑ x) = [ canonize x ]
-    denoteQuotient (classₑ expression) = denoteQuotient expression
+    denoteQuotient
+      {A} {R} {rflR} {symR} {transR} (rawₑ x) =
+        [_] {A} {R} {rflR} {symR} {transR} x
+    denoteQuotient
+      {A} {R} {rflR} {symR} {transR} (canonicalizedₑ x) =
+        [_] {A} {R} {rflR} {symR} {transR}
+          (canonize {A} {R} {rflR} {symR} {transR} x)
+    denoteQuotient
+      {A} {R} {rflR} {symR} {transR} (classₑ expression) =
+        denoteQuotient {A} {R} {rflR} {symR} {transR} expression
 
     normalizeQuotient : {A : Set} → QuotientExpr A → QuotientExpr A
     normalizeQuotient (rawₑ x) = canonicalizedₑ x
@@ -709,7 +716,8 @@ module Foundations where
       {transR : {x y z : A} → R x y → R y z → R x z} →
       (x : A) →
       denoteQuotient (rawₑ x) ≡ denoteQuotient (canonicalizedₑ x)
-    quotient-raw-sound x = sym (quotient-canon x)
+    quotient-raw-sound {A} {R} {rflR} {symR} {transR} x =
+      sym (quotient-canon {A} {R} {rflR} {symR} {transR} x)
 
     quotient-class-canon-sound :
       {A : Set} {R : A → A → Set}
