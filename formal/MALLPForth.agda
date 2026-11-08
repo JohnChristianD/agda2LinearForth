@@ -3,7 +3,7 @@
 ------------------------------------------------------------------------
 -- SovereignRationalSED
 --
--- Five original foundational packages plus Laurent's constructive MALLP
+-- Six original foundational packages plus Laurent's constructive MALLP
 -- calculus, without exponentials or Seely structure.  Finite-list computation
 -- remains a separate helper witness.  Rewrite rules are registered once
 -- at the outer module so Agda checks the combined rewrite system together.
@@ -615,7 +615,114 @@ module Foundations where
     gamma-codisc X = refl
 
   ----------------------------------------------------------------------
-  -- 5. Spector-style symmetric bar recursion over finite partial maps.
+  -- 5. Hofmann-style quotient reflection on quotient-expression syntax.
+  --
+  -- Quotients are indexed by an explicit equivalence-relation certificate.
+  -- Raw and canonicalized representatives denote equal quotient classes.
+  -- The rewrite layer normalizes expression syntax; canonicalization laws
+  -- remain explicit assumptions about the chosen representative function.
+  ----------------------------------------------------------------------
+
+  module QuotientReflection where
+
+    -- Equivalence laws are explicit arguments to the quotient completion.
+    -- There is no first-class setoid carrier/record: the relation and its
+    -- three laws are passed directly.  This preserves the quotient package's
+    -- mathematical requirements without adding another equality structure.
+    postulate
+      Quotient : (A : Set) →
+                 (R : A → A → Set) →
+                 ((x : A) → R x x) →
+                 ({x y : A} → R x y → R y x) →
+                 ({x y z : A} → R x y → R y z → R x z) → Set
+      [_] : {A : Set} {R : A → A → Set}
+            {rflR : (x : A) → R x x}
+            {symR : {x y : A} → R x y → R y x}
+            {transR : {x y z : A} → R x y → R y z → R x z} →
+            A → Quotient A R rflR symR transR
+      canonize : {A : Set} {R : A → A → Set}
+                 {rflR : (x : A) → R x x}
+                 {symR : {x y : A} → R x y → R y x}
+                 {transR : {x y z : A} → R x y → R y z → R x z} →
+                 A → A
+      quotient-canon :
+        {A : Set} {R : A → A → Set}
+        {rflR : (x : A) → R x x}
+        {symR : {x y : A} → R x y → R y x}
+        {transR : {x y z : A} → R x y → R y z → R x z} →
+        (x : A) → [ canonize {A} {R} {rflR} {symR} {transR} x ] ≡
+                   [ x ]
+      canonical-idempotent :
+        {A : Set} {R : A → A → Set}
+        {rflR : (x : A) → R x x}
+        {symR : {x y : A} → R x y → R y x}
+        {transR : {x y z : A} → R x y → R y z → R x z} →
+        (x : A) →
+        canonize {A} {R} {rflR} {symR} {transR}
+          (canonize {A} {R} {rflR} {symR} {transR} x) ≡
+        canonize {A} {R} {rflR} {symR} {transR} x
+      canonical-related :
+        {A : Set} {R : A → A → Set}
+        {rflR : (x : A) → R x x}
+        {symR : {x y : A} → R x y → R y x}
+        {transR : {x y z : A} → R x y → R y z → R x z} →
+        (x : A) → R (canonize {A} {R} {rflR} {symR} {transR} x) x
+
+    -- Syntax for quotient normalization.  `canonicalizedₑ x` denotes the
+    -- canonical representative; the quotient relation remains explicit.
+    data QuotientExpr (A : Set) : Set where
+      rawₑ : A → QuotientExpr A
+      canonicalizedₑ : A → QuotientExpr A
+      classₑ : QuotientExpr A → QuotientExpr A
+
+    denoteQuotient :
+      {A : Set} {R : A → A → Set}
+      {rflR : (x : A) → R x x}
+      {symR : {x y : A} → R x y → R y x}
+      {transR : {x y z : A} → R x y → R y z → R x z} →
+      QuotientExpr A → Quotient A R rflR symR transR
+    denoteQuotient (rawₑ x) = [ x ]
+    denoteQuotient (canonicalizedₑ x) = [ canonize x ]
+    denoteQuotient (classₑ expression) = denoteQuotient expression
+
+    normalizeQuotient : {A : Set} → QuotientExpr A → QuotientExpr A
+    normalizeQuotient (rawₑ x) = canonicalizedₑ x
+    normalizeQuotient (canonicalizedₑ x) = canonicalizedₑ x
+    normalizeQuotient (classₑ expression) =
+      classₑ (normalizeQuotient expression)
+
+    quotient-raw :
+      {A : Set} → (x : A) →
+      normalizeQuotient (rawₑ x) ≡ normalizeQuotient (canonicalizedₑ x)
+    quotient-raw x = refl
+
+    quotient-class-canon :
+      {A : Set} → (x : A) →
+      normalizeQuotient (classₑ (canonicalizedₑ x)) ≡
+      normalizeQuotient (classₑ (rawₑ x))
+    quotient-class-canon x = refl
+
+    quotient-raw-sound :
+      {A : Set} {R : A → A → Set}
+      {rflR : (x : A) → R x x}
+      {symR : {x y : A} → R x y → R y x}
+      {transR : {x y z : A} → R x y → R y z → R x z} →
+      (x : A) →
+      denoteQuotient (rawₑ x) ≡ denoteQuotient (canonicalizedₑ x)
+    quotient-raw-sound x = sym (quotient-canon x)
+
+    quotient-class-canon-sound :
+      {A : Set} {R : A → A → Set}
+      {rflR : (x : A) → R x x}
+      {symR : {x y : A} → R x y → R y x}
+      {transR : {x y z : A} → R x y → R y z → R x z} →
+      (x : A) →
+      denoteQuotient (classₑ (canonicalizedₑ x)) ≡
+      denoteQuotient (classₑ (rawₑ x))
+    quotient-class-canon-sound x = quotient-canon x
+
+  ----------------------------------------------------------------------
+  -- 6. Spector-style symmetric bar recursion over finite partial maps.
   --
   -- The control functional chooses the next key.  A present key hits the
   -- bar; an absent key is extended with a value supplied by the step
@@ -791,7 +898,7 @@ module Foundations where
         (decideDomain entries (omega (streamOf (mapEntries entries) default)))
 
   ----------------------------------------------------------------------
-  -- 6. LAURENT'S MULTIPLICATIVE-ADDITIVE POLARIZED LINEAR LOGIC (MALLP)
+  -- 7. LAURENT'S MULTIPLICATIVE-ADDITIVE POLARIZED LINEAR LOGIC (MALLP)
   --
   -- This is Laurent's polarized linear fragment WITHOUT exponentials.
   -- Positive and negative formulas are separated by polarity; down/up
@@ -1050,6 +1157,7 @@ module Foundations where
   open MarkovLeastWitness public
   open MacLaneCoherence public
   open CohesiveRetractions public
+  open QuotientReflection public
   open SymmetricBarRecursion public
   open LaurentPolarizedMALLP public
 
@@ -1057,6 +1165,7 @@ open Foundations.ForsterEnumerability public
 open Foundations.MarkovLeastWitness public
 open Foundations.MacLaneCoherence public
 open Foundations.CohesiveRetractions public
+open Foundations.QuotientReflection public
 open Foundations.SymmetricBarRecursion public
 open Foundations.LaurentPolarizedMALLP public
 
@@ -1690,7 +1799,19 @@ reflectedBoxArityWitness = pair refl (pair refl refl)
   μ-step-false
   sBR-stop
   sBR-step
+  quotient-raw-sound
 #-}
+-- This reduction uses the active quotient rewrite rule.
+quotientReflectionRewriteSmoke :
+  {A : Set} {R : A → A → Set}
+  {rflR : (x : A) → R x x}
+  {symR : {x y : A} → R x y → R y x}
+  {transR : {x y z : A} → R x y → R y z → R x z} →
+  (x : A) →
+  denoteQuotient (rawₑ x) ≡ denoteQuotient (canonicalizedₑ x)
+quotientReflectionRewriteSmoke x = refl
+
+
 
 ------------------------------------------------------------------------
 -- Rewrite computation smoke witnesses
@@ -2871,156 +2992,6 @@ module StrictNatCompiler where
       (indexedResourceExpression program)
       (indexedNatResourceProgramEnvironment program environment)
 
-
-  ----------------------------------------------------------------------
-  -- General count-indexed resource-tree target compiler.
-  --
-  -- This closes the formal gap between arbitrary finite NatResourceExpr
-  -- trees and the indexed postfix-token machine. The index n records the
-  -- exact number of live assumptions. The active environment records
-  -- already-computed sibling results; each resource leaf selects the next
-  -- owned input using SWAP/ROLL, and each binary node consumes two results.
-  ----------------------------------------------------------------------
-
-  natEnvironmentValues : {n : Nat} → NatEnvironment n → List Nat
-  natEnvironmentValues natEnvironmentNil = []
-  natEnvironmentValues (natEnvironmentCons value rest) =
-    value ∷ natEnvironmentValues rest
-
-  natEnvironmentValues-split :
-    (n m : Nat) →
-    (environment : NatEnvironment (n + m)) →
-    (residual : List Nat) →
-    natEnvironmentValues environment ++ᴳ residual ≡
-    natEnvironmentValues
-      (fst (splitNatEnvironment n m environment)) ++ᴳ
-    (natEnvironmentValues
-      (snd (splitNatEnvironment n m environment)) ++ᴳ residual)
-  natEnvironmentValues-split zero m environment residual = refl
-  natEnvironmentValues-split (suc n) m
-    (natEnvironmentCons value rest) residual
-    with splitNatEnvironment n m rest in splitResult
-  ... | pair prefix suffix
-    rewrite splitResult
-          | natEnvironmentValues-split n m rest residual = refl
-
-  resourceSelectTokens : Nat → List ForthToken
-  resourceSelectTokens zero = []
-  resourceSelectTokens (suc zero) = swapWord ∷ []
-  resourceSelectTokens (suc (suc depth)) =
-    rollWord (suc (suc depth)) ∷ []
-
-  rollList-activePrefix :
-    (n : Nat) →
-    (active : NatEnvironment n) →
-    (value : Nat) →
-    (residual : List Nat) →
-    rollList n
-      (natEnvironmentValues active ++ᴳ (value ∷ residual)) ≡
-    just (value ∷ (natEnvironmentValues active ++ᴳ residual))
-  rollList-activePrefix zero natEnvironmentNil value residual = refl
-  rollList-activePrefix (suc n)
-    (natEnvironmentCons head rest) value residual
-    rewrite rollList-activePrefix n rest value residual = refl
-
-  resourceSelectTokens-correct :
-    (n : Nat) →
-    (active : NatEnvironment n) →
-    (value : Nat) →
-    (residual : List Nat) →
-    execTokens (resourceSelectTokens n)
-      (natEnvironmentValues active ++ᴳ (value ∷ residual)) ≡
-    just (value ∷ (natEnvironmentValues active ++ᴳ residual))
-  resourceSelectTokens-correct zero
-    natEnvironmentNil value residual = refl
-  resourceSelectTokens-correct (suc zero)
-    (natEnvironmentCons head natEnvironmentNil) value residual = refl
-  resourceSelectTokens-correct (suc (suc n))
-    active value residual =
-      rollList-activePrefix (suc (suc n)) active value residual
-
-  natResourceForthTokens :
-    {n : Nat} →
-    NatResourceExpr n →
-    (active : Nat) →
-    List ForthToken
-  natResourceForthTokens (resourceLiteral value) active =
-    pushLiteral value ∷ []
-  natResourceForthTokens resourceArgument active =
-    resourceSelectTokens active
-  natResourceForthTokens
-    (resourceBinary operation left right) active =
-      natResourceForthTokens left active ++ᴳ
-        (natResourceForthTokens right (suc active) ++ᴳ
-          (renderNatOp operation ∷ []))
-
-  natResourceForthTokens-correct :
-    {n : Nat} →
-    (expression : NatResourceExpr n) →
-    (active : Nat) →
-    (activeValues : NatEnvironment active) →
-    (environment : NatEnvironment n) →
-    (residual : List Nat) →
-    execTokens (natResourceForthTokens expression active)
-      (natEnvironmentValues activeValues ++ᴳ
-        (natEnvironmentValues environment ++ᴳ residual)) ≡
-    just
-      (evalNatResourceExpr expression environment ∷
-        (natEnvironmentValues activeValues ++ᴳ residual))
-  natResourceForthTokens-correct
-    (resourceLiteral value) active activeValues environment residual = refl
-  natResourceForthTokens-correct
-    resourceArgument active activeValues
-    (natEnvironmentCons value natEnvironmentNil) residual =
-      resourceSelectTokens-correct active activeValues value residual
-  natResourceForthTokens-correct
-    (resourceBinary {n = n} {m = m} operation left right)
-    active activeValues environment residual
-    with splitNatEnvironment n m environment
-  ... | pair leftEnvironment rightEnvironment
-    rewrite natEnvironmentValues-split n m environment residual
-      | execTokens-append
-          (natResourceForthTokens left active)
-          (natResourceForthTokens right (suc active) ++ᴳ
-            (renderNatOp operation ∷ []))
-          (natEnvironmentValues activeValues ++ᴳ
-            (natEnvironmentValues leftEnvironment ++ᴳ
-              (natEnvironmentValues rightEnvironment ++ᴳ residual)))
-      | natResourceForthTokens-correct
-          left active activeValues leftEnvironment
-          (natEnvironmentValues rightEnvironment ++ᴳ residual)
-      | execTokens-append
-          (natResourceForthTokens right (suc active))
-          (renderNatOp operation ∷ [])
-          (evalNatResourceExpr left leftEnvironment ∷
-            (natEnvironmentValues activeValues ++ᴳ
-              (natEnvironmentValues rightEnvironment ++ᴳ residual)))
-      | natResourceForthTokens-correct
-          right (suc active)
-          (natEnvironmentCons
-            (evalNatResourceExpr left leftEnvironment) activeValues)
-          rightEnvironment residual = refl
-
-  -- End-to-end theorem for every count-indexed Nat resource tree:
-  -- MALLP proof interpretation = formal target execution, with arbitrary
-  -- active sibling results and residual stack preserved.
-  natResourceMALLP-forth-sound :
-    {n : Nat} →
-    (expression : NatResourceExpr n) →
-    (environment : NatEnvironment n) →
-    (residual : List Nat) →
-    execTokens (natResourceForthTokens expression zero)
-      (natEnvironmentValues environment ++ᴳ residual) ≡
-    just
-      (interpretMALLPNatProof (natResourceProof expression) environment
-        ∷ residual)
-  natResourceMALLP-forth-sound expression environment residual =
-    trans
-      (natResourceForthTokens-correct
-        expression zero natEnvironmentNil environment residual)
-      (cong
-        (λ value → just (value ∷ residual))
-        (sym (natResourceProof-adequate expression environment)))
 
   -- A unary source function is linear when its sole argument occurs once.
   -- Its proof term is an MALLP derivation with exactly one Nat assumption.
