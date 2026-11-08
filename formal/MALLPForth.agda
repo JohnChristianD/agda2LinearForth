@@ -785,6 +785,24 @@ module Foundations where
     QuotientMorphismEq {X} f g =
       (x : quotientCarrier X) → quotientMap f x ≡ quotientMap g x
 
+    quotientMorphismEq-refl :
+      {X Y : QuotientObject} (f : QuotientMorphism X Y) →
+      QuotientMorphismEq f f
+    quotientMorphismEq-refl f x = refl
+
+    quotientMorphismEq-sym :
+      {X Y : QuotientObject} {f g : QuotientMorphism X Y} →
+      QuotientMorphismEq f g → QuotientMorphismEq g f
+    quotientMorphismEq-sym equality x = sym (equality x)
+
+    quotientMorphismEq-trans :
+      {X Y : QuotientObject} {f g h : QuotientMorphism X Y} →
+      QuotientMorphismEq f g →
+      QuotientMorphismEq g h →
+      QuotientMorphismEq f h
+    quotientMorphismEq-trans first second x =
+      trans (first x) (second x)
+
     identityQuotientMorphism :
       (X : QuotientObject) → QuotientMorphism X X
     identityQuotientMorphism X =
@@ -804,6 +822,20 @@ module Foundations where
           trans
             (quotientMap-normalizes g (quotientMap f x))
             (cong (quotientMap g) (quotientMap-normalizes f x)))
+
+    quotientCompose-respects-equality :
+      {X Y Z : QuotientObject} →
+      {f f′ : QuotientMorphism X Y} →
+      {g g′ : QuotientMorphism Y Z} →
+      QuotientMorphismEq g g′ →
+      QuotientMorphismEq f f′ →
+      QuotientMorphismEq
+        (composeQuotientMorphism g f)
+        (composeQuotientMorphism g′ f′)
+    quotientCompose-respects-equality outer inner x =
+      trans
+        (cong (quotientMap _) (inner x))
+        (outer (quotientMap _ x))
 
     quotientCategory-id-left :
       {X Y : QuotientObject} →
