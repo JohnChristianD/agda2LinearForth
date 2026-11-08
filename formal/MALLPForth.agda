@@ -2239,16 +2239,30 @@ module StrictNatCompiler where
       NatEnvironment n →
       NatEnvironment (suc n)
 
+  takeNatEnvironment :
+    (n m : Nat) →
+    NatEnvironment (n + m) →
+    NatEnvironment n
+  takeNatEnvironment zero m environment = natEnvironmentNil
+  takeNatEnvironment (suc n) m (natEnvironmentCons value rest) =
+    natEnvironmentCons value (takeNatEnvironment n m rest)
+
+  dropNatEnvironment :
+    (n m : Nat) →
+    NatEnvironment (n + m) →
+    NatEnvironment m
+  dropNatEnvironment zero m environment = environment
+  dropNatEnvironment (suc n) m (natEnvironmentCons value rest) =
+    dropNatEnvironment n m rest
+
   splitNatEnvironment :
     (n m : Nat) →
     NatEnvironment (n + m) →
     NatEnvironment n × NatEnvironment m
-  splitNatEnvironment zero m environment =
-    pair natEnvironmentNil environment
-  splitNatEnvironment (suc n) m (natEnvironmentCons value rest)
-    with splitNatEnvironment n m rest
-  ... | pair prefix suffix =
-    pair (natEnvironmentCons value prefix) suffix
+  splitNatEnvironment n m environment =
+    pair
+      (takeNatEnvironment n m environment)
+      (dropNatEnvironment n m environment)
 
   appendNatEnvironment :
     {n : Nat} →
@@ -2453,10 +2467,8 @@ module StrictNatCompiler where
       (snd (splitNatEnvironment n m environment)) ++ᴳ residual)
   natEnvironmentValues-split zero m environment residual = refl
   natEnvironmentValues-split (suc n) m
-    (natEnvironmentCons value rest) residual
-    with splitNatEnvironment n m rest
-  ... | pair prefix suffix =
-    cong (value ∷_) (natEnvironmentValues-split n m rest residual)
+    (natEnvironmentCons value rest) residual =
+      cong (value ∷_) (natEnvironmentValues-split n m rest residual)
 
   resourceSelectTokens : Nat → List ForthToken
   resourceSelectTokens zero = []
