@@ -69,59 +69,6 @@ The backend and proof modules are pinned to Agda 2.8.0.2. Use the actual modules
 
 Reflection is a compile-time elaboration facility, not a replacement for a typed source IR or a semantics proof. `reflectDataShape` currently derives constructor-shape metadata; Agda then type-checks the generated witness. Runtime values, resource ownership, thunk updates, and Forth execution still require explicit syntax, interpretation, and simulation theorems. The Haskell backend already reads resolved Agda definitions, telescopes, and Treeless terms; reflection should remove duplicated metadata or proof boilerplate, not merely move a whitelist into a macro.
 
-### Hofmann-style quotient types: audit result
-
-The public sources inspected for this compiler and `JohnChristianD/Deep-Watkins-Monoid-LSTM` do **not** contain a Hofmann-style quotient type, quotient eliminator, quotient-induction interface, or a quotient-reflection implementation. In this compiler repository, `Foundations` is a nested module in `formal/MALLPForth.agda`, not a separate imported library directory. Its six publicly opened submodules are `ForsterEnumerability`, `MarkovLeastWitness`, `MacLaneCoherence`, `CohesiveRetractions`, `SymmetricBarRecursion`, and `LaurentPolarizedMALLP`. They expose the corresponding records, search/bar-recursion contracts, coherence normalizer, and Laurent proof rules; none defines quotient formation or quotient elimination. `ContextPermutation` is proof-relevant and explicit. Its nearby comment deliberately says contexts are presented without quotient equality or setoids.
-
-The other public repository has an equality-substrate comment and reflection utilities, but the inspected main-branch sources do not supply the missing quotient construction either. Thus the earlier wording that grouped `reflectDataShape` or the `Foundations.*` surface with quotient reflection was inaccurate: metadata reflection and user rewrite rules are present; Hofmann quotient reflection is not.
-
-This is a meaningful omission for faux-extensionality, quotient-normalized contexts, and reusable tactics. Hofmann-style quotients are a type-theoretic interface with a relation-respecting eliminator and computation principles; they are not furnished by `Agda.Builtin.Reflection`. Fiore, Pitts, and Steenkamp's QW-type development uses strictly positive Hofmann-style quotients together with UIP and size types, and its accompanying Agda development explicitly declares the quotient assumptions. That is a literature-backed design route, but importing a quotient interface also adds a trust boundary and coherence obligations. It should be introduced as a named quotient package with its equivalence relation, quotient map, eliminator, respectfulness, computation rules, and model/consistency assumptions—not simulated by an indiscriminate rewrite rule.
-
-The compiler's current finite context permutation can remain proof-relevant for the first verified slice. A quotient of contexts by permutation may shorten client proofs, but the quotient must preserve the linear-resource action and transport each derivation/stack environment coherently. Quotient equality does not itself implement a permutation program or prove that Forth `ROLL` realizes it.
-
-### MALLP parsing and string manipulation
-
-The current frontend does **not** parse MALLP source text. `PolType`, `MALLP`, and `LinearTerm` are Agda datatypes; the backend consumes Agda's resolved definitions and Treeless terms. The Forth side uses a typed token AST and a renderer. `Agda.Builtin.String.Properties` is useful for proving that equal character lists imply equal strings (and vice versa through the corresponding injectivity theorem), but it supplies no tokenization, precedence handling, grammar, diagnostics, or parser-correctness theorem.
-
-For textual MALLP input, tokenize `primStringToList input` into a character stream and parse directly into `PolType` or a surface AST. Prove at least parser soundness, a parse/print round trip on canonical syntax, and rejection/diagnostic behavior for malformed input. Keep pretty-printing separate from semantic normalization. Reflection can generate typed formulas from quoted Agda syntax; it is not a replacement for a parser of arbitrary text. The Haskell frontend's existing Treeless path should remain the source compiler input unless a separate textual MALLP frontend is explicitly added.
-
-## Quotients, extensionality, reflection, and rewrite scope
-
-The latest uploaded `SovereignRationalSED-MALLP.agda` contains `Foundations.QuotientReflection`. It was omitted from the repository map and from the compiler's `Foundations` tree; that omission is now corrected. The module is integrated as a peer of `ForsterEnumerability`, `MarkovLeastWitness`, `MacLaneCoherence`, `CohesiveRetractions`, and `SymmetricBarRecursion`. Laurent's `LaurentPolarizedMALLP` remains the separate logical-calculus module.
-
-The quotient package keeps the uploaded interface:
-
-- `Quotient A R reflR symR transR` and `[_]` expose an abstract quotient carrier and class map indexed by explicit equivalence laws.
-- `canonize`, `quotient-canon`, `canonical-idempotent`, and `canonical-related` specify the canonical-representative contract.
-- `QuotientExpr` distinguishes raw representatives, canonicalized representatives, and class syntax. `normalizeQuotient` recursively normalizes this syntax; `denoteQuotient` interprets it in the quotient.
-- `quotient-raw-sound` relates the raw class with its canonicalized class. It is now registered in the active global `REWRITE` pragma, so Agda rewrites `denoteQuotient (rawₑ x)` to `denoteQuotient (canonicalizedₑ x)`. `quotientReflectionRewriteSmoke` checks this use by `refl`.
-
-**Trust boundary:** the quotient carrier, class constructor, canonicalizer, and canonicalization laws are postulated in the uploaded interface. This is an axiom-backed Hofmann-style quotient package, not a constructive quotient implementation derived from the other Foundations packages. It has no general quotient eliminator/recursor with a relation-respectfulness premise, and it proves neither existence nor uniqueness of canonical representatives. The active rewrite rule therefore depends on the postulated `quotient-canon` theorem. The smoke theorem confirms Agda uses that rule; it does not prove the postulate.
-
-This is useful for quotient-level proof normalization and extensional identification of syntax. It is not general function extensionality. Nor should it erase `ContextPermutation` evidence when resource order determines operational `SWAP`/`ROLL` behavior. Keep the representative and its permutation/resource witness through compiler passes; quotient away only evidence already shown irrelevant to the observable result. `reflectDataShape` is a separate Agda metadata macro, not quotient reflection.
-
-The literature context is Martin Hofmann, [*Extensional Concepts in Intensional Type Theory*](https://era.ed.ac.uk/items/7bd8019c-9f3d-4e18-9d5d-ddab830cae1a) (1995), and [*A Simple Model for Quotient Types*](https://doi.org/10.1007/BFb0014055) (TLCA 1995); see also Kapulkin and Li, [*Extensional Concepts in Intensional Type Theory, Revisited*](https://arxiv.org/abs/2310.05706). The uploaded package provides a useful quotient interface and rewrite normalization layer, but it is not the full quotient-eliminator development treated by that literature.
-
-### The actual global rewrite system
-
-The file enables `--rewriting` and `--confluence-check`. The active global registrations are `μ-step-true`, `μ-step-false`, `sBR-stop`, `sBR-step`, and `quotient-raw-sound`. The cohesive-retraction equations and the other quotient normalization lemmas remain ordinary named equalities, not global rewrite rules. The μ-search and symmetric-bar-recursion computation equations are postulated contracts; the false μ-search branch intentionally continues searching when no witness has appeared.
-
-Agda's confluence check covers the combined global rewrite system, including the quotient rule; it does not establish termination or discharge postulated laws. Rewrite-rule imports are transitive, so public nested modules do not form rewrite sandboxes. The quotient rule is oriented one-way from raw to canonicalized denotations; no reverse rule is registered. Keep this global system small and coherent. See Agda's [rewriting reference](https://agda.readthedocs.io/en/stable/language/rewriting.html).
-
-### Builtins are useful, but not a proof shortcut
-
-For pinned Agda 2.8.0.2, the primitive property modules are real and small:
-
-- `Agda.Builtin.String.Properties` exports `primStringToListInjective` and `primStringFromListInjective`. These prove injectivity of the primitive conversions between strings and character lists.
-- `Agda.Builtin.Reflection.Properties` exports `primMetaToNatInjective` and `primQNameToWord64sInjective`.
-- `Agda.Builtin.Word.Properties` exports `primWord64ToNatInjective`; the existing Word64 equality proof already uses it.
-
-Import a property module when its theorem replaces a local proof or gives a useful boundary invariant. Avoid importing modules just for their names, and avoid re-proving primitive facts. These modules do not provide general parser combinators, quotient types, a complete arithmetic theory, or a general reflection solver. Use an explicitly declared standard-library dependency where a larger theorem library is genuinely needed.
-
-The 2.8.0.2 reflection `TC` API includes `unify`, `inferType`, `checkType`, `normalise`, `reduce`, `quoteTC`, `unquoteTC`, `getInstances`, `solveInstanceConstraints`, and `checkFromStringTC`. These are type-checker operations for building and validating a proposed term; `solveInstanceConstraints` discharges instance constraints, not arbitrary MALLP proof goals. Reflection is most useful here for generating a candidate indexed term/proof from resolved Treeless metadata, then letting the kernel check the result. That is a sound way to reduce handwritten boilerplate; treating reflection as an unchecked oracle would invalidate the correspondence argument.
-
-Pinned primitive sources: [String.Properties](https://github.com/agda/agda/blob/v2.8.0.2/src/data/lib/prim/Agda/Builtin/String/Properties.agda), [Reflection.Properties](https://github.com/agda/agda/blob/v2.8.0.2/src/data/lib/prim/Agda/Builtin/Reflection/Properties.agda), [Word.Properties](https://github.com/agda/agda/blob/v2.8.0.2/src/data/lib/prim/Agda/Builtin/Word/Properties.agda), and [Reflection](https://github.com/agda/agda/blob/v2.8.0.2/src/data/lib/prim/Agda/Builtin/Reflection.agda).
-
 ### MALLP syntax and strings
 
 There is **no textual MALLP lexer or parser** at present. The logical syntax is the Agda `MALLP` datatype and its constructors; the Haskell backend consumes Agda's resolved Treeless terms, not MALLP source strings.
