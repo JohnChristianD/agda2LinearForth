@@ -176,6 +176,15 @@ jobs:
           grep -Fq ': swapBoolPair SWAP ;' MALLPStrict.fth
           grep -Fq ': answerUnit ;' MALLPStrict.fth
           grep -Eq '^: answerIdentity[[:space:]]*;' MALLPStrict.fth
+          # Pin the complete 29-definition source fixture. Any addition,
+          # removal, or substitution requires a deliberate proof review.
+          for word in answerAdd answerMonus answerMultiply answerLet answerLetShared answerLetUnused answerTrue answerFalse invertBool chooseBool swapBoolPair answerMatchedTrue answerMatchedFalse answerUnit answerIdentity answerAddFive answerMonusFive answerFiveMonus answerMultiplyFive answerWord64Identity answerAddTwo answerMonusTwo answerReverseMonusTwo answerMultiplyTwo answerThree answerThreeLet answerFour answerCallThree answerCallNested; do
+            grep -Eq "^: ${word}[[:space:]]" MALLPStrict.fth || {
+              echo "compiler output manifest mismatch: $word"
+              exit 1
+            }
+          done
+          test "$(grep -cE '^: answer[A-Za-z0-9_]*[[:space:]]' MALLPStrict.fth)" -eq 29
           grep -Fq 'answerAddFive' MALLPStrict.fth
           grep -Fq 'answerMonusFive' MALLPStrict.fth
           grep -Fq 'answerFiveMonus' MALLPStrict.fth
