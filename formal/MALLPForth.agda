@@ -4514,7 +4514,7 @@ constantZeroBarCondition :
 constantZeroBarCondition default initial alpha
   with memberKey zero (mapEntries initial) in zeroPresent
 ... | true = zero , zeroPresent
-... | false = suc zero , refl
+... | false rewrite zeroPresent = suc zero , refl
 
 zeroKeyMap : {X : Set} → X → PartialMap X
 zeroKeyMap value =
