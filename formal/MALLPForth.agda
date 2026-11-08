@@ -635,23 +635,33 @@ module Foundations where
                  ((x : A) → R x x) →
                  ({x y : A} → R x y → R y x) →
                  ({x y z : A} → R x y → R y z → R x z) → Set
-      [_] : {A : Set} {R : A → A → Set}
-            {rflR : (x : A) → R x x}
-            {symR : {x y : A} → R x y → R y x}
-            {transR : {x y z : A} → R x y → R y z → R x z} →
-            A → Quotient A R rflR symR transR
+
+      -- Explicit parameterization keeps the global rewrite rule fully
+      -- instantiated; the class map remains the package's primitive axiom.
+      quotientClass :
+        (A : Set) →
+        (R : A → A → Set) →
+        ((x : A) → R x x) →
+        ({x y : A} → R x y → R y x) →
+        ({x y z : A} → R x y → R y z → R x z) →
+        A → Quotient A R _ _ _
+
       canonize : {A : Set} {R : A → A → Set}
                  {rflR : (x : A) → R x x}
                  {symR : {x y : A} → R x y → R y x}
                  {transR : {x y z : A} → R x y → R y z → R x z} →
                  A → A
+
       quotient-canon :
         {A : Set} {R : A → A → Set}
         {rflR : (x : A) → R x x}
         {symR : {x y : A} → R x y → R y x}
         {transR : {x y z : A} → R x y → R y z → R x z} →
-        (x : A) → [ canonize {A} {R} {rflR} {symR} {transR} x ] ≡
-                   [ x ]
+        (x : A) →
+        quotientClass A R rflR symR transR
+          (canonize {A} {R} {rflR} {symR} {transR} x) ≡
+        quotientClass A R rflR symR transR x
+
       canonical-idempotent :
         {A : Set} {R : A → A → Set}
         {rflR : (x : A) → R x x}
@@ -661,12 +671,22 @@ module Foundations where
         canonize {A} {R} {rflR} {symR} {transR}
           (canonize {A} {R} {rflR} {symR} {transR} x) ≡
         canonize {A} {R} {rflR} {symR} {transR} x
+
       canonical-related :
         {A : Set} {R : A → A → Set}
         {rflR : (x : A) → R x x}
         {symR : {x y : A} → R x y → R y x}
         {transR : {x y z : A} → R x y → R y z → R x z} →
         (x : A) → R (canonize {A} {R} {rflR} {symR} {transR} x) x
+
+    -- Familiar quotient-class notation is a thin alias over the explicit map.
+    [_] : {A : Set} {R : A → A → Set}
+          {rflR : (x : A) → R x x}
+          {symR : {x y : A} → R x y → R y x}
+          {transR : {x y z : A} → R x y → R y z → R x z} →
+          A → Quotient A R rflR symR transR
+    [_] {A} {R} {rflR} {symR} {transR} x =
+      quotientClass A R rflR symR transR x
 
     -- Syntax for quotient normalization.  `canonicalizedₑ x` denotes the
     -- canonical representative; the quotient relation remains explicit.
@@ -683,10 +703,10 @@ module Foundations where
       QuotientExpr A → Quotient A R rflR symR transR
     denoteQuotient
       {A} {R} {rflR} {symR} {transR} (rawₑ x) =
-        [_] {A} {R} {rflR} {symR} {transR} x
+        quotientClass A R rflR symR transR x
     denoteQuotient
       {A} {R} {rflR} {symR} {transR} (canonicalizedₑ x) =
-        [_] {A} {R} {rflR} {symR} {transR}
+        quotientClass A R rflR symR transR
           (canonize {A} {R} {rflR} {symR} {transR} x)
     denoteQuotient
       {A} {R} {rflR} {symR} {transR} (classₑ expression) =
@@ -713,15 +733,16 @@ module Foundations where
     -- This lets Agda normalize quotient denotations without unfolding the
     -- quotient carrier or requiring an unproved computation equation.
     quotient-raw-sound :
-      {A : Set} {R : A → A → Set}
-      {rflR : (x : A) → R x x}
-      {symR : {x y : A} → R x y → R y x}
-      {transR : {x y z : A} → R x y → R y z → R x z} →
+      (A : Set) →
+      (R : A → A → Set) →
+      (rflR : (x : A) → R x x) →
+      (symR : {x y : A} → R x y → R y x) →
+      (transR : {x y z : A} → R x y → R y z → R x z) →
       (x : A) →
-      [_] {A} {R} {rflR} {symR} {transR} x ≡
-      [_] {A} {R} {rflR} {symR} {transR}
+      quotientClass A R rflR symR transR x ≡
+      quotientClass A R rflR symR transR
         (canonize {A} {R} {rflR} {symR} {transR} x)
-    quotient-raw-sound {A} {R} {rflR} {symR} {transR} x =
+    quotient-raw-sound A R rflR symR transR x =
       sym (quotient-canon {A} {R} {rflR} {symR} {transR} x)
 
     quotient-class-canon-sound :
@@ -1816,14 +1837,15 @@ reflectedBoxArityWitness = pair refl (pair refl refl)
 #-}
 -- This reduction uses the active quotient rewrite rule.
 quotientReflectionRewriteSmoke :
-  {A : Set} {R : A → A → Set}
-  {rflR : (x : A) → R x x}
-  {symR : {x y : A} → R x y → R y x}
-  {transR : {x y z : A} → R x y → R y z → R x z} →
+  (A : Set) →
+  (R : A → A → Set) →
+  (rflR : (x : A) → R x x) →
+  (symR : {x y : A} → R x y → R y x) →
+  (transR : {x y z : A} → R x y → R y z → R x z) →
   (x : A) →
-  denoteQuotient (rawₑ x) ≡ denoteQuotient (canonicalizedₑ x)
-quotientReflectionRewriteSmoke x = refl
-
+  denoteQuotient {A} {R} {rflR} {symR} {transR} (rawₑ x) ≡
+  denoteQuotient {A} {R} {rflR} {symR} {transR} (canonicalizedₑ x)
+quotientReflectionRewriteSmoke A R rflR symR transR x = refl
 
 
 ------------------------------------------------------------------------
