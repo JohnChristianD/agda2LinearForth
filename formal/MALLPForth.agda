@@ -3221,24 +3221,24 @@ module StrictNatCompiler where
   -- Addition is commutative propositionally, not by definitional reduction.
   -- The resource compiler may select the two live arguments in the opposite
   -- order; this theorem bridges that source expression to its evaluator.
-  natAdd-zero-left : (value : Nat) → zero + value ≡ value
-  natAdd-zero-left zero = refl
-  natAdd-zero-left (suc value) =
-    cong suc (natAdd-zero-left value)
+  natAdd-zero-right : (value : Nat) → value + zero ≡ value
+  natAdd-zero-right zero = refl
+  natAdd-zero-right (suc value) =
+    cong suc (natAdd-zero-right value)
 
-  natAdd-suc-left :
+  natAdd-suc-right :
     (left right : Nat) →
-    suc left + right ≡ suc (left + right)
-  natAdd-suc-left left zero = refl
-  natAdd-suc-left left (suc right) =
-    cong suc (natAdd-suc-left left right)
+    left + suc right ≡ suc (left + right)
+  natAdd-suc-right zero right = refl
+  natAdd-suc-right (suc left) right =
+    cong suc (natAdd-suc-right left right)
 
   natAdd-comm : (left right : Nat) → left + right ≡ right + left
-  natAdd-comm zero right = natAdd-zero-left right
+  natAdd-comm zero right = sym (natAdd-zero-right right)
   natAdd-comm (suc left) right =
     trans
-      (natAdd-suc-left left right)
       (cong suc (natAdd-comm left right))
+      (sym (natAdd-suc-right right left))
 
   compileNatBinaryLinear :
     {Γ : List StackType} →
