@@ -130,6 +130,8 @@ The construction is **non-setoid as a quotient representation**, but it is not a
 
 Agda's `--confluence-check` checks the combined rewrite system; it does not prove termination, general quotient existence, or the categorical laws independently of the checked Agda terms. Operational `ContextPermutation` evidence must remain available wherever source-resource order affects `SWAP`/`ROLL`.
 
+Key references for this decision: [nLab, idempotent monads](https://ncatlab.org/nlab/show/idempotent+monad); [nLab, quotient types](https://ncatlab.org/nlab/show/quotient+type); [Stanford Encyclopedia of Philosophy, *Intuitionistic Type Theory*](https://plato.stanford.edu/entries/type-theory-intuitionistic/) (especially §§6.5 and 7.1–7.2); [Marmaduke, Jenkins, and Stump, *Quotients by Idempotent Functions in Cedille*](https://cshub.bc.edu/stumpaa/papers/tfp2019.pdf); [Altenkirch, Anberrée, and Li, *Definable Quotients in Type Theory*](https://people.cs.nott.ac.uk/psztxa/publ/defquotients.pdf); and [Chapman, Uustalu, and Veltri, *Quotienting the Delay Monad by Weak Bisimilarity*](https://strathprints.strath.ac.uk/61755/). Wikipedia's [*Idempotent monad*](https://en.wikipedia.org/wiki/Idempotent_monad) entry is a useful summary, not a primary source.
+
 ### Foundations module count
 
 There are **seven direct `Foundations.*` submodules**: `ForsterEnumerability`, `MarkovLeastWitness`, `MacLaneCoherence`, `CohesiveRetractions`, `QuotientReflection`, `SymmetricBarRecursion`, and `LaurentPolarizedMALLP`. The first six are the foundational packages; the seventh is Laurent's logical calculus. `FiniteListComputation` is top-level helper code, outside `Foundations`.
