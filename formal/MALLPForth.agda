@@ -746,6 +746,234 @@ module Foundations where
         (λ related → related)
         (canonicalize-idempotent f)
 
+    ------------------------------------------------------------------
+    -- Categorical reflection and its idempotent monad.
+    --
+    -- Objects are setoid presentations equipped with a chosen normalizer.
+    -- Morphisms preserve the relation and commute with normalization.
+    -- Hom equality is pointwise propositional equality of the underlying
+    -- maps; this avoids assuming function extensionality.
+    ------------------------------------------------------------------
+
+    record QuotientObject : Set₁ where
+      constructor quotientObject
+      field
+        quotientCarrier : Set
+        quotientRelation : quotientCarrier → quotientCarrier → Set
+        quotientNormalizer :
+          NormalizerFor quotientCarrier quotientRelation
+    open QuotientObject public
+
+    record QuotientMorphism
+      (X Y : QuotientObject) : Set where
+      constructor quotientMorphism
+      field
+        quotientMap : quotientCarrier X → quotientCarrier Y
+        quotientMap-respects :
+          {x y : quotientCarrier X} →
+          quotientRelation X x y →
+          quotientRelation Y (quotientMap x) (quotientMap y)
+        quotientMap-normalizes :
+          (x : quotientCarrier X) →
+          normalizeFor (quotientNormalizer Y) (quotientMap x) ≡
+          quotientMap (normalizeFor (quotientNormalizer X) x)
+    open QuotientMorphism public
+
+    QuotientMorphismEq :
+      {X Y : QuotientObject} →
+      QuotientMorphism X Y → QuotientMorphism X Y → Set
+    QuotientMorphismEq {X} f g =
+      (x : quotientCarrier X) → quotientMap f x ≡ quotientMap g x
+
+    identityQuotientMorphism :
+      (X : QuotientObject) → QuotientMorphism X X
+    identityQuotientMorphism X =
+      quotientMorphism (λ x → x) (λ related → related) (λ x → refl)
+
+    composeQuotientMorphism :
+      {X Y Z : QuotientObject} →
+      QuotientMorphism Y Z →
+      QuotientMorphism X Y →
+      QuotientMorphism X Z
+    composeQuotientMorphism g f =
+      quotientMorphism
+        (λ x → quotientMap g (quotientMap f x))
+        (λ related →
+          quotientMap-respects g (quotientMap-respects f related))
+        (λ x →
+          trans
+            (quotientMap-normalizes g (quotientMap f x))
+            (cong (quotientMap g) (quotientMap-normalizes f x)))
+
+    quotientCategory-id-left :
+      {X Y : QuotientObject} →
+      (f : QuotientMorphism X Y) →
+      QuotientMorphismEq
+        (composeQuotientMorphism (identityQuotientMorphism Y) f)
+        f
+    quotientCategory-id-left f x = refl
+
+    quotientCategory-id-right :
+      {X Y : QuotientObject} →
+      (f : QuotientMorphism X Y) →
+      QuotientMorphismEq
+        (composeQuotientMorphism f (identityQuotientMorphism X))
+        f
+    quotientCategory-id-right f x = refl
+
+    quotientCategory-associative :
+      {W X Y Z : QuotientObject} →
+      (h : QuotientMorphism Y Z) →
+      (g : QuotientMorphism X Y) →
+      (f : QuotientMorphism W X) →
+      QuotientMorphismEq
+        (composeQuotientMorphism h (composeQuotientMorphism g f))
+        (composeQuotientMorphism
+          (composeQuotientMorphism h g) f)
+    quotientCategory-associative h g f x = refl
+
+    -- The reflector replaces the supplied relation by equality of normal
+    -- forms.  Its values are the same carrier representatives: no second
+    -- quotient carrier or proof-irrelevance axiom is introduced.
+    quotientReflectionObject : QuotientObject → QuotientObject
+    quotientReflectionObject X =
+      let f = normalizer-as-idempotent (quotientNormalizer X)
+      in quotientObject
+           (quotientCarrier X)
+           (QuotientRelation f)
+           (kernelNormalizer f)
+
+    quotientReflectionMap :
+      {X Y : QuotientObject} →
+      QuotientMorphism X Y →
+      QuotientMorphism
+        (quotientReflectionObject X)
+        (quotientReflectionObject Y)
+    quotientReflectionMap {X} {Y} f =
+      quotientMorphism
+        (quotientMap f)
+        (λ {x} {y} equality →
+          trans
+            (quotientMap-normalizes f x)
+            (trans
+              (cong (quotientMap f) equality)
+              (sym (quotientMap-normalizes f y))))
+        (quotientMap-normalizes f)
+
+    quotientReflectionUnit :
+      (X : QuotientObject) →
+      QuotientMorphism X (quotientReflectionObject X)
+    quotientReflectionUnit X =
+      quotientMorphism
+        (λ x → x)
+        (normalization-sound (quotientNormalizer X))
+        (λ x → refl)
+
+    -- Applying the reflector twice changes neither the carrier nor the
+    -- kernel relation.  Multiplication is therefore the identity map.
+    quotientReflectionMultiplication :
+      (X : QuotientObject) →
+      QuotientMorphism
+        (quotientReflectionObject (quotientReflectionObject X))
+        (quotientReflectionObject X)
+    quotientReflectionMultiplication X =
+      quotientMorphism
+        (λ x → x)
+        (λ related → related)
+        (λ x → refl)
+
+    quotientReflectionFunctor-id :
+      (X : QuotientObject) →
+      QuotientMorphismEq
+        (quotientReflectionMap (identityQuotientMorphism X))
+        (identityQuotientMorphism (quotientReflectionObject X))
+    quotientReflectionFunctor-id X x = refl
+
+    quotientReflectionFunctor-compose :
+      {X Y Z : QuotientObject} →
+      (g : QuotientMorphism Y Z) →
+      (f : QuotientMorphism X Y) →
+      QuotientMorphismEq
+        (quotientReflectionMap (composeQuotientMorphism g f))
+        (composeQuotientMorphism
+          (quotientReflectionMap g) (quotientReflectionMap f))
+    quotientReflectionFunctor-compose g f x = refl
+
+    -- The unit is natural because it is the identity on representatives.
+    quotientReflectionUnit-natural :
+      {X Y : QuotientObject} →
+      (f : QuotientMorphism X Y) →
+      QuotientMorphismEq
+        (composeQuotientMorphism
+          (quotientReflectionMap f) (quotientReflectionUnit X))
+        (composeQuotientMorphism
+          (quotientReflectionUnit Y) f)
+    quotientReflectionUnit-natural f x = refl
+
+    -- Multiplication is natural for the same reason.
+    quotientReflectionMultiplication-natural :
+      {X Y : QuotientObject} →
+      (f : QuotientMorphism X Y) →
+      QuotientMorphismEq
+        (composeQuotientMorphism
+          (quotientReflectionMultiplication Y)
+          (quotientReflectionMap (quotientReflectionMap f)))
+        (composeQuotientMorphism
+          (quotientReflectionMap f)
+          (quotientReflectionMultiplication X))
+    quotientReflectionMultiplication-natural f x = refl
+
+    quotientReflectionMonad-left-unit :
+      (X : QuotientObject) →
+      QuotientMorphismEq
+        (composeQuotientMorphism
+          (quotientReflectionMultiplication X)
+          (quotientReflectionMap (quotientReflectionUnit X)))
+        (identityQuotientMorphism (quotientReflectionObject X))
+    quotientReflectionMonad-left-unit X x = refl
+
+    quotientReflectionMonad-right-unit :
+      (X : QuotientObject) →
+      QuotientMorphismEq
+        (composeQuotientMorphism
+          (quotientReflectionMultiplication X)
+          (quotientReflectionUnit (quotientReflectionObject X)))
+        (identityQuotientMorphism (quotientReflectionObject X))
+    quotientReflectionMonad-right-unit X x = refl
+
+    quotientReflectionMonad-associative :
+      (X : QuotientObject) →
+      QuotientMorphismEq
+        (composeQuotientMorphism
+          (quotientReflectionMultiplication X)
+          (quotientReflectionMap (quotientReflectionMultiplication X)))
+        (composeQuotientMorphism
+          (quotientReflectionMultiplication X)
+          (quotientReflectionMultiplication
+            (quotientReflectionObject X)))
+    quotientReflectionMonad-associative X x = refl
+
+    -- Multiplication is an isomorphism; the unit at the reflected object
+    -- is its inverse.  This is the idempotence law of the monad.
+    quotientReflectionMultiplication-inverse-left :
+      (X : QuotientObject) →
+      QuotientMorphismEq
+        (composeQuotientMorphism
+          (quotientReflectionUnit (quotientReflectionObject X))
+          (quotientReflectionMultiplication X))
+        (identityQuotientMorphism
+          (quotientReflectionObject (quotientReflectionObject X)))
+    quotientReflectionMultiplication-inverse-left X x = refl
+
+    quotientReflectionMultiplication-inverse-right :
+      (X : QuotientObject) →
+      QuotientMorphismEq
+        (composeQuotientMorphism
+          (quotientReflectionMultiplication X)
+          (quotientReflectionUnit (quotientReflectionObject X)))
+        (identityQuotientMorphism (quotientReflectionObject X))
+    quotientReflectionMultiplication-inverse-right X x = refl
+
     data QuotientExpr (A : Set) : Set where
       rawₑ canonicalizedₑ : A → QuotientExpr A
 
