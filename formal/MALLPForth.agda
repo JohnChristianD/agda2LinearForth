@@ -709,13 +709,17 @@ module Foundations where
       normalizeQuotient (classₑ (rawₑ x))
     quotient-class-canon x = refl
 
+    -- The active rewrite is oriented at the opaque quotient class map.
+    -- This lets Agda normalize quotient denotations without unfolding the
+    -- quotient carrier or requiring an unproved computation equation.
     quotient-raw-sound :
       {A : Set} {R : A → A → Set}
       {rflR : (x : A) → R x x}
       {symR : {x y : A} → R x y → R y x}
       {transR : {x y z : A} → R x y → R y z → R x z} →
       (x : A) →
-      denoteQuotient (rawₑ x) ≡ denoteQuotient (canonicalizedₑ x)
+      [ x ] ≡
+      [ canonize {A} {R} {rflR} {symR} {transR} x ]
     quotient-raw-sound {A} {R} {rflR} {symR} {transR} x =
       sym (quotient-canon {A} {R} {rflR} {symR} {transR} x)
 
