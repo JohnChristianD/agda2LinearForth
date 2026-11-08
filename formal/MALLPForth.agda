@@ -31,6 +31,8 @@ open import Agda.Builtin.Unit public
 open import Agda.Builtin.Strict public
 open import Agda.Builtin.Coinduction public
 import Agda.Builtin.Reflection as Reflection
+open import Agda.Builtin.Reflection.Properties
+  using (primMetaToNatInjective; primQNameToWord64sInjective) public
 -- Agda 2.8 has no Agda.Builtin.Empty module; define the empty type locally.
 data ⊥ : Set where
 
@@ -57,6 +59,21 @@ word64EqualityByNat =
   equivalence
     (word64EqualityCong primWord64ToNat)
     (primWord64ToNatInjective _ _)
+
+-- Injectivity witnesses for Agda's reflected names and metavariables.
+-- These are useful when a metaprogram stores their primitive encodings.
+reflectedNameInjective :
+  {left right : Reflection.Name} →
+  Reflection.primQNameToWord64s left ≡
+  Reflection.primQNameToWord64s right →
+  left ≡ right
+reflectedNameInjective = primQNameToWord64sInjective _ _
+
+reflectedMetaInjective :
+  {left right : Reflection.Meta} →
+  Reflection.primMetaToNat left ≡ Reflection.primMetaToNat right →
+  left ≡ right
+reflectedMetaInjective = primMetaToNatInjective _ _
 
 -- Proof-carrying Forth instruction vocabulary and canonical renderer.
 -- Kept here so generated compiler witnesses and MALLP derivations share
@@ -687,11 +704,13 @@ module Foundations where
       {A : Set} {R : A → A → Set} →
       (N : NormalizerFor A R) → {x y : A} →
       normalizeFor N x ≡ normalizeFor N y → R x y
-    normalization-kernel-backward N {x} {y} equality
-      rewrite sym equality =
-        normalizer-trans N
-          (normalizer-sym N (normalization-complete N x))
-          (normalization-complete N y)
+    normalization-kernel-backward N {x} {y} equality =
+      normalizer-trans N
+        (normalizer-sym N (normalization-complete N x))
+        (normalizer-trans N
+          (subst (λ z → R (normalizeFor N x) z) equality
+            (normalizer-refl N (normalizeFor N x)))
+          (normalization-complete N y))
 
     normalization-kernel-equivalence :
       {A : Set} {R : A → A → Set} →
