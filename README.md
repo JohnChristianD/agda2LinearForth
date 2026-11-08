@@ -77,6 +77,20 @@ The String builtins are sufficient as low-level ingredients for a lexer: `primSt
 
 Agda 2.8.0 added `Reflection.checkFromStringTC : String → Type → TC Term`. It parses and type-checks **Agda source text** against a supplied expected type. It is useful for staged, kernel-checked Agda code generation, but it is not a parser for a separate MALLP grammar. See the [Agda 2.8.0 reflection reference](https://agda.readthedocs.io/en/v2.8.0/language/reflection.html) and the [Agda 2.8.0 release notes](https://github.com/agda/agda/releases/tag/v2.8.0).
 
+## Hofmann-style quotient reflection
+
+The latest uploaded `SovereignRationalSED-MALLP.agda` contains `Foundations.QuotientReflection`. That package is now integrated at the same nested `Foundations` tier as `ForsterEnumerability`, `MarkovLeastWitness`, `MacLaneCoherence`, `CohesiveRetractions`, and `SymmetricBarRecursion`; Laurent's `LaurentPolarizedMALLP` remains the distinct logic module.
+
+The uploaded interface is preserved: `Quotient A R reflR symR transR` and `[_]` expose an abstract quotient carrier/class map; `canonize`, `quotient-canon`, `canonical-idempotent`, and `canonical-related` describe canonical representatives; `QuotientExpr` distinguishes `rawₑ`, `canonicalizedₑ`, and `classₑ`; `normalizeQuotient` normalizes this syntax and `denoteQuotient` interprets it. The crucial theorem `quotient-raw-sound` is now an active global rewrite rule. It rewrites raw class denotations toward their canonicalized representatives, and `quotientReflectionRewriteSmoke = refl` checks that Agda actually uses it.
+
+**Trust boundary:** the quotient carrier, class constructor, canonicalizer, and canonicalization laws in the uploaded package are postulates. This is an axiom-backed Hofmann-style quotient interface, not a constructive quotient implementation derived from the other Foundations packages. It lacks a general quotient eliminator/recursor with relation-respectfulness and computation principles; it proves neither existence nor uniqueness of canonical representatives. The active rewrite rule depends on postulated `quotient-canon`; the smoke theorem proves rule activation, not that postulate.
+
+The quotient layer supports proof-level canonicalization and extensional identification of syntax. It is not arbitrary function extensionality, and it must not erase `ContextPermutation` evidence where resource order determines operational `SWAP`/`ROLL` behavior. Keep resource-order witnesses through compiler passes; use quotient equality only after showing the identified evidence is irrelevant to observation.
+
+Literature: Martin Hofmann, [*Extensional Concepts in Intensional Type Theory*](https://era.ed.ac.uk/items/7bd8019c-9f3d-4e18-9d5d-ddab830cae1a) (1995), and [*A Simple Model for Quotient Types*](https://doi.org/10.1007/BFb0014055) (TLCA 1995); Kapulkin and Li, [*Extensional Concepts in Intensional Type Theory, Revisited*](https://arxiv.org/abs/2310.05706).
+
+The global rewrite set now includes `μ-step-true`, `μ-step-false`, `sBR-stop`, `sBR-step`, and `quotient-raw-sound`. `--confluence-check` checks the combined system, not termination or the truth of postulated equations. Rewrite imports remain transitive; nested public modules do not isolate rewrite rules. The quotient equation is oriented only from raw to canonicalized denotations, with no reverse rule.
+
 ## Relational denotation of bare MALLP
 
 The Agda module `MALLPRelationalDenotation` is now a proof-recursive, Set-valued relational interpretation parameterized by atomic meanings. It assigns positive and negative values compositionally: multiplicatives are paired resources, additives are tagged alternatives, `1`/`⊥` are interpreted by the unit object, `0`/`⊤` by the empty type, and polarity shifts exchange the positive and negative value interpretations.
