@@ -1034,7 +1034,7 @@ module Foundations where
         (reflectMap (idempotentIdentity X))
         (idempotentIdentity (reflectObject X))
     reflectFunctorIdentity X (x , fixed) =
-      fixedPointPath identityEndomap refl
+      fixedPointPath (objectNormalizer X) refl
         (cong (λ z → z) fixed)
         fixed
 
