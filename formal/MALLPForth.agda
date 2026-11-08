@@ -3303,6 +3303,48 @@ module StrictNatCompiler where
         (λ value → just (value ∷ forgetStack stack))
         (sym (natBinaryProof-adequate expression first second)))
 
+  -- The Haskell resource decoder emits SWAP SWAP for the direct source
+  -- argument order: it selects each input from the labelled environment
+  -- before the primitive consumes both. The two exchanges are an involution.
+  execTokens-swap-involution :
+    (tokens : List ForthToken) →
+    (first second : Nat) →
+    (stack : List Nat) →
+    execTokens (swapWord ∷ swapWord ∷ tokens)
+      (first ∷ second ∷ stack) ≡
+    execTokens tokens (first ∷ second ∷ stack)
+  execTokens-swap-involution tokens first second stack = refl
+
+  renderNatBinaryResource : NatBinaryLinearExpr → List ForthToken
+  renderNatBinaryResource (natBinaryArguments operation) =
+    swapWord ∷ swapWord ∷ renderNatOp operation ∷ []
+  renderNatBinaryResource (natBinaryArgumentsExchanged operation) =
+    swapWord ∷ renderNatOp operation ∷ []
+
+  natBinaryResourceMALLP-forth-sound :
+    (expression : NatBinaryLinearExpr) →
+    (first second : Nat) →
+    {Γ : List StackType} →
+    (stack : Stack Γ) →
+    execTokens (renderNatBinaryResource expression)
+      (forgetStack (pushCell second (pushCell first stack))) ≡
+    just
+      (interpretMALLPNatProof (natBinaryProof expression)
+        (natEnvironmentCons second
+          (natEnvironmentCons first natEnvironmentNil)) ∷
+        forgetStack stack)
+  natBinaryResourceMALLP-forth-sound
+    (natBinaryArguments operation) first second stack =
+    trans
+      (execTokens-swap-involution
+        (renderNatOp operation ∷ []) second first (forgetStack stack))
+      (natBinaryMALLP-forth-sound
+        (natBinaryArguments operation) first second stack)
+  natBinaryResourceMALLP-forth-sound
+    (natBinaryArgumentsExchanged operation) first second stack =
+    natBinaryMALLP-forth-sound
+      (natBinaryArgumentsExchanged operation) first second stack
+
   ----------------------------------------------------------------------
   -- Closed PureLang lets: substitution without weakening or contraction.
   --
