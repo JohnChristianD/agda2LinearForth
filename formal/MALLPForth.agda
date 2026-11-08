@@ -1019,6 +1019,68 @@ module Foundations where
         (qcanon (objectNormalizer X))
         (qcanon-canonicalize (objectNormalizer X))
 
+    -- Local objects are precisely those whose chosen normalizer is
+    -- pointwise the identity. These are the objects in the reflective
+    -- subcategory selected by the quotient construction.
+    FixedNormalizer : IdempotentObject → Set
+    FixedNormalizer X =
+      (x : objectCarrier X) →
+      canonicalize (objectNormalizer X) x ≡ x
+
+    reflectedObject-is-fixed :
+      (X : IdempotentObject) →
+      FixedNormalizer (reflectObject X)
+    reflectedObject-is-fixed X q = refl
+
+    -- The universal factorization into any fixed-normalizer object.
+    -- A morphism h commutes with normalizers, so its value on a fixed
+    -- representative is fixed in Y. The factor map evaluates h on the
+    -- representative and forgets only the equality witness.
+    reflectFactor :
+      {X Y : IdempotentObject} →
+      FixedNormalizer Y →
+      IdempotentMorphism X Y →
+      IdempotentMorphism (reflectObject X) Y
+    reflectFactor {X} {Y} fixedY h =
+      idempotentMorphism
+        (λ q → endomapMap h (qcoerce
+          {A = objectCarrier X}
+          {f = objectNormalizer X} q))
+        (λ q → sym (fixedY
+          (endomapMap h (qcoerce
+            {A = objectCarrier X}
+            {f = objectNormalizer X} q))))
+
+    reflectFactor-factorizes :
+      {X Y : IdempotentObject} →
+      (fixedY : FixedNormalizer Y) →
+      (h : IdempotentMorphism X Y) →
+      IdempotentMorphismEq
+        (idempotentCompose (reflectFactor fixedY h) (reflectUnit X))
+        h
+    reflectFactor-factorizes {X} fixedY h x =
+      trans
+        (endomapMap-commutes h x)
+        (fixedY (endomapMap h x))
+
+    reflectFactor-unique :
+      {X Y : IdempotentObject} →
+      (fixedY : FixedNormalizer Y) →
+      (h : IdempotentMorphism X Y) →
+      (g : IdempotentMorphism (reflectObject X) Y) →
+      IdempotentMorphismEq
+        (idempotentCompose g (reflectUnit X))
+        h →
+      IdempotentMorphismEq g (reflectFactor fixedY h)
+    reflectFactor-unique {X} fixedY h g factors (x , fixed) =
+      trans
+        (sym
+          (cong (endomapMap g)
+            (fixedPointPath (objectNormalizer X) fixed
+              (canonicalize-idempotent (objectNormalizer X) x)
+              fixed)))
+        (factors x)
+
     -- Double reflection is the fixed-point type of the identity normalizer.
     -- Its multiplication forgets the redundant outer fixed-point witness.
     reflectMultiplication :
