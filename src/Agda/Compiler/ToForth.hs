@@ -1186,7 +1186,7 @@ rendererCertificate sourceModule definitions = T.unlines $
   , "   MALLPNatTheory; natContext; natFormula; natLinear-proof-derivation;"
   , "   natLinearProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof; evalNatLinearExpr; natLinearMALLP-forth-sound;"
   , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; cong; trans;"
-  , "   compileNatLinear; renderForth)"
+  , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth)"
   , ""
   ] ++ concat
     [ let index = T.pack (show position)
