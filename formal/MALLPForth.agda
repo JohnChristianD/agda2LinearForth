@@ -762,7 +762,7 @@ module Foundations where
       denoteQuotient (classₑ (canonicalizedₑ x)) ≡
       denoteQuotient (classₑ (rawₑ x))
     quotient-class-canon-sound {A} {R} {rflR} {symR} {transR} x =
-      quotient-canon {A} {R} {rflR} {symR} {transR} x
+      sym (quotient-raw-sound A R rflR symR transR x)
 
   ----------------------------------------------------------------------
   -- 6. Spector-style symmetric bar recursion over finite partial maps.
