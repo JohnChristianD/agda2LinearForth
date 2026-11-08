@@ -144,10 +144,14 @@ decodeNatResourceTerm callStack environment term = do
     TPrim primitive -> do
       operands <- traverse (decodeNatResourceTerm callStack environment) arguments
       case (primitive, operands) of
+        -- Agda's Treeless primitive spine stores the operands in the
+        -- reverse source order for these commutative arithmetic primitives.
+        -- Rebuild the source-order AST here; the formal source certificate
+        -- below checks this normalization by definitional equality.
         (PAdd, [left, right]) ->
-          pure (NatResourceBinary NatAdd left right)
+          pure (NatResourceBinary NatAdd right left)
         (PMul, [left, right]) ->
-          pure (NatResourceBinary NatMultiply left right)
+          pure (NatResourceBinary NatMultiply right left)
         (PSub, [_, _]) ->
           unsupported "PSub is signed integer subtraction; Nat monus uses builtin NatMinus"
         _ -> unsupported ("unsupported Nat resource primitive or arity: " ++ show primitive)
