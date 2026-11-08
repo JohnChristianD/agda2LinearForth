@@ -125,6 +125,20 @@ jobs:
         id: proof_sync
         if: steps.forth_emit.outcome == 'success'
         run: |
+          # Keep the aggregate user rewrite system active and confluence-checked.
+          grep -Fq -- '--confluence-check' formal/MALLPForth.agda
+          for rule in μ-step-true μ-step-false sBR-stop sBR-step quotient-raw-sound; do
+            grep -Fq "$rule" formal/MALLPForth.agda || {
+              echo "missing registered rewrite rule: $rule"
+              exit 1
+            }
+          done
+          for witness in leastSearch-zero-computes leastSearch-successor-computes symmetricBarRec-stop-computes symmetricBarRec-step-then-stop-computes; do
+            grep -Fq "$witness" formal/MALLPForth.agda || {
+              echo "missing executable rewrite witness: $witness"
+              exit 1
+            }
+          done
           # Every admitted unary and direct-binary Nat fixture must have a
           # source-semantic theorem in the generated Agda module.
           for source in answerIdentity answerAddFive answerMonusFive answerFiveMonus answerMultiplyFive; do
@@ -184,7 +198,12 @@ jobs:
               exit 1
             }
           done
-          test "$(grep -cE '^: answer[A-Za-z0-9_]*[[:space:]]' MALLPStrict.fth)" -eq 29
+          emitted_definitions="$(awk '/^\[then\]$/ { emitted = 1; next } emitted && /^: [[:alnum:]_]+[[:space:]]/ { count++ } END { print count + 0 }' MALLPStrict.fth)"
+          echo "Compiler-emitted definitions: $emitted_definitions"
+          test "$emitted_definitions" -eq 29 || {
+            echo "expected 29 compiler-emitted definitions after FLib.fth [then]"
+            exit 1
+          }
           grep -Fq 'answerAddFive' MALLPStrict.fth
           grep -Fq 'answerMonusFive' MALLPStrict.fth
           grep -Fq 'answerFiveMonus' MALLPStrict.fth
@@ -214,12 +233,17 @@ jobs:
           fi
           grep -n 'answerCall' MALLPStrict.fth || true
           cat test/gforth/mallp-strict.fs >> MALLPStrict.fth
+          echo "Running Gforth fixture..."
           if ! gforth MALLPStrict.fth > mallp-strict.log 2>&1; then
             cat mallp-strict.log
             exit 1
           fi
+          if ! grep -Fq 'mallp-strict-tests-passed' mallp-strict.log; then
+            echo "Gforth exited without the strict fixture completion marker"
+            cat mallp-strict.log
+            exit 1
+          fi
           cat mallp-strict.log
-          grep -Fq 'mallp-strict-tests-passed' mallp-strict.log
 
       - name: Require every proof, backend, and execution gate
         if: always()
