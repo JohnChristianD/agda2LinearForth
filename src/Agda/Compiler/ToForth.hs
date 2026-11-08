@@ -144,8 +144,12 @@ decodeNatResourceTerm callStack environment term = do
     TPrim primitive -> do
       operands <- traverse (decodeNatResourceTerm callStack environment) arguments
       case (primitive, operands) of
+        -- Agda's Treeless PAdd spine is reversed relative to source order.
+        -- PMul, however, retains source order in the pinned compiler API.
+        -- Keep the two cases explicit: commutativity is not definitional,
+        -- and the generated source certificate checks each orientation.
         (PAdd, [left, right]) ->
-          pure (NatResourceBinary NatAdd left right)
+          pure (NatResourceBinary NatAdd right left)
         (PMul, [left, right]) ->
           pure (NatResourceBinary NatMultiply left right)
         (PSub, [_, _]) ->
@@ -1163,11 +1167,12 @@ formalNatTokenList [] = "[]"
 formalNatTokenList tokens =
   T.intercalate " ∷ " (map formalNatTokenTerm tokens) <> " ∷ []"
 
-rendererCertificate :: [CompiledDefinition] -> Text
-rendererCertificate definitions = T.unlines $
+rendererCertificate :: TopLevelModuleName -> [CompiledDefinition] -> Text
+rendererCertificate sourceModule definitions = T.unlines $
   [ "{-# OPTIONS --with-K --rewriting --confluence-check --polarity --lossy-unification --exact-split --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}"
   , "module MALLPEmittedRenderer where"
   , ""
+  , "import " <> T.pack (prettyShow sourceModule)
   , "open import Agda.Builtin.String using (String)"
   , "open import Agda.Builtin.List using (List; []; _∷_)"
   , "open import Agda.Builtin.Equality using (_≡_; refl)"
@@ -1179,9 +1184,9 @@ rendererCertificate definitions = T.unlines $
   , "   NatExpr; literal; binary; NatLinearExpr; natArgument; natLinearLeft; natLinearRight;"
   , "   ForthToken; pushLiteral; addWord; monusWord; multiplyWord; swapWord; rollWord;"
   , "   MALLPNatTheory; natContext; natFormula; natLinear-proof-derivation;"
-  , "   natLinearProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof; natLinearMALLP-forth-sound;"
+  , "   natLinearProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof; evalNatLinearExpr; natLinearMALLP-forth-sound;"
   , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; cong; trans;"
-  , "   compileNatLinear; renderForth)"
+  , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth)"
   , ""
   ] ++ concat
     [ let index = T.pack (show position)
@@ -1241,6 +1246,13 @@ rendererCertificate definitions = T.unlines $
          , "      " <> tokenProofName <> ")"
          , "    (natLinearMALLP-forth-sound " <> expressionName <> " argument {Γ = Γ} stack)"
          , ""
+         , "sourceNatSemantics" <> index <> " :"
+         , "  (argument : Nat) →"
+         , "  " <> T.pack (prettyShow sourceModule) <> "." <>
+             T.pack (prettyShow (qnameName (compiledName definition))) <>
+             " argument ≡ evalNatLinearExpr " <> expressionName <> " argument"
+         , "sourceNatSemantics" <> index <> " argument = refl"
+         , ""
          ]
       | (index, definition, expression) <-
           [ (T.pack (show position), definition, expression)
@@ -1291,7 +1303,7 @@ emitForthModule _ _ _ moduleName maybeDefinitions = do
       filename = baseName ++ ".fth"
   IO.liftIO $ do
     TIO.writeFile filename output
-    TIO.writeFile "MALLPEmittedRenderer.agda" (rendererCertificate definitions)
+    TIO.writeFile "MALLPEmittedRenderer.agda" (rendererCertificate moduleName definitions)
 
 backend :: Backend
 backend = Backend backend'

@@ -31,6 +31,8 @@ open import Agda.Builtin.Unit public
 open import Agda.Builtin.Strict public
 open import Agda.Builtin.Coinduction public
 import Agda.Builtin.Reflection as Reflection
+open import Agda.Builtin.Reflection.Properties
+  using (primMetaToNatInjective; primQNameToWord64sInjective) public
 -- Agda 2.8 has no Agda.Builtin.Empty module; define the empty type locally.
 data ⊥ : Set where
 
@@ -57,6 +59,21 @@ word64EqualityByNat =
   equivalence
     (word64EqualityCong primWord64ToNat)
     (primWord64ToNatInjective _ _)
+
+-- Injectivity witnesses for Agda's reflected names and metavariables.
+-- These are useful when a metaprogram stores their primitive encodings.
+reflectedNameInjective :
+  {left right : Reflection.Name} →
+  Reflection.primQNameToWord64s left ≡
+  Reflection.primQNameToWord64s right →
+  left ≡ right
+reflectedNameInjective = primQNameToWord64sInjective _ _
+
+reflectedMetaInjective :
+  {left right : Reflection.Meta} →
+  Reflection.primMetaToNat left ≡ Reflection.primMetaToNat right →
+  left ≡ right
+reflectedMetaInjective = primMetaToNatInjective _ _
 
 -- Proof-carrying Forth instruction vocabulary and canonical renderer.
 -- Kept here so generated compiler witnesses and MALLP derivations share
@@ -207,7 +224,7 @@ lookupListOr fallback (suc i) (x ∷ xs) = lookupListOr fallback i xs
 -- FINITE LIST COMPUTATION: AUXILIARY CONSTRUCTIVE WITNESS
 --
 -- This theorem remains available to finite-prefix code, separate from the
--- five foundational packages and Laurent MALLP.
+-- six foundational packages and Laurent MALLP.
 ------------------------------------------------------------------------
 
 module FiniteListComputation where
@@ -615,159 +632,635 @@ module Foundations where
     gamma-codisc X = refl
 
   ----------------------------------------------------------------------
-  -- 5. Idempotent extensional quotient reflection (project-local synthesis).
+  -- 5. Quotients induced by idempotent endomaps.
   --
-  -- Combines an abstract quotient-class interface with an idempotent
-  -- representative normalizer and a one-way semantic rewrite. This is
-  -- Hofmann-inspired, not the full Hofmann quotient extension or a categorical
-  -- idempotent-monad/reflective-subcategory construction. Its laws are
-  -- explicit assumptions; canonical-form uniqueness and quotient
-  -- effectiveness remain separate obligations.
+  -- This is an Agda, proof-relevant encoding of the Cedille-style
+  -- idempotent-function construction. Nuo Li's normalizer laws are
+  -- recorded separately and shown equivalent to the induced kernel
+  -- relation. A non-setoid idempotent reflection monad is built below.
   ----------------------------------------------------------------------
 
   module QuotientReflection where
 
-    -- A quotient is indexed by an explicit setoid relation and its laws.
-    -- This is an interface, not a constructed quotient or its universal
-    -- eliminator; quotient formation/class-map computation remain postulated.
-    postulate
-      Quotient : (A : Set) →
-                 (R : A → A → Set) →
-                 ((x : A) → R x x) →
-                 ({x y : A} → R x y → R y x) →
-                 ({x y z : A} → R x y → R y z → R x z) → Set
+    record IdempotentEndomap (A : Set) : Set where
+      constructor idempotentEndomap
+      field
+        canonicalize : A → A
+        canonicalize-idempotent :
+          (x : A) → canonicalize (canonicalize x) ≡ canonicalize x
+    open IdempotentEndomap public
 
-      -- The primitive quotient carrier and representative-to-class map.
-      quotientClass :
-        (A : Set) →
-        (R : A → A → Set) →
-        (rflR : (x : A) → R x x) →
-        (symR : {x y : A} → R x y → R y x) →
-        (transR : {x y z : A} → R x y → R y z → R x z) →
-        A → Quotient A R rflR symR transR
+    -- The quotient carrier is the fixed-point subtype of the normalizer.
+    -- Sigma keeps the fixed-point witness proof-relevant in Agda.
+    Quotient : (A : Set) → IdempotentEndomap A → Set
+    Quotient A f = Σ A (λ x → canonicalize f x ≡ x)
 
-      -- The chosen normalizer and its contract are assumptions. The stated
-      -- laws give idempotence, relatedness, and class preservation, but not
-      -- uniqueness of normal forms from R-related inputs.
-      canonize : {A : Set} {R : A → A → Set}
-                 {rflR : (x : A) → R x x}
-                 {symR : {x y : A} → R x y → R y x}
-                 {transR : {x y z : A} → R x y → R y z → R x z} →
-                 A → A
+    qcanon :
+      {A : Set} → (f : IdempotentEndomap A) → A → Quotient A f
+    qcanon f x = canonicalize f x , canonicalize-idempotent f x
 
-      quotient-canon :
-        {A : Set} {R : A → A → Set}
-        {rflR : (x : A) → R x x}
-        {symR : {x y : A} → R x y → R y x}
-        {transR : {x y z : A} → R x y → R y z → R x z} →
-        (x : A) →
-        quotientClass A R rflR symR transR
-          (canonize {A} {R} {rflR} {symR} {transR} x) ≡
-        quotientClass A R rflR symR transR x
+    qcoerce : {A : Set} {f : IdempotentEndomap A} → Quotient A f → A
+    qcoerce (x , fixed) = x
 
-      canonical-idempotent :
-        {A : Set} {R : A → A → Set}
-        {rflR : (x : A) → R x x}
-        {symR : {x y : A} → R x y → R y x}
-        {transR : {x y z : A} → R x y → R y z → R x z} →
-        (x : A) →
-        canonize {A} {R} {rflR} {symR} {transR}
-          (canonize {A} {R} {rflR} {symR} {transR} x) ≡
-        canonize {A} {R} {rflR} {symR} {transR} x
+    qcoerce-qcanon :
+      {A : Set} (f : IdempotentEndomap A) (x : A) →
+      qcoerce {A} {f} (qcanon {A} f x) ≡ canonicalize f x
+    qcoerce-qcanon f x = refl
 
-      canonical-related :
-        {A : Set} {R : A → A → Set}
-        {rflR : (x : A) → R x x}
-        {symR : {x y : A} → R x y → R y x}
-        {transR : {x y z : A} → R x y → R y z → R x z} →
-        (x : A) → R (canonize {A} {R} {rflR} {symR} {transR} x) x
+    qcoerce-fixed :
+      {A : Set} {f : IdempotentEndomap A} →
+      (q : Quotient A f) →
+      canonicalize f (qcoerce {A} {f} q) ≡ qcoerce {A} {f} q
+    qcoerce-fixed {A} {f} (x , fixed) = fixed
 
-    -- Familiar quotient-class notation is the raw equivalence class.
-    [_] : {A : Set} {R : A → A → Set}
-          {rflR : (x : A) → R x x}
-          {symR : {x y : A} → R x y → R y x}
-          {transR : {x y z : A} → R x y → R y z → R x z} →
-          A → Quotient A R rflR symR transR
-    [_] {A} {R} {rflR} {symR} {transR} x =
-      quotientClass A R rflR symR transR x
+    QuotientRelation :
+      {A : Set} → IdempotentEndomap A → A → A → Set
+    QuotientRelation f x y = canonicalize f x ≡ canonicalize f y
 
-    -- Syntax for quotient normalization.  `canonicalizedₑ x` denotes the
-    -- canonical representative; the quotient relation remains explicit.
+    -- Nuo Li's definable-quotient contract: related inputs have equal
+    -- normal forms, and each input is related to its normal form.
+    record NormalizerFor (A : Set) (R : A → A → Set) : Set where
+      constructor normalizerFor
+      field
+        normalizer-refl : (x : A) → R x x
+        normalizer-sym : {x y : A} → R x y → R y x
+        normalizer-trans : {x y z : A} → R x y → R y z → R x z
+        normalizeFor : A → A
+        normalization-sound :
+          {x y : A} → R x y → normalizeFor x ≡ normalizeFor y
+        normalization-complete :
+          (x : A) → R (normalizeFor x) x
+    open NormalizerFor public
+
+    normalization-idempotent :
+      {A : Set} {R : A → A → Set} →
+      (N : NormalizerFor A R) →
+      (x : A) → normalizeFor N (normalizeFor N x) ≡ normalizeFor N x
+    normalization-idempotent N x =
+      normalization-sound N (normalization-complete N x)
+
+    normalization-kernel-backward :
+      {A : Set} {R : A → A → Set} →
+      (N : NormalizerFor A R) → {x y : A} →
+      normalizeFor N x ≡ normalizeFor N y → R x y
+    normalization-kernel-backward {R = R} N {x} {y} equality =
+      normalizer-trans N
+        (normalizer-sym N (normalization-complete N x))
+        (normalizer-trans N
+          (subst (λ z → R (normalizeFor N x) z) equality
+            (normalizer-refl N (normalizeFor N x)))
+          (normalization-complete N y))
+
+    normalization-kernel-equivalence :
+      {A : Set} {R : A → A → Set} →
+      (N : NormalizerFor A R) → (x y : A) →
+      Equivalence (R x y)
+        (normalizeFor N x ≡ normalizeFor N y)
+    normalization-kernel-equivalence N x y =
+      record
+        { toForward = normalization-sound N
+        ; toBackward = normalization-kernel-backward N
+        }
+
+    -- Nuo Li normalizers induce idempotent endomaps.
+    normalizer-as-idempotent :
+      {A : Set} {R : A → A → Set} →
+      (N : NormalizerFor A R) → IdempotentEndomap A
+    normalizer-as-idempotent N =
+      idempotentEndomap
+        (normalizeFor N)
+        (normalization-idempotent N)
+
+    -- Conversely, each idempotent map supplies a normalizer for its
+    -- kernel relation.  No second quotient carrier is introduced.
+    kernelNormalizer :
+      {A : Set} (f : IdempotentEndomap A) →
+      NormalizerFor A (QuotientRelation f)
+    kernelNormalizer f =
+      normalizerFor
+        (λ x → refl)
+        (λ equality → sym equality)
+        (λ first second → trans first second)
+        (canonicalize f)
+        (λ related → related)
+        (canonicalize-idempotent f)
+
+    ------------------------------------------------------------------
+    -- A non-setoid categorical reflection on idempotent endomaps.
+    --
+    -- Objects are types equipped with an idempotent normalizer.  No
+    -- equivalence relation is stored on the carrier, and quotient values
+    -- are ordinary Agda types: the fixed points of the normalizer.
+    --
+    -- Morphisms commute with the chosen normalizers.  Equality of
+    -- morphisms is pointwise equality; this avoids assuming function
+    -- extensionality for the category laws.
+    ------------------------------------------------------------------
+
+    -- The project is compiled with --with-K.  This proof uses K to identify
+    -- equality witnesses when constructing paths in the fixed-point Sigma.
+    -- It does not use --prop, proof erasure, or an erasure axiom.
+    identityProofUnique :
+      {A : Set} {x y : A} (p q : x ≡ y) → p ≡ q
+    identityProofUnique refl refl = refl
+
+    fixedPointPath :
+      {A : Set} (f : IdempotentEndomap A) {x y : A} →
+      (p : x ≡ y) →
+      (px : canonicalize f x ≡ x) →
+      (py : canonicalize f y ≡ y) →
+      (x , px) ≡ (y , py)
+    fixedPointPath f {x = x} refl px py =
+      cong (λ proof → x , proof) (identityProofUnique px py)
+
+    quotientEquality :
+      {A : Set} (f : IdempotentEndomap A) {x y : A} →
+      Equivalence
+        (qcanon f x ≡ qcanon f y)
+        (canonicalize f x ≡ canonicalize f y)
+    quotientEquality {A} f {x} {y} =
+      record
+        { toForward = λ equality →
+            cong (λ q → qcoerce {A = A} {f = f} q) equality
+        ; toBackward = λ equality →
+            fixedPointPath f equality
+              (canonicalize-idempotent f x)
+              (canonicalize-idempotent f y)
+        }
+
+    qcanon-canonicalize :
+      {A : Set} (f : IdempotentEndomap A) (x : A) →
+      qcanon f (canonicalize f x) ≡ qcanon f x
+    qcanon-canonicalize f x =
+      fixedPointPath f
+        (canonicalize-idempotent f x)
+        (canonicalize-idempotent f (canonicalize f x))
+        (canonicalize-idempotent f x)
+
+    identityEndomap : {A : Set} → IdempotentEndomap A
+    identityEndomap =
+      idempotentEndomap (λ x → x) (λ x → refl)
+
+    record IdempotentObject : Set₁ where
+      constructor idempotentObject
+      field
+        objectCarrier : Set
+        objectNormalizer : IdempotentEndomap objectCarrier
+    open IdempotentObject public
+
+    record IdempotentMorphism
+      (X Y : IdempotentObject) : Set where
+      constructor idempotentMorphism
+      field
+        endomapMap : objectCarrier X → objectCarrier Y
+        endomapMap-commutes :
+          (x : objectCarrier X) →
+          endomapMap (canonicalize (objectNormalizer X) x) ≡
+          canonicalize (objectNormalizer Y) (endomapMap x)
+    open IdempotentMorphism public
+
+    IdempotentMorphismEq :
+      {X Y : IdempotentObject} →
+      IdempotentMorphism X Y → IdempotentMorphism X Y → Set
+    IdempotentMorphismEq {X} f g =
+      (x : objectCarrier X) → endomapMap f x ≡ endomapMap g x
+
+    idempotentMorphismEq-refl :
+      {X Y : IdempotentObject} (f : IdempotentMorphism X Y) →
+      IdempotentMorphismEq f f
+    idempotentMorphismEq-refl f x = refl
+
+    idempotentMorphismEq-sym :
+      {X Y : IdempotentObject} {f g : IdempotentMorphism X Y} →
+      IdempotentMorphismEq f g → IdempotentMorphismEq g f
+    idempotentMorphismEq-sym equality x = sym (equality x)
+
+    idempotentMorphismEq-trans :
+      {X Y : IdempotentObject} {f g h : IdempotentMorphism X Y} →
+      IdempotentMorphismEq f g →
+      IdempotentMorphismEq g h →
+      IdempotentMorphismEq f h
+    idempotentMorphismEq-trans first second x =
+      trans (first x) (second x)
+
+    idempotentIdentity :
+      (X : IdempotentObject) → IdempotentMorphism X X
+    idempotentIdentity X =
+      idempotentMorphism (λ x → x) (λ x → refl)
+
+    idempotentCompose :
+      {X Y Z : IdempotentObject} →
+      IdempotentMorphism Y Z →
+      IdempotentMorphism X Y →
+      IdempotentMorphism X Z
+    idempotentCompose g f =
+      idempotentMorphism
+        (λ x → endomapMap g (endomapMap f x))
+        (λ x →
+          trans
+            (cong (endomapMap g) (endomapMap-commutes f x))
+            (endomapMap-commutes g (endomapMap f x)))
+
+    idempotentCompose-respects-equality :
+      {X Y Z : IdempotentObject} →
+      {f f′ : IdempotentMorphism X Y} →
+      {g g′ : IdempotentMorphism Y Z} →
+      IdempotentMorphismEq g g′ →
+      IdempotentMorphismEq f f′ →
+      IdempotentMorphismEq
+        (idempotentCompose g f)
+        (idempotentCompose g′ f′)
+    idempotentCompose-respects-equality
+      {f = f} {f′ = f′} {g = g} {g′ = g′} outer inner x =
+      trans
+        (cong (endomapMap g) (inner x))
+        (outer (endomapMap f′ x))
+
+    idempotentCategory-id-left :
+      {X Y : IdempotentObject} →
+      (f : IdempotentMorphism X Y) →
+      IdempotentMorphismEq (idempotentCompose (idempotentIdentity Y) f) f
+    idempotentCategory-id-left f x = refl
+
+    idempotentCategory-id-right :
+      {X Y : IdempotentObject} →
+      (f : IdempotentMorphism X Y) →
+      IdempotentMorphismEq (idempotentCompose f (idempotentIdentity X)) f
+    idempotentCategory-id-right f x = refl
+
+    idempotentCategory-associative :
+      {W X Y Z : IdempotentObject} →
+      (h : IdempotentMorphism Y Z) →
+      (g : IdempotentMorphism X Y) →
+      (f : IdempotentMorphism W X) →
+      IdempotentMorphismEq
+        (idempotentCompose h (idempotentCompose g f))
+        (idempotentCompose (idempotentCompose h g) f)
+    idempotentCategory-associative h g f x = refl
+
+    record IdempotentCategory : Set₂ where
+      field
+        Obj : Set₁
+        Hom : Obj → Obj → Set
+        HomEq : {X Y : Obj} → Hom X Y → Hom X Y → Set
+        catId : (X : Obj) → Hom X X
+        catCompose :
+          {X Y Z : Obj} → Hom Y Z → Hom X Y → Hom X Z
+        homEq-refl :
+          {X Y : Obj} (f : Hom X Y) → HomEq f f
+        homEq-sym :
+          {X Y : Obj} {f g : Hom X Y} →
+          HomEq f g → HomEq g f
+        homEq-trans :
+          {X Y : Obj} {f g h : Hom X Y} →
+          HomEq f g → HomEq g h → HomEq f h
+        compose-respects :
+          {X Y Z : Obj} {f f′ : Hom X Y} {g g′ : Hom Y Z} →
+          HomEq g g′ → HomEq f f′ →
+          HomEq (catCompose g f) (catCompose g′ f′)
+        identity-left :
+          {X Y : Obj} (f : Hom X Y) →
+          HomEq (catCompose (catId Y) f) f
+        identity-right :
+          {X Y : Obj} (f : Hom X Y) →
+          HomEq (catCompose f (catId X)) f
+        compose-associative :
+          {W X Y Z : Obj} →
+          (h : Hom Y Z) → (g : Hom X Y) → (f : Hom W X) →
+          HomEq (catCompose h (catCompose g f))
+            (catCompose (catCompose h g) f)
+
+    idempotentObjectCategory : IdempotentCategory
+    idempotentObjectCategory =
+      record
+        { Obj = IdempotentObject
+        ; Hom = IdempotentMorphism
+        ; HomEq = IdempotentMorphismEq
+        ; catId = idempotentIdentity
+        ; catCompose = idempotentCompose
+        ; homEq-refl = idempotentMorphismEq-refl
+        ; homEq-sym = idempotentMorphismEq-sym
+        ; homEq-trans = idempotentMorphismEq-trans
+        ; compose-respects = idempotentCompose-respects-equality
+        ; identity-left = idempotentCategory-id-left
+        ; identity-right = idempotentCategory-id-right
+        ; compose-associative = idempotentCategory-associative
+        }
+
+    record IdempotentMonad (C : IdempotentCategory) : Set₂ where
+      open IdempotentCategory C
+      field
+        T₀ : Obj → Obj
+        T₁ :
+          {X Y : Obj} → Hom X Y → Hom (T₀ X) (T₀ Y)
+        η : (X : Obj) → Hom X (T₀ X)
+        μ : (X : Obj) → Hom (T₀ (T₀ X)) (T₀ X)
+        T-identity :
+          (X : Obj) → HomEq (T₁ (catId X)) (catId (T₀ X))
+        T-composition :
+          {X Y Z : Obj} (g : Hom Y Z) (f : Hom X Y) →
+          HomEq (T₁ (catCompose g f))
+            (catCompose (T₁ g) (T₁ f))
+        η-natural :
+          {X Y : Obj} (f : Hom X Y) →
+          HomEq (catCompose (T₁ f) (η X))
+            (catCompose (η Y) f)
+        μ-natural :
+          {X Y : Obj} (f : Hom X Y) →
+          HomEq (catCompose (μ Y) (T₁ (T₁ f)))
+            (catCompose (T₁ f) (μ X))
+        monad-left-unit :
+          (X : Obj) →
+          HomEq (catCompose (μ X) (T₁ (η X))) (catId (T₀ X))
+        monad-right-unit :
+          (X : Obj) →
+          HomEq (catCompose (μ X) (η (T₀ X))) (catId (T₀ X))
+        monad-associative :
+          (X : Obj) →
+          HomEq (catCompose (μ X) (T₁ (μ X)))
+            (catCompose (μ X) (μ (T₀ X)))
+        μ-inverse-left :
+          (X : Obj) →
+          HomEq (catCompose (η (T₀ X)) (μ X))
+            (catId (T₀ (T₀ X)))
+        μ-inverse-right :
+          (X : Obj) →
+          HomEq (catCompose (μ X) (η (T₀ X)))
+            (catId (T₀ X))
+    open IdempotentMonad public
+
+    -- Reflect into the full subcategory of fixed-point objects.
+    -- The reflected carrier is the genuine fixed-point type, rather than
+    -- the original carrier paired with an external equivalence relation.
+    reflectObject : IdempotentObject → IdempotentObject
+    reflectObject X =
+      idempotentObject
+        (Quotient (objectCarrier X) (objectNormalizer X))
+        identityEndomap
+
+    reflectMap :
+      {X Y : IdempotentObject} →
+      IdempotentMorphism X Y →
+      IdempotentMorphism (reflectObject X) (reflectObject Y)
+    reflectMap {X} {Y} h =
+      idempotentMorphism
+        (λ { (x , fixed) →
+          endomapMap h x ,
+          trans
+            (sym (endomapMap-commutes h x))
+            (cong (endomapMap h) fixed) })
+        (λ q → refl)
+
+    reflectUnit :
+      (X : IdempotentObject) →
+      IdempotentMorphism X (reflectObject X)
+    reflectUnit X =
+      idempotentMorphism
+        (qcanon (objectNormalizer X))
+        (qcanon-canonicalize (objectNormalizer X))
+
+    -- Local objects are precisely those whose chosen normalizer is
+    -- pointwise the identity. These are the objects in the reflective
+    -- subcategory selected by the quotient construction.
+    FixedNormalizer : IdempotentObject → Set
+    FixedNormalizer X =
+      (x : objectCarrier X) →
+      canonicalize (objectNormalizer X) x ≡ x
+
+    reflectedObject-is-fixed :
+      (X : IdempotentObject) →
+      FixedNormalizer (reflectObject X)
+    reflectedObject-is-fixed X q = refl
+
+    -- The universal factorization into any fixed-normalizer object.
+    -- A morphism h commutes with normalizers, so its value on a fixed
+    -- representative is fixed in Y. The factor map evaluates h on the
+    -- representative and forgets only the equality witness.
+    reflectFactor :
+      {X Y : IdempotentObject} →
+      FixedNormalizer Y →
+      IdempotentMorphism X Y →
+      IdempotentMorphism (reflectObject X) Y
+    reflectFactor {X} {Y} fixedY h =
+      idempotentMorphism
+        (λ q → endomapMap h (qcoerce
+          {A = objectCarrier X}
+          {f = objectNormalizer X} q))
+        (λ q → sym (fixedY
+          (endomapMap h (qcoerce
+            {A = objectCarrier X}
+            {f = objectNormalizer X} q))))
+
+    reflectFactor-factorizes :
+      {X Y : IdempotentObject} →
+      (fixedY : FixedNormalizer Y) →
+      (h : IdempotentMorphism X Y) →
+      IdempotentMorphismEq
+        (idempotentCompose (reflectFactor fixedY h) (reflectUnit X))
+        h
+    reflectFactor-factorizes {X} fixedY h x =
+      trans
+        (endomapMap-commutes h x)
+        (fixedY (endomapMap h x))
+
+    reflectFactor-unique :
+      {X Y : IdempotentObject} →
+      (fixedY : FixedNormalizer Y) →
+      (h : IdempotentMorphism X Y) →
+      (g : IdempotentMorphism (reflectObject X) Y) →
+      IdempotentMorphismEq
+        (idempotentCompose g (reflectUnit X))
+        h →
+      IdempotentMorphismEq g (reflectFactor fixedY h)
+    reflectFactor-unique {X} fixedY h g factors (x , fixed) =
+      trans
+        (sym
+          (cong (endomapMap g)
+            (fixedPointPath (objectNormalizer X) fixed
+              (canonicalize-idempotent (objectNormalizer X) x)
+              fixed)))
+        (factors x)
+
+    -- Double reflection is the fixed-point type of the identity normalizer.
+    -- Its multiplication forgets the redundant outer fixed-point witness.
+    reflectMultiplication :
+      (X : IdempotentObject) →
+      IdempotentMorphism
+        (reflectObject (reflectObject X))
+        (reflectObject X)
+    reflectMultiplication X =
+      idempotentMorphism
+        (λ q →
+          qcoerce
+            {A = Quotient (objectCarrier X) (objectNormalizer X)}
+            {f = identityEndomap} q)
+        (λ q → refl)
+
+    reflectFunctorIdentity :
+      (X : IdempotentObject) →
+      IdempotentMorphismEq
+        (reflectMap (idempotentIdentity X))
+        (idempotentIdentity (reflectObject X))
+    reflectFunctorIdentity X (x , fixed) =
+      fixedPointPath (objectNormalizer X) refl
+        (cong (λ z → z) fixed)
+        fixed
+
+    reflectFunctorComposition :
+      {X Y Z : IdempotentObject} →
+      (g : IdempotentMorphism Y Z) →
+      (f : IdempotentMorphism X Y) →
+      IdempotentMorphismEq
+        (reflectMap (idempotentCompose g f))
+        (idempotentCompose (reflectMap g) (reflectMap f))
+    reflectFunctorComposition {Z = Z} g f (x , fixed) =
+      fixedPointPath (objectNormalizer Z) refl
+        (trans
+          (sym (endomapMap-commutes (idempotentCompose g f) x))
+          (cong
+            (λ z → endomapMap g (endomapMap f z))
+            fixed))
+        (trans
+          (sym (endomapMap-commutes g (endomapMap f x)))
+          (cong (endomapMap g)
+            (trans
+              (sym (endomapMap-commutes f x))
+              (cong (endomapMap f) fixed))))
+
+    reflectUnitNatural :
+      {X Y : IdempotentObject} →
+      (f : IdempotentMorphism X Y) →
+      IdempotentMorphismEq
+        (idempotentCompose (reflectMap f) (reflectUnit X))
+        (idempotentCompose (reflectUnit Y) f)
+    reflectUnitNatural {X} {Y} f x =
+      fixedPointPath (objectNormalizer Y)
+        (endomapMap-commutes f x)
+        (trans
+          (sym
+            (endomapMap-commutes f
+              (canonicalize (objectNormalizer X) x)))
+          (cong (endomapMap f)
+            (canonicalize-idempotent (objectNormalizer X) x)))
+        (canonicalize-idempotent
+          (objectNormalizer Y) (endomapMap f x))
+
+    reflectMultiplicationNatural :
+      {X Y : IdempotentObject} →
+      (f : IdempotentMorphism X Y) →
+      IdempotentMorphismEq
+        (idempotentCompose
+          (reflectMultiplication Y)
+          (reflectMap (reflectMap f)))
+        (idempotentCompose
+          (reflectMap f)
+          (reflectMultiplication X))
+    reflectMultiplicationNatural f q = refl
+
+    reflectMonad-left-unit :
+      (X : IdempotentObject) →
+      IdempotentMorphismEq
+        (idempotentCompose
+          (reflectMultiplication X)
+          (reflectMap (reflectUnit X)))
+        (idempotentIdentity (reflectObject X))
+    reflectMonad-left-unit X (x , fixed) =
+      fixedPointPath (objectNormalizer X) fixed
+        (canonicalize-idempotent (objectNormalizer X) x)
+        fixed
+
+    reflectMonad-right-unit :
+      (X : IdempotentObject) →
+      IdempotentMorphismEq
+        (idempotentCompose
+          (reflectMultiplication X)
+          (reflectUnit (reflectObject X)))
+        (idempotentIdentity (reflectObject X))
+    reflectMonad-right-unit X q = refl
+
+    reflectMonad-associative :
+      (X : IdempotentObject) →
+      IdempotentMorphismEq
+        (idempotentCompose
+          (reflectMultiplication X)
+          (reflectMap (reflectMultiplication X)))
+        (idempotentCompose
+          (reflectMultiplication X)
+          (reflectMultiplication (reflectObject X)))
+    reflectMonad-associative X q = refl
+
+    reflectMultiplication-inverse-left :
+      (X : IdempotentObject) →
+      IdempotentMorphismEq
+        (idempotentCompose
+          (reflectUnit (reflectObject X))
+          (reflectMultiplication X))
+        (idempotentIdentity
+          (reflectObject (reflectObject X)))
+    reflectMultiplication-inverse-left X (q , fixed) =
+      sym (fixedPointPath identityEndomap refl fixed refl)
+
+    reflectMultiplication-inverse-right :
+      (X : IdempotentObject) →
+      IdempotentMorphismEq
+        (idempotentCompose
+          (reflectMultiplication X)
+          (reflectUnit (reflectObject X)))
+        (idempotentIdentity (reflectObject X))
+    reflectMultiplication-inverse-right X q = refl
+
+    -- This monad is induced by the fixed-point reflection.  Its unit sends
+    -- each input to its canonical representative; its multiplication is an
+    -- isomorphism, witnessed by the two inverse laws above.
+    quotientReflectionMonad : IdempotentMonad idempotentObjectCategory
+    quotientReflectionMonad =
+      record
+        { T₀ = reflectObject
+        ; T₁ = reflectMap
+        ; η = reflectUnit
+        ; μ = reflectMultiplication
+        ; T-identity = reflectFunctorIdentity
+        ; T-composition = reflectFunctorComposition
+        ; η-natural = reflectUnitNatural
+        ; μ-natural = reflectMultiplicationNatural
+        ; monad-left-unit = reflectMonad-left-unit
+        ; monad-right-unit = reflectMonad-right-unit
+        ; monad-associative = reflectMonad-associative
+        ; μ-inverse-left = reflectMultiplication-inverse-left
+        ; μ-inverse-right = reflectMultiplication-inverse-right
+        }
+
     data QuotientExpr (A : Set) : Set where
-      rawₑ : A → QuotientExpr A
-      canonicalizedₑ : A → QuotientExpr A
-      classₑ : QuotientExpr A → QuotientExpr A
-
-    abstract
-      canonicalQuotientClass :
-        (A : Set) →
-        (R : A → A → Set) →
-        (rflR : (x : A) → R x x) →
-        (symR : {x y : A} → R x y → R y x) →
-        (transR : {x y z : A} → R x y → R y z → R x z) →
-        A → Quotient A R rflR symR transR
-      canonicalQuotientClass A R rflR symR transR x =
-        quotientClass A R rflR symR transR
-          (canonize {A} {R} {rflR} {symR} {transR} x)
-
-      quotient-raw-sound :
-        (A : Set) →
-        (R : A → A → Set) →
-        (rflR : (x : A) → R x x) →
-        (symR : {x y : A} → R x y → R y x) →
-        (transR : {x y z : A} → R x y → R y z → R x z) →
-        (x : A) →
-        quotientClass A R rflR symR transR x ≡
-        canonicalQuotientClass A R rflR symR transR x
-      quotient-raw-sound A R rflR symR transR x =
-        sym (quotient-canon {A} {R} {rflR} {symR} {transR} x)
-
-    denoteQuotient :
-      {A : Set} {R : A → A → Set}
-      {rflR : (x : A) → R x x}
-      {symR : {x y : A} → R x y → R y x}
-      {transR : {x y z : A} → R x y → R y z → R x z} →
-      QuotientExpr A → Quotient A R rflR symR transR
-    denoteQuotient
-      {A} {R} {rflR} {symR} {transR} (rawₑ x) =
-        quotientClass A R rflR symR transR x
-    denoteQuotient
-      {A} {R} {rflR} {symR} {transR} (canonicalizedₑ x) =
-        canonicalQuotientClass A R rflR symR transR x
-    denoteQuotient
-      {A} {R} {rflR} {symR} {transR} (classₑ expression) =
-        denoteQuotient {A} {R} {rflR} {symR} {transR} expression
+      rawₑ canonicalizedₑ : A → QuotientExpr A
 
     normalizeQuotient : {A : Set} → QuotientExpr A → QuotientExpr A
     normalizeQuotient (rawₑ x) = canonicalizedₑ x
     normalizeQuotient (canonicalizedₑ x) = canonicalizedₑ x
-    normalizeQuotient (classₑ expression) =
-      classₑ (normalizeQuotient expression)
 
-    -- These are syntax-normalization equalities and compute by refl.
-    -- They are deliberately not global rewrite rules.
     quotient-raw :
-      {A : Set} → (x : A) →
-      normalizeQuotient (rawₑ x) ≡ normalizeQuotient (canonicalizedₑ x)
+      {A : Set} (x : A) →
+      normalizeQuotient (rawₑ x) ≡
+      normalizeQuotient (canonicalizedₑ x)
     quotient-raw x = refl
 
-    quotient-class-canon :
-      {A : Set} → (x : A) →
-      normalizeQuotient (classₑ (canonicalizedₑ x)) ≡
-      normalizeQuotient (classₑ (rawₑ x))
-    quotient-class-canon x = refl
+    -- Keep the denotation opaque outside this module. Otherwise unfolding
+    -- the rewrite head would expose the bare canonicalizer and turn the
+    -- raw-to-normal rule into an expanding self-rewrite.
+    abstract
+      denoteQuotient :
+        {A : Set} {f : IdempotentEndomap A} →
+        QuotientExpr A → A
+      denoteQuotient {f = f} (rawₑ x) = canonicalize f x
+      denoteQuotient {f = f} (canonicalizedₑ x) =
+        canonicalize f (canonicalize f x)
 
-    -- Semantic equality for wrapped classes; kept as an ordinary theorem.
-    quotient-class-canon-sound :
-      {A : Set} {R : A → A → Set}
-      {rflR : (x : A) → R x x}
-      {symR : {x y : A} → R x y → R y x}
-      {transR : {x y z : A} → R x y → R y z → R x z} →
-      (x : A) →
-      denoteQuotient (classₑ (canonicalizedₑ x)) ≡
-      denoteQuotient (classₑ (rawₑ x))
-    quotient-class-canon-sound {A} {R} {rflR} {symR} {transR} x =
-      sym (quotient-raw-sound A R rflR symR transR x)
+      -- The sole semantic quotient rewrite: raw representative to normal form.
+      quotient-raw-sound :
+        {A : Set} (f : IdempotentEndomap A) (x : A) →
+        denoteQuotient {A} {f} (rawₑ x) ≡
+        denoteQuotient {A} {f} (canonicalizedₑ x)
+      quotient-raw-sound f x =
+        sym (canonicalize-idempotent f x)
 
   ----------------------------------------------------------------------
   -- 6. Spector-style symmetric bar recursion over finite partial maps.
@@ -1194,8 +1687,8 @@ module Foundations where
     hasCut (mallp-up p) = hasCut p
 
   ----------------------------------------------------------------------
-  -- Publicly expose the five foundational packages and the Laurent MALLP
-  -- calculus.  No Seely / exponential structure is part of this interface.
+  -- Publicly expose all seven Foundations.* modules: six foundational
+  -- packages and Laurent's MALLP calculus. No Seely structure is included.
   ----------------------------------------------------------------------
 
   open ForsterEnumerability public
@@ -1849,14 +2342,11 @@ reflectedBoxArityWitness = pair refl (pair refl refl)
 -- This reduction uses the active quotient rewrite rule.
 quotientReflectionRewriteSmoke :
   (A : Set) →
-  (R : A → A → Set) →
-  (rflR : (x : A) → R x x) →
-  (symR : {x y : A} → R x y → R y x) →
-  (transR : {x y z : A} → R x y → R y z → R x z) →
+  (f : IdempotentEndomap A) →
   (x : A) →
-  denoteQuotient {A} {R} {rflR} {symR} {transR} (rawₑ x) ≡
-  denoteQuotient {A} {R} {rflR} {symR} {transR} (canonicalizedₑ x)
-quotientReflectionRewriteSmoke A R rflR symR transR x = refl
+  denoteQuotient {A} {f} (rawₑ x) ≡
+  denoteQuotient {A} {f} (canonicalizedₑ x)
+quotientReflectionRewriteSmoke A f x = refl
 
 
 ------------------------------------------------------------------------
@@ -1925,9 +2415,7 @@ module StrictNatCompiler where
 
   applyNatOp : NatOp → Nat → Nat → Nat
   applyNatOp addOp x y = x + y
-  applyNatOp monusOp zero y = zero
-  applyNatOp monusOp (suc x) zero = suc x
-  applyNatOp monusOp (suc x) (suc y) = applyNatOp monusOp x y
+  applyNatOp monusOp x y = x - y
   applyNatOp multiplyOp x y = x * y
 
   data NatExpr : Set where
