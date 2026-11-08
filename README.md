@@ -281,7 +281,7 @@ The strict runtime uses bounded signed-cell naturals with negative and overflow 
 
 ### Permanent compiler/proof synchronization gate
 
-The GitHub Actions workflow runs on every pull request and every branch push, including pushes to `master`. It pins Agda 2.8.0.2, type-checks both tracked Agda modules, builds the Haskell backend, and compiles the strict source fixture. The backend generates a fresh `MALLPEmittedRenderer.agda` from the same compiled definitions that produce `MALLPStrict.fth`.
+The GitHub Actions workflow runs on every pull request and every push to `master`. It pins Agda 2.8.0.2, type-checks both tracked Agda modules, builds the Haskell backend, and compiles the strict source fixture. The backend generates a fresh `MALLPEmittedRenderer.agda` from the same compiled definitions that produce `MALLPStrict.fth`.
 
 A separate `proof_sync` step now requires source-semantic and execution declarations for all five unary and four direct-binary Nat fixture functions. It type-checks the generated Agda module before Gforth runs. It also requires exactly 29 emitted definitions and 29 corresponding `wordRendererCorrectN` proofs. A change in the compiled output set therefore fails CI until the proof-coverage manifest and this table receive a deliberate review. The final workflow gate requires the formal checks, backend build, emission, proof synchronization, and Gforth fixture all to succeed.
 
