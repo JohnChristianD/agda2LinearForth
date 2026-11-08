@@ -328,7 +328,7 @@ negativeObservation-run-adequate : (n : Conat) {R : Set} →
 negativeObservation-run-adequate n consume = refl
 
 ------------------------------------------------------------------------
--- MODULE 1: FIVE FOUNDATIONAL PACKAGES AND LAURENT MALLP
+-- MODULE 1: SIX FOUNDATIONAL PACKAGES AND LAURENT MALLP
 ------------------------------------------------------------------------
 
 module Foundations where
@@ -2427,6 +2427,154 @@ module StrictNatCompiler where
     rewrite natResourceProof-adequate left leftEnvironment
           | natResourceProof-adequate right rightEnvironment = refl
 
+  ----------------------------------------------------------------------
+  -- General count-indexed resource-tree target compiler.
+  --
+  -- This closes the formal gap between arbitrary finite NatResourceExpr
+  -- trees and the indexed postfix-token machine. The index n records the
+  -- exact number of live assumptions. The active environment records
+  -- already-computed sibling results; each resource leaf selects the next
+  -- owned input using SWAP/ROLL, and each binary node consumes two results.
+  ----------------------------------------------------------------------
+
+  natEnvironmentValues : {n : Nat} → NatEnvironment n → List Nat
+  natEnvironmentValues natEnvironmentNil = []
+  natEnvironmentValues (natEnvironmentCons value rest) =
+    value ∷ natEnvironmentValues rest
+
+  natEnvironmentValues-split :
+    (n m : Nat) →
+    (environment : NatEnvironment (n + m)) →
+    (residual : List Nat) →
+    natEnvironmentValues environment ++ᴳ residual ≡
+    natEnvironmentValues
+      (fst (splitNatEnvironment n m environment)) ++ᴳ
+    (natEnvironmentValues
+      (snd (splitNatEnvironment n m environment)) ++ᴳ residual)
+  natEnvironmentValues-split zero m environment residual = refl
+  natEnvironmentValues-split (suc n) m
+    (natEnvironmentCons value rest) residual
+    with splitNatEnvironment n m rest
+  ... | pair prefix suffix =
+    cong (value ∷_) (natEnvironmentValues-split n m rest residual)
+
+  resourceSelectTokens : Nat → List ForthToken
+  resourceSelectTokens zero = []
+  resourceSelectTokens (suc zero) = swapWord ∷ []
+  resourceSelectTokens (suc (suc depth)) =
+    rollWord (suc (suc depth)) ∷ []
+
+  rollList-activePrefix :
+    (n : Nat) →
+    (active : NatEnvironment n) →
+    (value : Nat) →
+    (residual : List Nat) →
+    rollList n
+      (natEnvironmentValues active ++ᴳ (value ∷ residual)) ≡
+    just (value ∷ (natEnvironmentValues active ++ᴳ residual))
+  rollList-activePrefix zero natEnvironmentNil value residual = refl
+  rollList-activePrefix (suc n)
+    (natEnvironmentCons head rest) value residual
+    rewrite rollList-activePrefix n rest value residual = refl
+
+  resourceSelectTokens-correct :
+    (n : Nat) →
+    (active : NatEnvironment n) →
+    (value : Nat) →
+    (residual : List Nat) →
+    execTokens (resourceSelectTokens n)
+      (natEnvironmentValues active ++ᴳ (value ∷ residual)) ≡
+    just (value ∷ (natEnvironmentValues active ++ᴳ residual))
+  resourceSelectTokens-correct zero
+    natEnvironmentNil value residual = refl
+  resourceSelectTokens-correct (suc zero)
+    (natEnvironmentCons head natEnvironmentNil) value residual = refl
+  resourceSelectTokens-correct (suc (suc n))
+    active value residual =
+      rollList-activePrefix (suc (suc n)) active value residual
+
+  natResourceForthTokens :
+    {n : Nat} →
+    NatResourceExpr n →
+    (active : Nat) →
+    List ForthToken
+  natResourceForthTokens (resourceLiteral value) active =
+    pushLiteral value ∷ []
+  natResourceForthTokens resourceArgument active =
+    resourceSelectTokens active
+  natResourceForthTokens
+    (resourceBinary operation left right) active =
+      natResourceForthTokens left active ++ᴳ
+        (natResourceForthTokens right (suc active) ++ᴳ
+          (renderNatOp operation ∷ []))
+
+  natResourceForthTokens-correct :
+    {n : Nat} →
+    (expression : NatResourceExpr n) →
+    (active : Nat) →
+    (activeValues : NatEnvironment active) →
+    (environment : NatEnvironment n) →
+    (residual : List Nat) →
+    execTokens (natResourceForthTokens expression active)
+      (natEnvironmentValues activeValues ++ᴳ
+        (natEnvironmentValues environment ++ᴳ residual)) ≡
+    just
+      (evalNatResourceExpr expression environment ∷
+        (natEnvironmentValues activeValues ++ᴳ residual))
+  natResourceForthTokens-correct
+    (resourceLiteral value) active activeValues environment residual = refl
+  natResourceForthTokens-correct
+    resourceArgument active activeValues
+    (natEnvironmentCons value natEnvironmentNil) residual =
+      resourceSelectTokens-correct active activeValues value residual
+  natResourceForthTokens-correct
+    (resourceBinary {n = n} {m = m} operation left right)
+    active activeValues environment residual
+    with splitNatEnvironment n m environment
+  ... | pair leftEnvironment rightEnvironment
+    rewrite natEnvironmentValues-split n m environment residual
+      | execTokens-append
+          (natResourceForthTokens left active)
+          (natResourceForthTokens right (suc active) ++ᴳ
+            (renderNatOp operation ∷ []))
+          (natEnvironmentValues activeValues ++ᴳ
+            (natEnvironmentValues leftEnvironment ++ᴳ
+              (natEnvironmentValues rightEnvironment ++ᴳ residual)))
+      | natResourceForthTokens-correct
+          left active activeValues leftEnvironment
+          (natEnvironmentValues rightEnvironment ++ᴳ residual)
+      | execTokens-append
+          (natResourceForthTokens right (suc active))
+          (renderNatOp operation ∷ [])
+          (evalNatResourceExpr left leftEnvironment ∷
+            (natEnvironmentValues activeValues ++ᴳ
+              (natEnvironmentValues rightEnvironment ++ᴳ residual)))
+      | natResourceForthTokens-correct
+          right (suc active)
+          (natEnvironmentCons
+            (evalNatResourceExpr left leftEnvironment) activeValues)
+          rightEnvironment residual = refl
+
+  -- End-to-end theorem for every count-indexed Nat resource tree:
+  -- MALLP proof interpretation = formal target execution, with arbitrary
+  -- active sibling results and residual stack preserved.
+  natResourceMALLP-forth-sound :
+    {n : Nat} →
+    (expression : NatResourceExpr n) →
+    (environment : NatEnvironment n) →
+    (residual : List Nat) →
+    execTokens (natResourceForthTokens expression zero)
+      (natEnvironmentValues environment ++ᴳ residual) ≡
+    just
+      (interpretMALLPNatProof (natResourceProof expression) environment
+        ∷ residual)
+  natResourceMALLP-forth-sound expression environment residual =
+    trans
+      (natResourceForthTokens-correct
+        expression zero natEnvironmentNil environment residual)
+      (cong
+        (λ value → just (value ∷ residual))
+        (sym (natResourceProof-adequate expression environment)))
 
   ----------------------------------------------------------------------
   -- Labelled Nat resources: exact-once source context → MALLP derivation.
@@ -2534,37 +2682,44 @@ module StrictNatCompiler where
     ContextPermutation Δ Ζ
   transportContextPermutation refl refl permutation = permutation
 
-  resourcePermutationToNatContext :
-    {Γ Δ : List Nat} →
-    ContextPermutation Γ Δ →
-    ContextPermutation
-      (natContext (resourceListLength Γ))
-      (natContext (resourceListLength Δ))
-  resourcePermutationToNatContext {Γ} {Δ} permutation =
-    transportContextPermutation
-      (resourceAssumptions-length Γ)
-      (resourceAssumptions-length Δ)
-      (resourcePermutationToContext permutation)
+  contextLength : Context → Nat
+  contextLength [] = zero
+  contextLength (_ ∷ Γ) = suc (contextLength Γ)
 
-  -- Forward transport of values along an explicit context permutation.
+  contextLength-resourceAssumptions :
+    (labels : List Nat) →
+    contextLength (resourceAssumptions labels) ≡ resourceListLength labels
+  contextLength-resourceAssumptions [] = refl
+  contextLength-resourceAssumptions (label ∷ labels) =
+    cong suc (contextLength-resourceAssumptions labels)
+
+  contextLength-resourceAssumptions-indices :
+    (arity : Nat) →
+    contextLength (resourceAssumptions (resourceIndices arity)) ≡ arity
+  contextLength-resourceAssumptions-indices arity =
+    trans
+      (contextLength-resourceAssumptions (resourceIndices arity))
+      (resourceListLength-indices arity)
+
+  -- Reindex a homogeneous Nat environment along an actual MALLP context
+  -- permutation. Keeping the context in the indices avoids stuck unification
+  -- through the opaque natContext function.
   permuteNatEnvironment :
-    {n m : Nat} →
-    ContextPermutation (natContext n) (natContext m) →
-    NatEnvironment n →
-    NatEnvironment m
+    {Γ Δ : Context} →
+    ContextPermutation Γ Δ →
+    NatEnvironment (contextLength Γ) →
+    NatEnvironment (contextLength Δ)
   permuteNatEnvironment permutation-nil natEnvironmentNil =
     natEnvironmentNil
   permuteNatEnvironment (permutation-cons permutation)
     (natEnvironmentCons value environment) =
-      natEnvironmentCons value
-        (permuteNatEnvironment permutation environment)
+      natEnvironmentCons value (permuteNatEnvironment permutation environment)
   permuteNatEnvironment permutation-swap
     (natEnvironmentCons first
       (natEnvironmentCons second environment)) =
         natEnvironmentCons second (natEnvironmentCons first environment)
   permuteNatEnvironment (permutation-trans first second) environment =
-    permuteNatEnvironment second
-      (permuteNatEnvironment first environment)
+    permuteNatEnvironment second (permuteNatEnvironment first environment)
 
   data IndexedNatResourceExpr : List Nat → Set where
     indexedResourceLiteral :
@@ -2658,12 +2813,14 @@ module StrictNatCompiler where
     NatEnvironment arity →
     NatEnvironment (resourceListLength (indexedResourceLabels program))
   indexedNatResourceProgramEnvironment {arity} program environment =
-    permuteNatEnvironment
-      (contextPermutation-sym
-        (resourcePermutationToNatContext (indexedResourceUsage program)))
-      (subst NatEnvironment
-        (sym (resourceListLength-indices arity))
-        environment)
+    subst NatEnvironment
+      (contextLength-resourceAssumptions (indexedResourceLabels program))
+      (permuteNatEnvironment
+        (contextPermutation-sym
+          (resourcePermutationToContext (indexedResourceUsage program)))
+        (subst NatEnvironment
+          (sym (contextLength-resourceAssumptions-indices arity))
+          environment))
 
   indexedNatResourceProgramSemantics :
     {arity : Nat} →
@@ -2689,6 +2846,7 @@ module StrictNatCompiler where
     indexedNatResourceTree-adequate
       (indexedResourceExpression program)
       (indexedNatResourceProgramEnvironment program environment)
+
 
   -- A unary source function is linear when its sole argument occurs once.
   -- Its proof term is an MALLP derivation with exactly one Nat assumption.
