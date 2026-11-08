@@ -207,7 +207,7 @@ lookupListOr fallback (suc i) (x ∷ xs) = lookupListOr fallback i xs
 -- FINITE LIST COMPUTATION: AUXILIARY CONSTRUCTIVE WITNESS
 --
 -- This theorem remains available to finite-prefix code, separate from the
--- five foundational packages and Laurent MALLP.
+-- six foundational packages and Laurent MALLP.
 ------------------------------------------------------------------------
 
 module FiniteListComputation where
@@ -632,18 +632,16 @@ module Foundations where
         canonicalize : A → A
         canonicalize-idempotent :
           (x : A) → canonicalize (canonicalize x) ≡ canonicalize x
-
     open IdempotentEndomap public
 
-    -- The quotient is represented by the fixed points of the
-    -- idempotent map.  The equality witness is proof-relevant in Agda.
+    -- The quotient carrier is the fixed-point subtype of the normalizer.
+    -- Sigma keeps the fixed-point witness proof-relevant in Agda.
     Quotient : (A : Set) → IdempotentEndomap A → Set
     Quotient A f = Σ A (λ x → canonicalize f x ≡ x)
 
     qcanon :
       {A : Set} → (f : IdempotentEndomap A) → A → Quotient A f
-    qcanon f x =
-      canonicalize f x , canonicalize-idempotent f x
+    qcanon f x = canonicalize f x , canonicalize-idempotent f x
 
     qcoerce : {A : Set} {f : IdempotentEndomap A} → Quotient A f → A
     qcoerce (x , fixed) = x
@@ -659,84 +657,46 @@ module Foundations where
       canonicalize f (qcoerce q) ≡ qcoerce q
     qcoerce-fixed (x , fixed) = fixed
 
-    -- The induced equivalence relation is the kernel pair of the
-    -- canonicalizer: representatives are equivalent exactly when
-    -- they have the same normal form.
     QuotientRelation :
       {A : Set} → IdempotentEndomap A → A → A → Set
     QuotientRelation f x y = canonicalize f x ≡ canonicalize f y
 
-    quotientRelation-refl :
-      {A : Set} (f : IdempotentEndomap A) (x : A) →
-      QuotientRelation f x x
-    quotientRelation-refl f x = refl
-
-    quotientRelation-sym :
-      {A : Set} (f : IdempotentEndomap A) {x y : A} →
-      QuotientRelation f x y → QuotientRelation f y x
-    quotientRelation-sym f equality = sym equality
-
-    quotientRelation-trans :
-      {A : Set} (f : IdempotentEndomap A) {x y z : A} →
-      QuotientRelation f x y →
-      QuotientRelation f y z →
-      QuotientRelation f x z
-    quotientRelation-trans f first second = trans first second
-
-    -- Nuo Li's definable-quotient contract: equivalent inputs have
-    -- equal normal forms (soundness), and normalization preserves the
-    -- represented class (completeness).
-    record NormalizerFor
-      (A : Set)
-      (R : A → A → Set)
-      (reflR : (x : A) → R x x)
-      (symR : {x y : A} → R x y → R y x)
-      (transR : {x y z : A} → R x y → R y z → R x z)
-      : Set where
+    -- Nuo Li's definable-quotient contract: related inputs have equal
+    -- normal forms, and each input is related to its normal form.
+    record NormalizerFor (A : Set) (R : A → A → Set) : Set where
       constructor normalizerFor
       field
+        normalizer-refl : (x : A) → R x x
+        normalizer-sym : {x y : A} → R x y → R y x
+        normalizer-trans : {x y z : A} → R x y → R y z → R x z
         normalizeFor : A → A
         normalization-sound :
           {x y : A} → R x y → normalizeFor x ≡ normalizeFor y
         normalization-complete :
           (x : A) → R (normalizeFor x) x
-
     open NormalizerFor public
 
     normalization-idempotent :
-      {A : Set} {R : A → A → Set}
-      {reflR : (x : A) → R x x}
-      {symR : {x y : A} → R x y → R y x}
-      {transR : {x y z : A} → R x y → R y z → R x z} →
-      (N : NormalizerFor A R reflR symR transR) →
+      {A : Set} {R : A → A → Set} →
+      (N : NormalizerFor A R) →
       (x : A) → normalizeFor N (normalizeFor N x) ≡ normalizeFor N x
     normalization-idempotent N x =
       normalization-sound N (normalization-complete N x)
 
     normalization-kernel-backward :
-      {A : Set} {R : A → A → Set}
-      {reflR : (x : A) → R x x}
-      {symR : {x y : A} → R x y → R y x}
-      {transR : {x y z : A} → R x y → R y z → R x z} →
-      (N : NormalizerFor A R reflR symR transR) →
-      {x y : A} →
+      {A : Set} {R : A → A → Set} →
+      (N : NormalizerFor A R) → {x y : A} →
       normalizeFor N x ≡ normalizeFor N y → R x y
-    normalization-kernel-backward
-      {symR = symR} {transR = transR} N {x} {y} equality
+    normalization-kernel-backward N {x} {y} equality
       rewrite equality =
-        transR
-          (symR (normalization-complete N x))
+        normalizer-trans N
+          (normalizer-sym N (normalization-complete N x))
           (normalization-complete N y)
 
     normalization-kernel-equivalence :
-      {A : Set} {R : A → A → Set}
-      {reflR : (x : A) → R x x}
-      {symR : {x y : A} → R x y → R y x}
-      {transR : {x y z : A} → R x y → R y z → R x z} →
-      (N : NormalizerFor A R reflR symR transR) →
-      (x y : A) →
-      Equivalence
-        (R x y)
+      {A : Set} {R : A → A → Set} →
+      (N : NormalizerFor A R) → (x y : A) →
+      Equivalence (R x y)
         (normalizeFor N x ≡ normalizeFor N y)
     normalization-kernel-equivalence N x y =
       record
@@ -744,37 +704,31 @@ module Foundations where
         ; toBackward = normalization-kernel-backward N
         }
 
-    -- Every Nuo Li normalizer induces an idempotent endomap.
+    -- Nuo Li normalizers induce idempotent endomaps.
     normalizer-as-idempotent :
-      {A : Set} {R : A → A → Set}
-      {reflR : (x : A) → R x x}
-      {symR : {x y : A} → R x y → R y x}
-      {transR : {x y z : A} → R x y → R y z → R x z} →
-      (N : NormalizerFor A R reflR symR transR) →
-      IdempotentEndomap A
+      {A : Set} {R : A → A → Set} →
+      (N : NormalizerFor A R) → IdempotentEndomap A
     normalizer-as-idempotent N =
       idempotentEndomap
         (normalizeFor N)
         (normalization-idempotent N)
 
-    -- Conversely, every idempotent endomap is a normalizer for its
-    -- kernel relation.  These are two views of one quotient, not
-    -- duplicated quotient carriers.
+    -- Conversely, each idempotent map supplies a normalizer for its
+    -- kernel relation.  No second quotient carrier is introduced.
     kernelNormalizer :
       {A : Set} (f : IdempotentEndomap A) →
       NormalizerFor A (QuotientRelation f)
-        (quotientRelation-refl f)
-        (quotientRelation-sym f)
-        (quotientRelation-trans f)
     kernelNormalizer f =
       normalizerFor
+        (λ x → refl)
+        (λ equality → sym equality)
+        (λ first second → trans first second)
         (canonicalize f)
         (λ related → related)
         (canonicalize-idempotent f)
 
     data QuotientExpr (A : Set) : Set where
       rawₑ canonicalizedₑ : A → QuotientExpr A
-      classₑ : QuotientExpr A → QuotientExpr A
 
     denoteQuotient :
       {A : Set} {f : IdempotentEndomap A} →
@@ -782,42 +736,24 @@ module Foundations where
     denoteQuotient {f = f} (rawₑ x) = canonicalize f x
     denoteQuotient {f = f} (canonicalizedₑ x) =
       canonicalize f (canonicalize f x)
-    denoteQuotient {f = f} (classₑ expression) =
-      denoteQuotient {f = f} expression
 
     normalizeQuotient : {A : Set} → QuotientExpr A → QuotientExpr A
     normalizeQuotient (rawₑ x) = canonicalizedₑ x
     normalizeQuotient (canonicalizedₑ x) = canonicalizedₑ x
-    normalizeQuotient (classₑ expression) =
-      classₑ (normalizeQuotient expression)
 
-    -- Syntax normalization is definitional and remains local.
     quotient-raw :
       {A : Set} (x : A) →
       normalizeQuotient (rawₑ x) ≡
       normalizeQuotient (canonicalizedₑ x)
     quotient-raw x = refl
 
-    quotient-class-canon :
-      {A : Set} (x : A) →
-      normalizeQuotient (classₑ (canonicalizedₑ x)) ≡
-      normalizeQuotient (classₑ (rawₑ x))
-    quotient-class-canon x = refl
-
-    -- This is the single semantic quotient rewrite used by the module.
+    -- The sole semantic quotient rewrite: raw representative to normal form.
     quotient-raw-sound :
       {A : Set} (f : IdempotentEndomap A) (x : A) →
       denoteQuotient {A} {f} (rawₑ x) ≡
       denoteQuotient {A} {f} (canonicalizedₑ x)
     quotient-raw-sound f x =
       sym (canonicalize-idempotent f x)
-
-    quotient-class-canon-sound :
-      {A : Set} {f : IdempotentEndomap A} (x : A) →
-      denoteQuotient {A} {f} (classₑ (canonicalizedₑ x)) ≡
-      denoteQuotient {A} {f} (classₑ (rawₑ x))
-    quotient-class-canon-sound {f = f} x =
-      canonicalize-idempotent f x
 
   ----------------------------------------------------------------------
   -- 6. Spector-style symmetric bar recursion over finite partial maps.
