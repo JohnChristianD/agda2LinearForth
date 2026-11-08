@@ -688,7 +688,7 @@ module Foundations where
       (N : NormalizerFor A R) → {x y : A} →
       normalizeFor N x ≡ normalizeFor N y → R x y
     normalization-kernel-backward N {x} {y} equality
-      rewrite equality =
+      rewrite sym equality =
         normalizer-trans N
           (normalizer-sym N (normalization-complete N x))
           (normalization-complete N y)
