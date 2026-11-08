@@ -832,10 +832,11 @@ module Foundations where
       QuotientMorphismEq
         (composeQuotientMorphism g f)
         (composeQuotientMorphism g′ f′)
-    quotientCompose-respects-equality outer inner x =
+    quotientCompose-respects-equality
+      {f = f} {f′ = f′} {g = g} {g′ = g′} outer inner x =
       trans
-        (cong (quotientMap _) (inner x))
-        (outer (quotientMap _ x))
+        (cong (quotientMap g) (inner x))
+        (outer (quotientMap f′ x))
 
     quotientCategory-id-left :
       {X Y : QuotientObject} →
