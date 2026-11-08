@@ -730,13 +730,6 @@ module Foundations where
     data QuotientExpr (A : Set) : Set where
       rawₑ canonicalizedₑ : A → QuotientExpr A
 
-    denoteQuotient :
-      {A : Set} {f : IdempotentEndomap A} →
-      QuotientExpr A → A
-    denoteQuotient {f = f} (rawₑ x) = canonicalize f x
-    denoteQuotient {f = f} (canonicalizedₑ x) =
-      canonicalize f (canonicalize f x)
-
     normalizeQuotient : {A : Set} → QuotientExpr A → QuotientExpr A
     normalizeQuotient (rawₑ x) = canonicalizedₑ x
     normalizeQuotient (canonicalizedₑ x) = canonicalizedₑ x
@@ -747,13 +740,24 @@ module Foundations where
       normalizeQuotient (canonicalizedₑ x)
     quotient-raw x = refl
 
-    -- The sole semantic quotient rewrite: raw representative to normal form.
-    quotient-raw-sound :
-      {A : Set} (f : IdempotentEndomap A) (x : A) →
-      denoteQuotient {A} {f} (rawₑ x) ≡
-      denoteQuotient {A} {f} (canonicalizedₑ x)
-    quotient-raw-sound f x =
-      sym (canonicalize-idempotent f x)
+    -- Keep the denotation opaque outside this module. Otherwise unfolding
+    -- the rewrite head would expose the bare canonicalizer and turn the
+    -- raw-to-normal rule into an expanding self-rewrite.
+    abstract
+      denoteQuotient :
+        {A : Set} {f : IdempotentEndomap A} →
+        QuotientExpr A → A
+      denoteQuotient {f = f} (rawₑ x) = canonicalize f x
+      denoteQuotient {f = f} (canonicalizedₑ x) =
+        canonicalize f (canonicalize f x)
+
+      -- The sole semantic quotient rewrite: raw representative to normal form.
+      quotient-raw-sound :
+        {A : Set} (f : IdempotentEndomap A) (x : A) →
+        denoteQuotient {A} {f} (rawₑ x) ≡
+        denoteQuotient {A} {f} (canonicalizedₑ x)
+      quotient-raw-sound f x =
+        sym (canonicalize-idempotent f x)
 
   ----------------------------------------------------------------------
   -- 6. Spector-style symmetric bar recursion over finite partial maps.
