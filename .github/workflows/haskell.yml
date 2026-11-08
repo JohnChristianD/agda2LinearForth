@@ -143,6 +143,10 @@ jobs:
           test "$(grep -cE '^natLinearCompiledExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 5
           test "$(grep -cE '^sourceNatBinarySemantics[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 4
           test "$(grep -cE '^natBinaryCompiledExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 4
+          # Every emitted source definition must have one renderer equality.
+          # A changed compiler output set requires an explicit coverage review.
+          test "$(grep -cE '^actualWord[0-9]+ : String' MALLPEmittedRenderer.agda)" -eq 29
+          test "$(grep -cE '^wordRendererCorrect[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 29
           grep -Fq 'chooseBoolTokenCorrespondence = refl' MALLPEmittedRenderer.agda
           grep -Fq 'swapBoolPairTokenCorrespondence = refl' MALLPEmittedRenderer.agda
           cat MALLPEmittedRenderer.agda
