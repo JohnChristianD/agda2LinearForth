@@ -110,8 +110,8 @@ jobs:
         run: |
           cabal build agda2forth
 
-      - name: Compile and execute the strict MALLP fixture
-        id: strict_fixture
+      - name: Compile strict MALLP source and emit Forth
+        id: forth_emit
         if: steps.forth_backend.outcome == 'success'
         run: |
           cp test/MALLPStrict.agda.src test/MALLPStrict.agda
@@ -123,11 +123,32 @@ jobs:
           cat agda2forth.log
           test -s MALLPStrict.fth
           test -s MALLPEmittedRenderer.agda
+
+      - name: Verify compiler-to-proof synchronization
+        id: proof_sync
+        if: steps.forth_emit.outcome == 'success'
+        run: |
+          # Every admitted unary and direct-binary Nat fixture must have a
+          # source-semantic theorem in the generated Agda module.
+          for source in answerIdentity answerAddFive answerMonusFive answerFiveMonus answerMultiplyFive; do
+            grep -Fq "MALLPStrict.$source argument ≡ evalNatLinearExpr" MALLPEmittedRenderer.agda || {
+              echo "missing unary Nat source certificate: $source"
+              exit 1
+            }
+          done
+          for source in answerAddTwo answerMonusTwo answerReverseMonusTwo answerMultiplyTwo; do
+            grep -Fq "MALLPStrict.$source first second ≡ evalNatBinaryLinearExpr" MALLPEmittedRenderer.agda || {
+              echo "missing binary Nat source certificate: $source"
+              exit 1
+            }
+          done
+          test "$(grep -cE '^sourceNatSemantics[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 5
+          test "$(grep -cE '^natLinearCompiledExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 5
+          test "$(grep -cE '^sourceNatBinarySemantics[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 4
+          test "$(grep -cE '^natBinaryCompiledExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 4
           grep -Fq 'chooseBoolTokenCorrespondence = refl' MALLPEmittedRenderer.agda
           grep -Fq 'swapBoolPairTokenCorrespondence = refl' MALLPEmittedRenderer.agda
           cat MALLPEmittedRenderer.agda
-          echo "Generated Forth module:"
-          cat MALLPStrict.fth
           if "$AGDA_BIN" --no-prop --no-erasure -i formal -i . -i test MALLPEmittedRenderer.agda > renderer-certificate.log 2>&1; then
             cat renderer-certificate.log
           else
@@ -136,6 +157,13 @@ jobs:
             echo "Agda renderer certificate exit: $status"
             exit "$status"
           fi
+
+      - name: Execute strict MALLP fixture under Gforth
+        id: strict_fixture
+        if: steps.proof_sync.outcome == 'success'
+        run: |
+          echo "Generated Forth module:"
+          cat MALLPStrict.fth
           grep -Fq 'MALLP-NAT-ADD' MALLPStrict.fth
           grep -Fq 'MALLP-PARSE-NAT' MALLPStrict.fth
           grep -Fq ': answerTrue TRUE ;' MALLPStrict.fth
@@ -188,10 +216,14 @@ jobs:
           MALLP_CHECK: ${{ steps.mallp_proof.outcome }}
           PHYSICS_CHECK: ${{ steps.physics_proof.outcome }}
           BACKEND_CHECK: ${{ steps.forth_backend.outcome }}
+          EMIT_CHECK: ${{ steps.forth_emit.outcome }}
+          PROOF_SYNC_CHECK: ${{ steps.proof_sync.outcome }}
           FIXTURE_CHECK: ${{ steps.strict_fixture.outcome }}
         run: |
-          printf 'MALLP + Forth renderer: %s\\nPhysics proof: %s\\nBackend build: %s\\nGforth fixture: %s\\n' "$MALLP_CHECK" "$PHYSICS_CHECK" "$BACKEND_CHECK" "$FIXTURE_CHECK"
+          printf 'MALLP + Forth renderer: %s\\nPhysics proof: %s\\nBackend build: %s\\nForth emission: %s\\nProof sync: %s\\nGforth fixture: %s\\n' "$MALLP_CHECK" "$PHYSICS_CHECK" "$BACKEND_CHECK" "$EMIT_CHECK" "$PROOF_SYNC_CHECK" "$FIXTURE_CHECK"
           test "$MALLP_CHECK" = success
           test "$PHYSICS_CHECK" = success
           test "$BACKEND_CHECK" = success
+          test "$EMIT_CHECK" = success
+          test "$PROOF_SYNC_CHECK" = success
           test "$FIXTURE_CHECK" = success
