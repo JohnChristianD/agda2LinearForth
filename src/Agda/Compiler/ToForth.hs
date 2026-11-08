@@ -1198,7 +1198,7 @@ formalNatTokenList tokens =
 
 rendererCertificate :: TopLevelModuleName -> [CompiledDefinition] -> Text
 rendererCertificate sourceModule definitions = T.unlines $
-  [ "{-# OPTIONS --with-K --rewriting --confluence-check --polarity --lossy-unification --exact-split --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}"
+  [ "{-# OPTIONS --with-K --rewriting --confluence-check --lossy-unification --exact-split --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}"
   , "module MALLPEmittedRenderer where"
   , ""
   , "import " <> T.pack (prettyShow sourceModule)
