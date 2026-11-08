@@ -780,7 +780,8 @@ module Foundations where
         (canonicalize f x ≡ canonicalize f y)
     quotientEquality f {x} {y} =
       record
-        { toForward = λ equality → cong qcoerce equality
+        { toForward = λ equality →
+            cong (λ q → qcoerce {A = A} {f = f} q) equality
         ; toBackward = λ equality →
             fixedPointPath f equality
               (canonicalize-idempotent f x)
@@ -1026,7 +1027,12 @@ module Foundations where
         (reflectObject (reflectObject X))
         (reflectObject X)
     reflectMultiplication X =
-      idempotentMorphism qcoerce (λ q → refl)
+      idempotentMorphism
+        (λ q →
+          qcoerce
+            {A = Quotient (objectCarrier X) (objectNormalizer X)}
+            {f = identityEndomap} q)
+        (λ q → refl)
 
     reflectFunctorIdentity :
       (X : IdempotentObject) →
