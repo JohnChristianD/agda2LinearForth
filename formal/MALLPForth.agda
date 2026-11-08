@@ -2415,9 +2415,7 @@ module StrictNatCompiler where
 
   applyNatOp : NatOp → Nat → Nat → Nat
   applyNatOp addOp x y = x + y
-  applyNatOp monusOp zero y = zero
-  applyNatOp monusOp (suc x) zero = suc x
-  applyNatOp monusOp (suc x) (suc y) = applyNatOp monusOp x y
+  applyNatOp monusOp x y = x - y
   applyNatOp multiplyOp x y = x * y
 
   data NatExpr : Set where
