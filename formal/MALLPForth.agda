@@ -718,8 +718,9 @@ module Foundations where
       {symR : {x y : A} → R x y → R y x}
       {transR : {x y z : A} → R x y → R y z → R x z} →
       (x : A) →
-      [ x ] ≡
-      [ canonize {A} {R} {rflR} {symR} {transR} x ]
+      [_] {A} {R} {rflR} {symR} {transR} x ≡
+      [_] {A} {R} {rflR} {symR} {transR}
+        (canonize {A} {R} {rflR} {symR} {transR} x)
     quotient-raw-sound {A} {R} {rflR} {symR} {transR} x =
       sym (quotient-canon {A} {R} {rflR} {symR} {transR} x)
 
