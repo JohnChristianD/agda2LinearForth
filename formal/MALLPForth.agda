@@ -695,6 +695,28 @@ module Foundations where
       canonicalizedₑ : A → QuotientExpr A
       classₑ : QuotientExpr A → QuotientExpr A
 
+    -- Distinct heads make the raw-to-canonical rewrite terminating.
+    rawQuotientClass :
+      (A : Set) →
+      (R : A → A → Set) →
+      (rflR : (x : A) → R x x) →
+      (symR : {x y : A} → R x y → R y x) →
+      (transR : {x y z : A} → R x y → R y z → R x z) →
+      A → Quotient A R rflR symR transR
+    rawQuotientClass A R rflR symR transR x =
+      quotientClass A R rflR symR transR x
+
+    canonicalQuotientClass :
+      (A : Set) →
+      (R : A → A → Set) →
+      (rflR : (x : A) → R x x) →
+      (symR : {x y : A} → R x y → R y x) →
+      (transR : {x y z : A} → R x y → R y z → R x z) →
+      A → Quotient A R rflR symR transR
+    canonicalQuotientClass A R rflR symR transR x =
+      quotientClass A R rflR symR transR
+        (canonize {A} {R} {rflR} {symR} {transR} x)
+
     denoteQuotient :
       {A : Set} {R : A → A → Set}
       {rflR : (x : A) → R x x}
@@ -703,11 +725,10 @@ module Foundations where
       QuotientExpr A → Quotient A R rflR symR transR
     denoteQuotient
       {A} {R} {rflR} {symR} {transR} (rawₑ x) =
-        quotientClass A R rflR symR transR x
+        rawQuotientClass A R rflR symR transR x
     denoteQuotient
       {A} {R} {rflR} {symR} {transR} (canonicalizedₑ x) =
-        quotientClass A R rflR symR transR
-          (canonize {A} {R} {rflR} {symR} {transR} x)
+        canonicalQuotientClass A R rflR symR transR x
     denoteQuotient
       {A} {R} {rflR} {symR} {transR} (classₑ expression) =
         denoteQuotient {A} {R} {rflR} {symR} {transR} expression
@@ -729,9 +750,8 @@ module Foundations where
       normalizeQuotient (classₑ (rawₑ x))
     quotient-class-canon x = refl
 
-    -- The active rewrite is oriented at the opaque quotient class map.
-    -- This lets Agda normalize quotient denotations without unfolding the
-    -- quotient carrier or requiring an unproved computation equation.
+    -- This rewrite has a raw-only head. Its canonical target has a
+    -- distinct head, so normalization takes one step and cannot loop.
     quotient-raw-sound :
       (A : Set) →
       (R : A → A → Set) →
@@ -739,9 +759,8 @@ module Foundations where
       (symR : {x y : A} → R x y → R y x) →
       (transR : {x y z : A} → R x y → R y z → R x z) →
       (x : A) →
-      quotientClass A R rflR symR transR x ≡
-      quotientClass A R rflR symR transR
-        (canonize {A} {R} {rflR} {symR} {transR} x)
+      rawQuotientClass A R rflR symR transR x ≡
+      canonicalQuotientClass A R rflR symR transR x
     quotient-raw-sound A R rflR symR transR x =
       sym (quotient-canon {A} {R} {rflR} {symR} {transR} x)
 
