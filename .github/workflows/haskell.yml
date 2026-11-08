@@ -96,13 +96,13 @@ jobs:
         id: mallp_proof
         continue-on-error: true
         run: |
-          "$AGDA_BIN" -i formal formal/MALLPForth.agda
+          "$AGDA_BIN" --no-prop --no-erasure -i formal formal/MALLPForth.agda
 
       - name: Type-check the separate RSED physics specification
         id: physics_proof
         continue-on-error: true
         run: |
-          "$AGDA_BIN" -i formal formal/SovereignRationalSEDPhysics.agda
+          "$AGDA_BIN" --no-prop --no-erasure -i formal formal/SovereignRationalSEDPhysics.agda
 
       - name: Build the Haskell Forth backend
         id: forth_backend
@@ -128,7 +128,7 @@ jobs:
           cat MALLPEmittedRenderer.agda
           echo "Generated Forth module:"
           cat MALLPStrict.fth
-          if "$AGDA_BIN" -i formal -i . -i test MALLPEmittedRenderer.agda > renderer-certificate.log 2>&1; then
+          if "$AGDA_BIN" --no-prop --no-erasure -i formal -i . -i test MALLPEmittedRenderer.agda > renderer-certificate.log 2>&1; then
             cat renderer-certificate.log
           else
             status=$?

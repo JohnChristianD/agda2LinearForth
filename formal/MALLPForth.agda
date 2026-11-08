@@ -3218,6 +3218,28 @@ module StrictNatCompiler where
     (natBinaryArgumentsExchanged operation) first second =
       applyNatOp operation second first
 
+  -- Addition is commutative propositionally, not by definitional reduction.
+  -- The resource compiler may select the two live arguments in the opposite
+  -- order; this theorem bridges that source expression to its evaluator.
+  natAdd-zero-right : (value : Nat) → value + zero ≡ value
+  natAdd-zero-right zero = refl
+  natAdd-zero-right (suc value) =
+    cong suc (natAdd-zero-right value)
+
+  natAdd-suc-right :
+    (left right : Nat) →
+    left + suc right ≡ suc (left + right)
+  natAdd-suc-right zero right = refl
+  natAdd-suc-right (suc left) right =
+    cong suc (natAdd-suc-right left right)
+
+  natAdd-comm : (left right : Nat) → left + right ≡ right + left
+  natAdd-comm zero right = sym (natAdd-zero-right right)
+  natAdd-comm (suc left) right =
+    trans
+      (cong suc (natAdd-comm left right))
+      (sym (natAdd-suc-right right left))
+
   compileNatBinaryLinear :
     {Γ : List StackType} →
     NatBinaryLinearExpr →
@@ -3302,6 +3324,48 @@ module StrictNatCompiler where
       (cong
         (λ value → just (value ∷ forgetStack stack))
         (sym (natBinaryProof-adequate expression first second)))
+
+  -- The Haskell resource decoder emits SWAP SWAP for the direct source
+  -- argument order: it selects each input from the labelled environment
+  -- before the primitive consumes both. The two exchanges are an involution.
+  execTokens-swap-involution :
+    (tokens : List ForthToken) →
+    (first second : Nat) →
+    (stack : List Nat) →
+    execTokens (swapWord ∷ swapWord ∷ tokens)
+      (first ∷ second ∷ stack) ≡
+    execTokens tokens (first ∷ second ∷ stack)
+  execTokens-swap-involution tokens first second stack = refl
+
+  renderNatBinaryResource : NatBinaryLinearExpr → List ForthToken
+  renderNatBinaryResource (natBinaryArguments operation) =
+    swapWord ∷ swapWord ∷ renderNatOp operation ∷ []
+  renderNatBinaryResource (natBinaryArgumentsExchanged operation) =
+    swapWord ∷ renderNatOp operation ∷ []
+
+  natBinaryResourceMALLP-forth-sound :
+    (expression : NatBinaryLinearExpr) →
+    (first second : Nat) →
+    {Γ : List StackType} →
+    (stack : Stack Γ) →
+    execTokens (renderNatBinaryResource expression)
+      (forgetStack (pushCell second (pushCell first stack))) ≡
+    just
+      (interpretMALLPNatProof (natBinaryProof expression)
+        (natEnvironmentCons second
+          (natEnvironmentCons first natEnvironmentNil)) ∷
+        forgetStack stack)
+  natBinaryResourceMALLP-forth-sound
+    (natBinaryArguments operation) first second stack =
+    trans
+      (execTokens-swap-involution
+        (renderNatOp operation ∷ []) second first (forgetStack stack))
+      (natBinaryMALLP-forth-sound
+        (natBinaryArguments operation) first second stack)
+  natBinaryResourceMALLP-forth-sound
+    (natBinaryArgumentsExchanged operation) first second stack =
+    natBinaryMALLP-forth-sound
+      (natBinaryArgumentsExchanged operation) first second stack
 
   ----------------------------------------------------------------------
   -- Closed PureLang lets: substitution without weakening or contraction.
