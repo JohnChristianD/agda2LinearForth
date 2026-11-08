@@ -1,5 +1,5 @@
 {-# OPTIONS --with-K --rewriting --confluence-check --polarity --lossy-unification --exact-split --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
-
+-- ```Agda
 ------------------------------------------------------------------------
 -- SovereignRationalSED
 --
@@ -615,20 +615,21 @@ module Foundations where
     gamma-codisc X = refl
 
   ----------------------------------------------------------------------
-  -- 5. Hofmann-style quotient reflection on quotient-expression syntax.
+  -- 5. Idempotent extensional quotient reflection (project-local synthesis).
   --
-  -- Quotients are indexed by an explicit equivalence-relation certificate.
-  -- Raw and canonicalized representatives denote equal quotient classes.
-  -- The rewrite layer normalizes expression syntax; canonicalization laws
-  -- remain explicit assumptions about the chosen representative function.
+  -- Combines an abstract quotient-class interface with an idempotent
+  -- representative normalizer and a one-way semantic rewrite. This is
+  -- Hofmann-inspired, not the full Hofmann quotient extension or a categorical
+  -- idempotent-monad/reflective-subcategory construction. Its laws are
+  -- explicit assumptions; canonical-form uniqueness and quotient
+  -- effectiveness remain separate obligations.
   ----------------------------------------------------------------------
 
   module QuotientReflection where
 
-    -- Equivalence laws are explicit arguments to the quotient completion.
-    -- There is no first-class setoid carrier/record: the relation and its
-    -- three laws are passed directly.  This preserves the quotient package's
-    -- mathematical requirements without adding another equality structure.
+    -- A quotient is indexed by an explicit setoid relation and its laws.
+    -- This is an interface, not a constructed quotient or its universal
+    -- eliminator; quotient formation/class-map computation remain postulated.
     postulate
       Quotient : (A : Set) →
                  (R : A → A → Set) →
@@ -645,6 +646,9 @@ module Foundations where
         (transR : {x y z : A} → R x y → R y z → R x z) →
         A → Quotient A R rflR symR transR
 
+      -- The chosen normalizer and its contract are assumptions. The stated
+      -- laws give idempotence, relatedness, and class preservation, but not
+      -- uniqueness of normal forms from R-related inputs.
       canonize : {A : Set} {R : A → A → Set}
                  {rflR : (x : A) → R x x}
                  {symR : {x y : A} → R x y → R y x}
@@ -740,6 +744,8 @@ module Foundations where
     normalizeQuotient (classₑ expression) =
       classₑ (normalizeQuotient expression)
 
+    -- These are syntax-normalization equalities and compute by refl.
+    -- They are deliberately not global rewrite rules.
     quotient-raw :
       {A : Set} → (x : A) →
       normalizeQuotient (rawₑ x) ≡ normalizeQuotient (canonicalizedₑ x)
@@ -751,8 +757,7 @@ module Foundations where
       normalizeQuotient (classₑ (rawₑ x))
     quotient-class-canon x = refl
 
-
-
+    -- Semantic equality for wrapped classes; kept as an ordinary theorem.
     quotient-class-canon-sound :
       {A : Set} {R : A → A → Set}
       {rflR : (x : A) → R x x}
@@ -778,10 +783,7 @@ module Foundations where
     FiniteEntries X = List (Nat × X)
 
     natEq : Nat → Nat → Bool
-    natEq zero zero = true
-    natEq zero (suc n) = false
-    natEq (suc n) zero = false
-    natEq (suc m) (suc n) = natEq m n
+    natEq = _==_
 
     memberKey : {X : Set} → Nat → FiniteEntries X → Bool
     memberKey n [] = false
@@ -3941,3 +3943,4 @@ module StrictLinearDataCompiler where
 
 open StrictLinearDataCompiler public
 
+-- ```
