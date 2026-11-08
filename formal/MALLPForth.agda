@@ -2345,11 +2345,11 @@ module StrictNatCompiler where
       applyNatOp operation leftValue
         (interpretMALLPNatProof proof rightEnvironment)
   interpretMALLPNatProof
-    (natCutProof {n = n} {m = m} first second) environment
-    with splitNatEnvironment n m environment
-  ... | pair prefix suffix =
+    (natCutProof {n = n} {m = m} first second) environment =
     interpretMALLPNatProof second
-      (natEnvironmentCons (interpretMALLPNatProof first prefix) suffix)
+      (natEnvironmentCons
+        (interpretMALLPNatProof first (takeNatEnvironment n m environment))
+        (dropNatEnvironment n m environment))
 
   natExprProof : NatExpr → MALLPNatProof zero
   natExprProof (literal value) = natLiteralProof value
@@ -2404,12 +2404,10 @@ module StrictNatCompiler where
   evalNatResourceExpr resourceArgument
     (natEnvironmentCons value natEnvironmentNil) = value
   evalNatResourceExpr
-    (resourceBinary {n = n} {m = m} operation left right) environment
-    with splitNatEnvironment n m environment
-  ... | pair leftEnvironment rightEnvironment =
+    (resourceBinary {n = n} {m = m} operation left right) environment =
     applyNatOp operation
-      (evalNatResourceExpr left leftEnvironment)
-      (evalNatResourceExpr right rightEnvironment)
+      (evalNatResourceExpr left (takeNatEnvironment n m environment))
+      (evalNatResourceExpr right (dropNatEnvironment n m environment))
 
   natResourceProof :
     {n : Nat} →
@@ -2441,10 +2439,8 @@ module StrictNatCompiler where
     (natEnvironmentCons value natEnvironmentNil) = refl
   natResourceProof-adequate
     (resourceBinary {n = n} {m = m} operation left right) environment
-    with splitNatEnvironment n m environment
-  ... | pair leftEnvironment rightEnvironment
-    rewrite natResourceProof-adequate left leftEnvironment
-          | natResourceProof-adequate right rightEnvironment = refl
+    rewrite natResourceProof-adequate left (takeNatEnvironment n m environment)
+          | natResourceProof-adequate right (dropNatEnvironment n m environment) = refl
 
   ----------------------------------------------------------------------
   -- General count-indexed resource-tree target compiler.
