@@ -84,38 +84,51 @@ Agda 2.8.0 added `Reflection.checkFromStringTC : String → Type → TC Term`. I
 
 ## Idempotent extensional quotient reflection
 
-The code now follows the specific **quotient-by-an-idempotent-function** construction of Marmaduke, Jenkins, and Stump's Cedille paper, rather than presenting a project-local mixture of an abstract setoid quotient and an unrelated canonicalizer. The project retains this descriptive section name; it does not claim that “Hofmann's idempotent extensional quotient reflection” is an established name for a single construction.
+The intended construction is an **idempotent, extensional, non-setoid quotient reflection monad**. Here “extensional” means that equality of quotient representatives corresponds to equality of canonical normal forms:
+`qcanon f x ≡ qcanon f y ↔ canonicalize f x ≡ canonicalize f y`.
+It does **not** mean global equality reflection for every Agda type, nor does it assume unrestricted function extensionality.
 
-The correspondence has two primary sources:
+The mathematical ingredients are established in the literature, but they are separate results which must be assembled with a carefully chosen category:
 
-- **Nuo Li / definable quotients.** A normalizer for an equivalence relation is sound when related inputs have equal normal forms, and complete when each input is related to its normal form. This normalizer-based account gives a definable quotient only where such canonical representatives can be defined.
-- **Cedille / quotients by idempotent functions.** Marmaduke, Jenkins, and Stump characterize definable quotients using an idempotent endomap. Its quotient carrier is represented by the fixed points of that endomap; the canonical map sends each input to its normalized fixed point. This is the direct construction implemented here.
+- **Nuo Li / definable quotients.** A quotient is definable from a normalizer when related inputs have equal normal forms and every input is related to its normal form. This covers only quotients admitting such a normalizer; it is not a construction for every equivalence relation.
+- **Cedille / quotients by idempotent functions.** Marmaduke, Jenkins, and Stump characterize definable quotients by idempotent endomaps. The quotient carrier is the type of fixed points, and the quotient map sends an input to its canonical fixed point. Cedille's erased dependent-intersection packaging is specific to Cedille; this Agda project deliberately keeps its Sigma witnesses proof-relevant.
+- **Idempotent monads / reflections.** An idempotent monad is equivalent, in the usual categorical setting, to a reflective full subcategory. The criterion is that the multiplication `μ : T(T X) → T X` is an isomorphism. This theorem supplies the categorical mechanism, not the quotient carrier by itself.
+- **Quotient types / higher inductive types.** A general set quotient can be presented with a point constructor, paths identifying related points, and a truncation constructor. This gives a genuine quotient type without representing the quotient carrier as a setoid, but it is a different type-theoretic feature from a normalizer-defined quotient.
+
+### Literature and design matrix
+
+| Candidate | What the mathematics gives | Non-setoid status | Fit under project Agda settings |
+|---|---|---|---|
+| Idempotent-function quotient (Cedille; Nuo Li normalizers) | A definable quotient when a sound and complete canonicalizer exists; fixed points form the quotient carrier. | Yes: quotient elements are a type, not a carrier paired with a stored relation. | Direct fit. The Sigma carrier and proofs are retained; no proof erasure is assumed. |
+| Reflection from idempotent endomaps | Reflects `(A, f)` into the full subcategory of fixed-point objects `(Fix f, id)`; the unit is canonicalization and multiplication forgets a redundant fixed-point layer. | Yes at the object/carrier level. The category objects store an idempotent endomap, not a setoid relation. | Direct fit. Morphism equality is pointwise; this avoids assuming function extensionality. |
+| Arbitrary set quotient as a higher inductive type | Generates paths for each related pair and truncates the quotient to a set. | Yes: equality in the quotient is its native identity type. | Not supplied by this project's ordinary non-cubical Agda core. A HIT/QIT implementation or additional principles would be a separate feature. |
+| Extensional type theory | Equality reflection identifies propositional and judgmental equality; function extensionality follows. | Stronger than needed. | Deliberately not adopted: it changes the equality discipline and compromises decidable type checking. |
+| General idempotent monad theorem | A fully faithful right adjoint induces an idempotent monad; conversely an idempotent monad determines a reflective subcategory up to equivalence. | Depends on the chosen category; it says nothing by itself about whether objects are represented by setoids. | Implemented for the category of idempotent-endomap presentations, rather than for a category of setoid presentations. |
 
 ### Agda contract
 
 For `f : IdempotentEndomap A`, the implementation defines:
 
-- `Quotient A f = Σ A (λ x → canonicalize f x ≡ x)`: the fixed points of `f`, represented as a proof-relevant dependent pair.
-- `qcanon f x`: the fixed-point representative `canonicalize f x`, together with the idempotence witness.
+- `Quotient A f = Σ A (λ x → canonicalize f x ≡ x)`: the fixed points of `f`, represented by an ordinary Agda type.
+- `qcanon f x`: the fixed-point representative `canonicalize f x`, together with its idempotence witness.
 - `qcoerce`: projection from a quotient representative back to its carrier element. `qcoerce-qcanon` computes by `refl`; `qcoerce-fixed` exposes the fixed-point invariant.
-- `QuotientRelation f x y = canonicalize f x ≡ canonicalize f y`: the kernel relation induced by the canonicalizer, with reflexivity, symmetry, and transitivity proved directly.
-- `NormalizerFor A R ...`: Nuo Li's soundness/completeness contract. From this contract, `normalization-idempotent` derives idempotence and `normalization-kernel-equivalence` proves that `R x y` is equivalent to equality of normal forms. Conversely, `kernelNormalizer` equips every idempotent endomap with its induced kernel relation.
+- `QuotientRelation f x y = canonicalize f x ≡ canonicalize f y`: the kernel relation, derived from the normalizer rather than stored as the quotient object's equality.
+- `quotientEquality`: proves that identity between canonical quotient representatives is equivalent to equality of their normal forms.
+- `NormalizerFor A R ...`: Nuo Li's soundness/completeness contract. `normalization-idempotent` derives idempotence and `normalization-kernel-equivalence` proves that `R x y` is equivalent to equality of normal forms. `kernelNormalizer` constructs the converse presentation for each idempotent endomap.
 
-This uses **one quotient carrier**, namely the fixed-point type. `NormalizerFor` is a law record for comparing the Nuo Li presentation with the Cedille presentation; it is not a second quotient construction. The two directions are proved in Agda, not postulated.
+This is a single quotient carrier, namely the fixed-point type. `NormalizerFor` remains as a comparison theorem connecting the Nuo Li presentation with the idempotent-function presentation; it is not the object type of the reflection category.
 
-Agda's `Σ` retains equality witnesses as proof-relevant data. This is intentionally described as an Agda encoding of the Cedille construction, not a byte-for-byte representation of Cedille's dependent intersection with erased constraints. In particular, this file does not claim Cedille's zero-cost coercion behavior or proof-irrelevant packaging for arbitrary Agda types.
+The reflection category now uses `IdempotentObject`, whose data are only a carrier and an idempotent endomap. Its morphisms commute with the normalizers. The reflector sends `(A , f)` to `(Quotient A f , id)`; its unit is `qcanon`, and its multiplication is `qcoerce` on the second fixed-point layer. The category and monad laws are stated using pointwise equality of morphisms, so no function-extensionality axiom is needed. The code packages this as `quotientReflectionMonad : IdempotentMonad idempotentObjectCategory`, and records both inverse laws for multiplication.
+
+The source file uses Agda's existing `--with-K` option and leaves `--no-prop` and `--no-erasure` in force (the Agda defaults). `identityProofUnique` uses K to compare equality witnesses when proving paths in the Sigma fixed-point carrier. It does not use the `Prop` sort, proof erasure, an erased quotient primitive, or Cedille's zero-cost representation. This specific UIP dependency is visible and local; it is not a claim that the construction works unchanged under `--without-K`.
+
+The construction is **non-setoid as a quotient representation**, but it is not a quotient for every equivalence relation: an idempotent normalizer, or equivalently a suitable canonical representative operation, must be supplied. Nuo Li's work explicitly notes that not every quotient admits such a normalizer. For arbitrary equivalence relations, an actual set-quotient HIT/QIT is a different solution. Neither the Cedille paper nor the abstract theorem about idempotent monads says that every quotient operation automatically becomes a monad.
 
 ### Rewrite boundary
 
 `QuotientExpr` separates raw and canonicalized syntax. `normalizeQuotient` is a small syntax normalizer, and `quotient-raw` is a definitional `refl` fact that stays local. The semantic denotation and `quotient-raw-sound` theorem are abstract outside the module, so unfolding cannot expose an expanding rewrite over the canonicalizer. The single semantic rule `quotient-raw-sound` is registered in the outer `REWRITE` pragma, oriented from raw syntax to its canonicalized denotation. `quotientReflectionRewriteSmoke = refl` exercises the registered semantic rule.
 
-Do not infer more than the code proves. The fixed-point construction is a definable quotient for an explicitly supplied idempotent map, not a construction of quotients for every equivalence relation. There is no general respectfulness-based quotient recursor with computation and uniqueness laws, no quotient-inductive type, and no general functional-extensionality theorem.
-
-The code now adds a separate, genuine categorical layer. `QuotientObject` packages a setoid together with a chosen normalizer satisfying Nuo Li's soundness/completeness laws. `QuotientMorphism` contains a relation-preserving map that commutes with normalization. These form the bundled `quotientCategory`, whose hom equality is pointwise propositional equality; category identity, associativity, and composition congruence are proved directly.
-
-The endofunctor `quotientReflectionObject` replaces each relation `R x y` by equality of normal forms. `quotientReflectionMap` acts on morphisms. `quotientReflectionUnit` is the identity representative map into the kernel presentation, while `quotientReflectionMultiplication` is identity because applying the reflector twice yields the same kernel relation. The code proves functoriality, unit and multiplication naturality, both monad unit laws, associativity, and that multiplication is an isomorphism. `quotientReflectionMonad : IdempotentMonad quotientCategory` packages these fields as an idempotent monad.
-
-This is the project's categorical reflection on the explicitly defined category of normalizer-presented setoids. It is a categorical extension built around the Cedille/Nuo Li quotient correspondence; **the Cedille idempotent-function paper itself is the object-level quotient construction, not the source of this monad API**. The associated reflective subcategory consists of the kernel-presented objects. Agda's `--confluence-check` checks the combined rewrite system; it does not prove termination, general quotient existence, or the category-theoretic laws independently of the checked Agda terms. Operational `ContextPermutation` evidence must remain available wherever source-resource order affects `SWAP`/`ROLL`.
+Agda's `--confluence-check` checks the combined rewrite system; it does not prove termination, general quotient existence, or the categorical laws independently of the checked Agda terms. Operational `ContextPermutation` evidence must remain available wherever source-resource order affects `SWAP`/`ROLL`.
 
 ### Foundations module count
 
