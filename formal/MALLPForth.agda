@@ -636,17 +636,8 @@ module Foundations where
                  ({x y : A} → R x y → R y x) →
                  ({x y z : A} → R x y → R y z → R x z) → Set
 
-      -- Opaque class denotations give raw and canonical syntax distinct
-      -- rewrite heads. The bracket notation below remains the raw class map.
-      rawQuotientClass :
-        (A : Set) →
-        (R : A → A → Set) →
-        (rflR : (x : A) → R x x) →
-        (symR : {x y : A} → R x y → R y x) →
-        (transR : {x y z : A} → R x y → R y z → R x z) →
-        A → Quotient A R rflR symR transR
-
-      canonicalQuotientClass :
+      -- The primitive quotient carrier and representative-to-class map.
+      quotientClass :
         (A : Set) →
         (R : A → A → Set) →
         (rflR : (x : A) → R x x) →
@@ -666,8 +657,9 @@ module Foundations where
         {symR : {x y : A} → R x y → R y x}
         {transR : {x y z : A} → R x y → R y z → R x z} →
         (x : A) →
-        canonicalQuotientClass A R rflR symR transR x ≡
-        rawQuotientClass A R rflR symR transR x
+        quotientClass A R rflR symR transR
+          (canonize {A} {R} {rflR} {symR} {transR} x) ≡
+        quotientClass A R rflR symR transR x
 
       canonical-idempotent :
         {A : Set} {R : A → A → Set}
@@ -686,14 +678,14 @@ module Foundations where
         {transR : {x y z : A} → R x y → R y z → R x z} →
         (x : A) → R (canonize {A} {R} {rflR} {symR} {transR} x) x
 
-    -- Familiar quotient-class notation remains the raw equivalence class.
+    -- Familiar quotient-class notation is the raw equivalence class.
     [_] : {A : Set} {R : A → A → Set}
           {rflR : (x : A) → R x x}
           {symR : {x y : A} → R x y → R y x}
           {transR : {x y z : A} → R x y → R y z → R x z} →
           A → Quotient A R rflR symR transR
     [_] {A} {R} {rflR} {symR} {transR} x =
-      rawQuotientClass A R rflR symR transR x
+      quotientClass A R rflR symR transR x
 
     -- Syntax for quotient normalization.  `canonicalizedₑ x` denotes the
     -- canonical representative; the quotient relation remains explicit.
@@ -701,6 +693,30 @@ module Foundations where
       rawₑ : A → QuotientExpr A
       canonicalizedₑ : A → QuotientExpr A
       classₑ : QuotientExpr A → QuotientExpr A
+
+    abstract
+      canonicalQuotientClass :
+        (A : Set) →
+        (R : A → A → Set) →
+        (rflR : (x : A) → R x x) →
+        (symR : {x y : A} → R x y → R y x) →
+        (transR : {x y z : A} → R x y → R y z → R x z) →
+        A → Quotient A R rflR symR transR
+      canonicalQuotientClass A R rflR symR transR x =
+        quotientClass A R rflR symR transR
+          (canonize {A} {R} {rflR} {symR} {transR} x)
+
+      quotient-raw-sound :
+        (A : Set) →
+        (R : A → A → Set) →
+        (rflR : (x : A) → R x x) →
+        (symR : {x y : A} → R x y → R y x) →
+        (transR : {x y z : A} → R x y → R y z → R x z) →
+        (x : A) →
+        quotientClass A R rflR symR transR x ≡
+        canonicalQuotientClass A R rflR symR transR x
+      quotient-raw-sound A R rflR symR transR x =
+        sym (quotient-canon {A} {R} {rflR} {symR} {transR} x)
 
     denoteQuotient :
       {A : Set} {R : A → A → Set}
@@ -710,7 +726,7 @@ module Foundations where
       QuotientExpr A → Quotient A R rflR symR transR
     denoteQuotient
       {A} {R} {rflR} {symR} {transR} (rawₑ x) =
-        rawQuotientClass A R rflR symR transR x
+        quotientClass A R rflR symR transR x
     denoteQuotient
       {A} {R} {rflR} {symR} {transR} (canonicalizedₑ x) =
         canonicalQuotientClass A R rflR symR transR x
@@ -735,19 +751,7 @@ module Foundations where
       normalizeQuotient (classₑ (rawₑ x))
     quotient-class-canon x = refl
 
-    -- The two quotient denotation heads are opaque and distinct;
-    -- this global rewrite reduces raw syntax to canonical syntax once.
-    quotient-raw-sound :
-      (A : Set) →
-      (R : A → A → Set) →
-      (rflR : (x : A) → R x x) →
-      (symR : {x y : A} → R x y → R y x) →
-      (transR : {x y z : A} → R x y → R y z → R x z) →
-      (x : A) →
-      rawQuotientClass A R rflR symR transR x ≡
-      canonicalQuotientClass A R rflR symR transR x
-    quotient-raw-sound A R rflR symR transR x =
-      sym (quotient-canon {A} {R} {rflR} {symR} {transR} x)
+
 
     quotient-class-canon-sound :
       {A : Set} {R : A → A → Set}
