@@ -2310,8 +2310,13 @@ module StrictNatCompiler where
     pair environment (natEnvironmentCons value natEnvironmentNil)
   splitNatEnvironment-append zero natEnvironmentNil value = refl
   splitNatEnvironment-append (suc n)
-    (natEnvironmentCons head rest) value
-    rewrite splitNatEnvironment-append n rest value = refl
+    (natEnvironmentCons head rest) value =
+      cong
+        (λ parts →
+          pair
+            (natEnvironmentCons head (fst parts))
+            (snd parts))
+        (splitNatEnvironment-append n rest value)
 
   -- Environments are ordered like the target stack, with its top first.
   -- A primitive therefore sees right above left and computes left op right.
