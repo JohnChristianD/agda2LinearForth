@@ -66,6 +66,31 @@ The backend and proof modules are pinned to Agda 2.8.0.2. Use the actual modules
 
 Reflection is a compile-time elaboration facility, not a replacement for a typed source IR or a semantics proof. A reflection macro can derive a datatype description and construct a proposed MALLP witness; Agda then type-checks that witness. Runtime values, resource ownership, thunk updates, and Forth execution still require explicit syntax, interpretation, and simulation theorems. The current Haskell backend already reads resolved Agda definitions, telescopes, and Treeless terms; reflection should be introduced where a generated Agda declaration removes duplicated metadata or proof boilerplate, not merely to move a whitelist into a macro.
 
+### Quotient reflection, rewrite systems, and the C-series
+
+The public GitHub tree for this repository currently contains no `Foundations.*` module and no imported Hofmann-style quotient-reflection development. The earlier project map did not establish that such a library was absent from the author's separate/local RSED-MALLP Agda workspace; that workspace has not been compared with this checkout. Until its exact public repository, revision, and module paths are supplied or committed here, quotient reflection must be treated as an external dependency candidate, not as an already integrated project foundation.
+
+The intended role of a Hofmann-style quotient construction is relevant: quotienting syntax by a specified equivalence can support extensional presentations and reduce proof duplication. It does not itself provide equality reflection for arbitrary functions, nor does it make an equivalence computationally decidable. The project must state the carrier, equivalence relation, quotient eliminator/recursor, respectfulness obligations, and any chosen representative/normal-form discipline. A tactic may use reflected syntax and proved quotient laws to synthesize a witness; the resulting witness still has to type-check against the exact MALLP judgement. Reflection is a proof-construction mechanism, not a new logical rule.
+
+The C-series is the stronger organizing principle for compiler correctness here. BCI is a small basis of linear combinators: useful for illustrating identity, composition, and exchange, but underdetermined as a specification of the full polarized MALLP proof language, source semantics, target machine, or compiler. The C-series obligations instead name the correspondence chain that must be made explicit:
+1. source typing and resource usage are represented by a typed source term and an actual MALLP derivation;
+2. each accepted source construct is translated to a typed target instruction/AST with a resource contract;
+3. a target-machine interpreter executes that AST while preserving the indexed stack invariant;
+4. emitted Forth text is related to the formal target program by a renderer theorem;
+5. concrete Gforth execution is connected to the formal target semantics by a separately established refinement/simulation theorem.
+
+Each edge needs a theorem with explicit hypotheses and observable result. The current project has proofs and fixtures for selected Nat/Bool/Unit fragments and renderer text equality; it does not yet have the general source-decoder-to-MALLP correspondence or arbitrary-program Gforth refinement. C-series is therefore a better specification discipline than treating BCI as the compiler's completeness argument, but its full theorem chain remains work in progress.
+
+### Builtin strings, parsing, and reflection scalability
+
+Agda 2.8.0.2 does provide `Agda.Builtin.String.Properties`. It exposes primitive injectivity facts for conversion between strings and character lists; use it alongside `Agda.Builtin.String`, `Agda.Builtin.Char`, `Agda.Builtin.List`, and the required `Maybe`/`Sigma` builtins. The core string primitives include uncons, conversion to/from character lists, append, equality, and display. This is enough to build a small total scanner/parser over character lists and prove round-trip or injectivity properties. It is not a ready-made MALLP grammar, lexer, parser-combinator library, or normalization engine. Prefer parsing a typed/reflected Agda term directly when the input is already Agda syntax; use a string parser only for an external textual MALLP format, with an explicit grammar and parse-error result.
+
+Importing more builtins can remove local boilerplate, but it does not shorten proofs automatically. Use builtin datatypes where their computational representation matches the intended meaning. Keep a distinct tensor/resource product when its ownership split matters; ordinary Sigma/product convenience must not erase that distinction.
+
+Global `REWRITE` rules can make quotient laws and canonicalization equations available to conversion, and `--confluence-check` should be enabled when relying on global rewriting. Rule sets must be designed around overlaps and the triangle condition; imported rewrite rules are transitive and affect downstream type checking. Confluence checking is not a proof that a chosen quotient is the intended quotient, and rewrite rules should not be used as an unexamined substitute for a terminating canonicalizer. Local rewrite rules have different limitations and are not a drop-in replacement. For scalability, keep rewrite heads narrow, avoid overlapping orientations, normalize reflected syntax into a small canonical grammar, and make solver procedures return ordinary proof terms that Agda checks.
+
+No project-wide quotient-reflection solver or confluent rewrite basis is claimed by the current checked implementation. Add such machinery only with tests for critical overlaps, type preservation, normalization behavior, and generated-proof correctness.
+
 ## Relational denotation of bare MALLP
 
 The Agda module `MALLPRelationalDenotation` is now a proof-recursive, Set-valued relational interpretation parameterized by atomic meanings. It assigns positive and negative values compositionally: multiplicatives are paired resources, additives are tagged alternatives, `1`/`⊥` are interpreted by the unit object, `0`/`⊤` by the empty type, and polarity shifts exchange the positive and negative value interpretations.
