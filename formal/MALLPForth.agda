@@ -4495,4 +4495,61 @@ module StrictLinearDataCompiler where
 
 open StrictLinearDataCompiler public
 
+------------------------------------------------------------------------
+-- Executable witnesses for the assumed symmetric bar-recursion equations.
+--
+-- A constant-zero control functional reaches its bar after at most one
+-- extension: an initial map either contains key zero already, or the first
+-- extension inserts it.  These examples force both registered rewrite rules
+-- to participate in Agda conversion, including step followed by stop.
+------------------------------------------------------------------------
+
+constantZeroOmega : {X : Set} → (Nat → X) → Nat
+constantZeroOmega stream = zero
+
+constantZeroBarCondition :
+  {X : Set} →
+  (default : X) →
+  SymmetricBarCondition constantZeroOmega default
+constantZeroBarCondition default initial alpha
+  with memberKey zero (mapEntries initial) in zeroPresent
+... | true = zero , zeroPresent
+... | false = suc zero , refl
+
+zeroKeyMap : {X : Set} → X → PartialMap X
+zeroKeyMap value =
+  partialMap
+    (pair zero value ∷ [])
+    (unique-cons refl unique-empty)
+
+symmetricBarRec-stop-computes :
+  {X R : Set} →
+  (default : X) →
+  (base : PartialMap X → R) →
+  (step : PartialMap X → (X → R) → R) →
+  (value : X) →
+  symmetricBarRec constantZeroOmega default
+    (constantZeroBarCondition default)
+    base step
+    (zeroKeyMap value) zero
+    (inDomain refl)
+  ≡ base (zeroKeyMap value)
+symmetricBarRec-stop-computes default base step value = refl
+
+symmetricBarRec-step-then-stop-computes :
+  {X R : Set} →
+  (default : X) →
+  (base : PartialMap X → R) →
+  (step : PartialMap X → (X → R) → R) →
+  symmetricBarRec constantZeroOmega default
+    (constantZeroBarCondition default)
+    base step
+    emptyMap zero
+    (outDomain refl)
+  ≡
+  step emptyMap
+    (λ value → base (zeroKeyMap value))
+symmetricBarRec-step-then-stop-computes default base step = refl
+
+
 -- ```
