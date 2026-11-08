@@ -778,7 +778,7 @@ module Foundations where
       Equivalence
         (qcanon f x ≡ qcanon f y)
         (canonicalize f x ≡ canonicalize f y)
-    quotientEquality f {x} {y} =
+    quotientEquality {A} f {x} {y} =
       record
         { toForward = λ equality →
             cong (λ q → qcoerce {A = A} {f = f} q) equality
