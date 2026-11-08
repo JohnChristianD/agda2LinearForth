@@ -1364,6 +1364,45 @@ module Foundations where
         membership
         (alpha (omega (streamOf (mapEntries entries) default)))
 
+    natEq-self : (key : Nat) → natEq key key ≡ true
+    natEq-self zero = refl
+    natEq-self (suc key) = natEq-self key
+
+    memberKey-extendFresh :
+      {X : Set} →
+      (entries : PartialMap X) →
+      (key : Nat) →
+      (fresh : memberKey key (mapEntries entries) ≡ false) →
+      (value : X) →
+      memberKey key
+        (mapEntries (extendFresh entries key fresh value)) ≡ true
+    memberKey-extendFresh entries key fresh value
+      rewrite natEq-self key = refl
+
+    omegaThread-step-contains :
+      {X : Set} →
+      (omega : (Nat → X) → Nat) →
+      (default : X) →
+      (alpha : Nat → X) →
+      (initial : PartialMap X) →
+      (fuel : Nat) →
+      memberKey
+        (omega (streamOf
+          (mapEntries (omegaThread omega default alpha initial fuel)) default))
+        (mapEntries
+          (omegaThread omega default alpha initial (suc fuel))) ≡ true
+    omegaThread-step-contains omega default alpha initial fuel
+      with omegaThread omega default alpha initial fuel
+    ... | entries with memberKey
+      (omega (streamOf (mapEntries entries) default))
+      (mapEntries entries) in membership
+    ...   | true = membership
+    ...   | false =
+      memberKey-extendFresh entries
+        (omega (streamOf (mapEntries entries) default))
+        membership
+        (alpha (omega (streamOf (mapEntries entries) default)))
+
     SymmetricBarCondition :
       {X : Set} →
       (omega : (Nat → X) → Nat) →
@@ -4514,7 +4553,9 @@ constantZeroBarCondition :
 constantZeroBarCondition default initial alpha
   with memberKey zero (mapEntries initial) in zeroPresent
 ... | true = zero , zeroPresent
-... | false rewrite zeroPresent = suc zero , refl
+... | false =
+  suc zero ,
+  omegaThread-step-contains constantZeroOmega default alpha initial zero
 
 zeroKeyMap : {X : Set} → X → PartialMap X
 zeroKeyMap value =
