@@ -1174,6 +1174,11 @@ agdaNatBinaryLinearExprTerm (NatBinaryArguments operation) =
 agdaNatBinaryLinearExprTerm (NatBinaryArgumentsExchanged operation) =
   "(natBinaryArgumentsExchanged " <> agdaNatOpTerm operation <> ")"
 
+agdaNatBinarySourceProofTerm :: NatBinaryLinearExpr -> Text
+agdaNatBinarySourceProofTerm (NatBinaryArgumentsExchanged NatAdd) =
+  "natAdd-comm first second"
+agdaNatBinarySourceProofTerm _ = "refl"
+
 formalNatTokenTerm :: FormalToken -> Text
 formalNatTokenTerm (FormalPushLiteral value) =
   "(pushLiteral " <> T.pack (show value) <> ")"
@@ -1212,7 +1217,7 @@ rendererCertificate sourceModule definitions = T.unlines $
   , "   natLinearProof; natBinaryProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
   , "   evalNatLinearExpr; evalNatBinaryLinearExpr; natLinearMALLP-forth-sound; natBinaryResourceMALLP-forth-sound; renderNatBinaryResource;"
   , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; cong; trans;"
-  , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth)"
+  , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm)"
   , ""
   ] ++ concat
     [ let index = T.pack (show position)
@@ -1330,7 +1335,8 @@ rendererCertificate sourceModule definitions = T.unlines $
          , "  " <> T.pack (prettyShow sourceModule) <> "." <>
              T.pack (prettyShow (qnameName (compiledName definition))) <>
              " first second ≡ evalNatBinaryLinearExpr " <> expressionName <> " first second"
-         , "sourceNatBinarySemantics" <> index <> " first second = refl"
+         , "sourceNatBinarySemantics" <> index <> " first second = "
+             <> agdaNatBinarySourceProofTerm expression
          , ""
          ]
       | (index, definition, expression) <-
