@@ -4025,6 +4025,19 @@ module StrictBoolCompiler where
   boolPairAssumption : PolType negPolarity
   boolPairAssumption = dualPos boolPairFormula
 
+  boolPairIdentityMALLP :
+    MALLP (boolPairAssumption ∷ []) (just boolPairFormula)
+  boolPairIdentityMALLP = mallp-ax
+
+  boolPairIdentityForthSound :
+    (first second : Bool) →
+    (residualStack : List Bool) →
+    execBoolTokens
+      (renderBoolCode (boolIdentity {Γ = boolCell ∷ boolCell ∷ []}))
+      (first ∷ second ∷ residualStack) ≡
+    just (first ∷ second ∷ residualStack)
+  boolPairIdentityForthSound first second residualStack = refl
+
   boolPairSwapMALLP :
     MALLP (boolPairAssumption ∷ []) (just boolPairFormula)
   boolPairSwapMALLP =
@@ -4230,6 +4243,14 @@ module StrictBoolCompiler where
       [] ≡ just (interpretBoolProof proof ∷ [])
   boolMALLP-forth-sound boolTrueProof = refl
   boolMALLP-forth-sound boolFalseProof = refl
+
+  boolProofForthSound :
+    (proof : BoolProof) →
+    (residualStack : List Bool) →
+    execBoolTokens (renderBoolCode (compileBoolProof proof)) residualStack ≡
+    just (interpretBoolProof proof ∷ residualStack)
+  boolProofForthSound boolTrueProof residualStack = refl
+  boolProofForthSound boolFalseProof residualStack = refl
 
   -- Convert the proof-level Boolean program into the independent text-token
   -- renderer's nested IF representation. The renderer's Agda certificate
