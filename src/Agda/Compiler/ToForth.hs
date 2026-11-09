@@ -1295,10 +1295,10 @@ agdaNatResourceSourceMeaningProofTerm arity = proof
     proof (NatResourceLiteralDecoded _) = "refl"
     proof (NatResourceVariableDecoded _) = "refl"
     proof (NatResourceBinaryDecoded _ NatAdd left right) =
-      "trans (natAdd-comm ("
-        <> sourceEval right <> ") (" <> sourceEval left <> ")) "
-        <> "(cong₂ (applyNatOp addOp) ("
-        <> proof left <> ") (" <> proof right <> "))"
+      "trans (cong₂ (applyNatOp addOp) ("
+        <> proof left <> ") (" <> proof right <> ")) "
+        <> "(natAdd-comm (" <> sourceEval left <> ") ("
+        <> sourceEval right <> "))"
     proof (NatResourceBinaryDecoded _ operation left right) =
       "cong₂ (applyNatOp " <> agdaNatOpTerm operation <> ") ("
         <> proof left <> ") (" <> proof right <> ")"
