@@ -31,7 +31,7 @@ jobs:
             test "$(git rev-parse "HEAD:$path")" = "$(git rev-parse "$SCHEME_UPSTREAM_SHA:$path")"
           done < <(git ls-tree -r --name-only HEAD | grep -E "\\.hs$")
           test "$(git ls-files '*.hs' | grep -v '^src/Agda/Compiler/ToForth.hs$' | wc -l | tr -d ' ')" -ge 1
-          test "$(git ls-files '*.agda' | paste -sd ' ')" = "formal/MALLPForth.agda formal/SovereignRationalSEDPhysics.agda"
+          test "$(git ls-files '*.agda' | LC_ALL=C sort | paste -sd ' ')" = "formal/MALLPForth.agda formal/SovereignRationalSEDPhysics.agda formal/Trusted/NatMachine.agda"
           expected_markdown_files="README.md"
           actual_markdown_files="$(git ls-files '*.md' | LC_ALL=C sort)"
           test "$actual_markdown_files" = "$expected_markdown_files"
@@ -88,6 +88,15 @@ jobs:
             ${{ steps.setup.outputs.cabal-store }}
             dist-newstyle
           key: ${{ runner.os }}-ghc-${{ steps.setup.outputs.ghc-version }}-cabal-${{ steps.setup.outputs.cabal-version }}-${{ hashFiles('cabal.project', 'agda2forth.cabal') }}-local-build-v2
+
+      - name: Type-check isolated trusted Nat target machine
+        id: trusted_nat_machine
+        run: |
+          if grep -nE -- '--type-in-type|--rewriting|postulate|primTrustMe|TERMINATING|NON_TERMINATING|NO_POSITIVITY_CHECK|allow-unsolved-metas' formal/Trusted/NatMachine.agda; then
+            echo "unsafe feature found in trusted Nat machine"
+            exit 1
+          fi
+          "$AGDA_BIN" --safe -i formal formal/Trusted/NatMachine.agda
 
       # The Forth token algebra and canonical renderer are in MALLPForth.agda.
       - name: Type-check MALLP, rewrite system, and integrated Forth renderer
@@ -280,6 +289,7 @@ jobs:
       - name: Require every proof, backend, and execution gate
         if: always()
         env:
+          TRUSTED_NAT_CHECK: ${{ steps.trusted_nat_machine.outcome }}
           MALLP_CHECK: ${{ steps.mallp_proof.outcome }}
           PHYSICS_CHECK: ${{ steps.physics_proof.outcome }}
           BACKEND_CHECK: ${{ steps.forth_backend.outcome }}
@@ -287,7 +297,8 @@ jobs:
           PROOF_SYNC_CHECK: ${{ steps.proof_sync.outcome }}
           FIXTURE_CHECK: ${{ steps.strict_fixture.outcome }}
         run: |
-          printf 'MALLP + Forth renderer: %s\\nPhysics proof: %s\\nBackend build: %s\\nForth emission: %s\\nProof sync: %s\\nGforth fixture: %s\\n' "$MALLP_CHECK" "$PHYSICS_CHECK" "$BACKEND_CHECK" "$EMIT_CHECK" "$PROOF_SYNC_CHECK" "$FIXTURE_CHECK"
+          printf 'Trusted Nat machine: %s\\nMALLP + Forth renderer: %s\\nPhysics proof: %s\\nBackend build: %s\\nForth emission: %s\\nProof sync: %s\\nGforth fixture: %s\\n' "$TRUSTED_NAT_CHECK" "$MALLP_CHECK" "$PHYSICS_CHECK" "$BACKEND_CHECK" "$EMIT_CHECK" "$PROOF_SYNC_CHECK" "$FIXTURE_CHECK"
+          test "$TRUSTED_NAT_CHECK" = success
           test "$MALLP_CHECK" = success
           test "$PHYSICS_CHECK" = success
           test "$BACKEND_CHECK" = success
