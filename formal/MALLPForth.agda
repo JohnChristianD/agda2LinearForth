@@ -1,4 +1,4 @@
-{-# OPTIONS --rewriting --confluence-check --type-in-type --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
+{-# OPTIONS --with-K --rewriting --confluence-check --lossy-unification --exact-split --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
 -- ```Agda
 ------------------------------------------------------------------------
 -- SovereignRationalSED
@@ -35,13 +35,6 @@ open import Agda.Builtin.Reflection.Properties
   using (primMetaToNatInjective; primQNameToWord64sInjective) public
 -- Agda has no Agda.Builtin.Empty module; define the empty type locally.
 data ⊥ : Set where
-
-postulate
-  Id : (Set → Set) → Set → Set → Set
-  ext : Set → Set → Set
-  refl↓ : (A : Set) → ext A A ≡ Set
-  Id-∙ : (A : Set → Set) (X Y : Set) → Id A X Y ≡ ext (A X) (A Y)
-{-# REWRITE refl↓ Id-∙ #-}
 
 -- Word64 equality is reflected exactly by its unsigned Nat interpretation.
 record Equivalence (A B : Set) : Set where
