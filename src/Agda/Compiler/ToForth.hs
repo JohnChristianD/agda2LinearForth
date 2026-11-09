@@ -53,58 +53,8 @@ data CompiledDefinition = CompiledDefinition
   { compiledName :: QName
   , compiledForm :: FthForm
   , compiledTokens :: [FormalToken]
-  , compiledNatLinearWitness :: Maybe NatLinearExpr
-  , compiledNatBinaryWitness :: Maybe NatBinaryLinearExpr
   , compiledNatResourceWitness :: Maybe NatResourceExpr
   }
-
-data NatExpr
-  = NatLiteral Natural
-  | NatBinary NatOp NatExpr NatExpr
-  deriving (Eq, Show)
-
-data BoolExpr
-  = BoolLiteral Bool
-  | BoolVariable Int
-  | BoolConditional BoolExpr BoolExpr BoolExpr
-  deriving (Eq, Show)
-
-data BoolPairExpr = BoolPairFields Int Int
-  deriving (Eq, Show)
-
--- Each path is one possible additive branch. The same live resource must
--- occur exactly once along every path; branch alternatives share a context.
-boolExprResourcePaths :: BoolExpr -> [[Int]]
-boolExprResourcePaths (BoolLiteral _) = [[]]
-boolExprResourcePaths (BoolVariable index) = [[index]]
-boolExprResourcePaths (BoolConditional condition whenTrue whenFalse) =
-  [ conditionPath ++ branchPath
-  | conditionPath <- boolExprResourcePaths condition
-  , branchPath <- boolExprResourcePaths whenTrue
-  ]
-  ++
-  [ conditionPath ++ branchPath
-  | conditionPath <- boolExprResourcePaths condition
-  , branchPath <- boolExprResourcePaths whenFalse
-  ]
-
-data NatLinearExpr
-  = NatArgument
-  | NatLinearLeft NatOp NatLinearExpr NatExpr
-  | NatLinearRight NatOp NatExpr NatLinearExpr
-  deriving (Eq, Show)
-
-data NatTerm
-  = NatClosed NatExpr
-  | NatOpen NatLinearExpr
-  deriving (Eq, Show)
-
--- Two-argument primitive functions consume both live arguments exactly once.
--- The source argument order is x then y; the incoming Forth stack is y x.
-data NatBinaryLinearExpr
-  = NatBinaryArguments NatOp
-  | NatBinaryArgumentsExchanged NatOp
-  deriving (Eq, Show)
 
 -- A general arithmetic tree over labelled linear resources. Labels are
 -- Treeless de Bruijn indices; admission requires each top-level argument
@@ -254,7 +204,7 @@ compileNatResourceExpr
   -> NatResourceExpr
   -> Either String (FthForm, [FormalToken], [Int])
 compileNatResourceExpr _ context (NatResourceLiteral value) =
-  Right (renderNatExpr (NatLiteral value), [FormalPushLiteral value], context)
+  Right (renderNatLiteral value, [FormalPushLiteral value], context)
 compileNatResourceExpr active context (NatResourceVariable index) =
   compileResourceUse
     "MALLP resource is missing, duplicated, or out of scope: "
@@ -429,7 +379,7 @@ compileNatResourceFunction
   :: QName
   -> Int
   -> TTerm
-  -> TCM (NatResourceExpr, FthForm, [FormalToken], Maybe NatLinearExpr, Maybe NatBinaryLinearExpr)
+  -> TCM (NatResourceExpr, FthForm, [FormalToken])
 compileNatResourceFunction owner arity term = do
   let (actualArity, body) = tLamView term
   if actualArity /= arity
@@ -446,72 +396,8 @@ compileNatResourceFunction owner arity term = do
   (code, tokens, remaining) <- either unsupported pure
     (compileNatResourceExpr 0 expectedResources expression)
   if null remaining
-    then do
-      linearWitness <- case arity of
-        1 -> case natResourceLinearExpr expression of
-          Just witness -> pure (Just witness)
-          Nothing -> unsupported "unary Nat function has no structural NatLinearExpr witness"
-        _ -> pure Nothing
-      let binaryWitness =
-            if arity == 2 then natResourceBinaryLinearExpr expression else Nothing
-      pure (expression, code, tokens, linearWitness, binaryWitness)
+    then pure (expression, code, tokens)
     else unsupported ("MALLP resource leak: unconsumed arguments " ++ show remaining)
-
-natResourceClosedExpr :: NatResourceExpr -> Maybe NatExpr
-natResourceClosedExpr (NatResourceLiteral value) =
-  Just (NatLiteral value)
-natResourceClosedExpr (NatResourceVariable _) = Nothing
-natResourceClosedExpr (NatResourceBinary operation left right) =
-  NatBinary operation <$> natResourceClosedExpr left <*> natResourceClosedExpr right
-natResourceClosedExpr (NatResourceAddReversed left right) =
-  NatBinary NatAdd <$> natResourceClosedExpr left <*> natResourceClosedExpr right
-
--- Translate the exact-once unary resource tree to the Agda proof-term grammar.
--- Since the source checker has already established that index 0 occurs once,
--- each binary node has exactly one open side and one closed side.
-natResourceLinearExpr :: NatResourceExpr -> Maybe NatLinearExpr
-natResourceLinearExpr (NatResourceVariable 0) = Just NatArgument
-natResourceLinearExpr (NatResourceBinary operation left right) =
-  natResourceLinearBinary operation left right
-natResourceLinearExpr (NatResourceAddReversed left right) =
-  natResourceLinearBinary NatAdd left right
-natResourceLinearExpr _ = Nothing
-
-natResourceLinearBinary
-  :: NatOp -> NatResourceExpr -> NatResourceExpr -> Maybe NatLinearExpr
-natResourceLinearBinary operation left right =
-  case (natResourceLinearExpr left, natResourceClosedExpr right) of
-    (Just input, Just closed) ->
-      Just (NatLinearLeft operation input closed)
-    _ ->
-      case (natResourceClosedExpr left, natResourceLinearExpr right) of
-        (Just closed, Just input) ->
-          Just (NatLinearRight operation closed input)
-        _ -> Nothing
-
--- Recognize a direct binary operation over the two live arguments. Treeless
--- index 1 denotes the first source argument; index 0 denotes the second.
-natResourceBinaryLinearExpr :: NatResourceExpr -> Maybe NatBinaryLinearExpr
-natResourceBinaryLinearExpr
-  (NatResourceBinary operation (NatResourceVariable 1) (NatResourceVariable 0)) =
-    Just (NatBinaryArguments operation)
-natResourceBinaryLinearExpr
-  (NatResourceBinary operation (NatResourceVariable 0) (NatResourceVariable 1)) =
-    Just (NatBinaryArgumentsExchanged operation)
-natResourceBinaryLinearExpr
-  (NatResourceAddReversed (NatResourceVariable _) (NatResourceVariable _)) =
-    Just (NatBinaryArgumentsExchanged NatAdd)
-natResourceBinaryLinearExpr _ = Nothing
-
-decodeNatPrimitive :: TPrim -> [NatExpr] -> Either String NatExpr
-decodeNatPrimitive PAdd [left, right] =
-  Right (NatBinary NatAdd left right)
-decodeNatPrimitive PSub [_, _] =
-  Left "PSub is signed integer subtraction; Nat monus is lowered from builtin NatMinus"
-decodeNatPrimitive PMul [left, right] =
-  Right (NatBinary NatMultiply left right)
-decodeNatPrimitive primitive _ =
-  Left ("unsupported Nat primitive or arity: " ++ show primitive)
 
 formToText :: FthForm -> Text
 formToText (RSAtom atom) = atom <> " "
@@ -565,125 +451,15 @@ natVariableUses target = count 0
       count depth guard + count depth body
     countAlternative depth (TALit _ body) = count depth body
 
--- Closed Nat let-bindings can be substituted at every use.  The environment
--- contains only closed NatExpr values: this decoder rejects top-level
--- lambdas, and every accepted binding is built solely from total, pure Nat
--- operations.  Reusing one of these expressions duplicates a closed proof
--- tree, not a live MALLP assumption; an unused lazy binding consumes no
--- resource and is skipped without decoding or evaluating its body.
-combineNatTerms :: NatOp -> NatTerm -> NatTerm -> Either String NatTerm
-combineNatTerms operation (NatClosed left) (NatClosed right) =
-  Right (NatClosed (NatBinary operation left right))
-combineNatTerms operation (NatOpen left) (NatClosed right) =
-  Right (NatOpen (NatLinearLeft operation left right))
-combineNatTerms operation (NatClosed left) (NatOpen right) =
-  Right (NatOpen (NatLinearRight operation left right))
-combineNatTerms _ (NatOpen _) (NatOpen _) =
-  Left "MALLP linearity violation: one live Nat resource is used twice"
-
-decodeNatTerm :: [NatTerm] -> TTerm -> TCM NatTerm
-decodeNatTerm environment term = do
-  let (headTerm, args) = tAppView term
-  case headTerm of
-    TLit (LitNat n)
-      | null args && n >= 0 -> pure (NatClosed (NatLiteral (fromInteger n)))
-    TVar index
-      | null args ->
-          case drop index environment of
-            value : _ -> pure value
-            [] -> unsupported ("unbound Treeless variable: " ++ show index)
-    TLet bound body
-      | null args ->
-          if natVariableUses 0 body == 0
-            then decodeNatTerm environment body
-            else do
-              value <- decodeNatTerm environment bound
-              case value of
-                NatOpen _ | natVariableUses 0 body > 1 ->
-                  unsupported "MALLP linearity violation: a binding that captures a live resource is used more than once"
-                _ -> decodeNatTerm (value : environment) body
-    TPrim primitive -> do
-      operands <- traverse (decodeNatTerm environment) args
-      case (primitive, operands) of
-        (PAdd, [left, right]) ->
-          either unsupported pure (combineNatTerms NatAdd left right)
-        (PMul, [left, right]) ->
-          either unsupported pure (combineNatTerms NatMultiply left right)
-        (PSub, [_, _]) ->
-          unsupported "PSub is signed integer subtraction; Nat monus is lowered only from builtin NatMinus"
-        (_, _) ->
-          unsupported ("unsupported Nat primitive or arity: " ++ show primitive)
-    TDef name -> do
-      plusName <- getBuiltinName builtinNatPlus
-      minusName <- getBuiltinName builtinNatMinus
-      operands <- traverse (decodeNatTerm environment) args
-      case operands of
-        [left, right] | Just name == plusName ->
-          either unsupported pure (combineNatTerms NatAdd left right)
-        [left, right] | Just name == minusName ->
-          either unsupported pure (combineNatTerms NatMonus left right)
-        _ -> unsupported "user functions and non-binary definitions are outside the admitted Nat core"
-    TCoerce inner
-      | null args -> decodeNatTerm environment inner
-    _ -> unsupported ("Treeless term is outside the admitted Nat core: " ++ show headTerm)
-
 renderNatOp :: NatOp -> FthForm
 renderNatOp operation = RSAtom $ case operation of
   NatAdd -> "MALLP-NAT-ADD"
   NatMonus -> "MALLP-NAT-MONUS"
   NatMultiply -> "MALLP-NAT-MUL"
 
-renderNatExpr :: NatExpr -> FthForm
-renderNatExpr (NatLiteral n) =
-  RSAtom $ T.concat ["s\" ", T.pack (show n), "\" MALLP-PARSE-NAT"]
-renderNatExpr (NatBinary operation left right) =
-  RSList [renderNatExpr left, renderNatExpr right, renderNatOp operation]
-
-renderNatLinearExpr :: NatLinearExpr -> FthForm
-renderNatLinearExpr NatArgument = RSList []
-renderNatLinearExpr (NatLinearLeft operation input right) =
-  RSList [renderNatLinearExpr input, renderNatExpr right, renderNatOp operation]
-renderNatLinearExpr (NatLinearRight operation left input) =
-  RSList [renderNatExpr left, RSAtom "SWAP", renderNatLinearExpr input, renderNatOp operation]
-
-renderNatTerm :: NatTerm -> FthForm
-renderNatTerm (NatClosed expression) = renderNatExpr expression
-renderNatTerm (NatOpen expression) = renderNatLinearExpr expression
-
--- Admit the exact two-resource primitive shape.  De Bruijn index 1 is the
--- first source argument and index 0 is the second.  Both must occur once;
--- arbitrary expression trees require the general resource-indexed decoder.
-treelessVariableIndex :: TTerm -> Maybe Int
-treelessVariableIndex (TVar index) = Just index
-treelessVariableIndex (TCoerce inner) = treelessVariableIndex inner
-treelessVariableIndex _ = Nothing
-
-decodeNatBinaryLinearTerm :: TTerm -> TCM NatBinaryLinearExpr
-decodeNatBinaryLinearTerm term = do
-  let (headTerm, arguments) = tAppView term
-  operation <- case headTerm of
-    TPrim PAdd -> pure NatAdd
-    TPrim PMul -> pure NatMultiply
-    TPrim PSub ->
-      unsupported "PSub is signed integer subtraction; Nat monus uses builtin NatMinus"
-    TDef name -> do
-      plusName <- getBuiltinName builtinNatPlus
-      minusName <- getBuiltinName builtinNatMinus
-      case () of
-        _ | Just name == plusName -> pure NatAdd
-          | Just name == minusName -> pure NatMonus
-          | otherwise -> unsupported "two-argument Nat function must use a declared Nat primitive"
-    _ -> unsupported ("unsupported two-argument Nat function body: " ++ show headTerm)
-  case traverse treelessVariableIndex arguments of
-    Just [1, 0] -> pure (NatBinaryArguments operation)
-    Just [0, 1] -> pure (NatBinaryArgumentsExchanged operation)
-    _ -> unsupported "MALLP linearity violation: binary Nat primitive must consume each of its two arguments exactly once"
-
-renderNatBinaryLinearExpr :: NatBinaryLinearExpr -> FthForm
-renderNatBinaryLinearExpr (NatBinaryArguments operation) =
-  renderNatOp operation
-renderNatBinaryLinearExpr (NatBinaryArgumentsExchanged operation) =
-  RSList [RSAtom "SWAP", renderNatOp operation]
+renderNatLiteral :: Natural -> FthForm
+renderNatLiteral value =
+  RSAtom $ T.concat ["s\" ", T.pack (show value), "\" MALLP-PARSE-NAT"]
 
 decodeBoolTerm :: [QName] -> [Bool] -> TTerm -> TCM Bool
 decodeBoolTerm callStack environment term = do
@@ -1057,11 +833,11 @@ compileDefinition definition
           body <- toTreeless EagerEvaluation (defName definition)
           case (natArity, body) of
             (Just arity, Just term) -> do
-              (resourceWitness, code, tokens, linearWitness, binaryWitness) <-
+              (resourceWitness, code, tokens) <-
                 compileNatResourceFunction (defName definition) arity term
               pure (Just (CompiledDefinition
                 (defName definition) (strictWord (defName definition) code) tokens
-                linearWitness binaryWitness (Just resourceWitness)))
+                (Just resourceWitness)))
             (Just _, Nothing) -> pure Nothing
             (Nothing, _) -> unsupported "Nat definition has a non-Nat argument or result"
         else if isBool then do
@@ -1075,7 +851,7 @@ compileDefinition definition
               pure (Just (CompiledDefinition
                 (defName definition)
                 (strictWord (defName definition) (RSAtom forthBoolean))
-                [formalBoolean] Nothing Nothing Nothing))
+                [formalBoolean] Nothing))
         else if maybe False (> 0) boolArity then do
           body <- toTreeless EagerEvaluation (defName definition)
           case (boolArity, body) of
@@ -1083,7 +859,7 @@ compileDefinition definition
               (code, tokens) <-
                 compileBoolResourceFunction (defName definition) arity term
               pure (Just (CompiledDefinition
-                (defName definition) (strictWord (defName definition) code) tokens Nothing Nothing Nothing))
+                (defName definition) (strictWord (defName definition) code) tokens Nothing))
             (Just _, Nothing) -> pure Nothing
             _ -> unsupported "Bool function arity classification changed during compilation"
         else if word64Arity == Just 1 then do
@@ -1093,7 +869,7 @@ compileDefinition definition
               (code, tokens) <-
                 compileWord64IdentityFunction (defName definition) 1 term
               pure (Just (CompiledDefinition
-                (defName definition) (strictWord (defName definition) code) tokens Nothing Nothing Nothing))
+                (defName definition) (strictWord (defName definition) code) tokens Nothing))
             Nothing -> pure Nothing
         else case word64Arity of
           Just 0 -> unsupported
@@ -1109,7 +885,7 @@ compileDefinition definition
                   (code, tokens) <-
                     compileBoolPairFunction (defName definition) constructor term
                   pure (Just (CompiledDefinition
-                    (defName definition) (strictWord (defName definition) code) tokens Nothing Nothing Nothing))
+                    (defName definition) (strictWord (defName definition) code) tokens Nothing))
             Nothing ->
               if isUnit then do
                 body <- toTreeless EagerEvaluation (defName definition)
@@ -1118,7 +894,7 @@ compileDefinition definition
                   Just term -> do
                     decodeUnitTerm term
                     pure (Just (CompiledDefinition
-                      (defName definition) (strictWord (defName definition) (RSList [])) [] Nothing Nothing Nothing))
+                      (defName definition) (strictWord (defName definition) (RSList [])) [] Nothing))
               else pure Nothing
       _ -> pure Nothing
 
@@ -1171,28 +947,6 @@ agdaNatOpTerm :: NatOp -> Text
 agdaNatOpTerm NatAdd = "addOp"
 agdaNatOpTerm NatMonus = "monusOp"
 agdaNatOpTerm NatMultiply = "multiplyOp"
-
-agdaNatExprTerm :: NatExpr -> Text
-agdaNatExprTerm (NatLiteral value) =
-  "(literal " <> T.pack (show value) <> ")"
-agdaNatExprTerm (NatBinary operation left right) =
-  "(binary " <> agdaNatOpTerm operation <> " "
-    <> agdaNatExprTerm left <> " " <> agdaNatExprTerm right <> ")"
-
-agdaNatLinearExprTerm :: NatLinearExpr -> Text
-agdaNatLinearExprTerm NatArgument = "natArgument"
-agdaNatLinearExprTerm (NatLinearLeft operation input right) =
-  "(natLinearLeft " <> agdaNatOpTerm operation <> " "
-    <> agdaNatLinearExprTerm input <> " " <> agdaNatExprTerm right <> ")"
-agdaNatLinearExprTerm (NatLinearRight operation left input) =
-  "(natLinearRight " <> agdaNatOpTerm operation <> " "
-    <> agdaNatExprTerm left <> " " <> agdaNatLinearExprTerm input <> ")"
-
-agdaNatBinaryLinearExprTerm :: NatBinaryLinearExpr -> Text
-agdaNatBinaryLinearExprTerm (NatBinaryArguments operation) =
-  "(natBinaryArguments " <> agdaNatOpTerm operation <> ")"
-agdaNatBinaryLinearExprTerm (NatBinaryArgumentsExchanged operation) =
-  "(natBinaryArgumentsExchanged " <> agdaNatOpTerm operation <> ")"
 
 -- Reify the accepted Haskell resource tree into Agda's count-indexed AST.
 -- The returned labels retain left-to-right environment order.
@@ -1272,11 +1026,6 @@ agdaNatIndexTerm :: Int -> Text
 agdaNatIndexTerm arity =
   T.concat (replicate arity "(suc ") <> "zero" <> T.replicate arity ")"
 
-agdaNatBinarySourceProofTerm :: NatBinaryLinearExpr -> Text
-agdaNatBinarySourceProofTerm (NatBinaryArgumentsExchanged NatAdd) =
-  "natAdd-comm first second"
-agdaNatBinarySourceProofTerm _ = "refl"
-
 formalNatTokenTerm :: FormalToken -> Text
 formalNatTokenTerm (FormalPushLiteral value) =
   "(pushLiteral " <> T.pack (show value) <> ")"
@@ -1308,16 +1057,13 @@ rendererCertificate sourceModule definitions = T.unlines $
   , "   textSwapWord; textRollWord; textTrueWord; textFalseWord; textIf; renderForthWordText;"
   , "   mapBoolForthTokensAsText; renderBoolCode; compileBoolCaseWithResidual;"
   , "   compileBoolPairSwap; Nat; zero; suc; just; NatOp; addOp; monusOp; multiplyOp;"
-  , "   NatExpr; literal; binary; NatLinearExpr; natArgument; natLinearLeft; natLinearRight;"
-  , "   NatBinaryLinearExpr; natBinaryArguments; natBinaryArgumentsExchanged;"
   , "   ForthToken; pushLiteral; addWord; monusWord; multiplyWord; swapWord; rollWord;"
-  , "   MALLPNatTheory; natContext; natFormula; natLinear-proof-derivation; natBinary-proof-derivation;"
-  , "   natLinearProof; natBinaryProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
-  , "   evalNatLinearExpr; evalNatBinaryLinearExpr; evalNatResourceExpr; natLinearMALLP-forth-sound; natBinaryResourceMALLP-forth-sound; renderNatBinaryResource;"
+  , "   MALLPNatTheory; natContext; natFormula; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
+  , "   evalNatResourceExpr;"
   , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate;"
   , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; NatStackBounded; execBoundedTokens; execBoundedTokens-preserves;"
   , "   BoundedForthTrace; execBoundedTokens-trace; cong; cong₂; trans; sym;"
-  , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm)"
+  , "   applyNatOp; natAdd-comm)"
   , ""
   ] ++ concat
     [ let index = T.pack (show position)
@@ -1339,58 +1085,6 @@ rendererCertificate sourceModule definitions = T.unlines $
          , ""
          ]
     | (position, definition) <- zip [0 :: Int ..] definitions
-    ] ++ concat
-    [ let { expressionName = "natLinearExpression" <> index
-          ; derivationName = "natLinearDerivation" <> index
-          ; compilerTokensName = "natLinearCompilerTokens" <> index
-          ; modelTokensName = "natLinearModelTokens" <> index
-          ; tokenProofName = "natLinearTokenCorrespondence" <> index
-          ; executionName = "natLinearCompiledExecution" <> index
-          }
-      in [ expressionName <> " : NatLinearExpr"
-         , expressionName <> " = " <> agdaNatLinearExprTerm expression
-         , ""
-         , derivationName <> " : MALLPNatTheory (natContext (suc zero)) (just natFormula)"
-         , derivationName <> " = natLinear-proof-derivation " <> expressionName
-         , ""
-         , compilerTokensName <> " : List ForthToken"
-         , compilerTokensName <> " = " <> formalNatTokenList (compiledTokens definition)
-         , ""
-         , modelTokensName <> " : List ForthToken"
-         , modelTokensName <> " = renderForth (compileNatLinear {Γ = []} " <> expressionName <> ")"
-         , ""
-         , tokenProofName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
-         , tokenProofName <> " = refl"
-         , ""
-         , executionName <> " :"
-         , "  (argument : Nat) →"
-         , "  {Γ : List StackType} →"
-         , "  (stack : Stack Γ) →"
-         , "  execTokens " <> compilerTokensName
-         , "    (forgetStack (pushCell argument stack)) ≡"
-         , "  just"
-         , "    (interpretMALLPNatProof (natLinearProof " <> expressionName <> ")"
-         , "      (natEnvironmentCons argument (natEnvironmentNil)) ∷ forgetStack stack)"
-         , executionName <> " argument {Γ} stack ="
-         , "  trans"
-         , "    (cong (λ tokens → execTokens tokens (forgetStack (pushCell argument stack)))"
-         , "      " <> tokenProofName <> ")"
-         , "    (natLinearMALLP-forth-sound " <> expressionName <> " argument {Γ = Γ} stack)"
-         , ""
-         , "sourceNatSemantics" <> index <> " :"
-         , "  (argument : Nat) →"
-         , "  " <> T.pack (prettyShow sourceModule) <> "." <>
-             T.pack (prettyShow (qnameName (compiledName definition))) <>
-             " argument ≡ evalNatLinearExpr " <> expressionName <> " argument"
-         , "sourceNatSemantics" <> index <> " argument = refl"
-         , ""
-         ]
-      | (index, definition, expression) <-
-          [ (T.pack (show position), definition, expression)
-          | (position, definition) <- zip [0 :: Int ..] definitions
-          , Just expression <- [compiledNatLinearWitness definition]
-          ]
-      ]
     ++ concat
     [ let
         { expressionName = "natResourceExpression" <> index
@@ -1514,61 +1208,6 @@ rendererCertificate sourceModule definitions = T.unlines $
           | (position, definition) <- zip [0 :: Int ..] definitions
           , Just expression <- [compiledNatResourceWitness definition]
           ]
-    ]
-    ++ concat
-    [ let { expressionName = "natBinaryExpression" <> index
-          ; derivationName = "natBinaryDerivation" <> index
-          ; compilerTokensName = "natBinaryCompilerTokens" <> index
-          ; modelTokensName = "natBinaryModelTokens" <> index
-          ; tokenProofName = "natBinaryTokenCorrespondence" <> index
-          ; executionName = "natBinaryCompiledExecution" <> index
-          }
-      in [ expressionName <> " : NatBinaryLinearExpr"
-         , expressionName <> " = " <> agdaNatBinaryLinearExprTerm expression
-         , ""
-         , derivationName <> " : MALLPNatTheory (natContext (suc (suc zero))) (just natFormula)"
-         , derivationName <> " = natBinary-proof-derivation " <> expressionName
-         , ""
-         , compilerTokensName <> " : List ForthToken"
-         , compilerTokensName <> " = " <> formalNatTokenList (compiledTokens definition)
-         , ""
-         , modelTokensName <> " : List ForthToken"
-         , modelTokensName <> " = renderNatBinaryResource " <> expressionName
-         , ""
-         , tokenProofName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
-         , tokenProofName <> " = refl"
-         , ""
-         , executionName <> " :"
-         , "  (first second : Nat) →"
-         , "  {Γ : List StackType} →"
-         , "  (stack : Stack Γ) →"
-         , "  execTokens " <> compilerTokensName
-         , "    (forgetStack (pushCell second (pushCell first stack))) ≡"
-         , "  just"
-         , "    (interpretMALLPNatProof (natBinaryProof " <> expressionName <> ")"
-         , "      (natEnvironmentCons second (natEnvironmentCons first natEnvironmentNil)) ∷ forgetStack stack)"
-         , executionName <> " first second {Γ} stack ="
-         , "  trans"
-         , "    (cong"
-         , "      (λ tokens → execTokens tokens (forgetStack (pushCell second (pushCell first stack))))"
-         , "      " <> tokenProofName <> ")"
-         , "    (natBinaryResourceMALLP-forth-sound " <> expressionName <> " first second {Γ = Γ} stack)"
-         , ""
-         , "sourceNatBinarySemantics" <> index <> " :"
-         , "  (first second : Nat) →"
-         , "  " <> T.pack (prettyShow sourceModule) <> "." <>
-             T.pack (prettyShow (qnameName (compiledName definition))) <>
-             " first second ≡ evalNatBinaryLinearExpr " <> expressionName <> " first second"
-         , "sourceNatBinarySemantics" <> index <> " first second = "
-             <> agdaNatBinarySourceProofTerm expression
-         , ""
-         ]
-      | (index, definition, expression) <-
-          [ (T.pack (show position), definition, expression)
-          | (position, definition) <- zip [0 :: Int ..] definitions
-          , Just expression <- [compiledNatBinaryWitness definition]
-          ]
-      ]
     ++ concat
     [ [ "chooseBoolCompilerTokens : List ForthTextToken"
       , "chooseBoolCompilerTokens = " <> formalTokenList (compiledTokens definition)
