@@ -35,6 +35,17 @@ open import Agda.Builtin.Reflection.Properties
   using (primMetaToNatInjective; primQNameToWord64sInjective) public
 -- Agda has no Agda.Builtin.Empty module; define the empty type locally.
 data ⊥ : Set where
+-- Removing Levels through Rewriting
+postulate
+  S : Set
+  F : Set → Set → Set
+  G : (Set → Set) → Set → Set → Set
+  rewF : (A : Set) → F A A ≡ S
+  rewG : (A : Set → Set) (X Y : Set) → G A X Y ≡ F (A X) (A Y)
+{-# REWRITE rewF rewG #-}
+
+test : (A : Set → Set) → G A _ _
+test A x = {!!}
 
 -- Word64 equality is reflected exactly by its unsigned Nat interpretation.
 record Equivalence (A B : Set) : Set where
