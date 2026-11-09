@@ -2813,6 +2813,15 @@ module StrictNatCompiler where
         (sym (execBoundedTokens-sound bound tokens stack result boundedSuccess))
         sourceSuccess)
 
+  natWithinBound-monotone :
+    (value bound : Nat) →
+    natWithinBound value bound ≡ true →
+    natWithinBound value (suc bound) ≡ true
+  natWithinBound-monotone zero bound bounded = refl
+  natWithinBound-monotone (suc value) zero ()
+  natWithinBound-monotone (suc value) (suc bound) bounded =
+    natWithinBound-monotone value bound bounded
+
   natWithinBound-monus :
     (left right bound : Nat) →
     natWithinBound left bound ≡ true →
@@ -2822,7 +2831,8 @@ module StrictNatCompiler where
   natWithinBound-monus (suc left) zero bound bounded = bounded
   natWithinBound-monus (suc left) (suc right) zero ()
   natWithinBound-monus (suc left) (suc right) (suc bound) bounded =
-    natWithinBound-monus left right bound bounded
+    natWithinBound-monotone (left - right) bound
+      (natWithinBound-monus left right bound bounded)
 
   rollList-preserves-bounded :
     (bound depth : Nat) (stack result : List Nat) →
