@@ -1199,6 +1199,13 @@ agdaNatSourceArguments :: Int -> [Text]
 agdaNatSourceArguments arity =
   ["sourceArg" <> T.pack (show index) | index <- [0 .. arity - 1]]
 
+agdaNatInitialStackTerm :: Int -> Text
+agdaNatInitialStackTerm arity =
+  foldr cons "[]" (reverse [0 .. arity - 1])
+  where
+    cons index rest =
+      "sourceArg" <> T.pack (show index) <> " ∷ " <> rest
+
 agdaNatSourceApplication :: TopLevelModuleName -> QName -> [Text] -> Text
 agdaNatSourceApplication sourceModule name arguments =
   T.unwords
@@ -1291,6 +1298,9 @@ rendererCertificate sourceModule definitions = T.unlines $
     [ let { expressionName = "natResourceExpression" <> index
           ; derivationName = "natResourceDerivation" <> index
           ; semanticsName = "sourceNatResourceSemantics" <> index
+          ; tokensName = "natResourceCompilerTokens" <> index
+          ; executionName = "natResourceCompilerExecution" <> index
+          ; soundnessName = "natResourceSourceSound" <> index
           ; arguments = agdaNatSourceArguments arity
           ; application = agdaNatSourceApplication sourceModule
               (compiledName definition) arguments
@@ -1311,12 +1321,35 @@ rendererCertificate sourceModule definitions = T.unlines $
          , derivationName <> " = natResource-proof-derivation "
              <> expressionName
          , ""
+         , tokensName <> " : List ForthToken"
+         , tokensName <> " = "
+             <> formalNatTokenList (compiledTokens definition)
+         , ""
+         , executionName <> " :"
+         ] ++ binders ++
+         [ "  execTokens " <> tokensName
+         , "    (" <> agdaNatInitialStackTerm arity <> ") ≡"
+         , "  just (evalNatResourceExpr " <> expressionName <> " ("
+             <> agdaNatResourceEnvironmentTerm arity order <> ") ∷ [])"
+         , T.unwords (executionName : arguments) <> " = refl"
+         , ""
          , semanticsName <> " :"
          ] ++ binders ++
-         [ "  " <> application <> " ≡"
-         , "    evalNatResourceExpr " <> expressionName
-         , "      (" <> agdaNatResourceEnvironmentTerm arity order <> ")"
+         [ "  evalNatResourceExpr " <> expressionName <> " ("
+             <> agdaNatResourceEnvironmentTerm arity order <> ") ≡"
+         , "    " <> application
          , applicationClause <> " = refl"
+         , ""
+         , soundnessName <> " :"
+         ] ++ binders ++
+         [ "  execTokens " <> tokensName
+         , "    (" <> agdaNatInitialStackTerm arity <> ") ≡"
+         , "  just (" <> application <> " ∷ [])"
+         , T.unwords (soundnessName : arguments) <> " ="
+         , "  trans"
+         , "    (" <> T.unwords (executionName : arguments) <> ")"
+         , "    (cong (λ value → just (value ∷ []))"
+         , "      (" <> T.unwords (semanticsName : arguments) <> "))"
          , ""
          ]
       | (index, definition, NatResourceWitness arity expression order) <-
