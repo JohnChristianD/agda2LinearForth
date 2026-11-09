@@ -1242,13 +1242,18 @@ agdaNatResourceSourceProofTerm arity (NatResourceBinary operation left right) =
   "(cong₂ (applyNatOp " <> agdaNatOpTerm operation <> ") "
     <> agdaNatResourceSourceProofTerm arity left <> " "
     <> agdaNatResourceSourceProofTerm arity right <> ")"
-agdaNatResourceSourceProofTerm arity (NatResourceAddReversed left right) =
-  "(trans (cong₂ (applyNatOp addOp) "
-    <> agdaNatResourceSourceProofTerm arity right <> " "
-    <> agdaNatResourceSourceProofTerm arity left <> ") "
-    <> "(natAdd-comm "
-    <> agdaNatResourceEvalTerm arity right <> " "
-    <> agdaNatResourceEvalTerm arity left <> "))"
+agdaNatResourceSourceProofTerm arity (NatResourceAddReversed left right)
+  | null (natResourceVariables left) || null (natResourceVariables right) =
+      "(cong₂ (applyNatOp addOp) "
+        <> agdaNatResourceSourceProofTerm arity left <> " "
+        <> agdaNatResourceSourceProofTerm arity right <> ")"
+  | otherwise =
+      "(trans (cong₂ (applyNatOp addOp) "
+        <> agdaNatResourceSourceProofTerm arity right <> " "
+        <> agdaNatResourceSourceProofTerm arity left <> ") "
+        <> "(natAdd-comm "
+        <> agdaNatResourceEvalTerm arity right <> " "
+        <> agdaNatResourceEvalTerm arity left <> "))"
 
 agdaNatIndexTerm :: Int -> Text
 agdaNatIndexTerm arity =
