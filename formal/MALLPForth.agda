@@ -2905,8 +2905,8 @@ module StrictNatCompiler where
     (right ∷ left ∷ rest) result
     (natStackBoundedCons rightBound
       (natStackBoundedCons leftBound restBound)) execution
-      with natWithinBound left bound
-         | natWithinBound right bound
+      with natWithinBound left bound in leftWithin
+         | natWithinBound right bound in rightWithin
          | natWithinBound (left * right) bound in resultWithin
          | execution
   ... | true | true | true | refl =
