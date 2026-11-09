@@ -171,6 +171,14 @@ jobs:
               exit 1
             }
           done
+          # The exact Haskell token stream must execute in Agda's Forth model,
+          # and its result must equal the compiled Agda source function.
+          for certificate in natResourceCompilerTokens natResourceCompilerExecution natResourceSourceSound; do
+            test "$(grep -cE "^$certificate[0-9]+ :" MALLPEmittedRenderer.agda)" -eq 20 || {
+              echo "expected 20 end-to-end Nat compiler certificates: $certificate"
+              exit 1
+            }
+          done
           # Every emitted source definition must have one renderer equality.
           # A changed compiler output set requires an explicit coverage review.
           test "$(grep -cE '^actualWord[0-9]+ : String' MALLPEmittedRenderer.agda)" -eq 29
