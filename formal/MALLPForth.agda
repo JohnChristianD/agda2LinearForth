@@ -4012,6 +4012,10 @@ module StrictBoolCompiler where
   boolFormula : PolType posPolarity
   boolFormula = one⁺ ⊕⁺ one⁺
 
+  boolIdentityMALLP :
+    MALLP (dualPos boolFormula ∷ []) (just boolFormula)
+  boolIdentityMALLP = mallp-ax
+
   -- Pair is a multiplicative tensor of two Bool values. Its negative
   -- occurrence in the input context is the dual par; tensor introduction,
   -- exchange, and par introduction give the field-swapping linear map.
@@ -4173,9 +4177,11 @@ module StrictBoolCompiler where
 
   boolPairSwapMALLP-forth-sound :
     (first second : Bool) →
+    (residualStack : List Bool) →
     execBoolTokens (renderBoolCode compileBoolPairSwap)
-      (second ∷ first ∷ []) ≡ just (first ∷ second ∷ [])
-  boolPairSwapMALLP-forth-sound first second = refl
+      (second ∷ first ∷ residualStack) ≡
+    just (first ∷ second ∷ residualStack)
+  boolPairSwapMALLP-forth-sound first second residualStack = refl
 
   renderBoolCode-sound :
     {Γ Δ : List BoolStackType} →
@@ -4269,6 +4275,27 @@ module StrictBoolCompiler where
       (mallp-bottom (boolProofDerivation whenTrue))
       (mallp-bottom (boolProofDerivation whenFalse))
 
+  invertBoolProof : BoolCaseProof
+  invertBoolProof = boolCaseProof boolFalseProof boolTrueProof
+
+  invertBoolMALLP :
+    MALLP (dualPos boolFormula ∷ []) (just boolFormula)
+  invertBoolMALLP = boolCaseMALLP-derivation invertBoolProof
+
+  boolNot : Bool → Bool
+  boolNot true = false
+  boolNot false = true
+
+  invertBoolRuntimeMALLP-forth-sound :
+    (value : Bool) →
+    (residualStack : List Bool) →
+    execBoolTokens
+      (renderBoolCode (compileBoolRuntimeCase invertBoolProof))
+      (value ∷ residualStack) ≡
+    just (boolNot value ∷ residualStack)
+  invertBoolRuntimeMALLP-forth-sound true residualStack = refl
+  invertBoolRuntimeMALLP-forth-sound false residualStack = refl
+
   -- Closed branch selection is compiled to the corresponding Boolean literal.
   -- The MALLP derivation above proves the eliminator consumes one Bool resource;
   -- this theorem connects compile-time branch selection to target execution.
@@ -4340,16 +4367,17 @@ module StrictBoolCompiler where
 
   boolCaseWithResidualMALLP-forth-sound :
     (condition value : Bool) →
+    (residualStack : List Bool) →
     execBoolTokens
       (renderBoolCode compileBoolCaseWithResidual)
-      (value ∷ condition ∷ []) ≡
-    just (value ∷ [])
-  boolCaseWithResidualMALLP-forth-sound true value
+      (value ∷ condition ∷ residualStack) ≡
+    just (value ∷ residualStack)
+  boolCaseWithResidualMALLP-forth-sound true value residualStack
     rewrite bindBoolTokens-identity
-      (execBoolTokens [] (value ∷ [])) = refl
-  boolCaseWithResidualMALLP-forth-sound false value
+      (execBoolTokens [] (value ∷ residualStack)) = refl
+  boolCaseWithResidualMALLP-forth-sound false value residualStack
     rewrite bindBoolTokens-identity
-      (execBoolTokens [] (value ∷ [])) = refl
+      (execBoolTokens [] (value ∷ residualStack)) = refl
 
 open StrictBoolCompiler public
 
@@ -4864,6 +4892,27 @@ module StrictLinearDataCompiler where
     (representation : Word64Representation word) →
     Word64Representation word
   word64IdentityPreservesRepresentation representation = representation
+
+  word64Formula : PolType posPolarity
+  word64Formula = natFormula ⊗⁺ natFormula
+
+  word64IdentityMALLP :
+    MALLP (dualPos word64Formula ∷ []) (just word64Formula)
+  word64IdentityMALLP = mallp-ax
+
+  word64IdentityTokens : List ForthToken
+  word64IdentityTokens = []
+
+  -- The external Word64 representation relation supplies high/low limbs;
+  -- identity's empty token stream leaves both limbs and the caller suffix intact.
+  word64IdentityForthSound :
+    {word : Word64} →
+    (representation : Word64Representation word) →
+    (residualStack : List Nat) →
+    execTokens word64IdentityTokens
+      (lowLimb representation ∷ highLimb representation ∷ residualStack) ≡
+    just (lowLimb representation ∷ highLimb representation ∷ residualStack)
+  word64IdentityForthSound representation residualStack = refl
 
   data NatListValue : Set where
     natListNil : NatListValue
