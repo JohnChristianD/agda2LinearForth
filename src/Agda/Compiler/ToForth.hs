@@ -1324,8 +1324,24 @@ formalNatTokenList [] = "[]"
 formalNatTokenList tokens =
   T.intercalate " ∷ " (map formalNatTokenTerm tokens) <> " ∷ []"
 
+compiledDefinitionHasCertificate :: CompiledDefinition -> Bool
+compiledDefinitionHasCertificate definition =
+  case (compiledNatResourceWitness definition, compiledOtherWitness definition) of
+    (Just _, Nothing) -> True
+    (Nothing, Just (ClosedBoolWitness _)) -> True
+    (Nothing, Just (BoolFunctionWitness arity expression)) ->
+      supportedBoolResourceProgram arity expression
+    (Nothing, Just (BoolPairFunctionWitness _ expression)) ->
+      expression == BoolPairFields 0 1
+    (Nothing, Just UnitWitness) -> True
+    (Nothing, Just Word64IdentityWitness) -> True
+    _ -> False
+
 rendererCertificate :: TopLevelModuleName -> [CompiledDefinition] -> Text
-rendererCertificate sourceModule definitions = T.unlines $
+rendererCertificate sourceModule definitions
+  | any (not . compiledDefinitionHasCertificate) definitions =
+      error "compiler emitted a definition without a matching Agda semantic certificate"
+  | otherwise = T.unlines $
   [ "{-# OPTIONS --with-K --rewriting --confluence-check --lossy-unification --exact-split --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}"
   , "module MALLPEmittedRenderer where"
   , ""
