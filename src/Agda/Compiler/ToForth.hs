@@ -1234,13 +1234,15 @@ agdaNatResourceEvalTerm arity expression =
   in "(evalNatResourceExpr " <> expressionTerm <> " (" <> environment <> "))"
 
 -- The Forth data stack is top-first: final source argument is at the head.
-agdaNatResourceInitialStackTerm :: Int -> Text
-agdaNatResourceInitialStackTerm arity =
+-- Keep the caller's residual stack as an explicit untouched suffix.
+agdaNatResourceInitialStackTerm :: Int -> Text -> Text
+agdaNatResourceInitialStackTerm arity residualStack =
   case reverse [0 .. arity - 1] of
-    [] -> "[]"
+    [] -> residualStack
     indices ->
       T.intercalate " ∷ "
-        [ "argument" <> T.pack (show index) | index <- indices ] <> " ∷ []"
+        [ "argument" <> T.pack (show index) | index <- indices ]
+        <> " ∷ " <> residualStack
 
 -- Prove source evaluation equals the resource-tree evaluator.  PAdd nodes
 -- are the only Treeless nodes whose operand order differs from source order.
@@ -1410,7 +1412,7 @@ rendererCertificate sourceModule definitions = T.unlines $
         ; sourceCall = T.unwords (sourceFunction : argumentNames)
         ; resourceEnvironment =
             agdaNatResourceEnvironmentTerm arity (natResourceVariables expression)
-        ; initialStack = agdaNatResourceInitialStackTerm arity
+        ; initialStack = agdaNatResourceInitialStackTerm arity "residualStack"
         ; sourceProofTerm =
             agdaNatResourceSourceProofTerm arity expression
         ; sourceProofArguments = T.unwords (sourceProofName : argumentNames)
@@ -1438,13 +1440,14 @@ rendererCertificate sourceModule definitions = T.unlines $
         , executionName <> " :"
         ] ++
         (if null argumentNames then [] else [ "  " <> argumentBinders <> " →" ]) ++
-        [ "  execTokens " <> compilerTokensName
+        [ "  (residualStack : List Nat) →"
+        , "  execTokens " <> compilerTokensName
         , "    (" <> initialStack <> ") ≡"
         , "  just (interpretMALLPNatProof (natResourceProof " <> expressionName <> ")"
-        , "    (" <> resourceEnvironment <> ") ∷ [])"
-        , executionArguments <> " ="
+        , "    (" <> resourceEnvironment <> ") ∷ residualStack)"
+        , executionArguments <> " residualStack ="
         , "  trans refl"
-        , "    (cong (λ value → just (value ∷ []))"
+        , "    (cong (λ value → just (value ∷ residualStack))"
         , "      (sym (natResourceProof-adequate " <> expressionName
             <> " (" <> resourceEnvironment <> "))))"
         , ""
@@ -1458,12 +1461,13 @@ rendererCertificate sourceModule definitions = T.unlines $
         , sourceSoundName <> " :"
         ] ++
         (if null argumentNames then [] else [ "  " <> argumentBinders <> " →" ]) ++
-        [ "  execTokens " <> compilerTokensName
+        [ "  (residualStack : List Nat) →"
+        , "  execTokens " <> compilerTokensName
         , "    (" <> initialStack <> ") ≡"
-        , "  just (" <> sourceCall <> " ∷ [])"
-        , sourceSoundArguments <> " ="
-        , "  trans (" <> executionArguments <> ")"
-        , "    (cong (λ value → just (value ∷ []))"
+        , "  just (" <> sourceCall <> " ∷ residualStack)"
+        , sourceSoundArguments <> " residualStack ="
+        , "  trans (" <> executionArguments <> " residualStack)"
+        , "    (cong (λ value → just (value ∷ residualStack))"
         , "      (sym (" <> sourceProofArguments <> ")))"
         , ""
         ]
