@@ -102,7 +102,7 @@ data CompilerWitness
   = NatResourceWitness NatResourceExpr
   | BoolConstantWitness Bool
   | BoolFunctionWitness Int BoolExpr
-  | BoolPairWitness BoolPairExpr
+  | BoolPairWitness QName BoolPairExpr
   | UnitWitness
   | Word64IdentityWitness
   deriving (Eq, Show)
@@ -934,7 +934,7 @@ compileDefinition definition
                     compileBoolPairFunction (defName definition) constructor term
                   pure (Just (CompiledDefinition
                     (defName definition) (strictWord (defName definition) code) tokens
-                    (Just (BoolPairWitness expression))))
+                    (Just (BoolPairWitness constructor expression))))
             Nothing ->
               if isUnit then do
                 body <- toTreeless EagerEvaluation (defName definition)
@@ -1092,6 +1092,26 @@ formalNatTokenList :: [FormalToken] -> Text
 formalNatTokenList [] = "[]"
 formalNatTokenList tokens =
   T.intercalate " ∷ " (map formalNatTokenTerm tokens) <> " ∷ []"
+
+formalBoolTokenTerm :: FormalToken -> Text
+formalBoolTokenTerm FormalTrueWord = "pushTrueToken"
+formalBoolTokenTerm FormalFalseWord = "pushFalseToken"
+formalBoolTokenTerm FormalSwapWord = "boolSwapToken"
+formalBoolTokenTerm (FormalIf whenTrue whenFalse) =
+  "(boolIfToken (" <> formalBoolTokenList whenTrue <> ") ("
+    <> formalBoolTokenList whenFalse <> "))"
+formalBoolTokenTerm token =
+  error ("non-Boolean token in Bool proof certificate: " ++ show token)
+
+formalBoolTokenList :: [FormalToken] -> Text
+formalBoolTokenList [] = "[]"
+formalBoolTokenList tokens =
+  T.intercalate " ∷ " (map formalBoolTokenTerm tokens) <> " ∷ []"
+
+sourceAgdaName :: TopLevelModuleName -> QName -> Text
+sourceAgdaName sourceModule name =
+  T.pack (prettyShow sourceModule) <> "." <>
+    T.pack (prettyShow (qnameName name))
 
 rendererCertificate :: TopLevelModuleName -> [CompiledDefinition] -> Text
 rendererCertificate sourceModule definitions = T.unlines $
@@ -1257,7 +1277,7 @@ rendererCertificate sourceModule definitions = T.unlines $
       | (index, definition, expression) <-
           [ (T.pack (show position), definition, expression)
           | (position, definition) <- zip [0 :: Int ..] definitions
-          , Just expression <- [compiledNatResourceWitness definition]
+          , Just (NatResourceWitness expression) <- [compiledWitness definition]
           ]
     ]
     ++ concat
