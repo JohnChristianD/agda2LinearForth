@@ -1,4 +1,4 @@
-{-# OPTIONS --with-K --rewriting --confluence-check --lossy-unification --exact-split --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
+{-# OPTIONS --with-K --rewriting --confluence-check --lossy-unification --exact-split --guardedness --type-in-type --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
 -- ```Agda
 ------------------------------------------------------------------------
 -- SovereignRationalSED
@@ -25,7 +25,7 @@ open import Agda.Builtin.String public
 open import Agda.Builtin.Equality.Rewrite public
 open import Agda.Builtin.Word using (Word64; primWord64ToNat; primWord64FromNat) public
 open import Agda.Builtin.Word.Properties using (primWord64ToNatInjective) public
--- Agda 2.8.0.2 has no Agda.Builtin.Tuple module; the product record _×_ below
+-- Agda has no Agda.Builtin.Tuple module; the product record _×_ below
 -- is the explicit project-owned pair, while Sigma supplies dependent pairs.
 open import Agda.Builtin.Unit public
 open import Agda.Builtin.Strict public
@@ -33,7 +33,7 @@ open import Agda.Builtin.Coinduction public
 import Agda.Builtin.Reflection as Reflection
 open import Agda.Builtin.Reflection.Properties
   using (primMetaToNatInjective; primQNameToWord64sInjective) public
--- Agda 2.8 has no Agda.Builtin.Empty module; define the empty type locally.
+-- Agda has no Agda.Builtin.Empty module; define the empty type locally.
 data ⊥ : Set where
 
 -- Word64 equality is reflected exactly by its unsigned Nat interpretation.
