@@ -2779,10 +2779,10 @@ module StrictNatCompiler where
     execTokens tokens stack ≡ just result
   execBoundedTokens-sound bound [] stack result proof = proof
   execBoundedTokens-sound bound (token ∷ tokens) stack result proof
-    with execBoundedToken bound token stack | proof
+    with execBoundedToken bound token stack in boundedStep | proof
   ... | nothing | ()
   ... | just nextStack | restProof
-    rewrite execBoundedToken-sound bound token stack nextStack refl =
+    rewrite execBoundedToken-sound bound token stack nextStack boundedStep =
       execBoundedTokens-sound bound tokens nextStack result restProof
 
   execBoundedTokens-preserves :
