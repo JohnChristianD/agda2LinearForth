@@ -1,4 +1,4 @@
-{-# OPTIONS --rewriting --confluence-check --sized-types --type-in-type --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
+{-# OPTIONS --rewriting --confluence-check --type-in-type --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
 -- ```Agda
 ------------------------------------------------------------------------
 -- SovereignRationalSED
@@ -946,9 +946,21 @@ module Foundations where
         ; catId = idempotentIdentity
         ; catCompose = idempotentCompose
         ; homEq-refl = idempotentMorphismEq-refl
-        ; homEq-sym = idempotentMorphismEq-sym
-        ; homEq-trans = idempotentMorphismEq-trans
-        ; compose-respects = idempotentCompose-respects-equality
+        ; homEq-sym =
+            λ {X} {Y} {f} {g} equality →
+              idempotentMorphismEq-sym
+                {X = X} {Y = Y} {f = f} {g = g} equality
+        ; homEq-trans =
+            λ {X} {Y} {f} {g} {h} first second →
+              idempotentMorphismEq-trans
+                {X = X} {Y = Y} {f = f} {g = g} {h = h}
+                first second
+        ; compose-respects =
+            λ {X} {Y} {Z} {f} {f′} {g} {g′} outer inner →
+              idempotentCompose-respects-equality
+                {X = X} {Y = Y} {Z = Z}
+                {f = f} {f′ = f′} {g = g} {g′ = g′}
+                outer inner
         ; identity-left = idempotentCategory-id-left
         ; identity-right = idempotentCategory-id-right
         ; compose-associative = idempotentCategory-associative
@@ -2615,6 +2627,12 @@ module StrictNatCompiler where
     execForthCode word64IdentityCode stack ≡ stack
   word64IdentityCode-correct stack = refl
 
+  word64IdentityCodeWithResidual :
+    {Γ : List StackType} →
+    ForthCode (natCell ∷ natCell ∷ Γ) (natCell ∷ natCell ∷ Γ)
+  word64IdentityCodeWithResidual = identityNat
+
+
   -- Text tokens are deliberately separate from the Nat execution machine:
   -- TRUE/FALSE have Gforth's Bool representation, not a Nat stack meaning.
   _++ᴳ_ : {A : Set} → List A → List A → List A
@@ -2819,6 +2837,144 @@ module StrictNatCompiler where
       (trans
         (sym (execBoundedTokens-sound bound tokens stack result boundedSuccess))
         sourceSuccess)
+
+  natBoundFalseNotTrue : false ≡ true → ⊥
+  natBoundFalseNotTrue ()
+
+  natStackBoundedHead :
+    {bound value : Nat} {stack : List Nat} →
+    NatStackBounded bound (value ∷ stack) →
+    natWithinBound value bound ≡ true
+  natStackBoundedHead (natStackBoundedCons valueBound _) = valueBound
+
+  natStackBoundedTail :
+    {bound value : Nat} {stack : List Nat} →
+    NatStackBounded bound (value ∷ stack) →
+    NatStackBounded bound stack
+  natStackBoundedTail (natStackBoundedCons _ stackBound) = stackBound
+
+  -- Completeness for one bounded step needs both bounded input and bounded
+  -- output stacks. These carry the operand and intermediate-result side
+  -- conditions omitted by a final-result-only bound.
+  execBoundedToken-complete :
+    (bound : Nat) (token : ForthToken) (stack result : List Nat) →
+    NatStackBounded bound stack →
+    execToken token stack ≡ just result →
+    NatStackBounded bound result →
+    execBoundedToken bound token stack ≡ just result
+  execBoundedToken-complete bound (pushLiteral value) stack .(value ∷ stack)
+    inputBound refl (natStackBoundedCons valueBound restBound)
+    with natWithinBound value bound in valueCheck
+  ... | true = refl
+  ... | false =
+    absurd (natBoundFalseNotTrue valueBound)
+  execBoundedToken-complete bound addWord [] result natStackBoundedNil () resultBound
+  execBoundedToken-complete bound addWord (value ∷ []) result
+    (natStackBoundedCons _ natStackBoundedNil) () resultBound
+  execBoundedToken-complete bound addWord (right ∷ left ∷ stack)
+    .((left + right) ∷ stack)
+    (natStackBoundedCons rightBound (natStackBoundedCons leftBound stackBound))
+    refl (natStackBoundedCons resultBound resultStackBound)
+    with natWithinBound left bound in leftCheck
+       | natWithinBound right bound in rightCheck
+       | natWithinBound (left + right) bound in resultCheck
+  ... | true | true | true = refl
+  ... | false | _ | _ =
+    absurd (natBoundFalseNotTrue leftBound)
+  ... | true | false | _ =
+    absurd (natBoundFalseNotTrue rightBound)
+  ... | true | true | false =
+    absurd (natBoundFalseNotTrue resultBound)
+  execBoundedToken-complete bound monusWord [] result natStackBoundedNil () resultBound
+  execBoundedToken-complete bound monusWord (value ∷ []) result
+    (natStackBoundedCons _ natStackBoundedNil) () resultBound
+  execBoundedToken-complete bound monusWord (right ∷ left ∷ stack)
+    .(applyNatOp monusOp left right ∷ stack)
+    (natStackBoundedCons rightBound (natStackBoundedCons leftBound stackBound))
+    refl resultBound
+    with natWithinBound left bound in leftCheck
+       | natWithinBound right bound in rightCheck
+  ... | true | true = refl
+  ... | false | _ =
+    absurd (natBoundFalseNotTrue leftBound)
+  ... | true | false =
+    absurd (natBoundFalseNotTrue rightBound)
+  execBoundedToken-complete bound multiplyWord [] result natStackBoundedNil () resultBound
+  execBoundedToken-complete bound multiplyWord (value ∷ []) result
+    (natStackBoundedCons _ natStackBoundedNil) () resultBound
+  execBoundedToken-complete bound multiplyWord (right ∷ left ∷ stack)
+    .((left * right) ∷ stack)
+    (natStackBoundedCons rightBound (natStackBoundedCons leftBound stackBound))
+    refl (natStackBoundedCons resultBound resultStackBound)
+    with natWithinBound left bound in leftCheck
+       | natWithinBound right bound in rightCheck
+       | natWithinBound (left * right) bound in resultCheck
+  ... | true | true | true = refl
+  ... | false | _ | _ =
+    absurd (natBoundFalseNotTrue leftBound)
+  ... | true | false | _ =
+    absurd (natBoundFalseNotTrue rightBound)
+  ... | true | true | false =
+    absurd (natBoundFalseNotTrue resultBound)
+  execBoundedToken-complete bound swapWord stack result inputBound stepBound resultBound =
+    stepBound
+  execBoundedToken-complete bound (rollWord depth) stack result inputBound stepBound resultBound =
+    stepBound
+
+  -- A bounded execution trace records every intermediate abstract stack.
+  -- It is exactly the side condition needed for the converse bounded-machine
+  -- theorem: final boundedness alone cannot rule out an intermediate overflow.
+  data BoundedExecutionTrace (bound : Nat) :
+      List ForthToken → List Nat → List Nat → Set where
+    boundedTraceDone :
+      {stack : List Nat} →
+      NatStackBounded bound stack →
+      BoundedExecutionTrace bound [] stack stack
+
+    boundedTraceStep :
+      {token : ForthToken} {tokens : List ForthToken}
+      {before after final : List Nat} →
+      NatStackBounded bound before →
+      execToken token before ≡ just after →
+      NatStackBounded bound after →
+      BoundedExecutionTrace bound tokens after final →
+      BoundedExecutionTrace bound (token ∷ tokens) before final
+
+  boundedExecutionTrace-unbounded :
+    {bound : Nat} {tokens : List ForthToken} {before final : List Nat} →
+    BoundedExecutionTrace bound tokens before final →
+    execTokens tokens before ≡ just final
+  boundedExecutionTrace-unbounded (boundedTraceDone stackBound) = refl
+  boundedExecutionTrace-unbounded
+    (boundedTraceStep beforeBound step afterBound rest)
+    rewrite step = boundedExecutionTrace-unbounded rest
+
+  boundedExecutionTrace-bounded :
+    {bound : Nat} {tokens : List ForthToken} {before final : List Nat} →
+    BoundedExecutionTrace bound tokens before final →
+    execBoundedTokens bound tokens before ≡ just final
+  boundedExecutionTrace-bounded (boundedTraceDone stackBound) = refl
+  boundedExecutionTrace-bounded {bound = bound}
+    (boundedTraceStep {token = token} {tokens = tokens}
+      {before = before} {after = after}
+      beforeBound step afterBound rest)
+    rewrite execBoundedToken-complete bound token before after
+      beforeBound step afterBound =
+      boundedExecutionTrace-bounded rest
+
+  -- Converse to successful bounded preservation, under an explicit proof
+  -- that every intermediate abstract stack and operation result fits.
+  execBoundedTokens-complete :
+    {bound : Nat} {tokens : List ForthToken} {before final : List Nat} →
+    BoundedExecutionTrace bound tokens before final →
+    execBoundedTokens bound tokens before ≡ just final
+  execBoundedTokens-complete = boundedExecutionTrace-bounded
+
+  execBoundedTokens-complete-unbounded :
+    {bound : Nat} {tokens : List ForthToken} {before final : List Nat} →
+    BoundedExecutionTrace bound tokens before final →
+    execTokens tokens before ≡ just final
+  execBoundedTokens-complete-unbounded = boundedExecutionTrace-unbounded
 
   boundedAddAtLimit :
     execBoundedTokens 9
@@ -4117,6 +4273,64 @@ module StrictBoolCompiler where
     rewrite bindBoolTokens-identity
       (execBoolTokens [] (value ∷ [])) = refl
 
+  -- Residual-stack forms make the exact compiler ABI explicit: a Bool
+  -- program returns one Bool at the top and leaves every caller cell intact.
+  boolCaseWithResidualMALLP-forth-sound-residual :
+    (condition value : Bool) →
+    (residual : List Bool) →
+    execBoolTokens
+      (renderBoolCode compileBoolCaseWithResidual)
+      (value ∷ condition ∷ residual) ≡
+    just (value ∷ residual)
+  boolCaseWithResidualMALLP-forth-sound-residual true value residual = refl
+  boolCaseWithResidualMALLP-forth-sound-residual false value residual = refl
+
+  boolPairSwapMALLP-forth-sound-residual :
+    (first second : Bool) →
+    (residual : List Bool) →
+    execBoolTokens (renderBoolCode compileBoolPairSwap)
+      (second ∷ first ∷ residual) ≡
+    just (first ∷ second ∷ residual)
+  boolPairSwapMALLP-forth-sound-residual first second residual = refl
+
+  boolNot : Bool → Bool
+  boolNot true = false
+  boolNot false = true
+
+  -- This is the exact typed Bool program generated for the admitted unary
+  -- complement function. Its branches consume the condition and produce one
+  -- result, leaving the residual stack untouched.
+  boolInvertCaseProof : BoolCaseProof
+  boolInvertCaseProof = boolCaseProof boolFalseProof boolTrueProof
+
+  boolInvertMALLP-derivation :
+    MALLP (dualPos boolFormula ∷ []) (just boolFormula)
+  boolInvertMALLP-derivation =
+    boolCaseMALLP-derivation boolInvertCaseProof
+
+  boolInvertCode :
+    BoolForthCode (boolCell ∷ []) (boolCell ∷ [])
+  boolInvertCode = compileBoolRuntimeCase boolInvertCaseProof
+
+  boolInvertMALLP-forth-sound-residual :
+    (argument : Bool) →
+    (residual : List Bool) →
+    execBoolTokens (renderBoolCode boolInvertCode)
+      (argument ∷ residual) ≡
+    just (boolNot argument ∷ residual)
+  boolInvertMALLP-forth-sound-residual true residual = refl
+  boolInvertMALLP-forth-sound-residual false residual = refl
+
+  boolProof-forth-sound-residual :
+    (proof : BoolProof) →
+    (residual : List Bool) →
+    execBoolTokens
+      (renderBoolCode (compileBoolProof proof))
+      residual ≡
+    just (interpretBoolProof proof ∷ residual)
+  boolProof-forth-sound-residual boolTrueProof residual = refl
+  boolProof-forth-sound-residual boolFalseProof residual = refl
+
 open StrictBoolCompiler public
 
 open StrictNatCompiler public
@@ -4630,6 +4844,13 @@ module StrictLinearDataCompiler where
     (representation : Word64Representation word) →
     Word64Representation word
   word64IdentityPreservesRepresentation representation = representation
+
+  word64Encoding :
+    {word : Word64} →
+    Word64Representation word →
+    List Nat
+  word64Encoding representation =
+    highLimb representation ∷ lowLimb representation ∷ []
 
   data NatListValue : Set where
     natListNil : NatListValue
