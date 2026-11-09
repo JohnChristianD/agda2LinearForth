@@ -1784,9 +1784,9 @@ rendererCertificate sourceModule definitions
         , "    (value ∷ condition ∷ residual) ≡ just (" <> sourceName
             <> " condition value ∷ residual)"
         , sourceSoundName <> " condition value residual ="
-        , "  trans (chooseBoolExecution condition value residual)"
+        , "  trans (" <> executionName <> " condition value residual)"
         , "    (cong (λ result → just (result ∷ residual))"
-        , "      (sym (chooseBoolSourceSemantics condition value)))"
+        , "      (sym (" <> sourceSemanticsName <> " condition value)))"
         , ""
         ]
       | (index, definition) <-
