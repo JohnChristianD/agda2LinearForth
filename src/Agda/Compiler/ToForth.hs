@@ -49,6 +49,14 @@ data FormalToken
   | FormalIf [FormalToken] [FormalToken]
   deriving (Eq, Show)
 
+data OtherWitness
+  = ClosedBoolWitness Bool
+  | BoolFunctionWitness Int BoolExpr
+  | BoolPairFunctionWitness QName BoolPairExpr
+  | UnitWitness
+  | Word64IdentityWitness
+  deriving (Eq, Show)
+
 data CompiledDefinition = CompiledDefinition
   { compiledName :: QName
   , compiledForm :: FthForm
@@ -56,6 +64,7 @@ data CompiledDefinition = CompiledDefinition
   , compiledNatLinearWitness :: Maybe NatLinearExpr
   , compiledNatBinaryWitness :: Maybe NatBinaryLinearExpr
   , compiledNatResourceWitness :: Maybe NatResourceExpr
+  , compiledOtherWitness :: Maybe OtherWitness
   }
 
 data NatExpr
@@ -382,7 +391,7 @@ compileBoolPairFunction
   :: QName
   -> QName
   -> TTerm
-  -> TCM (FthForm, [FormalToken])
+  -> TCM (FthForm, [FormalToken], BoolPairExpr)
 compileBoolPairFunction owner constructor term = do
   expression <- decodeBoolPairFunction owner constructor term
   let (first, second) = case expression of
@@ -397,14 +406,14 @@ compileBoolPairFunction owner constructor term = do
   (secondCode, secondTokens, remaining) <-
     either unsupported pure (compileBoolPairResource 1 afterFirst second)
   if null remaining
-    then pure (RSList [firstCode, secondCode], firstTokens ++ secondTokens)
+    then pure (RSList [firstCode, secondCode], firstTokens ++ secondTokens, expression)
     else unsupported ("MALLP BoolPair resource leak: " ++ show remaining)
 
 compileBoolResourceFunction
   :: QName
   -> Int
   -> TTerm
-  -> TCM (FthForm, [FormalToken])
+  -> TCM (FthForm, [FormalToken], BoolExpr)
 compileBoolResourceFunction owner arity term = do
   let (actualArity, body) = tLamView term
       expectedResources = [0 .. arity - 1]
@@ -422,7 +431,7 @@ compileBoolResourceFunction owner arity term = do
   (code, tokens, remaining) <-
     either unsupported pure (compileBoolResourceExpr expectedResources expression)
   if null remaining
-    then pure (code, tokens)
+    then pure (code, tokens, expression)
     else unsupported ("MALLP Bool resource leak: unconsumed arguments " ++ show remaining)
 
 compileNatResourceFunction
@@ -1061,7 +1070,7 @@ compileDefinition definition
                 compileNatResourceFunction (defName definition) arity term
               pure (Just (CompiledDefinition
                 (defName definition) (strictWord (defName definition) code) tokens
-                linearWitness binaryWitness (Just resourceWitness)))
+                linearWitness binaryWitness (Just resourceWitness) Nothing))
             (Just _, Nothing) -> pure Nothing
             (Nothing, _) -> unsupported "Nat definition has a non-Nat argument or result"
         else if isBool then do
@@ -1075,15 +1084,16 @@ compileDefinition definition
               pure (Just (CompiledDefinition
                 (defName definition)
                 (strictWord (defName definition) (RSAtom forthBoolean))
-                [formalBoolean] Nothing Nothing Nothing))
+                [formalBoolean] Nothing Nothing Nothing (Just (ClosedBoolWitness value))))
         else if maybe False (> 0) boolArity then do
           body <- toTreeless EagerEvaluation (defName definition)
           case (boolArity, body) of
             (Just arity, Just term) -> do
-              (code, tokens) <-
+              (code, tokens, expression) <-
                 compileBoolResourceFunction (defName definition) arity term
               pure (Just (CompiledDefinition
-                (defName definition) (strictWord (defName definition) code) tokens Nothing Nothing Nothing))
+                (defName definition) (strictWord (defName definition) code) tokens
+                Nothing Nothing Nothing (Just (BoolFunctionWitness arity expression))))
             (Just _, Nothing) -> pure Nothing
             _ -> unsupported "Bool function arity classification changed during compilation"
         else if word64Arity == Just 1 then do
@@ -1093,7 +1103,8 @@ compileDefinition definition
               (code, tokens) <-
                 compileWord64IdentityFunction (defName definition) 1 term
               pure (Just (CompiledDefinition
-                (defName definition) (strictWord (defName definition) code) tokens Nothing Nothing Nothing))
+                (defName definition) (strictWord (defName definition) code) tokens
+                Nothing Nothing Nothing (Just Word64IdentityWitness)))
             Nothing -> pure Nothing
         else case word64Arity of
           Just 0 -> unsupported
@@ -1106,10 +1117,11 @@ compileDefinition definition
               case body of
                 Nothing -> pure Nothing
                 Just term -> do
-                  (code, tokens) <-
+                  (code, tokens, expression) <-
                     compileBoolPairFunction (defName definition) constructor term
                   pure (Just (CompiledDefinition
-                    (defName definition) (strictWord (defName definition) code) tokens Nothing Nothing Nothing))
+                    (defName definition) (strictWord (defName definition) code) tokens
+                    Nothing Nothing Nothing (Just (BoolPairFunctionWitness constructor expression))))
             Nothing ->
               if isUnit then do
                 body <- toTreeless EagerEvaluation (defName definition)
@@ -1118,7 +1130,8 @@ compileDefinition definition
                   Just term -> do
                     decodeUnitTerm term
                     pure (Just (CompiledDefinition
-                      (defName definition) (strictWord (defName definition) (RSList [])) [] Nothing Nothing Nothing))
+                      (defName definition) (strictWord (defName definition) (RSList [])) []
+                      Nothing Nothing Nothing (Just UnitWitness)))
               else pure Nothing
       _ -> pure Nothing
 
