@@ -1061,7 +1061,7 @@ rendererCertificate sourceModule definitions = T.unlines $
   , "   MALLPNatTheory; natContext; natFormula; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
   , "   evalNatResourceExpr;"
   , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate;"
-  , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; NatStackBounded; execBoundedTokens; execBoundedTokens-preserves;"
+  , "   execTokens; NatStackBounded; execBoundedTokens; execBoundedTokens-preserves;"
   , "   BoundedForthTrace; execBoundedTokens-trace; cong; cong₂; trans; sym;"
   , "   applyNatOp; natAdd-comm)"
   , ""
@@ -1085,6 +1085,7 @@ rendererCertificate sourceModule definitions = T.unlines $
          , ""
          ]
     | (position, definition) <- zip [0 :: Int ..] definitions
+    ]
     ++ concat
     [ let
         { expressionName = "natResourceExpression" <> index
