@@ -2817,7 +2817,8 @@ module StrictNatCompiler where
     (left right bound : Nat) →
     natWithinBound left bound ≡ true →
     natWithinBound (left - right) bound ≡ true
-  natWithinBound-monus zero right bound bounded = refl
+  natWithinBound-monus zero zero bound bounded = refl
+  natWithinBound-monus zero (suc right) bound bounded = refl
   natWithinBound-monus (suc left) zero bound bounded = bounded
   natWithinBound-monus (suc left) (suc right) zero ()
   natWithinBound-monus (suc left) (suc right) (suc bound) bounded =
