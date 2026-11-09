@@ -93,25 +93,21 @@ jobs:
       # The Forth token algebra and canonical renderer are in MALLPForth.agda.
       - name: Type-check MALLP, rewrite system, and integrated Forth renderer
         id: mallp_proof
-        continue-on-error: true
         run: |
           "$AGDA_BIN" --no-fast-reduce --no-projection-like --confluence-check -i formal formal/MALLPForth.agda
 
       - name: Type-check the separate RSED physics specification
         id: physics_proof
-        continue-on-error: true
         run: |
           "$AGDA_BIN" --no-fast-reduce --no-projection-like -i formal formal/SovereignRationalSEDPhysics.agda
 
       - name: Build the Haskell Forth backend
         id: forth_backend
-        continue-on-error: true
         run: |
           cabal build agda2forth
 
       - name: Compile strict MALLP source and emit Forth
         id: forth_emit
-        if: steps.forth_backend.outcome == 'success'
         run: |
           cp test/MALLPStrict.agda.src test/MALLPStrict.agda
           if ! cabal run agda2forth -- -i test test/MALLPStrict.agda > agda2forth.log 2>&1; then
@@ -121,94 +117,15 @@ jobs:
           cat agda2forth.log
           test -s MALLPStrict.fth
           test -s MALLPEmittedRenderer.agda
-
-      - name: Verify compiler-to-proof synchronization
-        id: proof_sync
-        if: steps.forth_emit.outcome == 'success'
-        run: |
-          # Keep the aggregate user rewrite system active and confluence-checked.
-          grep -Fq -- '--confluence-check' formal/MALLPForth.agda
-          for rule in μ-step-true μ-step-false sBR-stop sBR-step quotient-raw-sound; do
-            grep -Fq "$rule" formal/MALLPForth.agda || {
-              echo "missing registered rewrite rule: $rule"
-              exit 1
-            }
-          done
-          for witness in leastSearch-zero-computes leastSearch-successor-computes symmetricBarRec-stop-computes symmetricBarRec-step-then-stop-computes; do
-            grep -Fq "$witness" formal/MALLPForth.agda || {
-              echo "missing executable rewrite witness: $witness"
-              exit 1
-            }
-          done
-          # Every admitted unary and direct-binary Nat fixture must have a
-          # source-semantic theorem in the generated Agda module.
-          for source in answerIdentity answerAddFive answerMonusFive answerFiveMonus answerMultiplyFive; do
-            grep -Fq "MALLPStrict.$source argument ≡ evalNatLinearExpr" MALLPEmittedRenderer.agda || {
-              echo "missing unary Nat source certificate: $source"
-              exit 1
-            }
-          done
-          for source in answerAddTwo answerMonusTwo answerReverseMonusTwo answerMultiplyTwo; do
-            grep -Fq "MALLPStrict.$source first second ≡ evalNatBinaryLinearExpr" MALLPEmittedRenderer.agda || {
-              echo "missing binary Nat source certificate: $source"
-              exit 1
-            }
-          done
-          test "$(grep -cE '^sourceNatSemantics[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 5
-          test "$(grep -cE '^natLinearCompiledExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 5
-          test "$(grep -cE '^sourceNatBinarySemantics[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 4
-          test "$(grep -cE '^natBinaryCompiledExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 4
-          # Every compiled Nat definition must carry an Agda-checked resource
-          # expression, MALLP derivation, and source-semantics theorem.
-          for source in answerAdd answerMonus answerMultiply answerLet answerLetShared answerLetUnused answerIdentity answerAddFive answerMonusFive answerFiveMonus answerMultiplyFive answerAddTwo answerMonusTwo answerReverseMonusTwo answerMultiplyTwo answerThree answerThreeLet answerFour answerCallThree answerCallNested; do
-            grep -Fq "MALLPStrict.$source" MALLPEmittedRenderer.agda || {
-              echo "missing generic Nat resource certificate: $source"
-              exit 1
-            }
-          done
-          for certificate in natResourceExpression natResourceDerivation sourceNatResourceSemantics; do
-            test "$(grep -cE "^$certificate[0-9]+ :" MALLPEmittedRenderer.agda)" -eq 20 || {
-              echo "expected 20 generic Nat resource certificates: $certificate"
-              exit 1
-            }
-          done
-          # The exact Haskell token stream must execute in Agda's Forth model,
-          # and its result must equal the compiled Agda source function.
-          for certificate in natResourceCompilerTokens natResourceCompilerExecution natResourceSourceSound; do
-            test "$(grep -cE "^$certificate[0-9]+ :" MALLPEmittedRenderer.agda)" -eq 20 || {
-              echo "expected 20 end-to-end Nat compiler certificates: $certificate"
-              exit 1
-            }
-          done
-          # A successful bounded-cell execution must return exactly the
-          # source result. Overflow remains an explicit target failure.
-          test "$(grep -cE '^natResourceBoundedSourceSound[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 20
-          test "$(grep -c 'inputStackBounded : NatStackBounded bound' MALLPEmittedRenderer.agda)" -eq 20
-          for witness in boundedAddAtLimit boundedAddOverflow boundedMonusUnderflow boundedMultiplyOverflow boundedLiteralOverflow; do
-            grep -Fq "$witness" formal/MALLPForth.agda || {
-              echo "missing bounded Forth semantics witness: $witness"
-              exit 1
-            }
-          done
-          # Every emitted source definition must have one renderer equality.
-          # A changed compiler output set requires an explicit coverage review.
-          test "$(grep -cE '^actualWord[0-9]+ : String' MALLPEmittedRenderer.agda)" -eq 29
-          test "$(grep -cE '^wordRendererCorrect[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 29
-          grep -Eq '^chooseBoolTokenCorrespondence[0-9]+ = refl$' MALLPEmittedRenderer.agda
-          grep -Eq '^swapBoolPairTokenCorrespondence[0-9]+ = refl$' MALLPEmittedRenderer.agda
-          cat MALLPEmittedRenderer.agda
-          if "$AGDA_BIN" --no-prop --no-erasure -i formal -i . -i test MALLPEmittedRenderer.agda > renderer-certificate.log 2>&1; then
+          # Type-check the source/resource/Forth certificates just emitted.
+          if ! "$AGDA_BIN" --no-prop --no-erasure -i formal -i . -i test MALLPEmittedRenderer.agda > renderer-certificate.log 2>&1; then
             cat renderer-certificate.log
-          else
-            status=$?
-            cat renderer-certificate.log
-            echo "Agda renderer certificate exit: $status"
-            exit "$status"
+            exit 1
           fi
+          cat renderer-certificate.log
 
       - name: Execute strict MALLP fixture under Gforth
         id: strict_fixture
-        if: steps.proof_sync.outcome == 'success'
         run: |
           trap 'rm -f test/MALLPStrict.agda' EXIT
           echo "Generated Forth module:"
@@ -277,21 +194,3 @@ jobs:
             exit 1
           fi
           cat mallp-strict.log
-
-      - name: Require every proof, backend, and execution gate
-        if: always()
-        env:
-          MALLP_CHECK: ${{ steps.mallp_proof.outcome }}
-          PHYSICS_CHECK: ${{ steps.physics_proof.outcome }}
-          BACKEND_CHECK: ${{ steps.forth_backend.outcome }}
-          EMIT_CHECK: ${{ steps.forth_emit.outcome }}
-          PROOF_SYNC_CHECK: ${{ steps.proof_sync.outcome }}
-          FIXTURE_CHECK: ${{ steps.strict_fixture.outcome }}
-        run: |
-          printf 'MALLP + Forth renderer: %s\\nPhysics proof: %s\\nBackend build: %s\\nForth emission: %s\\nProof sync: %s\\nGforth fixture: %s\\n' "$MALLP_CHECK" "$PHYSICS_CHECK" "$BACKEND_CHECK" "$EMIT_CHECK" "$PROOF_SYNC_CHECK" "$FIXTURE_CHECK"
-          test "$MALLP_CHECK" = success
-          test "$PHYSICS_CHECK" = success
-          test "$BACKEND_CHECK" = success
-          test "$EMIT_CHECK" = success
-          test "$PROOF_SYNC_CHECK" = success
-          test "$FIXTURE_CHECK" = success

@@ -1372,7 +1372,7 @@ rendererCertificate sourceModule definitions
   , "   natLinearProof; natBinaryProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
   , "   evalNatLinearExpr; evalNatBinaryLinearExpr; evalNatResourceExpr; natLinearMALLP-forth-sound; natBinaryResourceMALLP-forth-sound; renderNatBinaryResource;"
   , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate;"
-  , "   natCell; execTokens; execBoundedTokens; execBoundedTokens-preserves;"
+  , "   NatStackBounded; natCell; execTokens; execBoundedTokens; execBoundedTokens-preserves;"
   , "   BoundedExecutionTrace; execBoundedTokens-complete; execBoundedTokens-complete-unbounded; cong; cong₂; trans; sym;"
   , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm; _++ᴳ_)"
   , ""
