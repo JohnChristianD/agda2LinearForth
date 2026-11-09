@@ -188,12 +188,20 @@ jobs:
               exit 1
             }
           done
-          # Every emitted source definition must have one renderer equality.
-          # A changed compiler output set requires an explicit coverage review.
+          # Every emitted definition has renderer correspondence and a
+          # source/target semantic certificate in its supported type fragment.
           test "$(grep -cE '^actualWord[0-9]+ : String' MALLPEmittedRenderer.agda)" -eq 29
           test "$(grep -cE '^wordRendererCorrect[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 29
-          grep -Fq 'chooseBoolTokenCorrespondence = refl' MALLPEmittedRenderer.agda
-          grep -Fq 'swapBoolPairTokenCorrespondence = refl' MALLPEmittedRenderer.agda
+          test "$(grep -cE '^boolConstantSourceSound[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 4
+          test "$(grep -cE '^boolFunctionSourceSound[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 2
+          test "$(grep -cE '^boolPairSourceSound[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 1
+          test "$(grep -cE '^unitSourceSemantics[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 1
+          test "$(grep -cE '^word64IdentitySourceSemantics[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 1
+          test "$(grep -cE '^boolConstantExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 4
+          test "$(grep -cE '^boolFunctionExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 2
+          test "$(grep -cE '^boolPairExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 1
+          test "$(grep -cE '^unitExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 1
+          test "$(grep -cE '^word64IdentityExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 1
           cat MALLPEmittedRenderer.agda
           if "$AGDA_BIN" --no-prop --no-erasure -i formal -i . -i test MALLPEmittedRenderer.agda > renderer-certificate.log 2>&1; then
             cat renderer-certificate.log
