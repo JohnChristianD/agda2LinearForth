@@ -4264,7 +4264,8 @@ module StrictBoolCompiler where
       (renderBoolCode compileBoolCaseWithResidual)
       (value ∷ condition ∷ residual) ≡
     just (value ∷ residual)
-  boolCaseWithResidualMALLP-forth-sound-residual condition value residual = refl
+  boolCaseWithResidualMALLP-forth-sound-residual true value residual = refl
+  boolCaseWithResidualMALLP-forth-sound-residual false value residual = refl
 
   boolPairSwapMALLP-forth-sound-residual :
     (first second : Bool) →
