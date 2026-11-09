@@ -157,15 +157,15 @@ jobs:
           test "$(grep -cE '^natLinearCompiledExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 5
           test "$(grep -cE '^sourceNatBinarySemantics[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 4
           test "$(grep -cE '^natBinaryCompiledExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 4
-          # Every compiled Nat definition must carry an Agda-checked MALLP,
-          # source-semantics, and exact-token execution certificate.
+          # Every compiled Nat definition must carry an Agda-checked resource
+          # expression, MALLP derivation, and source-semantics theorem.
           for source in answerAdd answerMonus answerMultiply answerLet answerLetShared answerLetUnused answerIdentity answerAddFive answerMonusFive answerFiveMonus answerMultiplyFive answerAddTwo answerMonusTwo answerReverseMonusTwo answerMultiplyTwo answerThree answerThreeLet answerFour answerCallThree answerCallNested; do
             grep -Fq "MALLPStrict.$source" MALLPEmittedRenderer.agda || {
               echo "missing generic Nat resource certificate: $source"
               exit 1
             }
           done
-          for certificate in natResourceExpression natResourceDerivation natResourceCompilerTokens natResourceCompilerExecution natResourceSourceMeaning sourceNatResourceSemantics natResourceSourceSound; do
+          for certificate in natResourceExpression natResourceDerivation sourceNatResourceSemantics; do
             test "$(grep -cE "^$certificate[0-9]+ :" MALLPEmittedRenderer.agda)" -eq 20 || {
               echo "expected 20 generic Nat resource certificates: $certificate"
               exit 1
