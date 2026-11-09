@@ -1315,7 +1315,7 @@ rendererCertificate sourceModule definitions = T.unlines $
   , "   natLinearProof; natBinaryProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
   , "   evalNatLinearExpr; evalNatBinaryLinearExpr; evalNatResourceExpr; natLinearMALLP-forth-sound; natBinaryResourceMALLP-forth-sound; renderNatBinaryResource;"
   , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate;"
-  , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; execBoundedTokens; execBoundedTokens-preserves; cong; cong₂; trans; sym;"
+  , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; NatStackBounded; execBoundedTokens; execBoundedTokens-preserves; cong; cong₂; trans; sym;"
   , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm)"
   , ""
   ] ++ concat
@@ -1478,11 +1478,12 @@ rendererCertificate sourceModule definitions = T.unlines $
         ] ++
         (if null argumentNames then [] else [ "  " <> argumentBinders <> " →" ]) ++
         [ "  (residualStack : List Nat) →"
+        , "  (inputStackBounded : NatStackBounded bound (" <> initialStack <> ")) →"
         , "  (result : List Nat) →"
         , "  execBoundedTokens bound " <> compilerTokensName
         , "    (" <> initialStack <> ") ≡ just result →"
         , "  result ≡ " <> sourceCall <> " ∷ residualStack"
-        , boundedSoundArguments <> " residualStack result boundedExecution ="
+        , boundedSoundArguments <> " residualStack inputStackBounded result boundedExecution ="
         , "  execBoundedTokens-preserves bound " <> compilerTokensName
         , "    (" <> initialStack <> ") result ("
             <> sourceCall <> " ∷ residualStack)"
