@@ -883,7 +883,7 @@ compileDefinition definition
                 compileNatResourceFunction (defName definition) arity term
               pure (Just (CompiledDefinition
                 (defName definition) (strictWord (defName definition) code) tokens
-                (Just resourceWitness)))
+                (Just (NatResourceWitness resourceWitness))))
             (Just _, Nothing) -> pure Nothing
             (Nothing, _) -> unsupported "Nat definition has a non-Nat argument or result"
         else if isBool then do
@@ -897,15 +897,16 @@ compileDefinition definition
               pure (Just (CompiledDefinition
                 (defName definition)
                 (strictWord (defName definition) (RSAtom forthBoolean))
-                [formalBoolean] Nothing))
+                [formalBoolean] (Just (BoolConstantWitness value))))
         else if maybe False (> 0) boolArity then do
           body <- toTreeless EagerEvaluation (defName definition)
           case (boolArity, body) of
             (Just arity, Just term) -> do
-              (code, tokens) <-
+              (expression, code, tokens) <-
                 compileBoolResourceFunction (defName definition) arity term
               pure (Just (CompiledDefinition
-                (defName definition) (strictWord (defName definition) code) tokens Nothing))
+                (defName definition) (strictWord (defName definition) code) tokens
+                (Just (BoolFunctionWitness arity expression))))
             (Just _, Nothing) -> pure Nothing
             _ -> unsupported "Bool function arity classification changed during compilation"
         else if word64Arity == Just 1 then do
@@ -915,7 +916,8 @@ compileDefinition definition
               (code, tokens) <-
                 compileWord64IdentityFunction (defName definition) 1 term
               pure (Just (CompiledDefinition
-                (defName definition) (strictWord (defName definition) code) tokens Nothing))
+                (defName definition) (strictWord (defName definition) code) tokens
+                (Just Word64IdentityWitness)))
             Nothing -> pure Nothing
         else case word64Arity of
           Just 0 -> unsupported
@@ -928,10 +930,11 @@ compileDefinition definition
               case body of
                 Nothing -> pure Nothing
                 Just term -> do
-                  (code, tokens) <-
+                  (expression, code, tokens) <-
                     compileBoolPairFunction (defName definition) constructor term
                   pure (Just (CompiledDefinition
-                    (defName definition) (strictWord (defName definition) code) tokens Nothing))
+                    (defName definition) (strictWord (defName definition) code) tokens
+                    (Just (BoolPairWitness expression))))
             Nothing ->
               if isUnit then do
                 body <- toTreeless EagerEvaluation (defName definition)
@@ -940,7 +943,8 @@ compileDefinition definition
                   Just term -> do
                     decodeUnitTerm term
                     pure (Just (CompiledDefinition
-                      (defName definition) (strictWord (defName definition) (RSList [])) [] Nothing))
+                      (defName definition) (strictWord (defName definition) (RSList [])) []
+                      (Just UnitWitness)))
               else pure Nothing
       _ -> pure Nothing
 
