@@ -1315,7 +1315,7 @@ rendererCertificate sourceModule definitions = T.unlines $
   , "   natLinearProof; natBinaryProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
   , "   evalNatLinearExpr; evalNatBinaryLinearExpr; evalNatResourceExpr; natLinearMALLP-forth-sound; natBinaryResourceMALLP-forth-sound; renderNatBinaryResource;"
   , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate;"
-  , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; cong; cong₂; trans; sym;"
+  , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; execBoundedTokens; execBoundedTokens-preserves; cong; cong₂; trans; sym;"
   , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm)"
   , ""
   ] ++ concat
@@ -1397,6 +1397,7 @@ rendererCertificate sourceModule definitions = T.unlines $
         ; compilerTokensName = "natResourceCompilerTokens" <> index
         ; executionName = "natResourceCompilerExecution" <> index
         ; sourceSoundName = "natResourceSourceSound" <> index
+        ; boundedSoundName = "natResourceBoundedSourceSound" <> index
         ; sourceProofName = "sourceNatResourceSemantics" <> index
         ; arity = length (natResourceVariables expression)
         ; argumentNames =
@@ -1418,6 +1419,8 @@ rendererCertificate sourceModule definitions = T.unlines $
         ; sourceProofArguments = T.unwords (sourceProofName : argumentNames)
         ; executionArguments = T.unwords (executionName : argumentNames)
         ; sourceSoundArguments = T.unwords (sourceSoundName : argumentNames)
+        ; boundedSoundArguments =
+            T.unwords (boundedSoundName : ("bound" : argumentNames))
         ; resourceTerm = fst (agdaNatResourceExprTerm expression)
         ; sourceTypeLines =
             (if null argumentNames then [] else [ "  " <> argumentBinders <> " →" ])
@@ -1469,6 +1472,21 @@ rendererCertificate sourceModule definitions = T.unlines $
         , "  trans (" <> executionArguments <> " residualStack)"
         , "    (cong (λ value → just (value ∷ residualStack))"
         , "      (sym (" <> sourceProofArguments <> ")))"
+        , ""
+        , boundedSoundName <> " :"
+        , "  (bound : Nat) →"
+        ] ++
+        (if null argumentNames then [] else [ "  " <> argumentBinders <> " →" ]) ++
+        [ "  (residualStack : List Nat) →"
+        , "  (result : List Nat) →"
+        , "  execBoundedTokens bound " <> compilerTokensName
+        , "    (" <> initialStack <> ") ≡ just result →"
+        , "  result ≡ " <> sourceCall <> " ∷ residualStack"
+        , boundedSoundArguments <> " residualStack result boundedExecution ="
+        , "  execBoundedTokens-preserves bound " <> compilerTokensName
+        , "    (" <> initialStack <> ") result ("
+            <> sourceCall <> " ∷ residualStack)"
+        , "    boundedExecution (" <> sourceSoundArguments <> " residualStack)"
         , ""
         ]
       | (index, definition, expression) <-
