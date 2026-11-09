@@ -1493,7 +1493,7 @@ rendererCertificate sourceModule definitions = T.unlines $
   , "  (ForthTextToken; textPushLiteral; textAddWord; textMonusWord; textMultiplyWord;"
   , "   textSwapWord; textRollWord; textTrueWord; textFalseWord; textIf; renderForthWordText;"
   , "   BoolForthToken; pushTrueToken; pushFalseToken; boolSwapToken; boolIfToken;"
-  , "   mapBoolForthTokensAsText; renderBoolCode; compileBoolCaseWithResidual;"
+  , "   mapBoolForthTokensAsText; renderBoolCode; execBoolTokens; compileBoolCaseWithResidual;"
   , "   compileBoolRuntimeCase; compileBoolPairSwap; boolIdentity; BoolStackType; boolCell;"
   , "   BoolProof; boolTrueProof; boolFalseProof; boolProofDerivation; interpretBoolProof;"
   , "   compileBoolProof; boolProofForthSound; boolIdentityMALLP;"
