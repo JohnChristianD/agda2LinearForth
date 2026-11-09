@@ -1175,7 +1175,7 @@ agdaNatExprTerm (NatBinary operation left right) =
 agdaNatCountTerm :: Int -> Text
 agdaNatCountTerm count
   | count <= 0 = "zero"
-  | otherwise = "suc (" <> agdaNatCountTerm (count - 1) <> ")"
+  | otherwise = "(suc " <> agdaNatCountTerm (count - 1) <> ")"
 
 agdaNatResourceExprTerm :: NatResourceExpr -> Text
 agdaNatResourceExprTerm (NatResourceLiteral value) =
