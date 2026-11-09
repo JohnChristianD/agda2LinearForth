@@ -1734,11 +1734,14 @@ rendererCertificate sourceModule definitions
           ]
     ] ++ concat
     [ let
-        { compilerTokensName = "chooseBoolCompilerTokens"
-        ; modelTokensName = "chooseBoolMALLPTokens"
-        ; sourceSemanticsName = "chooseBoolSourceSemantics"
-        ; executionName = "chooseBoolExecution"
-        ; sourceSoundName = "chooseBoolSourceSound"
+        { suffix = index
+        ; compilerTokensName = "chooseBoolCompilerTokens" <> suffix
+        ; modelTokensName = "chooseBoolMALLPTokens" <> suffix
+        ; tokenProofName = "chooseBoolTokenCorrespondence" <> suffix
+        ; derivationName = "chooseBoolMALLPDerivation" <> suffix
+        ; sourceSemanticsName = "chooseBoolSourceSemantics" <> suffix
+        ; executionName = "chooseBoolExecution" <> suffix
+        ; sourceSoundName = "chooseBoolSourceSound" <> suffix
         ; sourceName =
             T.pack (prettyShow sourceModule) <> "." <>
               T.pack (prettyShow (qnameName (compiledName definition)))
@@ -1751,11 +1754,11 @@ rendererCertificate sourceModule definitions
         , modelTokensName <> " = mapBoolForthTokensAsText"
             <> " (renderBoolCode compileBoolCaseWithResidual)"
         , ""
-        , "chooseBoolTokenCorrespondence :"
+        , tokenProofName <> " :"
         , "  " <> compilerTokensName <> " ≡ " <> modelTokensName
-        , "chooseBoolTokenCorrespondence = refl"
+        , tokenProofName <> " = refl"
         , ""
-        , "chooseBoolMALLPDerivation = boolCaseWithResidualMALLP"
+        , derivationName <> " = boolCaseWithResidualMALLP"
         , ""
         , sourceSemanticsName <> " :"
         , "  (condition value : Bool) → " <> sourceName
@@ -1781,19 +1784,23 @@ rendererCertificate sourceModule definitions
         , "      (sym (chooseBoolSourceSemantics condition value)))"
         , ""
         ]
-      | definition <- definitions
-      , safeForthName (compiledName definition) == "chooseBool"
-      , Just (BoolFunctionWitness 2
-          (BoolConditional (BoolVariable 1) (BoolVariable 0) (BoolVariable 0))) <-
-          [compiledOtherWitness definition]
+      | (index, definition) <-
+          [ (T.pack (show position), definition)
+          | (position, definition) <- zip [0 :: Int ..] definitions
+          , Just (BoolFunctionWitness 2
+              (BoolConditional (BoolVariable 1) (BoolVariable 0) (BoolVariable 0))) <-
+              [compiledOtherWitness definition]
+          ]
     ] ++ concat
     [ let
-        { compilerTokensName = "swapBoolPairCompilerTokens"
-        ; modelTokensName = "swapBoolPairMALLPTokens"
-        ; tokenProofName = "swapBoolPairTokenCorrespondence"
-        ; sourceSemanticsName = "swapBoolPairSourceSemantics"
-        ; executionName = "swapBoolPairExecution"
-        ; sourceSoundName = "swapBoolPairSourceSound"
+        { suffix = index
+        ; compilerTokensName = "swapBoolPairCompilerTokens" <> suffix
+        ; modelTokensName = "swapBoolPairMALLPTokens" <> suffix
+        ; tokenProofName = "swapBoolPairTokenCorrespondence" <> suffix
+        ; derivationName = "swapBoolPairMALLPDerivation" <> suffix
+        ; sourceSemanticsName = "swapBoolPairSourceSemantics" <> suffix
+        ; executionName = "swapBoolPairExecution" <> suffix
+        ; sourceSoundName = "swapBoolPairSourceSound" <> suffix
         ; sourceName =
             T.pack (prettyShow sourceModule) <> "." <>
               T.pack (prettyShow (qnameName (compiledName definition)))
@@ -1810,7 +1817,7 @@ rendererCertificate sourceModule definitions
         , tokenProofName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
         , tokenProofName <> " = refl"
         , ""
-        , "swapBoolPairMALLPDerivation = boolPairSwapMALLP"
+        , derivationName <> " = boolPairSwapMALLP"
         , ""
         , sourceSemanticsName <> " :"
         , "  (first second : Bool) → " <> sourceName
@@ -1836,9 +1843,12 @@ rendererCertificate sourceModule definitions
         , "      (sym (swapBoolPairSourceSemantics first second)))"
         , ""
         ]
-      | definition <- definitions
-      , Just (BoolPairFunctionWitness constructor (BoolPairFields 0 1)) <-
-          [compiledOtherWitness definition]
+      | (index, definition) <-
+          [ (T.pack (show position), definition)
+          | (position, definition) <- zip [0 :: Int ..] definitions
+          , Just (BoolPairFunctionWitness constructor (BoolPairFields 0 1)) <-
+              [compiledOtherWitness definition]
+          ]
     ] ++ concat
     [ let
         { suffix = index
