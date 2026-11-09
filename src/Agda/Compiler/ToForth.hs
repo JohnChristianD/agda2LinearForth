@@ -1849,8 +1849,8 @@ rendererCertificate sourceModule definitions
         , "      (sym (swapBoolPairSourceSemantics first second)))"
         , ""
         ]
-      | (index, definition) <-
-          [ (T.pack (show position), definition)
+      | (index, definition, constructor) <-
+          [ (T.pack (show position), definition, constructor)
           | (position, definition) <- zip [0 :: Int ..] definitions
           , Just (BoolPairFunctionWitness constructor (BoolPairFields 0 1)) <-
               [compiledOtherWitness definition]
