@@ -55,6 +55,7 @@ data CompiledDefinition = CompiledDefinition
   , compiledTokens :: [FormalToken]
   , compiledNatLinearWitness :: Maybe NatLinearExpr
   , compiledNatBinaryWitness :: Maybe NatBinaryLinearExpr
+  , compiledNatResourceWitness :: Maybe NatResourceExpr
   }
 
 data NatExpr
@@ -112,12 +113,16 @@ data NatResourceExpr
   = NatResourceLiteral Natural
   | NatResourceVariable Int
   | NatResourceBinary NatOp NatResourceExpr NatResourceExpr
+  -- Treeless PAdd has its operands reversed relative to source order.
+  | NatResourceAddReversed NatResourceExpr NatResourceExpr
   deriving (Eq, Show)
 
 natResourceVariables :: NatResourceExpr -> [Int]
 natResourceVariables (NatResourceLiteral _) = []
 natResourceVariables (NatResourceVariable index) = [index]
 natResourceVariables (NatResourceBinary _ left right) =
+  natResourceVariables left ++ natResourceVariables right
+natResourceVariables (NatResourceAddReversed left right) =
   natResourceVariables left ++ natResourceVariables right
 
 decodeNatResourceTerm :: [QName] -> [NatResourceExpr] -> TTerm -> TCM NatResourceExpr
@@ -150,7 +155,7 @@ decodeNatResourceTerm callStack environment term = do
         -- Keep the two cases explicit: commutativity is not definitional,
         -- and the generated source certificate checks each orientation.
         (PAdd, [left, right]) ->
-          pure (NatResourceBinary NatAdd right left)
+          pure (NatResourceAddReversed right left)
         (PMul, [left, right]) ->
           pure (NatResourceBinary NatMultiply left right)
         (PSub, [_, _]) ->
@@ -219,16 +224,17 @@ formalNatToken NatAdd = FormalAddWord
 formalNatToken NatMonus = FormalMonusWord
 formalNatToken NatMultiply = FormalMultiplyWord
 
-compileNatResourceExpr
-  :: Int
+-- Select one owned resource, preserving the residual context.  The active
+-- depth counts computed sibling results already stacked above live inputs.
+compileResourceUse
+  :: String
+  -> Int
   -> [Int]
-  -> NatResourceExpr
+  -> Int
   -> Either String (FthForm, [FormalToken], [Int])
-compileNatResourceExpr _ context (NatResourceLiteral value) =
-  Right (renderNatExpr (NatLiteral value), [FormalPushLiteral value], context)
-compileNatResourceExpr active context (NatResourceVariable index) =
+compileResourceUse errorPrefix active context index =
   case elemIndex index context of
-    Nothing -> Left ("MALLP resource is missing, duplicated, or out of scope: " ++ show index)
+    Nothing -> Left (errorPrefix ++ show index)
     Just position ->
       let depth = active + position
           remaining = take position context ++ drop (position + 1) context
@@ -241,7 +247,31 @@ compileNatResourceExpr active context (NatResourceVariable index) =
                , [FormalRollWord (fromIntegral depth)]
                , remaining
                )
-compileNatResourceExpr active context (NatResourceBinary operation left right) = do
+
+compileNatResourceExpr
+  :: Int
+  -> [Int]
+  -> NatResourceExpr
+  -> Either String (FthForm, [FormalToken], [Int])
+compileNatResourceExpr _ context (NatResourceLiteral value) =
+  Right (renderNatExpr (NatLiteral value), [FormalPushLiteral value], context)
+compileNatResourceExpr active context (NatResourceVariable index) =
+  compileResourceUse
+    "MALLP resource is missing, duplicated, or out of scope: "
+    active context index
+compileNatResourceExpr active context (NatResourceBinary operation left right) =
+  compileNatResourceBinary active context operation left right
+compileNatResourceExpr active context (NatResourceAddReversed left right) =
+  compileNatResourceBinary active context NatAdd left right
+
+compileNatResourceBinary
+  :: Int
+  -> [Int]
+  -> NatOp
+  -> NatResourceExpr
+  -> NatResourceExpr
+  -> Either String (FthForm, [FormalToken], [Int])
+compileNatResourceBinary active context operation left right = do
   (leftCode, leftTokens, afterLeft) <- compileNatResourceExpr active context left
   (rightCode, rightTokens, afterRight) <-
     compileNatResourceExpr (active + 1) afterLeft right
@@ -261,20 +291,9 @@ compileBoolResourceExpr context (BoolLiteral value) =
         else ("FALSE", FormalFalseWord)
   in Right (RSAtom forth, [token], context)
 compileBoolResourceExpr context (BoolVariable index) =
-  case elemIndex index context of
-    Nothing -> Left ("MALLP Bool resource is missing, duplicated, or out of scope: " ++ show index)
-    Just position ->
-      let depth = position
-          remaining = take position context ++ drop (position + 1) context
-      in if depth == 0
-           then Right (RSList [], [], remaining)
-           else if depth == 1
-             then Right (RSAtom "SWAP", [FormalSwapWord], remaining)
-             else Right
-               ( RSList [RSAtom (T.pack (show depth)), RSAtom "ROLL"]
-               , [FormalRollWord (fromIntegral depth)]
-               , remaining
-               )
+  compileResourceUse
+    "MALLP Bool resource is missing, duplicated, or out of scope: "
+    0 context index
 compileBoolResourceExpr context (BoolConditional condition whenTrue whenFalse) = do
   (conditionCode, conditionTokens, afterCondition) <-
     compileBoolResourceExpr context condition
@@ -355,20 +374,9 @@ compileBoolPairResource
   -> Int
   -> Either String (FthForm, [FormalToken], [Int])
 compileBoolPairResource active context index =
-  case elemIndex index context of
-    Nothing -> Left ("MALLP BoolPair field missing, duplicated, or out of scope: " ++ show index)
-    Just position ->
-      let depth = active + position
-          remaining = take position context ++ drop (position + 1) context
-      in if depth == 0
-           then Right (RSList [], [], remaining)
-           else if depth == 1
-             then Right (RSAtom "SWAP", [FormalSwapWord], remaining)
-             else Right
-               ( RSList [RSAtom (T.pack (show depth)), RSAtom "ROLL"]
-               , [FormalRollWord (fromIntegral depth)]
-               , remaining
-               )
+  compileResourceUse
+    "MALLP BoolPair field missing, duplicated, or out of scope: "
+    active context index
 
 compileBoolPairFunction
   :: QName
@@ -421,7 +429,7 @@ compileNatResourceFunction
   :: QName
   -> Int
   -> TTerm
-  -> TCM (FthForm, [FormalToken], Maybe NatLinearExpr, Maybe NatBinaryLinearExpr)
+  -> TCM (NatResourceExpr, FthForm, [FormalToken], Maybe NatLinearExpr, Maybe NatBinaryLinearExpr)
 compileNatResourceFunction owner arity term = do
   let (actualArity, body) = tLamView term
   if actualArity /= arity
@@ -446,7 +454,7 @@ compileNatResourceFunction owner arity term = do
         _ -> pure Nothing
       let binaryWitness =
             if arity == 2 then natResourceBinaryLinearExpr expression else Nothing
-      pure (code, tokens, linearWitness, binaryWitness)
+      pure (expression, code, tokens, linearWitness, binaryWitness)
     else unsupported ("MALLP resource leak: unconsumed arguments " ++ show remaining)
 
 natResourceClosedExpr :: NatResourceExpr -> Maybe NatExpr
@@ -455,6 +463,8 @@ natResourceClosedExpr (NatResourceLiteral value) =
 natResourceClosedExpr (NatResourceVariable _) = Nothing
 natResourceClosedExpr (NatResourceBinary operation left right) =
   NatBinary operation <$> natResourceClosedExpr left <*> natResourceClosedExpr right
+natResourceClosedExpr (NatResourceAddReversed left right) =
+  NatBinary NatAdd <$> natResourceClosedExpr left <*> natResourceClosedExpr right
 
 -- Translate the exact-once unary resource tree to the Agda proof-term grammar.
 -- Since the source checker has already established that index 0 occurs once,
@@ -462,6 +472,14 @@ natResourceClosedExpr (NatResourceBinary operation left right) =
 natResourceLinearExpr :: NatResourceExpr -> Maybe NatLinearExpr
 natResourceLinearExpr (NatResourceVariable 0) = Just NatArgument
 natResourceLinearExpr (NatResourceBinary operation left right) =
+  natResourceLinearBinary operation left right
+natResourceLinearExpr (NatResourceAddReversed left right) =
+  natResourceLinearBinary NatAdd left right
+natResourceLinearExpr _ = Nothing
+
+natResourceLinearBinary
+  :: NatOp -> NatResourceExpr -> NatResourceExpr -> Maybe NatLinearExpr
+natResourceLinearBinary operation left right =
   case (natResourceLinearExpr left, natResourceClosedExpr right) of
     (Just input, Just closed) ->
       Just (NatLinearLeft operation input closed)
@@ -470,7 +488,6 @@ natResourceLinearExpr (NatResourceBinary operation left right) =
         (Just closed, Just input) ->
           Just (NatLinearRight operation closed input)
         _ -> Nothing
-natResourceLinearExpr _ = Nothing
 
 -- Recognize a direct binary operation over the two live arguments. Treeless
 -- index 1 denotes the first source argument; index 0 denotes the second.
@@ -481,6 +498,9 @@ natResourceBinaryLinearExpr
 natResourceBinaryLinearExpr
   (NatResourceBinary operation (NatResourceVariable 0) (NatResourceVariable 1)) =
     Just (NatBinaryArgumentsExchanged operation)
+natResourceBinaryLinearExpr
+  (NatResourceAddReversed (NatResourceVariable _) (NatResourceVariable _)) =
+    Just (NatBinaryArgumentsExchanged NatAdd)
 natResourceBinaryLinearExpr _ = Nothing
 
 decodeNatPrimitive :: TPrim -> [NatExpr] -> Either String NatExpr
@@ -1037,11 +1057,11 @@ compileDefinition definition
           body <- toTreeless EagerEvaluation (defName definition)
           case (natArity, body) of
             (Just arity, Just term) -> do
-              (code, tokens, linearWitness, binaryWitness) <-
+              (resourceWitness, code, tokens, linearWitness, binaryWitness) <-
                 compileNatResourceFunction (defName definition) arity term
               pure (Just (CompiledDefinition
                 (defName definition) (strictWord (defName definition) code) tokens
-                linearWitness binaryWitness))
+                linearWitness binaryWitness (Just resourceWitness)))
             (Just _, Nothing) -> pure Nothing
             (Nothing, _) -> unsupported "Nat definition has a non-Nat argument or result"
         else if isBool then do
@@ -1055,7 +1075,7 @@ compileDefinition definition
               pure (Just (CompiledDefinition
                 (defName definition)
                 (strictWord (defName definition) (RSAtom forthBoolean))
-                [formalBoolean] Nothing Nothing))
+                [formalBoolean] Nothing Nothing Nothing))
         else if maybe False (> 0) boolArity then do
           body <- toTreeless EagerEvaluation (defName definition)
           case (boolArity, body) of
@@ -1063,7 +1083,7 @@ compileDefinition definition
               (code, tokens) <-
                 compileBoolResourceFunction (defName definition) arity term
               pure (Just (CompiledDefinition
-                (defName definition) (strictWord (defName definition) code) tokens Nothing Nothing))
+                (defName definition) (strictWord (defName definition) code) tokens Nothing Nothing Nothing))
             (Just _, Nothing) -> pure Nothing
             _ -> unsupported "Bool function arity classification changed during compilation"
         else if word64Arity == Just 1 then do
@@ -1073,7 +1093,7 @@ compileDefinition definition
               (code, tokens) <-
                 compileWord64IdentityFunction (defName definition) 1 term
               pure (Just (CompiledDefinition
-                (defName definition) (strictWord (defName definition) code) tokens Nothing Nothing))
+                (defName definition) (strictWord (defName definition) code) tokens Nothing Nothing Nothing))
             Nothing -> pure Nothing
         else case word64Arity of
           Just 0 -> unsupported
@@ -1089,7 +1109,7 @@ compileDefinition definition
                   (code, tokens) <-
                     compileBoolPairFunction (defName definition) constructor term
                   pure (Just (CompiledDefinition
-                    (defName definition) (strictWord (defName definition) code) tokens Nothing Nothing))
+                    (defName definition) (strictWord (defName definition) code) tokens Nothing Nothing Nothing))
             Nothing ->
               if isUnit then do
                 body <- toTreeless EagerEvaluation (defName definition)
@@ -1098,7 +1118,7 @@ compileDefinition definition
                   Just term -> do
                     decodeUnitTerm term
                     pure (Just (CompiledDefinition
-                      (defName definition) (strictWord (defName definition) (RSList [])) [] Nothing Nothing))
+                      (defName definition) (strictWord (defName definition) (RSList [])) [] Nothing Nothing Nothing))
               else pure Nothing
       _ -> pure Nothing
 
@@ -1174,6 +1194,73 @@ agdaNatBinaryLinearExprTerm (NatBinaryArguments operation) =
 agdaNatBinaryLinearExprTerm (NatBinaryArgumentsExchanged operation) =
   "(natBinaryArgumentsExchanged " <> agdaNatOpTerm operation <> ")"
 
+-- Reify the accepted Haskell resource tree into Agda's count-indexed AST.
+-- The returned labels retain left-to-right environment order.
+agdaNatResourceExprTerm :: NatResourceExpr -> (Text, [Int])
+agdaNatResourceExprTerm (NatResourceLiteral value) =
+  ("(resourceLiteral " <> T.pack (show value) <> ")", [])
+agdaNatResourceExprTerm (NatResourceVariable index) =
+  ("resourceArgument", [index])
+agdaNatResourceExprTerm (NatResourceBinary operation left right) =
+  agdaNatResourceBinaryTerm operation left right
+agdaNatResourceExprTerm (NatResourceAddReversed left right) =
+  agdaNatResourceBinaryTerm NatAdd left right
+
+agdaNatResourceBinaryTerm
+  :: NatOp -> NatResourceExpr -> NatResourceExpr -> (Text, [Int])
+agdaNatResourceBinaryTerm operation left right =
+  let (leftTerm, leftResources) = agdaNatResourceExprTerm left
+      (rightTerm, rightResources) = agdaNatResourceExprTerm right
+  in ( "(resourceBinary " <> agdaNatOpTerm operation <> " "
+         <> leftTerm <> " " <> rightTerm <> ")"
+     , leftResources ++ rightResources
+     )
+
+-- Treeless variables use de Bruijn order: index zero is the final source
+-- argument.  Reify each resource label back into source argument order.
+agdaNatResourceEnvironmentTerm :: Int -> [Int] -> Text
+agdaNatResourceEnvironmentTerm arity =
+  foldr
+    (\index environment ->
+      "(natEnvironmentCons argument"
+        <> T.pack (show (arity - index - 1))
+        <> " " <> environment <> ")")
+    "natEnvironmentNil"
+
+agdaNatResourceEvalTerm :: Int -> NatResourceExpr -> Text
+agdaNatResourceEvalTerm arity expression =
+  let (expressionTerm, variables) = agdaNatResourceExprTerm expression
+      environment = agdaNatResourceEnvironmentTerm arity variables
+  in "(evalNatResourceExpr " <> expressionTerm <> " (" <> environment <> "))"
+
+-- Prove source evaluation equals the resource-tree evaluator.  PAdd nodes
+-- are the only Treeless nodes whose operand order differs from source order.
+agdaNatResourceSourceProofTerm :: Int -> NatResourceExpr -> Text
+agdaNatResourceSourceProofTerm _ expression
+  | null (natResourceVariables expression) = "refl"
+agdaNatResourceSourceProofTerm _ (NatResourceLiteral _) = "refl"
+agdaNatResourceSourceProofTerm _ (NatResourceVariable _) = "refl"
+agdaNatResourceSourceProofTerm arity (NatResourceBinary operation left right) =
+  "(cong₂ (applyNatOp " <> agdaNatOpTerm operation <> ") "
+    <> agdaNatResourceSourceProofTerm arity left <> " "
+    <> agdaNatResourceSourceProofTerm arity right <> ")"
+agdaNatResourceSourceProofTerm arity (NatResourceAddReversed left right)
+  | null (natResourceVariables left) || null (natResourceVariables right) =
+      "(cong₂ (applyNatOp addOp) "
+        <> agdaNatResourceSourceProofTerm arity left <> " "
+        <> agdaNatResourceSourceProofTerm arity right <> ")"
+  | otherwise =
+      "(trans (cong₂ (applyNatOp addOp) "
+        <> agdaNatResourceSourceProofTerm arity right <> " "
+        <> agdaNatResourceSourceProofTerm arity left <> ") "
+        <> "(natAdd-comm "
+        <> agdaNatResourceEvalTerm arity right <> " "
+        <> agdaNatResourceEvalTerm arity left <> "))"
+
+agdaNatIndexTerm :: Int -> Text
+agdaNatIndexTerm arity =
+  T.concat (replicate arity "(suc ") <> "zero" <> T.replicate arity ")"
+
 agdaNatBinarySourceProofTerm :: NatBinaryLinearExpr -> Text
 agdaNatBinarySourceProofTerm (NatBinaryArgumentsExchanged NatAdd) =
   "natAdd-comm first second"
@@ -1215,8 +1302,9 @@ rendererCertificate sourceModule definitions = T.unlines $
   , "   ForthToken; pushLiteral; addWord; monusWord; multiplyWord; swapWord; rollWord;"
   , "   MALLPNatTheory; natContext; natFormula; natLinear-proof-derivation; natBinary-proof-derivation;"
   , "   natLinearProof; natBinaryProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
-  , "   evalNatLinearExpr; evalNatBinaryLinearExpr; natLinearMALLP-forth-sound; natBinaryResourceMALLP-forth-sound; renderNatBinaryResource;"
-  , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; cong; trans;"
+  , "   evalNatLinearExpr; evalNatBinaryLinearExpr; evalNatResourceExpr; natLinearMALLP-forth-sound; natBinaryResourceMALLP-forth-sound; renderNatBinaryResource;"
+  , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate;"
+  , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; cong; cong₂; trans; sym;"
   , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm)"
   , ""
   ] ++ concat
@@ -1291,6 +1379,58 @@ rendererCertificate sourceModule definitions = T.unlines $
           , Just expression <- [compiledNatLinearWitness definition]
           ]
       ]
+    ++ concat
+    [ let
+        { expressionName = "natResourceExpression" <> index
+        ; derivationName = "natResourceDerivation" <> index
+        ; sourceProofName = "sourceNatResourceSemantics" <> index
+        ; arity = length (natResourceVariables expression)
+        ; argumentNames =
+            [ "argument" <> T.pack (show argument)
+            | argument <- [0 .. arity - 1]
+            ]
+        ; argumentBinders =
+            T.intercalate " → "
+              [ "(" <> argument <> " : Nat)" | argument <- argumentNames ]
+        ; sourceFunction =
+            T.pack (prettyShow sourceModule) <> "." <>
+              T.pack (prettyShow (qnameName (compiledName definition)))
+        ; sourceCall = T.unwords (sourceFunction : argumentNames)
+        ; resourceEnvironment =
+            agdaNatResourceEnvironmentTerm arity (natResourceVariables expression)
+        ; sourceProofTerm =
+            agdaNatResourceSourceProofTerm arity expression
+        ; sourceProofArguments = T.unwords (sourceProofName : argumentNames)
+        ; resourceTerm = fst (agdaNatResourceExprTerm expression)
+        ; sourceTypeLines =
+            (if null argumentNames then [] else [ "  " <> argumentBinders <> " →" ])
+              ++ [ "    " <> sourceCall <> " ≡"
+                 , "      interpretMALLPNatProof (natResourceProof " <> expressionName <> ")"
+                 , "        (" <> resourceEnvironment <> ")"
+                 ]
+        }
+      in
+        [ expressionName <> " : NatResourceExpr " <> agdaNatIndexTerm arity
+        , expressionName <> " = " <> resourceTerm
+        , ""
+        , derivationName <> " : MALLPNatTheory (natContext "
+            <> agdaNatIndexTerm arity <> ") (just natFormula)"
+        , derivationName <> " = natResource-proof-derivation " <> expressionName
+        , ""
+        , sourceProofName <> " :"
+        ] ++ sourceTypeLines ++
+        [ sourceProofArguments <> " ="
+        , "  trans (" <> sourceProofTerm <> ")"
+        , "    (sym (natResourceProof-adequate " <> expressionName
+            <> " (" <> resourceEnvironment <> ")))"
+        , ""
+        ]
+      | (index, definition, expression) <-
+          [ (T.pack (show position), definition, expression)
+          | (position, definition) <- zip [0 :: Int ..] definitions
+          , Just expression <- [compiledNatResourceWitness definition]
+          ]
+    ]
     ++ concat
     [ let { expressionName = "natBinaryExpression" <> index
           ; derivationName = "natBinaryDerivation" <> index
