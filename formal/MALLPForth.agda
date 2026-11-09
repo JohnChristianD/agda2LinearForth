@@ -2889,12 +2889,12 @@ module StrictNatCompiler where
     (right ∷ left ∷ rest) result
     (natStackBoundedCons rightBound
       (natStackBoundedCons leftBound restBound)) execution
-      with natWithinBound left bound
-         | natWithinBound right bound
+      with natWithinBound left bound in leftWithin
+         | natWithinBound right bound in rightWithin
          | execution
   ... | true | true | refl =
     natStackBoundedCons
-      (natWithinBound-monus left right bound refl)
+      (natWithinBound-monus left right bound leftWithin)
       restBound
   ... | _ | _ | ()
   execBoundedToken-preserves-bounded bound multiplyWord [] result
