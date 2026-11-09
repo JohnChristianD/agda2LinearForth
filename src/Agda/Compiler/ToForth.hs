@@ -1236,6 +1236,8 @@ agdaNatResourceEvalTerm arity expression =
 -- Prove source evaluation equals the resource-tree evaluator.  PAdd nodes
 -- are the only Treeless nodes whose operand order differs from source order.
 agdaNatResourceSourceProofTerm :: Int -> NatResourceExpr -> Text
+agdaNatResourceSourceProofTerm _ expression
+  | null (natResourceVariables expression) = "refl"
 agdaNatResourceSourceProofTerm _ (NatResourceLiteral _) = "refl"
 agdaNatResourceSourceProofTerm _ (NatResourceVariable _) = "refl"
 agdaNatResourceSourceProofTerm arity (NatResourceBinary operation left right) =
