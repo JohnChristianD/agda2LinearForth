@@ -2,7 +2,7 @@
 
 module Trusted.NatMachine where
 
-open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _*_) 
+open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _*_)
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import Agda.Builtin.List using (List; []; _∷_)
 open import Agda.Builtin.Maybe using (Maybe; nothing; just)
@@ -20,6 +20,11 @@ data Token : Set where
 
 Stack : Set
 Stack = List Nat
+
+monus : Nat → Nat → Nat
+monus zero y = y
+monus (suc x) zero = zero
+monus (suc x) (suc y) = monus x y
 
 step : Token → Stack → Maybe Stack
 step (pushNat n) stack = just (n ∷ stack)
@@ -46,11 +51,6 @@ push-exec n stack = refl
 add-exec : (x y : Nat) (rest : Stack) →
   exec (addNat ∷ []) (x ∷ y ∷ rest) ≡ just ((y + x) ∷ rest)
 add-exec x y rest = refl
-
-monus : Nat → Nat → Nat
-monus zero y = y
-monus (suc x) zero = zero
-monus (suc x) (suc y) = monus x y
 
 monus-exec : (x y : Nat) (rest : Stack) →
   exec (monusNat ∷ []) (x ∷ y ∷ rest) ≡ just (monus x y ∷ rest)
