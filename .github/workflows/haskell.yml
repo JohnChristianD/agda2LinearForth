@@ -147,24 +147,8 @@ jobs:
               exit 1
             }
           done
-          # Every admitted unary and direct-binary Nat fixture must have a
-          # source-semantic theorem in the generated Agda module.
-          for source in answerIdentity answerAddFive answerMonusFive answerFiveMonus answerMultiplyFive; do
-            grep -Fq "MALLPStrict.$source argument ≡ evalNatLinearExpr" MALLPEmittedRenderer.agda || {
-              echo "missing unary Nat source certificate: $source"
-              exit 1
-            }
-          done
-          for source in answerAddTwo answerMonusTwo answerReverseMonusTwo answerMultiplyTwo; do
-            grep -Fq "MALLPStrict.$source first second ≡ evalNatBinaryLinearExpr" MALLPEmittedRenderer.agda || {
-              echo "missing binary Nat source certificate: $source"
-              exit 1
-            }
-          done
-          test "$(grep -cE '^sourceNatSemantics[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 5
-          test "$(grep -cE '^natLinearCompiledExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 5
-          test "$(grep -cE '^sourceNatBinarySemantics[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 4
-          test "$(grep -cE '^natBinaryCompiledExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 4
+          # The single resource-indexed proof path now covers closed, unary,
+          # binary, and multi-argument Nat definitions uniformly.
           # Every compiled Nat definition must carry an Agda-checked resource
           # expression, MALLP derivation, and source-semantics theorem.
           for source in answerAdd answerMonus answerMultiply answerLet answerLetShared answerLetUnused answerIdentity answerAddFive answerMonusFive answerFiveMonus answerMultiplyFive answerAddTwo answerMonusTwo answerReverseMonusTwo answerMultiplyTwo answerThree answerThreeLet answerFour answerCallThree answerCallNested; do
