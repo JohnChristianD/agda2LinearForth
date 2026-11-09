@@ -1277,12 +1277,31 @@ agdaNatResourceSourceProofTerm arity = proof
       "trans (cong₂ (applyNatOp addOp) ("
         <> proof left <> ") (" <> proof right <> ")) (natAdd-comm ("
         <> sourceEval left <> ") (" <> sourceEval right <> "))"
-    proof (NatResourceBinaryDecoded ReverseNatResourceOrder NatAdd _ _) = "refl"
+    proof (NatResourceBinaryDecoded ReverseNatResourceOrder NatAdd left right) =
+      "cong₂ (applyNatOp addOp) ("
+        <> proof right <> ") (" <> proof left <> ")"
     proof (NatResourceBinaryDecoded PreserveNatResourceOrder operation left right) =
       "cong₂ (applyNatOp " <> agdaNatOpTerm operation <> ") ("
         <> proof left <> ") (" <> proof right <> ")"
     proof (NatResourceBinaryDecoded ReverseNatResourceOrder operation _ _) =
       error ("unsupported reversed resource operation in source proof: " ++ show operation)
+
+agdaNatResourceSourceMeaningProofTerm :: Int -> NatResourceDecoded -> Text
+agdaNatResourceSourceMeaningProofTerm arity = proof
+  where
+    sourceEval decoded =
+      agdaNatResourceEvalTerm arity (natResourceDecodedSourceExpr decoded)
+
+    proof (NatResourceLiteralDecoded _) = "refl"
+    proof (NatResourceVariableDecoded _) = "refl"
+    proof (NatResourceBinaryDecoded _ NatAdd left right) =
+      "trans (natAdd-comm ("
+        <> sourceEval right <> ") (" <> sourceEval left <> ")) "
+        <> "(cong₂ (applyNatOp addOp) ("
+        <> proof left <> ") (" <> proof right <> "))"
+    proof (NatResourceBinaryDecoded _ operation left right) =
+      "cong₂ (applyNatOp " <> agdaNatOpTerm operation <> ") ("
+        <> proof left <> ") (" <> proof right <> ")"
 
 agdaNatSourceArguments :: Int -> [Text]
 agdaNatSourceArguments arity =
@@ -1438,7 +1457,8 @@ rendererCertificate sourceModule definitions = T.unlines $
          [ "  evalNatResourceExpr " <> sourceExpressionName <> " ("
              <> agdaNatResourceEnvironmentTerm arity sourceOrder <> ") ≡"
          , "    " <> application
-         , T.unwords (sourceMeaningName : arguments) <> " = refl"
+         , T.unwords (sourceMeaningName : arguments) <> " = "
+              <> agdaNatResourceSourceMeaningProofTerm arity decoded
          , ""
          , semanticsName <> " :"
          ] ++ binders ++
