@@ -364,7 +364,7 @@ compileBoolPairFunction
   :: QName
   -> QName
   -> TTerm
-  -> TCM (FthForm, [FormalToken])
+  -> TCM (BoolPairExpr, FthForm, [FormalToken])
 compileBoolPairFunction owner constructor term = do
   expression <- decodeBoolPairFunction owner constructor term
   let (first, second) = case expression of
@@ -374,19 +374,22 @@ compileBoolPairFunction owner constructor term = do
   if actualResources /= expectedResources
     then unsupported "MALLP tensor elimination must consume both BoolPair fields exactly once"
     else pure ()
+  if expression /= BoolPairFields 0 1 && expression /= BoolPairFields 1 0
+    then unsupported "BoolPair compiler certificates currently cover identity and field swap"
+    else pure ()
   (firstCode, firstTokens, afterFirst) <-
     either unsupported pure (compileBoolPairResource 0 expectedResources first)
   (secondCode, secondTokens, remaining) <-
     either unsupported pure (compileBoolPairResource 1 afterFirst second)
   if null remaining
-    then pure (RSList [firstCode, secondCode], firstTokens ++ secondTokens)
+    then pure (expression, RSList [firstCode, secondCode], firstTokens ++ secondTokens)
     else unsupported ("MALLP BoolPair resource leak: " ++ show remaining)
 
 compileBoolResourceFunction
   :: QName
   -> Int
   -> TTerm
-  -> TCM (FthForm, [FormalToken])
+  -> TCM (BoolExpr, FthForm, [FormalToken])
 compileBoolResourceFunction owner arity term = do
   let (actualArity, body) = tLamView term
       expectedResources = [0 .. arity - 1]
@@ -401,10 +404,21 @@ compileBoolResourceFunction owner arity term = do
   if not (null invalidPaths)
     then unsupported "MALLP linearity violation: every Bool argument must occur exactly once on every additive branch"
     else pure ()
+  let proofSupported =
+        (arity == 1 && expression == BoolVariable 0)
+        || (arity == 1
+            && expression ==
+              BoolConditional (BoolVariable 0) (BoolLiteral False) (BoolLiteral True))
+        || (arity == 2
+            && expression ==
+              BoolConditional (BoolVariable 1) (BoolVariable 0) (BoolVariable 0))
+  if not proofSupported
+    then unsupported "Bool resource tree is linear but outside the currently certified identity/invert/choose fragment"
+    else pure ()
   (code, tokens, remaining) <-
     either unsupported pure (compileBoolResourceExpr expectedResources expression)
   if null remaining
-    then pure (code, tokens)
+    then pure (expression, code, tokens)
     else unsupported ("MALLP Bool resource leak: unconsumed arguments " ++ show remaining)
 
 compileNatResourceFunction
