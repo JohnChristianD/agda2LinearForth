@@ -194,8 +194,8 @@ jobs:
           # A changed compiler output set requires an explicit coverage review.
           test "$(grep -cE '^actualWord[0-9]+ : String' MALLPEmittedRenderer.agda)" -eq 29
           test "$(grep -cE '^wordRendererCorrect[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 29
-          grep -Fq 'chooseBoolTokenCorrespondence = refl' MALLPEmittedRenderer.agda
-          grep -Fq 'swapBoolPairTokenCorrespondence = refl' MALLPEmittedRenderer.agda
+          grep -Eq '^chooseBoolTokenCorrespondence[0-9]+ = refl$' MALLPEmittedRenderer.agda
+          grep -Eq '^swapBoolPairTokenCorrespondence[0-9]+ = refl$' MALLPEmittedRenderer.agda
           cat MALLPEmittedRenderer.agda
           if "$AGDA_BIN" --no-prop --no-erasure -i formal -i . -i test MALLPEmittedRenderer.agda > renderer-certificate.log 2>&1; then
             cat renderer-certificate.log
