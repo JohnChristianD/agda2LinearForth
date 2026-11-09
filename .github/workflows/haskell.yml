@@ -190,7 +190,14 @@ jobs:
           # A successful bounded-cell execution must return exactly the
           # source result. Overflow remains an explicit target failure.
           test "$(grep -cE '^natResourceBoundedSourceSound[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 20
-          test "$(grep -c 'inputStackBounded : NatStackBounded bound' MALLPEmittedRenderer.agda)" -eq 20
+          test "$(grep -cE '^natResourceBoundedTrace[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 20
+          test "$(grep -c 'inputStackBounded : NatStackBounded bound' MALLPEmittedRenderer.agda)" -eq 40
+          for theorem in natWithinBound-monotone natWithinBound-monus rollList-preserves-bounded execBoundedToken-preserves-bounded execBoundedToken-complete BoundedForthTrace execBoundedTokens-trace boundedForthTrace-unbounded boundedForthTrace-executes-bounded boundedExecutionTrace-equivalence; do
+            grep -Fq "$theorem" formal/MALLPForth.agda || {
+              echo "missing bounded execution correspondence theorem: $theorem"
+              exit 1
+            }
+          done
           for witness in boundedAddAtLimit boundedAddOverflow boundedMonusUnderflow boundedMultiplyOverflow boundedLiteralOverflow; do
             grep -Fq "$witness" formal/MALLPForth.agda || {
               echo "missing bounded Forth semantics witness: $witness"
