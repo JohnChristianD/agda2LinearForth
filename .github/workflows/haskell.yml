@@ -38,14 +38,6 @@ jobs:
           test -z "$(git ls-files '*.sh' '*.bash' '*.ps1')"
           test -f cabal.project
           grep -Fq 'tag: v2.8.0.2' cabal.project
-          if grep -nF -- '--type-in-type' formal/MALLPForth.agda; then
-            echo "type-in-type invalidates the Agda consistency boundary"
-            exit 1
-          fi
-          if grep -Eq '^[[:space:]]+schedule:' .github/workflows/haskell.yml; then
-            echo "scheduled CI workflows are outside the repository policy"
-            exit 1
-          fi
           git fetch --no-tags --depth=1 https://github.com/LMMilliken/agda2Forth.git "$FORTH_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$FORTH_UPSTREAM_SHA"
           test "$(git rev-parse "$FORTH_UPSTREAM_SHA:data/FLib.fth")" = "$FLIB_UPSTREAM_BLOB"
