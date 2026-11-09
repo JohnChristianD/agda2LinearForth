@@ -158,15 +158,15 @@ natResourceDecodedSourceExpr (NatResourceLiteralDecoded value) =
 natResourceDecodedSourceExpr (NatResourceVariableDecoded index) =
   NatResourceVariable index
 natResourceDecodedSourceExpr
-  (NatResourceBinaryDecoded PreserveNatResourceOrder operation left right) =
-    NatResourceBinary operation
-      (natResourceDecodedSourceExpr left)
+  (NatResourceBinaryDecoded _ NatAdd left right) =
+    NatResourceBinary NatAdd
       (natResourceDecodedSourceExpr right)
+      (natResourceDecodedSourceExpr left)
 natResourceDecodedSourceExpr
-  (NatResourceBinaryDecoded ReverseNatResourceOrder operation left right) =
+  (NatResourceBinaryDecoded _ operation left right) =
     NatResourceBinary operation
-      (natResourceDecodedSourceExpr right)
       (natResourceDecodedSourceExpr left)
+      (natResourceDecodedSourceExpr right)
 
 data NatResourceWitness = NatResourceWitness
   { resourceWitnessArity :: Int
@@ -1266,7 +1266,23 @@ agdaNatResourceEvalTerm arity expression =
     <> agdaNatResourceEnvironmentTerm arity (natResourceVariables expression) <> ")"
 
 agdaNatResourceSourceProofTerm :: Int -> NatResourceDecoded -> Text
-agdaNatResourceSourceProofTerm _ _ = "refl"
+agdaNatResourceSourceProofTerm arity = proof
+  where
+    sourceEval decoded =
+      agdaNatResourceEvalTerm arity (natResourceDecodedSourceExpr decoded)
+
+    proof (NatResourceLiteralDecoded _) = "refl"
+    proof (NatResourceVariableDecoded _) = "refl"
+    proof (NatResourceBinaryDecoded PreserveNatResourceOrder NatAdd left right) =
+      "trans (cong₂ (applyNatOp addOp) ("
+        <> proof left <> ") (" <> proof right <> ")) (natAdd-comm ("
+        <> sourceEval left <> ") (" <> sourceEval right <> "))"
+    proof (NatResourceBinaryDecoded ReverseNatResourceOrder NatAdd _ _) = "refl"
+    proof (NatResourceBinaryDecoded PreserveNatResourceOrder operation left right) =
+      "cong₂ (applyNatOp " <> agdaNatOpTerm operation <> ") ("
+        <> proof left <> ") (" <> proof right <> ")"
+    proof (NatResourceBinaryDecoded ReverseNatResourceOrder operation _ _) =
+      error ("unsupported reversed resource operation in source proof: " ++ show operation)
 
 agdaNatSourceArguments :: Int -> [Text]
 agdaNatSourceArguments arity =
