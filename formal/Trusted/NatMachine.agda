@@ -2,7 +2,8 @@
 
 module Trusted.NatMachine where
 
-open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _∸_; _*_)
+open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _*_) 
+open import Agda.Builtin.Equality using (_≡_; refl)
 open import Agda.Builtin.List using (List; []; _∷_)
 open import Agda.Builtin.Maybe using (Maybe; nothing; just)
 
@@ -24,7 +25,7 @@ step : Token → Stack → Maybe Stack
 step (pushNat n) stack = just (n ∷ stack)
 step addNat (x ∷ y ∷ rest) = just ((y + x) ∷ rest)
 step addNat _ = nothing
-step monusNat (x ∷ y ∷ rest) = just ((y ∸ x) ∷ rest)
+step monusNat (x ∷ y ∷ rest) = just (monus x y ∷ rest)
 step monusNat _ = nothing
 step multiplyNat (x ∷ y ∷ rest) = just ((y * x) ∷ rest)
 step multiplyNat _ = nothing
@@ -42,14 +43,17 @@ push-exec : (n : Nat) (stack : Stack) →
   exec (pushNat n ∷ []) stack ≡ just (n ∷ stack)
 push-exec n stack = refl
 
-open import Agda.Builtin.Equality using (_≡_; refl)
-
 add-exec : (x y : Nat) (rest : Stack) →
   exec (addNat ∷ []) (x ∷ y ∷ rest) ≡ just ((y + x) ∷ rest)
 add-exec x y rest = refl
 
+monus : Nat → Nat → Nat
+monus zero y = y
+monus (suc x) zero = zero
+monus (suc x) (suc y) = monus x y
+
 monus-exec : (x y : Nat) (rest : Stack) →
-  exec (monusNat ∷ []) (x ∷ y ∷ rest) ≡ just ((y ∸ x) ∷ rest)
+  exec (monusNat ∷ []) (x ∷ y ∷ rest) ≡ just (monus x y ∷ rest)
 monus-exec x y rest = refl
 
 multiply-exec : (x y : Nat) (rest : Stack) →
