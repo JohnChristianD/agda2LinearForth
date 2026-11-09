@@ -158,10 +158,15 @@ natResourceDecodedSourceExpr (NatResourceLiteralDecoded value) =
 natResourceDecodedSourceExpr (NatResourceVariableDecoded index) =
   NatResourceVariable index
 natResourceDecodedSourceExpr
-  (NatResourceBinaryDecoded _ operation left right) =
+  (NatResourceBinaryDecoded PreserveNatResourceOrder operation left right) =
     NatResourceBinary operation
       (natResourceDecodedSourceExpr left)
       (natResourceDecodedSourceExpr right)
+natResourceDecodedSourceExpr
+  (NatResourceBinaryDecoded ReverseNatResourceOrder operation left right) =
+    NatResourceBinary operation
+      (natResourceDecodedSourceExpr right)
+      (natResourceDecodedSourceExpr left)
 
 data NatResourceWitness = NatResourceWitness
   { resourceWitnessArity :: Int
@@ -1261,23 +1266,7 @@ agdaNatResourceEvalTerm arity expression =
     <> agdaNatResourceEnvironmentTerm arity (natResourceVariables expression) <> ")"
 
 agdaNatResourceSourceProofTerm :: Int -> NatResourceDecoded -> Text
-agdaNatResourceSourceProofTerm arity = proof
-  where
-    sourceExpression = natResourceDecodedSourceExpr
-    sourceEval decoded =
-      agdaNatResourceEvalTerm arity (sourceExpression decoded)
-
-    proof (NatResourceLiteralDecoded _) = "refl"
-    proof (NatResourceVariableDecoded _) = "refl"
-    proof (NatResourceBinaryDecoded PreserveNatResourceOrder operation left right) =
-      "cong₂ (applyNatOp " <> agdaNatOpTerm operation <> ") ("
-        <> proof left <> ") (" <> proof right <> ")"
-    proof (NatResourceBinaryDecoded ReverseNatResourceOrder NatAdd left right) =
-      "trans (cong₂ (applyNatOp addOp) ("
-        <> proof right <> ") (" <> proof left <> ")) (natAdd-comm ("
-        <> sourceEval right <> ") (" <> sourceEval left <> "))"
-    proof (NatResourceBinaryDecoded ReverseNatResourceOrder operation _ _) =
-      error ("unsupported reversed Nat resource operation in source proof: " ++ show operation)
+agdaNatResourceSourceProofTerm _ _ = "refl"
 
 agdaNatSourceArguments :: Int -> [Text]
 agdaNatSourceArguments arity =
