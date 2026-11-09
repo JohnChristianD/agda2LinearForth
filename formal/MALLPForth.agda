@@ -2849,7 +2849,7 @@ module StrictNatCompiler where
     with natWithinBound value bound in valueCheck
   ... | true = refl
   ... | false =
-    absurd (natBoundFalseNotTrue (trans (sym valueCheck) valueBound))
+    absurd (natBoundFalseNotTrue valueBound)
   execBoundedToken-complete bound addWord [] result natStackBoundedNil () resultBound
   execBoundedToken-complete bound addWord (value ∷ []) result
     (natStackBoundedCons _ natStackBoundedNil) () resultBound
@@ -2862,11 +2862,11 @@ module StrictNatCompiler where
        | natWithinBound (left + right) bound in resultCheck
   ... | true | true | true = refl
   ... | false | _ | _ =
-    absurd (natBoundFalseNotTrue (trans (sym leftCheck) leftBound))
+    absurd (natBoundFalseNotTrue leftBound)
   ... | true | false | _ =
-    absurd (natBoundFalseNotTrue (trans (sym rightCheck) rightBound))
+    absurd (natBoundFalseNotTrue rightBound)
   ... | true | true | false =
-    absurd (natBoundFalseNotTrue (trans (sym resultCheck) resultBound))
+    absurd (natBoundFalseNotTrue resultBound)
   execBoundedToken-complete bound monusWord [] result natStackBoundedNil () resultBound
   execBoundedToken-complete bound monusWord (value ∷ []) result
     (natStackBoundedCons _ natStackBoundedNil) () resultBound
@@ -2878,9 +2878,9 @@ module StrictNatCompiler where
        | natWithinBound right bound in rightCheck
   ... | true | true = refl
   ... | false | _ =
-    absurd (natBoundFalseNotTrue (trans (sym leftCheck) leftBound))
+    absurd (natBoundFalseNotTrue leftBound)
   ... | true | false =
-    absurd (natBoundFalseNotTrue (trans (sym rightCheck) rightBound))
+    absurd (natBoundFalseNotTrue rightBound)
   execBoundedToken-complete bound multiplyWord [] result natStackBoundedNil () resultBound
   execBoundedToken-complete bound multiplyWord (value ∷ []) result
     (natStackBoundedCons _ natStackBoundedNil) () resultBound
@@ -2893,11 +2893,11 @@ module StrictNatCompiler where
        | natWithinBound (left * right) bound in resultCheck
   ... | true | true | true = refl
   ... | false | _ | _ =
-    absurd (natBoundFalseNotTrue (trans (sym leftCheck) leftBound))
+    absurd (natBoundFalseNotTrue leftBound)
   ... | true | false | _ =
-    absurd (natBoundFalseNotTrue (trans (sym rightCheck) rightBound))
+    absurd (natBoundFalseNotTrue rightBound)
   ... | true | true | false =
-    absurd (natBoundFalseNotTrue (trans (sym resultCheck) resultBound))
+    absurd (natBoundFalseNotTrue resultBound)
   execBoundedToken-complete bound swapWord stack result inputBound stepBound resultBound =
     stepBound
   execBoundedToken-complete bound (rollWord depth) stack result inputBound stepBound resultBound =
