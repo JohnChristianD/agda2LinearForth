@@ -1315,7 +1315,8 @@ rendererCertificate sourceModule definitions = T.unlines $
   , "   natLinearProof; natBinaryProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
   , "   evalNatLinearExpr; evalNatBinaryLinearExpr; evalNatResourceExpr; natLinearMALLP-forth-sound; natBinaryResourceMALLP-forth-sound; renderNatBinaryResource;"
   , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate;"
-  , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; NatStackBounded; execBoundedTokens; execBoundedTokens-preserves; cong; cong₂; trans; sym;"
+  , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; NatStackBounded; execBoundedTokens; execBoundedTokens-preserves;"
+  , "   BoundedExecutionTrace; execBoundedTokens-complete; execBoundedTokens-complete-unbounded; cong; cong₂; trans; sym;"
   , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm)"
   , ""
   ] ++ concat
@@ -1398,6 +1399,9 @@ rendererCertificate sourceModule definitions = T.unlines $
         ; executionName = "natResourceCompilerExecution" <> index
         ; sourceSoundName = "natResourceSourceSound" <> index
         ; boundedSoundName = "natResourceBoundedSourceSound" <> index
+        ; boundedCompleteName = "natResourceBoundedSourceComplete" <> index
+        ; boundedCompleteArguments =
+            T.unwords (boundedCompleteName : ("bound" : argumentNames))
         ; sourceProofName = "sourceNatResourceSemantics" <> index
         ; arity = length (natResourceVariables expression)
         ; argumentNames =
@@ -1488,6 +1492,18 @@ rendererCertificate sourceModule definitions = T.unlines $
         , "    (" <> initialStack <> ") result ("
             <> sourceCall <> " ∷ residualStack)"
         , "    boundedExecution (" <> sourceSoundArguments <> " residualStack)"
+        , ""
+        , boundedCompleteName <> " :"
+        , "  (bound : Nat) →"
+        ] ++
+        (if null argumentNames then [] else [ "  " <> argumentBinders <> " →" ]) ++
+        [ "  (residualStack : List Nat) →"
+        , "  BoundedExecutionTrace bound " <> compilerTokensName
+        , "    (" <> initialStack <> ") (" <> sourceCall <> " ∷ residualStack) →"
+        , "  execBoundedTokens bound " <> compilerTokensName
+        , "    (" <> initialStack <> ") ≡ just (" <> sourceCall <> " ∷ residualStack)"
+        , boundedCompleteArguments <> " residualStack trace ="
+        , "  execBoundedTokens-complete trace"
         , ""
         ]
       | (index, definition, expression) <-
