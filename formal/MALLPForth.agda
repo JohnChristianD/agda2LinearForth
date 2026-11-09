@@ -4255,6 +4255,56 @@ module StrictBoolCompiler where
     rewrite bindBoolTokens-identity
       (execBoolTokens [] (value ∷ [])) = refl
 
+  -- Residual-stack forms make the exact compiler ABI explicit: a Bool
+  -- program returns one Bool at the top and leaves every caller cell intact.
+  boolCaseWithResidualMALLP-forth-sound-residual :
+    (condition value : Bool) →
+    (residual : List Bool) →
+    execBoolTokens
+      (renderBoolCode compileBoolCaseWithResidual)
+      (value ∷ condition ∷ residual) ≡
+    just (value ∷ residual)
+  boolCaseWithResidualMALLP-forth-sound-residual condition value residual = refl
+
+  boolPairSwapMALLP-forth-sound-residual :
+    (first second : Bool) →
+    (residual : List Bool) →
+    execBoolTokens (renderBoolCode compileBoolPairSwap)
+      (second ∷ first ∷ residual) ≡
+    just (first ∷ second ∷ residual)
+  boolPairSwapMALLP-forth-sound-residual first second residual = refl
+
+  boolNot : Bool → Bool
+  boolNot true = false
+  boolNot false = true
+
+  -- This is the exact typed Bool program generated for the admitted unary
+  -- complement function. Its branches consume the condition and produce one
+  -- result, leaving the residual stack untouched.
+  boolInvertCode :
+    BoolForthCode (boolCell ∷ []) (boolCell ∷ [])
+  boolInvertCode =
+    boolIfCode (pushBoolean false) (pushBoolean true)
+
+  boolInvertMALLP-forth-sound-residual :
+    (argument : Bool) →
+    (residual : List Bool) →
+    execBoolTokens (renderBoolCode boolInvertCode)
+      (argument ∷ residual) ≡
+    just (boolNot argument ∷ residual)
+  boolInvertMALLP-forth-sound-residual true residual = refl
+  boolInvertMALLP-forth-sound-residual false residual = refl
+
+  boolProof-forth-sound-residual :
+    (proof : BoolProof) →
+    (residual : List Bool) →
+    execBoolTokens
+      (renderBoolCode (compileBoolProof proof))
+      residual ≡
+    just (interpretBoolProof proof ∷ residual)
+  boolProof-forth-sound-residual boolTrueProof residual = refl
+  boolProof-forth-sound-residual boolFalseProof residual = refl
+
 open StrictBoolCompiler public
 
 open StrictNatCompiler public
