@@ -1606,37 +1606,309 @@ rendererCertificate sourceModule definitions = T.unlines $
           ]
       ]
     ++ concat
-    [ [ "chooseBoolCompilerTokens : List ForthTextToken"
-      , "chooseBoolCompilerTokens = " <> formalTokenList (compiledTokens definition)
-      , ""
-      , "chooseBoolMALLPTokens : List ForthTextToken"
-      , "chooseBoolMALLPTokens = mapBoolForthTokensAsText"
-          <> " (renderBoolCode compileBoolCaseWithResidual)"
-      , ""
-      , "chooseBoolTokenCorrespondence :"
-      , "  chooseBoolCompilerTokens ≡ chooseBoolMALLPTokens"
-      , "chooseBoolTokenCorrespondence = refl"
-      , ""
-      ]
-    | definition <- definitions
-    , safeForthName (compiledName definition) == "chooseBool"
+    [ let
+        { suffix = index
+        ; proofName = "closedBoolProof" <> suffix
+        ; derivationName = "closedBoolMALLPDerivation" <> suffix
+        ; compilerTokensName = "closedBoolCompilerTokens" <> suffix
+        ; modelTokensName = "closedBoolModelTokens" <> suffix
+        ; tokenProofName = "closedBoolTokenCorrespondence" <> suffix
+        ; executionName = "closedBoolExecution" <> suffix
+        ; sourceSemanticsName = "closedBoolSourceSemantics" <> suffix
+        ; sourceSoundName = "closedBoolSourceSound" <> suffix
+        ; sourceName =
+            T.pack (prettyShow sourceModule) <> "." <>
+              T.pack (prettyShow (qnameName (compiledName definition)))
+        ; proofTerm = if value then "boolTrueProof" else "boolFalseProof"
+        }
+      in
+        [ proofName <> " : BoolProof"
+        , proofName <> " = " <> proofTerm
+        , ""
+        , derivationName <> " = boolProofDerivation " <> proofName
+        , ""
+        , compilerTokensName <> " : List ForthTextToken"
+        , compilerTokensName <> " = " <> formalTokenList (compiledTokens definition)
+        , ""
+        , modelTokensName <> " : List ForthTextToken"
+        , modelTokensName <> " = mapBoolForthTokensAsText"
+            <> " (renderBoolCode (compileBoolProof " <> proofName <> "))"
+        , ""
+        , tokenProofName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
+        , tokenProofName <> " = refl"
+        , ""
+        , executionName <> " :"
+        , "  (residual : List Bool) →"
+        , "  execBoolTokens (renderBoolCode (compileBoolProof " <> proofName <> "))"
+        , "    residual ≡ just (interpretBoolProof " <> proofName <> " ∷ residual)"
+        , executionName <> " residual = boolProof-forth-sound-residual " <> proofName <> " residual"
+        , ""
+        , sourceSemanticsName <> " : " <> sourceName
+            <> " ≡ interpretBoolProof " <> proofName
+        , sourceSemanticsName <> " = refl"
+        , ""
+        , sourceSoundName <> " :"
+        , "  (residual : List Bool) →"
+        , "  execBoolTokens (renderBoolCode (compileBoolProof " <> proofName <> "))"
+        , "    residual ≡ just (" <> sourceName <> " ∷ residual)"
+        , sourceSoundName <> " residual ="
+        , "  trans (" <> executionName <> " residual)"
+        , "    (cong (λ value → just (value ∷ residual))"
+        , "      (sym " <> sourceSemanticsName <> "))"
+        , ""
+        ] >>= mapReplaceExecution executionName
+      | (index, definition, value) <-
+          [ (T.pack (show position), definition, value)
+          | (position, definition) <- zip [0 :: Int ..] definitions
+          , Just (ClosedBoolWitness value) <- [compiledOtherWitness definition]
+          ]
     ] ++ concat
-    [ [ "swapBoolPairCompilerTokens : List ForthTextToken"
-      , "swapBoolPairCompilerTokens = " <> formalTokenList (compiledTokens definition)
-      , ""
-      , "swapBoolPairMALLPTokens : List ForthTextToken"
-      , "swapBoolPairMALLPTokens = mapBoolForthTokensAsText"
-          <> " (renderBoolCode compileBoolPairSwap)"
-      , ""
-      , "swapBoolPairTokenCorrespondence :"
-      , "  swapBoolPairCompilerTokens ≡ swapBoolPairMALLPTokens"
-      , "swapBoolPairTokenCorrespondence = refl"
-      , ""
-      ]
-    | definition <- definitions
-    , safeForthName (compiledName definition) == "swapBoolPair"
+    [ let
+        { compilerTokensName = "invertBoolCompilerTokens" <> index
+        ; modelTokensName = "invertBoolModelTokens" <> index
+        ; tokenProofName = "invertBoolTokenCorrespondence" <> index
+        ; sourceSemanticsName = "invertBoolSourceSemantics" <> index
+        ; executionName = "invertBoolExecution" <> index
+        ; sourceSoundName = "invertBoolSourceSound" <> index
+        ; sourceName =
+            T.pack (prettyShow sourceModule) <> "." <>
+              T.pack (prettyShow (qnameName (compiledName definition)))
+        }
+      in
+        [ compilerTokensName <> " : List ForthTextToken"
+        , compilerTokensName <> " = " <> formalTokenList (compiledTokens definition)
+        , ""
+        , modelTokensName <> " : List ForthTextToken"
+        , modelTokensName <> " = mapBoolForthTokensAsText (renderBoolCode boolInvertCode)"
+        , ""
+        , tokenProofName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
+        , tokenProofName <> " = refl"
+        , ""
+        , "invertBoolMALLPDerivation" <> index <> " = boolInvertMALLP-derivation"
+        , ""
+        , sourceSemanticsName <> " :"
+        , "  (argument : Bool) → " <> sourceName
+            <> " argument ≡ boolNot argument"
+        , sourceSemanticsName <> " true = refl"
+        , sourceSemanticsName <> " false = refl"
+        , ""
+        , executionName <> " :"
+        , "  (argument : Bool) → (residual : List Bool) →"
+        , "  execBoolTokens (renderBoolCode boolInvertCode)"
+        , "    (argument ∷ residual) ≡ just (boolNot argument ∷ residual)"
+        , executionName <> " argument residual ="
+        , "  boolInvertMALLP-forth-sound-residual argument residual"
+        , ""
+        , sourceSoundName <> " :"
+        , "  (argument : Bool) → (residual : List Bool) →"
+        , "  execBoolTokens (renderBoolCode boolInvertCode)"
+        , "    (argument ∷ residual) ≡ just (" <> sourceName <> " argument ∷ residual)"
+        , sourceSoundName <> " argument residual ="
+        , "  trans (invertBoolExecution" <> index <> " argument residual)"
+        , "    (cong (λ value → just (value ∷ residual))"
+        , "      (sym (" <> sourceSemanticsName <> " argument)))"
+        , ""
+        ]
+      | (index, definition) <-
+          [ (T.pack (show position), definition)
+          | (position, definition) <- zip [0 :: Int ..] definitions
+          , Just (BoolFunctionWitness 1
+              (BoolConditional (BoolVariable 0) (BoolLiteral False) (BoolLiteral True))) <-
+              [compiledOtherWitness definition]
+          ]
+    ] ++ concat
+    [ let
+        { compilerTokensName = "chooseBoolCompilerTokens"
+        ; modelTokensName = "chooseBoolMALLPTokens"
+        ; sourceSemanticsName = "chooseBoolSourceSemantics"
+        ; executionName = "chooseBoolExecution"
+        ; sourceSoundName = "chooseBoolSourceSound"
+        ; sourceName =
+            T.pack (prettyShow sourceModule) <> "." <>
+              T.pack (prettyShow (qnameName (compiledName definition)))
+        }
+      in
+        [ compilerTokensName <> " : List ForthTextToken"
+        , compilerTokensName <> " = " <> formalTokenList (compiledTokens definition)
+        , ""
+        , modelTokensName <> " : List ForthTextToken"
+        , modelTokensName <> " = mapBoolForthTokensAsText"
+            <> " (renderBoolCode compileBoolCaseWithResidual)"
+        , ""
+        , "chooseBoolTokenCorrespondence :"
+        , "  " <> compilerTokensName <> " ≡ " <> modelTokensName
+        , "chooseBoolTokenCorrespondence = refl"
+        , ""
+        , "chooseBoolMALLPDerivation = boolCaseWithResidualMALLP"
+        , ""
+        , sourceSemanticsName <> " :"
+        , "  (condition value : Bool) → " <> sourceName
+            <> " condition value ≡ value"
+        , sourceSemanticsName <> " true value = refl"
+        , sourceSemanticsName <> " false value = refl"
+        , ""
+        , executionName <> " :"
+        , "  (condition value : Bool) → (residual : List Bool) →"
+        , "  execBoolTokens (renderBoolCode compileBoolCaseWithResidual)"
+        , "    (value ∷ condition ∷ residual) ≡ just (value ∷ residual)"
+        , executionName <> " condition value residual ="
+        , "  boolCaseWithResidualMALLP-forth-sound-residual condition value residual"
+        , ""
+        , sourceSoundName <> " :"
+        , "  (condition value : Bool) → (residual : List Bool) →"
+        , "  execBoolTokens (renderBoolCode compileBoolCaseWithResidual)"
+        , "    (value ∷ condition ∷ residual) ≡ just (" <> sourceName
+            <> " condition value ∷ residual)"
+        , sourceSoundName <> " condition value residual ="
+        , "  trans (chooseBoolExecution condition value residual)"
+        , "    (cong (λ result → just (result ∷ residual))"
+        , "      (sym (chooseBoolSourceSemantics condition value)))"
+        , ""
+        ]
+      | definition <- definitions
+      , safeForthName (compiledName definition) == "chooseBool"
+      , Just (BoolFunctionWitness 2
+          (BoolConditional (BoolVariable 1) (BoolVariable 0) (BoolVariable 0))) <-
+          [compiledOtherWitness definition]
+    ] ++ concat
+    [ let
+        { compilerTokensName = "swapBoolPairCompilerTokens"
+        ; modelTokensName = "swapBoolPairMALLPTokens"
+        ; tokenProofName = "swapBoolPairTokenCorrespondence"
+        ; sourceSemanticsName = "swapBoolPairSourceSemantics"
+        ; executionName = "swapBoolPairExecution"
+        ; sourceSoundName = "swapBoolPairSourceSound"
+        ; sourceName =
+            T.pack (prettyShow sourceModule) <> "." <>
+              T.pack (prettyShow (qnameName (compiledName definition)))
+        ; constructorName = T.pack (prettyShow constructor)
+        }
+      in
+        [ compilerTokensName <> " : List ForthTextToken"
+        , compilerTokensName <> " = " <> formalTokenList (compiledTokens definition)
+        , ""
+        , modelTokensName <> " : List ForthTextToken"
+        , modelTokensName <> " = mapBoolForthTokensAsText"
+            <> " (renderBoolCode compileBoolPairSwap)"
+        , ""
+        , tokenProofName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
+        , tokenProofName <> " = refl"
+        , ""
+        , "swapBoolPairMALLPDerivation = boolPairSwapMALLP"
+        , ""
+        , sourceSemanticsName <> " :"
+        , "  (first second : Bool) → " <> sourceName
+            <> " (" <> constructorName <> " first second) ≡ "
+            <> constructorName <> " second first"
+        , sourceSemanticsName <> " first second = refl"
+        , ""
+        , executionName <> " :"
+        , "  (first second : Bool) → (residual : List Bool) →"
+        , "  execBoolTokens (renderBoolCode compileBoolPairSwap)"
+        , "    (second ∷ first ∷ residual) ≡ just (first ∷ second ∷ residual)"
+        , executionName <> " first second residual ="
+        , "  boolPairSwapMALLP-forth-sound-residual first second residual"
+        , ""
+        , sourceSoundName <> " :"
+        , "  (first second : Bool) → (residual : List Bool) →"
+        , "  execBoolTokens (renderBoolCode compileBoolPairSwap)"
+        , "    (second ∷ first ∷ residual) ≡ just ("
+            <> constructorName <> " second first ∷ residual)"
+        , sourceSoundName <> " first second residual ="
+        , "  trans (swapBoolPairExecution first second residual)"
+        , "    (cong (λ pair → just (pair ∷ residual))"
+        , "      (sym (swapBoolPairSourceSemantics first second)))"
+        , ""
+        ]
+      | definition <- definitions
+      , Just (BoolPairFunctionWitness constructor (BoolPairFields 0 1)) <-
+          [compiledOtherWitness definition]
+    ] ++ concat
+    [ let
+        { suffix = index
+        ; compilerTokensName = "unitCompilerTokens" <> suffix
+        ; modelTokensName = "unitModelTokens" <> suffix
+        ; tokenProofName = "unitTokenCorrespondence" <> suffix
+        ; sourceName =
+            T.pack (prettyShow sourceModule) <> "." <>
+              T.pack (prettyShow (qnameName (compiledName definition)))
+        }
+      in
+        [ compilerTokensName <> " : List ForthToken"
+        , compilerTokensName <> " = " <> formalNatTokenList (compiledTokens definition)
+        , ""
+        , modelTokensName <> " : List ForthToken"
+        , modelTokensName <> " = compileUnitProof unitOneProof"
+        , ""
+        , tokenProofName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
+        , tokenProofName <> " = refl"
+        , ""
+        , "unitMALLPDerivation" <> suffix <> " = unitOneProof"
+        , ""
+        , "unitSourceSemantics" <> suffix <> " : " <> sourceName <> " ≡ tt"
+        , "unitSourceSemantics" <> suffix <> " = refl"
+        , ""
+        , "unitMachineSound" <> suffix <> " :"
+        , "  {Γ : List StackType} → (stack : Stack Γ) →"
+        , "  execTokens " <> compilerTokensName <> " (forgetStack stack) ≡"
+        , "  just (forgetStack stack)"
+        , "unitMachineSound" <> suffix <> " stack ="
+        , "  trans"
+        , "    (cong (λ tokens → execTokens tokens (forgetStack stack)) " <> tokenProofName <> ")"
+        , "    (unitMALLP-forth-sound unitOneProof stack)"
+        , ""
+        ]
+      | (index, definition) <-
+          [ (T.pack (show position), definition)
+          | (position, definition) <- zip [0 :: Int ..] definitions
+          , Just UnitWitness <- [compiledOtherWitness definition]
+          ]
+    ] ++ concat
+    [ let
+        { suffix = index
+        ; compilerTokensName = "word64CompilerTokens" <> suffix
+        ; modelTokensName = "word64ModelTokens" <> suffix
+        ; tokenProofName = "word64TokenCorrespondence" <> suffix
+        ; sourceName =
+            T.pack (prettyShow sourceModule) <> "." <>
+              T.pack (prettyShow (qnameName (compiledName definition)))
+        }
+      in
+        [ compilerTokensName <> " : List ForthToken"
+        , compilerTokensName <> " = " <> formalNatTokenList (compiledTokens definition)
+        , ""
+        , modelTokensName <> " : List ForthToken"
+        , modelTokensName <> " = renderForth word64IdentityCode"
+        , ""
+        , tokenProofName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
+        , tokenProofName <> " = refl"
+        , ""
+        , "word64MALLPDerivation" <> suffix <> " = linearWord64IdentityMALLP"
+        , ""
+        , "word64SourceSemantics" <> suffix <> " :"
+        , "  (value : Word64) → " <> sourceName <> " value ≡ value"
+        , "word64SourceSemantics" <> suffix <> " value = refl"
+        , ""
+        , "word64MachineSound" <> suffix <> " :"
+        , "  (encode : Word64 → List Nat) → (value : Word64) →"
+        , "  (residual : List Nat) →"
+        , "  execTokens " <> compilerTokensName
+        , "    (encode (" <> sourceName <> " value) ++ᴳ residual) ≡"
+        , "  just (encode value ++ᴳ residual)"
+        , "word64MachineSound" <> suffix <> " encode value residual ="
+        , "  trans"
+        , "    (cong (λ tokens → execTokens tokens"
+        , "      (encode (" <> sourceName <> " value) ++ᴳ residual)) " <> tokenProofName <> ")"
+        , "    (cong (λ stack → just (stack ++ᴳ residual))"
+        , "      (sym (word64SourceSemantics" <> suffix <> " value) |> encode))"
+        , ""
+        ]
+      | (index, definition) <-
+          [ (T.pack (show position), definition)
+          | (position, definition) <- zip [0 :: Int ..] definitions
+          , Just Word64IdentityWitness <- [compiledOtherWitness definition]
+          ]
     ]
-
 emitForthModule :: () -> () -> IsMain -> TopLevelModuleName -> [Maybe CompiledDefinition] -> TCM ()
 emitForthModule _ _ _ moduleName maybeDefinitions = do
   runtime <- IO.liftIO readStrictRuntime
