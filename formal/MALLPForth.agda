@@ -946,9 +946,21 @@ module Foundations where
         ; catId = idempotentIdentity
         ; catCompose = idempotentCompose
         ; homEq-refl = idempotentMorphismEq-refl
-        ; homEq-sym = idempotentMorphismEq-sym
-        ; homEq-trans = idempotentMorphismEq-trans
-        ; compose-respects = idempotentCompose-respects-equality
+        ; homEq-sym =
+            λ {X} {Y} {f} {g} equality →
+              idempotentMorphismEq-sym
+                {X = X} {Y = Y} {f = f} {g = g} equality
+        ; homEq-trans =
+            λ {X} {Y} {f} {g} {h} first second →
+              idempotentMorphismEq-trans
+                {X = X} {Y = Y} {f = f} {g = g} {h = h}
+                first second
+        ; compose-respects =
+            λ {X} {Y} {Z} {f} {f′} {g} {g′} outer inner →
+              idempotentCompose-respects-equality
+                {X = X} {Y = Y} {Z = Z}
+                {f = f} {f′ = f′} {g = g} {g′ = g′}
+                outer inner
         ; identity-left = idempotentCategory-id-left
         ; identity-right = idempotentCategory-id-right
         ; compose-associative = idempotentCategory-associative
