@@ -1229,7 +1229,7 @@ boolFunctionCertificate sourceModule suffix definition arity expression =
         "dualPos boolFormula ∷ dualPos boolFormula ∷ []"
         "boolCaseWithResidualMALLP"
         "renderBoolCode compileBoolCaseWithResidual"
-        ["argument0", "argument1"]
+        ["argument1", "argument0"]
         "argument1" "argument1"
         "boolCaseWithResidualMALLP-forth-sound argument0 argument1 residualStack"
         [ "sourceSemantics true argument1 = refl"
