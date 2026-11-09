@@ -2880,7 +2880,9 @@ module StrictNatCompiler where
          | execution
   ... | true | true | true | refl =
     natStackBoundedCons resultWithin restBound
-  ... | _ | _ | _ | ()
+  ... | false | _ | _ | ()
+  ... | true | false | _ | ()
+  ... | true | true | false | ()
   execBoundedToken-preserves-bounded bound monusWord [] result
     natStackBoundedNil ()
   execBoundedToken-preserves-bounded bound monusWord (value ∷ []) result
@@ -2896,7 +2898,8 @@ module StrictNatCompiler where
     natStackBoundedCons
       (natWithinBound-monus left right bound leftWithin)
       restBound
-  ... | _ | _ | ()
+  ... | false | _ | ()
+  ... | true | false | ()
   execBoundedToken-preserves-bounded bound multiplyWord [] result
     natStackBoundedNil ()
   execBoundedToken-preserves-bounded bound multiplyWord (value ∷ []) result
@@ -2911,7 +2914,9 @@ module StrictNatCompiler where
          | execution
   ... | true | true | true | refl =
     natStackBoundedCons resultWithin restBound
-  ... | _ | _ | _ | ()
+  ... | false | _ | _ | ()
+  ... | true | false | _ | ()
+  ... | true | true | false | ()
   execBoundedToken-preserves-bounded bound swapWord [] result
     natStackBoundedNil ()
   execBoundedToken-preserves-bounded bound swapWord (top ∷ []) result
