@@ -2678,29 +2678,160 @@ module StrictNatCompiler where
 
   execTokens : List ForthToken → List Nat → Maybe (List Nat)
   execTokens [] stack = just stack
-  execTokens (pushLiteral value ∷ tokens) stack
-    with execToken (pushLiteral value) stack
+  execTokens (token ∷ tokens) stack with execToken token stack
   ... | nothing = nothing
   ... | just nextStack = execTokens tokens nextStack
-  execTokens (addWord ∷ tokens) stack
-    with execToken addWord stack
+
+  ----------------------------------------------------------------------
+  -- Bounded Gforth Nat machine.
+  --
+  -- FLib.fth represents source Nats in a signed Forth cell. Its runtime
+  -- checks every consumed operand and rejects results above the positive
+  -- cell bound. This interpreter gives those partial-success semantics to
+  -- the same emitted token algebra. The bound is a parameter because
+  -- Gforth's CELL-BITS is platform-dependent.
+  ----------------------------------------------------------------------
+
+  natWithinBound : Nat → Nat → Bool
+  natWithinBound zero bound = true
+  natWithinBound (suc value) zero = false
+  natWithinBound (suc value) (suc bound) =
+    natWithinBound value bound
+
+  execBoundedToken : Nat → ForthToken → List Nat → Maybe (List Nat)
+  execBoundedToken bound (pushLiteral value) stack
+    with natWithinBound value bound
+  ... | true = execToken (pushLiteral value) stack
+  ... | false = nothing
+  execBoundedToken bound addWord (right ∷ left ∷ stack)
+    with natWithinBound left bound
+       | natWithinBound right bound
+       | natWithinBound (left + right) bound
+  ... | true | true | true = execToken addWord (right ∷ left ∷ stack)
+  ... | _ | _ | _ = nothing
+  execBoundedToken bound addWord stack = nothing
+  execBoundedToken bound monusWord (right ∷ left ∷ stack)
+    with natWithinBound left bound
+       | natWithinBound right bound
+  ... | true | true = execToken monusWord (right ∷ left ∷ stack)
+  ... | _ | _ = nothing
+  execBoundedToken bound monusWord stack = nothing
+  execBoundedToken bound multiplyWord (right ∷ left ∷ stack)
+    with natWithinBound left bound
+       | natWithinBound right bound
+       | natWithinBound (left * right) bound
+  ... | true | true | true =
+    execToken multiplyWord (right ∷ left ∷ stack)
+  ... | _ | _ | _ = nothing
+  execBoundedToken bound multiplyWord stack = nothing
+  execBoundedToken bound swapWord stack = execToken swapWord stack
+  execBoundedToken bound (rollWord depth) stack =
+    execToken (rollWord depth) stack
+
+  execBoundedTokens : Nat → List ForthToken → List Nat → Maybe (List Nat)
+  execBoundedTokens bound [] stack = just stack
+  execBoundedTokens bound (token ∷ tokens) stack
+    with execBoundedToken bound token stack
   ... | nothing = nothing
-  ... | just nextStack = execTokens tokens nextStack
-  execTokens (monusWord ∷ tokens) stack
-    with execToken monusWord stack
-  ... | nothing = nothing
-  ... | just nextStack = execTokens tokens nextStack
-  execTokens (multiplyWord ∷ tokens) stack
-    with execToken multiplyWord stack
-  ... | nothing = nothing
-  ... | just nextStack = execTokens tokens nextStack
-  execTokens (swapWord ∷ tokens) stack
-    with execToken swapWord stack
-  ... | nothing = nothing
-  ... | just nextStack = execTokens tokens nextStack
-  execTokens (rollWord depth ∷ tokens) stack with rollList depth stack
-  ... | nothing = nothing
-  ... | just nextStack = execTokens tokens nextStack
+  ... | just nextStack = execBoundedTokens bound tokens nextStack
+
+  execBoundedToken-sound :
+    (bound : Nat) (token : ForthToken) (stack result : List Nat) →
+    execBoundedToken bound token stack ≡ just result →
+    execToken token stack ≡ just result
+  execBoundedToken-sound bound (pushLiteral value) stack result proof
+    with natWithinBound value bound
+  ... | true = proof
+  ... | false with proof
+  ...   | ()
+  execBoundedToken-sound bound addWord [] result ()
+  execBoundedToken-sound bound addWord (value ∷ []) result ()
+  execBoundedToken-sound bound addWord (right ∷ left ∷ stack) result proof
+    with natWithinBound left bound
+       | natWithinBound right bound
+       | natWithinBound (left + right) bound
+  ... | true | true | true = proof
+  ... | _ | _ | _ with proof
+  ...   | ()
+  execBoundedToken-sound bound monusWord [] result ()
+  execBoundedToken-sound bound monusWord (value ∷ []) result ()
+  execBoundedToken-sound bound monusWord (right ∷ left ∷ stack) result proof
+    with natWithinBound left bound
+       | natWithinBound right bound
+  ... | true | true = proof
+  ... | _ | _ with proof
+  ...   | ()
+  execBoundedToken-sound bound multiplyWord [] result ()
+  execBoundedToken-sound bound multiplyWord (value ∷ []) result ()
+  execBoundedToken-sound bound multiplyWord (right ∷ left ∷ stack) result proof
+    with natWithinBound left bound
+       | natWithinBound right bound
+       | natWithinBound (left * right) bound
+  ... | true | true | true = proof
+  ... | _ | _ | _ with proof
+  ...   | ()
+  execBoundedToken-sound bound swapWord stack result proof = proof
+  execBoundedToken-sound bound (rollWord depth) stack result proof = proof
+
+  execBoundedTokens-sound :
+    (bound : Nat) (tokens : List ForthToken) (stack result : List Nat) →
+    execBoundedTokens bound tokens stack ≡ just result →
+    execTokens tokens stack ≡ just result
+  execBoundedTokens-sound bound [] stack result proof = proof
+  execBoundedTokens-sound bound (token ∷ tokens) stack result proof
+    with execBoundedToken bound token stack
+  ... | nothing with proof
+  ...   | ()
+  ... | just nextStack
+    rewrite execBoundedToken-sound bound token stack nextStack refl =
+      execBoundedTokens-sound bound tokens nextStack result proof
+
+  just-injective :
+    {A : Set} {left right : A} →
+    just left ≡ just right →
+    left ≡ right
+  just-injective refl = refl
+
+  execBoundedTokens-preserves :
+    (bound : Nat) (tokens : List ForthToken) (stack : List Nat) →
+    (result expected : List Nat) →
+    execBoundedTokens bound tokens stack ≡ just result →
+    execTokens tokens stack ≡ just expected →
+    result ≡ expected
+  execBoundedTokens-preserves bound tokens stack result expected
+    boundedSuccess sourceSuccess =
+    just-injective
+      (trans
+        (sym (execBoundedTokens-sound bound tokens stack result boundedSuccess))
+        sourceSuccess)
+
+  boundedAddAtLimit :
+    execBoundedTokens 9
+      (pushLiteral 4 ∷ pushLiteral 5 ∷ addWord ∷ []) [] ≡
+    just (9 ∷ [])
+  boundedAddAtLimit = refl
+
+  boundedAddOverflow :
+    execBoundedTokens 9
+      (pushLiteral 5 ∷ pushLiteral 5 ∷ addWord ∷ []) [] ≡
+    nothing
+  boundedAddOverflow = refl
+
+  boundedMonusUnderflow :
+    execBoundedTokens 9
+      (pushLiteral 0 ∷ pushLiteral 1 ∷ monusWord ∷ []) [] ≡
+    just (0 ∷ [])
+  boundedMonusUnderflow = refl
+
+  boundedMultiplyOverflow :
+    execBoundedTokens 9
+      (pushLiteral 5 ∷ pushLiteral 2 ∷ multiplyWord ∷ []) [] ≡
+    nothing
+  boundedMultiplyOverflow = refl
+
+  boundedLiteralOverflow :
+    execBoundedTokens 9 (pushLiteral 10 ∷ []) [] ≡ nothing
+  boundedLiteralOverflow = refl
 
   execTokens-roll-single :
     (depth : Nat) →
