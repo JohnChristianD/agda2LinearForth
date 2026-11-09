@@ -4281,10 +4281,17 @@ module StrictBoolCompiler where
   -- This is the exact typed Bool program generated for the admitted unary
   -- complement function. Its branches consume the condition and produce one
   -- result, leaving the residual stack untouched.
+  boolInvertCaseProof : BoolCaseProof
+  boolInvertCaseProof = boolCaseProof boolFalseProof boolTrueProof
+
+  boolInvertMALLP-derivation :
+    MALLP (dualPos boolFormula ∷ []) (just boolFormula)
+  boolInvertMALLP-derivation =
+    boolCaseMALLP-derivation boolInvertCaseProof
+
   boolInvertCode :
     BoolForthCode (boolCell ∷ []) (boolCell ∷ [])
-  boolInvertCode =
-    boolIfCode (pushBoolean false) (pushBoolean true)
+  boolInvertCode = compileBoolRuntimeCase boolInvertCaseProof
 
   boolInvertMALLP-forth-sound-residual :
     (argument : Bool) →
