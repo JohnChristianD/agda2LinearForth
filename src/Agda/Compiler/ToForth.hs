@@ -1472,7 +1472,7 @@ rendererCertificate sourceModule definitions = T.unlines $
           | (position, definition) <- zip [0 :: Int ..] definitions
           , Just expression <- [compiledNatResourceWitness definition]
           ]
-    ]    ]
+    ]
     ++ concat
     [ let { expressionName = "natBinaryExpression" <> index
           ; derivationName = "natBinaryDerivation" <> index
