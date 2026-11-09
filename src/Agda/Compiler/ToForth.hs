@@ -117,69 +117,6 @@ data NatResourceExpr
   | NatResourceAddReversed NatResourceExpr NatResourceExpr
   deriving (Eq, Show)
 
--- Retain compiler order and source order together. PAdd's Treeless argument
--- spine is reversed for the target stack compiler, while source evaluation
--- retains the original operand order.
-data NatResourceOrder
-  = PreserveNatResourceOrder
-  | ReverseNatResourceOrder
-  deriving (Eq, Show)
-
-data NatResourceDecoded
-  = NatResourceLiteralDecoded Natural
-  | NatResourceVariableDecoded Int
-  | NatResourceBinaryDecoded
-      NatResourceOrder NatOp NatResourceDecoded NatResourceDecoded
-  deriving (Eq, Show)
-
-natResourceDecodedVariables :: NatResourceDecoded -> [Int]
-natResourceDecodedVariables (NatResourceLiteralDecoded _) = []
-natResourceDecodedVariables (NatResourceVariableDecoded index) = [index]
-natResourceDecodedVariables (NatResourceBinaryDecoded _ _ left right) =
-  natResourceDecodedVariables left ++ natResourceDecodedVariables right
-
-natResourceDecodedCompilerExpr :: NatResourceDecoded -> NatResourceExpr
-natResourceDecodedCompilerExpr (NatResourceLiteralDecoded value) =
-  NatResourceLiteral value
-natResourceDecodedCompilerExpr (NatResourceVariableDecoded index) =
-  NatResourceVariable index
-natResourceDecodedCompilerExpr
-  (NatResourceBinaryDecoded PreserveNatResourceOrder operation left right) =
-    NatResourceBinary operation
-      (natResourceDecodedCompilerExpr left)
-      (natResourceDecodedCompilerExpr right)
-natResourceDecodedCompilerExpr
-  (NatResourceBinaryDecoded ReverseNatResourceOrder operation left right) =
-    NatResourceBinary operation
-      (natResourceDecodedCompilerExpr right)
-      (natResourceDecodedCompilerExpr left)
-
-natResourceDecodedSourceExpr :: NatResourceDecoded -> NatResourceExpr
-natResourceDecodedSourceExpr (NatResourceLiteralDecoded value) =
-  NatResourceLiteral value
-natResourceDecodedSourceExpr (NatResourceVariableDecoded index) =
-  NatResourceVariable index
-natResourceDecodedSourceExpr
-  (NatResourceBinaryDecoded _ NatAdd left right) =
-    NatResourceBinary NatAdd
-      (natResourceDecodedSourceExpr right)
-      (natResourceDecodedSourceExpr left)
-natResourceDecodedSourceExpr
-  (NatResourceBinaryDecoded _ operation left right) =
-    NatResourceBinary operation
-      (natResourceDecodedSourceExpr left)
-      (natResourceDecodedSourceExpr right)
-
-data NatResourceWitness = NatResourceWitness
-  { resourceWitnessArity :: Int
-  , resourceWitnessExpression :: NatResourceExpr
-  , resourceWitnessSourceExpression :: NatResourceExpr
-  , resourceWitnessOrder :: [Int]
-  , resourceWitnessSourceOrder :: [Int]
-  , resourceWitnessDecoded :: NatResourceDecoded
-  }
-  deriving (Eq, Show)
-
 natResourceVariables :: NatResourceExpr -> [Int]
 natResourceVariables (NatResourceLiteral _) = []
 natResourceVariables (NatResourceVariable index) = [index]
@@ -188,13 +125,13 @@ natResourceVariables (NatResourceBinary _ left right) =
 natResourceVariables (NatResourceAddReversed left right) =
   natResourceVariables left ++ natResourceVariables right
 
-decodeNatResourceTerm :: [QName] -> [NatResourceDecoded] -> TTerm -> TCM NatResourceDecoded
+decodeNatResourceTerm :: [QName] -> [NatResourceExpr] -> TTerm -> TCM NatResourceExpr
 decodeNatResourceTerm callStack environment term = do
   let (headTerm, arguments) = tAppView term
   case headTerm of
     TLit (LitNat n)
       | null arguments && n >= 0 ->
-          pure (NatResourceLiteralDecoded (fromInteger n))
+          pure (NatResourceLiteral (fromInteger n))
     TVar index
       | null arguments ->
           case drop index environment of
@@ -207,7 +144,7 @@ decodeNatResourceTerm callStack environment term = do
                then decodeNatResourceTerm callStack environment body
                else do
                  value <- decodeNatResourceTerm callStack environment bound
-                 if uses > 1 && not (null (natResourceDecodedVariables value))
+                 if uses > 1 && not (null (natResourceVariables value))
                    then unsupported "MALLP linearity violation: a let-bound expression capturing live resources is reused"
                    else decodeNatResourceTerm callStack (value : environment) body
     TPrim primitive -> do
@@ -220,7 +157,7 @@ decodeNatResourceTerm callStack environment term = do
         (PAdd, [left, right]) ->
           pure (NatResourceAddReversed right left)
         (PMul, [left, right]) ->
-          pure (NatResourceBinaryDecoded PreserveNatResourceOrder NatMultiply left right)
+          pure (NatResourceBinary NatMultiply left right)
         (PSub, [_, _]) ->
           unsupported "PSub is signed integer subtraction; Nat monus uses builtin NatMinus"
         _ -> unsupported ("unsupported Nat resource primitive or arity: " ++ show primitive)
@@ -231,14 +168,12 @@ decodeNatResourceTerm callStack environment term = do
         (True, _) -> do
           operands <- traverse (decodeNatResourceTerm callStack environment) arguments
           case operands of
-            [left, right] ->
-              pure (NatResourceBinaryDecoded PreserveNatResourceOrder NatAdd left right)
+            [left, right] -> pure (NatResourceBinary NatAdd left right)
             _ -> unsupported "Agda Nat addition must have exactly two operands"
         (_, True) -> do
           operands <- traverse (decodeNatResourceTerm callStack environment) arguments
           case operands of
-            [left, right] ->
-              pure (NatResourceBinaryDecoded PreserveNatResourceOrder NatMonus left right)
+            [left, right] -> pure (NatResourceBinary NatMonus left right)
             _ -> unsupported "Agda Nat subtraction must have exactly two operands"
         _ -> inlineNatResourceFunction callStack environment name arguments
     TCoerce inner
@@ -251,10 +186,10 @@ decodeNatResourceTerm callStack environment term = do
 -- once-only use.  Recursive call graphs require a separate recursor proof.
 inlineNatResourceFunction
   :: [QName]
-  -> [NatResourceDecoded]
+  -> [NatResourceExpr]
   -> QName
   -> [TTerm]
-  -> TCM NatResourceDecoded
+  -> TCM NatResourceExpr
 inlineNatResourceFunction callStack environment name arguments
   | name `elem` callStack =
       unsupported ("recursive Nat call requires a certified primitive recursor: " ++ prettyShow name)
@@ -500,15 +435,12 @@ compileNatResourceFunction owner arity term = do
   if actualArity /= arity
     then unsupported ("expected " ++ show arity ++ " Treeless lambdas, received " ++ show actualArity)
     else pure ()
-  decoded <- decodeNatResourceTerm [owner]
-    [NatResourceVariableDecoded index | index <- [0 .. arity - 1]]
+  expression <- decodeNatResourceTerm [owner]
+    [NatResourceVariable index | index <- [0 .. arity - 1]]
     body
-  let expression = natResourceDecodedCompilerExpr decoded
-      sourceExpression = natResourceDecodedSourceExpr decoded
-      actualResources = sort (natResourceVariables expression)
-      sourceResources = sort (natResourceVariables sourceExpression)
+  let actualResources = sort (natResourceVariables expression)
       expectedResources = [0 .. arity - 1]
-  if actualResources /= expectedResources || sourceResources /= expectedResources
+  if actualResources /= expectedResources
     then unsupported "MALLP linearity violation: each live Nat argument must occur exactly once"
     else pure ()
   (code, tokens, remaining) <- either unsupported pure
@@ -1247,89 +1179,6 @@ agdaNatExprTerm (NatBinary operation left right) =
   "(binary " <> agdaNatOpTerm operation <> " "
     <> agdaNatExprTerm left <> " " <> agdaNatExprTerm right <> ")"
 
-agdaNatCountTerm :: Int -> Text
-agdaNatCountTerm count
-  | count <= 0 = "zero"
-  | otherwise = "(suc " <> agdaNatCountTerm (count - 1) <> ")"
-
-agdaNatResourceExprTerm :: NatResourceExpr -> Text
-agdaNatResourceExprTerm (NatResourceLiteral value) =
-  "(resourceLiteral " <> T.pack (show value) <> ")"
-agdaNatResourceExprTerm (NatResourceVariable _) = "resourceArgument"
-agdaNatResourceExprTerm (NatResourceBinary operation left right) =
-  "(resourceBinary " <> agdaNatOpTerm operation <> " "
-    <> agdaNatResourceExprTerm left <> " "
-    <> agdaNatResourceExprTerm right <> ")"
-
-agdaNatResourceEnvironmentTerm :: Int -> [Int] -> Text
-agdaNatResourceEnvironmentTerm arity indices =
-  foldr cons "natEnvironmentNil" (map sourceArgument indices)
-  where
-    sourceArgument index =
-      "sourceArg" <> T.pack (show (arity - index - 1))
-    cons argument rest =
-      "(natEnvironmentCons " <> argument <> " " <> rest <> ")"
-
-agdaNatResourceEvalTerm :: Int -> NatResourceExpr -> Text
-agdaNatResourceEvalTerm arity expression =
-  "evalNatResourceExpr " <> agdaNatResourceExprTerm expression <> " ("
-    <> agdaNatResourceEnvironmentTerm arity (natResourceVariables expression) <> ")"
-
-agdaNatResourceSourceProofTerm :: Int -> NatResourceDecoded -> Text
-agdaNatResourceSourceProofTerm arity = proof
-  where
-    sourceEval decoded =
-      agdaNatResourceEvalTerm arity (natResourceDecodedSourceExpr decoded)
-
-    proof (NatResourceLiteralDecoded _) = "refl"
-    proof (NatResourceVariableDecoded _) = "refl"
-    proof (NatResourceBinaryDecoded PreserveNatResourceOrder NatAdd left right) =
-      "trans (cong₂ (applyNatOp addOp) ("
-        <> proof left <> ") (" <> proof right <> ")) (natAdd-comm ("
-        <> sourceEval left <> ") (" <> sourceEval right <> "))"
-    proof (NatResourceBinaryDecoded ReverseNatResourceOrder NatAdd left right) =
-      "cong₂ (applyNatOp addOp) ("
-        <> proof right <> ") (" <> proof left <> ")"
-    proof (NatResourceBinaryDecoded PreserveNatResourceOrder operation left right) =
-      "cong₂ (applyNatOp " <> agdaNatOpTerm operation <> ") ("
-        <> proof left <> ") (" <> proof right <> ")"
-    proof (NatResourceBinaryDecoded ReverseNatResourceOrder operation _ _) =
-      error ("unsupported reversed resource operation in source proof: " ++ show operation)
-
-agdaNatResourceSourceMeaningProofTerm :: Int -> NatResourceDecoded -> Text
-agdaNatResourceSourceMeaningProofTerm arity = proof
-  where
-    sourceEval decoded =
-      agdaNatResourceEvalTerm arity (natResourceDecodedSourceExpr decoded)
-
-    proof (NatResourceLiteralDecoded _) = "refl"
-    proof (NatResourceVariableDecoded _) = "refl"
-    proof (NatResourceBinaryDecoded _ NatAdd left right) =
-      "trans (cong₂ (applyNatOp addOp) ("
-        <> proof left <> ") (" <> proof right <> ")) "
-        <> "(natAdd-comm (" <> sourceEval left <> ") ("
-        <> sourceEval right <> "))"
-    proof (NatResourceBinaryDecoded _ operation left right) =
-      "cong₂ (applyNatOp " <> agdaNatOpTerm operation <> ") ("
-        <> proof left <> ") (" <> proof right <> ")"
-
-agdaNatSourceArguments :: Int -> [Text]
-agdaNatSourceArguments arity =
-  ["sourceArg" <> T.pack (show index) | index <- [0 .. arity - 1]]
-
-agdaNatInitialStackTerm :: Int -> Text
-agdaNatInitialStackTerm arity =
-  foldr cons "[]" (reverse [0 .. arity - 1])
-  where
-    cons index rest =
-      "sourceArg" <> T.pack (show index) <> " ∷ " <> rest
-
-agdaNatSourceApplication :: TopLevelModuleName -> QName -> [Text] -> Text
-agdaNatSourceApplication sourceModule name arguments =
-  T.unwords
-    ((T.pack (prettyShow sourceModule) <> "."
-       <> T.pack (prettyShow (qnameName name))) : arguments)
-
 agdaNatLinearExprTerm :: NatLinearExpr -> Text
 agdaNatLinearExprTerm NatArgument = "natArgument"
 agdaNatLinearExprTerm (NatLinearLeft operation input right) =
@@ -1450,8 +1299,6 @@ rendererCertificate sourceModule definitions = T.unlines $
   , "   compileBoolPairSwap; Nat; zero; suc; just; NatOp; addOp; monusOp; multiplyOp;"
   , "   NatExpr; literal; binary; NatLinearExpr; natArgument; natLinearLeft; natLinearRight;"
   , "   NatBinaryLinearExpr; natBinaryArguments; natBinaryArgumentsExchanged;"
-  , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary;"
-  , "   natResource-proof-derivation; natResourceProof; natResourceProof-adequate; evalNatResourceExpr;"
   , "   ForthToken; pushLiteral; addWord; monusWord; multiplyWord; swapWord; rollWord;"
   , "   MALLPNatTheory; natContext; natFormula; natLinear-proof-derivation; natBinary-proof-derivation;"
   , "   natLinearProof; natBinaryProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
@@ -1480,94 +1327,6 @@ rendererCertificate sourceModule definitions = T.unlines $
          , ""
          ]
     | (position, definition) <- zip [0 :: Int ..] definitions
-    ] ++ concat
-    [ let { expressionName = "natResourceExpression" <> index
-          ; sourceExpressionName = "natResourceSourceExpression" <> index
-          ; sourceMeaningName = "natResourceSourceMeaning" <> index
-          ; derivationName = "natResourceDerivation" <> index
-          ; semanticsName = "sourceNatResourceSemantics" <> index
-          ; tokensName = "natResourceCompilerTokens" <> index
-          ; executionName = "natResourceCompilerExecution" <> index
-          ; soundnessName = "natResourceSourceSound" <> index
-          ; arguments = agdaNatSourceArguments arity
-          ; application = agdaNatSourceApplication sourceModule
-              (compiledName definition) arguments
-          ; binders =
-              if null arguments
-                then []
-                else ["  (" <> T.unwords arguments <> " : Nat) →"]
-          ; applicationClause = T.unwords (semanticsName : arguments)
-          }
-      in [ expressionName <> " : NatResourceExpr "
-             <> agdaNatCountTerm arity
-         , expressionName <> " = "
-             <> agdaNatResourceExprTerm expression
-         , ""
-         , sourceExpressionName <> " : NatResourceExpr "
-             <> agdaNatCountTerm arity
-         , sourceExpressionName <> " = "
-             <> agdaNatResourceExprTerm sourceExpression
-         , ""
-         , derivationName <> " :"
-         , "  MALLPNatTheory (natContext " <> agdaNatCountTerm arity
-             <> ") (just natFormula)"
-         , derivationName <> " = natResource-proof-derivation "
-             <> expressionName
-         , ""
-         , tokensName <> " : List ForthToken"
-         , tokensName <> " = "
-             <> formalNatTokenList (compiledTokens definition)
-         , ""
-         , executionName <> " :"
-         ] ++ binders ++
-         [ "  execTokens " <> tokensName
-         , "    (" <> agdaNatInitialStackTerm arity <> ") ≡"
-         , "  just (interpretMALLPNatProof (natResourceProof " <> expressionName
-             <> ") (" <> agdaNatResourceEnvironmentTerm arity order <> ") ∷ [])"
-         , T.unwords (executionName : arguments) <> " ="
-         , "  trans refl"
-         , "    (cong (λ value → just (value ∷ []))"
-         , "      (sym (natResourceProof-adequate " <> expressionName
-             <> " (" <> agdaNatResourceEnvironmentTerm arity order <> "))))"
-         , ""
-         , sourceMeaningName <> " :"
-         ] ++ binders ++
-         [ "  evalNatResourceExpr " <> sourceExpressionName <> " ("
-             <> agdaNatResourceEnvironmentTerm arity sourceOrder <> ") ≡"
-         , "    " <> application
-         , T.unwords (sourceMeaningName : arguments) <> " = "
-              <> agdaNatResourceSourceMeaningProofTerm arity decoded
-         , ""
-         , semanticsName <> " :"
-         ] ++ binders ++
-         [ "  evalNatResourceExpr " <> expressionName <> " ("
-             <> agdaNatResourceEnvironmentTerm arity order <> ") ≡"
-         , "    " <> application
-         , applicationClause <> " ="
-         , "  trans"
-         , "    (" <> agdaNatResourceSourceProofTerm arity decoded <> ")"
-         , "    (" <> T.unwords (sourceMeaningName : arguments) <> ")"
-         , ""
-         , soundnessName <> " :"
-         ] ++ binders ++
-         [ "  execTokens " <> tokensName
-         , "    (" <> agdaNatInitialStackTerm arity <> ") ≡"
-         , "  just (" <> application <> " ∷ [])"
-         , T.unwords (soundnessName : arguments) <> " ="
-         , "  trans"
-         , "    (" <> T.unwords (executionName : arguments) <> ")"
-         , "    (cong (λ value → just (value ∷ []))"
-         , "      (trans"
-         , "        (natResourceProof-adequate " <> expressionName <> " ("
-             <> agdaNatResourceEnvironmentTerm arity order <> "))"
-         , "        (" <> T.unwords (semanticsName : arguments) <> ")))"
-         , ""
-         ]
-      | (index, definition, NatResourceWitness arity expression sourceExpression order sourceOrder decoded) <-
-          [ (T.pack (show position), definition, witness)
-          | (position, definition) <- zip [0 :: Int ..] definitions
-          , Just witness <- [compiledNatResourceWitness definition]
-          ]
     ] ++ concat
     [ let { expressionName = "natLinearExpression" <> index
           ; derivationName = "natLinearDerivation" <> index
