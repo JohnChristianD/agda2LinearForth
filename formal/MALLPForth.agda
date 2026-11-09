@@ -2849,7 +2849,7 @@ module StrictNatCompiler where
     with natWithinBound value bound in valueCheck
   ... | true = refl
   ... | false =
-    ⊥-elim (natBoundFalseNotTrue (trans valueCheck (sym valueBound)))
+    absurd (natBoundFalseNotTrue (trans valueCheck (sym valueBound)))
   execBoundedToken-complete bound addWord [] result natStackBoundedNil () resultBound
   execBoundedToken-complete bound addWord (value ∷ []) result
     (natStackBoundedCons _ natStackBoundedNil) () resultBound
@@ -2862,11 +2862,11 @@ module StrictNatCompiler where
        | natWithinBound (left + right) bound in resultCheck
   ... | true | true | true = refl
   ... | false | _ | _ =
-    ⊥-elim (natBoundFalseNotTrue (trans leftCheck (sym leftBound)))
+    absurd (natBoundFalseNotTrue (trans leftCheck (sym leftBound)))
   ... | true | false | _ =
-    ⊥-elim (natBoundFalseNotTrue (trans rightCheck (sym rightBound)))
+    absurd (natBoundFalseNotTrue (trans rightCheck (sym rightBound)))
   ... | true | true | false =
-    ⊥-elim (natBoundFalseNotTrue (trans resultCheck (sym resultBound)))
+    absurd (natBoundFalseNotTrue (trans resultCheck (sym resultBound)))
   execBoundedToken-complete bound monusWord [] result natStackBoundedNil () resultBound
   execBoundedToken-complete bound monusWord (value ∷ []) result
     (natStackBoundedCons _ natStackBoundedNil) () resultBound
@@ -2878,9 +2878,9 @@ module StrictNatCompiler where
        | natWithinBound right bound in rightCheck
   ... | true | true = refl
   ... | false | _ =
-    ⊥-elim (natBoundFalseNotTrue (trans leftCheck (sym leftBound)))
+    absurd (natBoundFalseNotTrue (trans leftCheck (sym leftBound)))
   ... | true | false =
-    ⊥-elim (natBoundFalseNotTrue (trans rightCheck (sym rightBound)))
+    absurd (natBoundFalseNotTrue (trans rightCheck (sym rightBound)))
   execBoundedToken-complete bound multiplyWord [] result natStackBoundedNil () resultBound
   execBoundedToken-complete bound multiplyWord (value ∷ []) result
     (natStackBoundedCons _ natStackBoundedNil) () resultBound
@@ -2893,11 +2893,11 @@ module StrictNatCompiler where
        | natWithinBound (left * right) bound in resultCheck
   ... | true | true | true = refl
   ... | false | _ | _ =
-    ⊥-elim (natBoundFalseNotTrue (trans leftCheck (sym leftBound)))
+    absurd (natBoundFalseNotTrue (trans leftCheck (sym leftBound)))
   ... | true | false | _ =
-    ⊥-elim (natBoundFalseNotTrue (trans rightCheck (sym rightBound)))
+    absurd (natBoundFalseNotTrue (trans rightCheck (sym rightBound)))
   ... | true | true | false =
-    ⊥-elim (natBoundFalseNotTrue (trans resultCheck (sym resultBound)))
+    absurd (natBoundFalseNotTrue (trans resultCheck (sym resultBound)))
   execBoundedToken-complete bound swapWord stack result inputBound stepBound resultBound =
     stepBound
   execBoundedToken-complete bound (rollWord depth) stack result inputBound stepBound resultBound =
