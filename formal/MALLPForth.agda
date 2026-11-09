@@ -4029,15 +4029,6 @@ module StrictBoolCompiler where
     MALLP (boolPairAssumption ∷ []) (just boolPairFormula)
   boolPairIdentityMALLP = mallp-ax
 
-  boolPairIdentityForthSound :
-    (first second : Bool) →
-    (residualStack : List Bool) →
-    execBoolTokens
-      (renderBoolCode (boolIdentity {Γ = boolCell ∷ boolCell ∷ []}))
-      (first ∷ second ∷ residualStack) ≡
-    just (first ∷ second ∷ residualStack)
-  boolPairIdentityForthSound first second residualStack = refl
-
   boolPairSwapMALLP :
     MALLP (boolPairAssumption ∷ []) (just boolPairFormula)
   boolPairSwapMALLP =
@@ -4182,6 +4173,15 @@ module StrictBoolCompiler where
       bindBoolTokens (execBoolTokens whenFalse stack)
         (λ branchStack → execBoolTokens tokens branchStack)
   execBoolTokens (boolIfToken whenTrue whenFalse ∷ tokens) [] = nothing
+
+  boolPairIdentityForthSound :
+    (first second : Bool) →
+    (residualStack : List Bool) →
+    execBoolTokens
+      (renderBoolCode (boolIdentity {Γ = boolCell ∷ boolCell ∷ []}))
+      (first ∷ second ∷ residualStack) ≡
+    just (first ∷ second ∷ residualStack)
+  boolPairIdentityForthSound first second residualStack = refl
 
   compileBoolPairSwap :
     BoolForthCode (boolCell ∷ boolCell ∷ [])
