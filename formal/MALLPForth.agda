@@ -2863,8 +2863,8 @@ module StrictNatCompiler where
     NatStackBounded bound result
   execBoundedToken-preserves-bounded bound (pushLiteral value) stack result
     stackBound execution
-      with natWithinBound value bound | execution
-  ... | true | refl = natStackBoundedCons refl stackBound
+      with natWithinBound value bound in within | execution
+  ... | true | refl = natStackBoundedCons within stackBound
   ... | false | ()
   execBoundedToken-preserves-bounded bound addWord [] result
     natStackBoundedNil ()
@@ -2876,10 +2876,10 @@ module StrictNatCompiler where
       (natStackBoundedCons leftBound restBound)) execution
       with natWithinBound left bound
          | natWithinBound right bound
-         | natWithinBound (left + right) bound
+         | natWithinBound (left + right) bound in resultWithin
          | execution
   ... | true | true | true | refl =
-    natStackBoundedCons refl restBound
+    natStackBoundedCons resultWithin restBound
   ... | _ | _ | _ | ()
   execBoundedToken-preserves-bounded bound monusWord [] result
     natStackBoundedNil ()
@@ -2907,10 +2907,10 @@ module StrictNatCompiler where
       (natStackBoundedCons leftBound restBound)) execution
       with natWithinBound left bound
          | natWithinBound right bound
-         | natWithinBound (left * right) bound
+         | natWithinBound (left * right) bound in resultWithin
          | execution
   ... | true | true | true | refl =
-    natStackBoundedCons refl restBound
+    natStackBoundedCons resultWithin restBound
   ... | _ | _ | _ | ()
   execBoundedToken-preserves-bounded bound swapWord [] result
     natStackBoundedNil ()
