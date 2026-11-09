@@ -1233,6 +1233,17 @@ agdaNatResourceEvalTerm arity expression =
       environment = agdaNatResourceEnvironmentTerm arity variables
   in "(evalNatResourceExpr " <> expressionTerm <> " (" <> environment <> "))"
 
+-- The Forth data stack is top-first: final source argument is at the head.
+-- Keep the caller's residual stack as an explicit untouched suffix.
+agdaNatResourceInitialStackTerm :: Int -> Text -> Text
+agdaNatResourceInitialStackTerm arity residualStack =
+  case reverse [0 .. arity - 1] of
+    [] -> residualStack
+    indices ->
+      T.intercalate " ∷ "
+        [ "argument" <> T.pack (show index) | index <- indices ]
+        <> " ∷ " <> residualStack
+
 -- Prove source evaluation equals the resource-tree evaluator.  PAdd nodes
 -- are the only Treeless nodes whose operand order differs from source order.
 agdaNatResourceSourceProofTerm :: Int -> NatResourceExpr -> Text
@@ -1383,6 +1394,9 @@ rendererCertificate sourceModule definitions = T.unlines $
     [ let
         { expressionName = "natResourceExpression" <> index
         ; derivationName = "natResourceDerivation" <> index
+        ; compilerTokensName = "natResourceCompilerTokens" <> index
+        ; executionName = "natResourceCompilerExecution" <> index
+        ; sourceSoundName = "natResourceSourceSound" <> index
         ; sourceProofName = "sourceNatResourceSemantics" <> index
         ; arity = length (natResourceVariables expression)
         ; argumentNames =
@@ -1398,9 +1412,12 @@ rendererCertificate sourceModule definitions = T.unlines $
         ; sourceCall = T.unwords (sourceFunction : argumentNames)
         ; resourceEnvironment =
             agdaNatResourceEnvironmentTerm arity (natResourceVariables expression)
+        ; initialStack = agdaNatResourceInitialStackTerm arity "residualStack"
         ; sourceProofTerm =
             agdaNatResourceSourceProofTerm arity expression
         ; sourceProofArguments = T.unwords (sourceProofName : argumentNames)
+        ; executionArguments = T.unwords (executionName : argumentNames)
+        ; sourceSoundArguments = T.unwords (sourceSoundName : argumentNames)
         ; resourceTerm = fst (agdaNatResourceExprTerm expression)
         ; sourceTypeLines =
             (if null argumentNames then [] else [ "  " <> argumentBinders <> " →" ])
@@ -1417,12 +1434,41 @@ rendererCertificate sourceModule definitions = T.unlines $
             <> agdaNatIndexTerm arity <> ") (just natFormula)"
         , derivationName <> " = natResource-proof-derivation " <> expressionName
         , ""
+        , compilerTokensName <> " : List ForthToken"
+        , compilerTokensName <> " = " <> formalNatTokenList (compiledTokens definition)
+        , ""
+        , executionName <> " :"
+        ] ++
+        (if null argumentNames then [] else [ "  " <> argumentBinders <> " →" ]) ++
+        [ "  (residualStack : List Nat) →"
+        , "  execTokens " <> compilerTokensName
+        , "    (" <> initialStack <> ") ≡"
+        , "  just (interpretMALLPNatProof (natResourceProof " <> expressionName <> ")"
+        , "    (" <> resourceEnvironment <> ") ∷ residualStack)"
+        , executionArguments <> " residualStack ="
+        , "  trans refl"
+        , "    (cong (λ value → just (value ∷ residualStack))"
+        , "      (sym (natResourceProof-adequate " <> expressionName
+            <> " (" <> resourceEnvironment <> "))))"
+        , ""
         , sourceProofName <> " :"
         ] ++ sourceTypeLines ++
         [ sourceProofArguments <> " ="
         , "  trans (" <> sourceProofTerm <> ")"
         , "    (sym (natResourceProof-adequate " <> expressionName
             <> " (" <> resourceEnvironment <> ")))"
+        , ""
+        , sourceSoundName <> " :"
+        ] ++
+        (if null argumentNames then [] else [ "  " <> argumentBinders <> " →" ]) ++
+        [ "  (residualStack : List Nat) →"
+        , "  execTokens " <> compilerTokensName
+        , "    (" <> initialStack <> ") ≡"
+        , "  just (" <> sourceCall <> " ∷ residualStack)"
+        , sourceSoundArguments <> " residualStack ="
+        , "  trans (" <> executionArguments <> " residualStack)"
+        , "    (cong (λ value → just (value ∷ residualStack))"
+        , "      (sym (" <> sourceProofArguments <> ")))"
         , ""
         ]
       | (index, definition, expression) <-
