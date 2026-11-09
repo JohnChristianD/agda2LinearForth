@@ -1209,6 +1209,7 @@ rendererCertificate sourceModule definitions = T.unlines $
           | (position, definition) <- zip [0 :: Int ..] definitions
           , Just expression <- [compiledNatResourceWitness definition]
           ]
+    ]
     ++ concat
     [ [ "chooseBoolCompilerTokens : List ForthTextToken"
       , "chooseBoolCompilerTokens = " <> formalTokenList (compiledTokens definition)
