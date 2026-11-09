@@ -2813,6 +2813,235 @@ module StrictNatCompiler where
         (sym (execBoundedTokens-sound bound tokens stack result boundedSuccess))
         sourceSuccess)
 
+  natWithinBound-monus :
+    (left right bound : Nat) →
+    natWithinBound left bound ≡ true →
+    natWithinBound (left - right) bound ≡ true
+  natWithinBound-monus zero right bound bounded = refl
+  natWithinBound-monus (suc left) zero bound bounded = bounded
+  natWithinBound-monus (suc left) (suc right) zero ()
+  natWithinBound-monus (suc left) (suc right) (suc bound) bounded =
+    natWithinBound-monus left right bound bounded
+
+  rollList-preserves-bounded :
+    (bound depth : Nat) (stack result : List Nat) →
+    rollList depth stack ≡ just result →
+    NatStackBounded bound stack →
+    NatStackBounded bound result
+  rollList-preserves-bounded bound zero [] result () bounded
+  rollList-preserves-bounded bound zero (head ∷ tail) result equality bounded
+    with equality
+  ... | refl = bounded
+  rollList-preserves-bounded bound (suc depth) [] result () bounded
+  rollList-preserves-bounded bound (suc depth) (head ∷ tail) result equality
+    (natStackBoundedCons headBound tailBound)
+      with rollList depth tail in rolled
+  ... | nothing with equality
+  ...   | ()
+  ... | just [] with equality
+  ...   | ()
+  ... | just (selected ∷ rest) with equality
+  ...   | refl with rollList-preserves-bounded bound depth tail
+        (selected ∷ rest) rolled tailBound
+  ...     | natStackBoundedCons selectedBound restBound =
+          natStackBoundedCons selectedBound
+            (natStackBoundedCons headBound restBound)
+
+  execBoundedToken-preserves-bounded :
+    (bound : Nat) (token : ForthToken) (stack result : List Nat) →
+    NatStackBounded bound stack →
+    execBoundedToken bound token stack ≡ just result →
+    NatStackBounded bound result
+  execBoundedToken-preserves-bounded bound (pushLiteral value) stack result
+    stackBound execution
+      with natWithinBound value bound | execution
+  ... | true | refl = natStackBoundedCons refl stackBound
+  ... | false | ()
+  execBoundedToken-preserves-bounded bound addWord [] result
+    natStackBoundedNil ()
+  execBoundedToken-preserves-bounded bound addWord (value ∷ []) result
+    (natStackBoundedCons valueBound natStackBoundedNil) ()
+  execBoundedToken-preserves-bounded bound addWord
+    (right ∷ left ∷ rest) result
+    (natStackBoundedCons rightBound
+      (natStackBoundedCons leftBound restBound)) execution
+      with natWithinBound left bound
+         | natWithinBound right bound
+         | natWithinBound (left + right) bound
+         | execution
+  ... | true | true | true | refl =
+    natStackBoundedCons refl restBound
+  ... | _ | _ | _ | ()
+  execBoundedToken-preserves-bounded bound monusWord [] result
+    natStackBoundedNil ()
+  execBoundedToken-preserves-bounded bound monusWord (value ∷ []) result
+    (natStackBoundedCons valueBound natStackBoundedNil) ()
+  execBoundedToken-preserves-bounded bound monusWord
+    (right ∷ left ∷ rest) result
+    (natStackBoundedCons rightBound
+      (natStackBoundedCons leftBound restBound)) execution
+      with natWithinBound left bound
+         | natWithinBound right bound
+         | execution
+  ... | true | true | refl =
+    natStackBoundedCons
+      (natWithinBound-monus left right bound leftBound)
+      restBound
+  ... | _ | _ | ()
+  execBoundedToken-preserves-bounded bound multiplyWord [] result
+    natStackBoundedNil ()
+  execBoundedToken-preserves-bounded bound multiplyWord (value ∷ []) result
+    (natStackBoundedCons valueBound natStackBoundedNil) ()
+  execBoundedToken-preserves-bounded bound multiplyWord
+    (right ∷ left ∷ rest) result
+    (natStackBoundedCons rightBound
+      (natStackBoundedCons leftBound restBound)) execution
+      with natWithinBound left bound
+         | natWithinBound right bound
+         | natWithinBound (left * right) bound
+         | execution
+  ... | true | true | true | refl =
+    natStackBoundedCons refl restBound
+  ... | _ | _ | _ | ()
+  execBoundedToken-preserves-bounded bound swapWord [] result
+    natStackBoundedNil ()
+  execBoundedToken-preserves-bounded bound swapWord (top ∷ []) result
+    (natStackBoundedCons topBound natStackBoundedNil) ()
+  execBoundedToken-preserves-bounded bound swapWord
+    (top ∷ next ∷ rest) result
+    (natStackBoundedCons topBound
+      (natStackBoundedCons nextBound restBound)) refl =
+    natStackBoundedCons nextBound
+      (natStackBoundedCons topBound restBound)
+  execBoundedToken-preserves-bounded bound (rollWord depth) stack result
+    stackBound execution
+      with rollList depth stack in rolled
+  ... | nothing with execution
+  ...   | ()
+  ... | just nextStack with execution
+  ...   | refl =
+    rollList-preserves-bounded bound depth stack nextStack rolled stackBound
+
+  execBoundedToken-complete :
+    (bound : Nat) (token : ForthToken) (stack result : List Nat) →
+    NatStackBounded bound stack →
+    NatStackBounded bound result →
+    execToken token stack ≡ just result →
+    execBoundedToken bound token stack ≡ just result
+  execBoundedToken-complete bound (pushLiteral value) stack result
+    stackBound (natStackBoundedCons valueBound resultTailBound) refl
+      rewrite valueBound = refl
+  execBoundedToken-complete bound addWord [] result natStackBoundedNil
+    resultBound ()
+  execBoundedToken-complete bound addWord (value ∷ []) result
+    (natStackBoundedCons valueBound natStackBoundedNil) resultBound ()
+  execBoundedToken-complete bound addWord (right ∷ left ∷ rest) result
+    (natStackBoundedCons rightBound
+      (natStackBoundedCons leftBound restBound))
+    (natStackBoundedCons resultBound resultTailBound) refl
+      rewrite leftBound | rightBound | resultBound = refl
+  execBoundedToken-complete bound monusWord [] result
+    natStackBoundedNil resultBound ()
+  execBoundedToken-complete bound monusWord (value ∷ []) result
+    (natStackBoundedCons valueBound natStackBoundedNil) resultBound ()
+  execBoundedToken-complete bound monusWord (right ∷ left ∷ rest) result
+    (natStackBoundedCons rightBound
+      (natStackBoundedCons leftBound restBound))
+    resultBound refl
+      rewrite leftBound | rightBound = refl
+  execBoundedToken-complete bound multiplyWord [] result
+    natStackBoundedNil resultBound ()
+  execBoundedToken-complete bound multiplyWord (value ∷ []) result
+    (natStackBoundedCons valueBound natStackBoundedNil) resultBound ()
+  execBoundedToken-complete bound multiplyWord (right ∷ left ∷ rest) result
+    (natStackBoundedCons rightBound
+      (natStackBoundedCons leftBound restBound))
+    (natStackBoundedCons resultBound resultTailBound) refl
+      rewrite leftBound | rightBound | resultBound = refl
+  execBoundedToken-complete bound swapWord [] result
+    natStackBoundedNil resultBound ()
+  execBoundedToken-complete bound swapWord (value ∷ []) result
+    (natStackBoundedCons valueBound natStackBoundedNil) resultBound ()
+  execBoundedToken-complete bound swapWord (top ∷ next ∷ rest) result
+    stackBound resultBound source = source
+  execBoundedToken-complete bound (rollWord depth) stack result
+    stackBound resultBound source = source
+
+  -- A bounded trace records every target state, including each intermediate
+  -- stack. This makes the reverse direction precise: successful unbounded
+  -- execution is bounded exactly when such a trace exists.
+  data BoundedForthTrace (bound : Nat) :
+      List ForthToken → List Nat → List Nat → Set where
+    boundedTraceDone :
+      {stack : List Nat} →
+      NatStackBounded bound stack →
+      BoundedForthTrace bound [] stack stack
+    boundedTraceStep :
+      {token : ForthToken} {tokens : List ForthToken}
+      {stack nextStack result : List Nat} →
+      NatStackBounded bound stack →
+      execToken token stack ≡ just nextStack →
+      NatStackBounded bound nextStack →
+      BoundedForthTrace bound tokens nextStack result →
+      BoundedForthTrace bound (token ∷ tokens) stack result
+
+  execBoundedTokens-trace :
+    (bound : Nat) (tokens : List ForthToken) (stack result : List Nat) →
+    NatStackBounded bound stack →
+    execBoundedTokens bound tokens stack ≡ just result →
+    BoundedForthTrace bound tokens stack result
+  execBoundedTokens-trace bound [] stack result stackBound execution
+    with execution
+  ... | refl = boundedTraceDone stackBound
+  execBoundedTokens-trace bound (token ∷ tokens) stack result
+    stackBound execution
+      with execBoundedToken bound token stack in boundedStep | execution
+  ... | nothing | ()
+  ... | just nextStack | restExecution =
+    boundedTraceStep stackBound
+      (execBoundedToken-sound bound token stack nextStack boundedStep)
+      (execBoundedToken-preserves-bounded
+        bound token stack nextStack stackBound boundedStep)
+      (execBoundedTokens-trace
+        bound tokens nextStack result
+        (execBoundedToken-preserves-bounded
+          bound token stack nextStack stackBound boundedStep)
+        restExecution)
+
+  boundedForthTrace-unbounded :
+    (bound : Nat) (tokens : List ForthToken) (stack result : List Nat) →
+    BoundedForthTrace bound tokens stack result →
+    execTokens tokens stack ≡ just result
+  boundedForthTrace-unbounded bound [] stack .stack
+    (boundedTraceDone stackBound) = refl
+  boundedForthTrace-unbounded bound (token ∷ tokens) stack result
+    (boundedTraceStep stackBound step nextBound rest)
+      rewrite step =
+        boundedForthTrace-unbounded bound tokens _ result rest
+
+  boundedForthTrace-executes-bounded :
+    (bound : Nat) (tokens : List ForthToken) (stack result : List Nat) →
+    BoundedForthTrace bound tokens stack result →
+    execBoundedTokens bound tokens stack ≡ just result
+  boundedForthTrace-executes-bounded bound [] stack .stack
+    (boundedTraceDone stackBound) = refl
+  boundedForthTrace-executes-bounded bound (token ∷ tokens) stack result
+    (boundedTraceStep stackBound step nextBound rest)
+      rewrite execBoundedToken-complete
+        bound token stack _ stackBound nextBound step =
+        boundedForthTrace-executes-bounded bound tokens _ result rest
+
+  boundedExecutionTrace-equivalence :
+    (bound : Nat) (tokens : List ForthToken) (stack result : List Nat) →
+    (stackBound : NatStackBounded bound stack) →
+    Equivalence
+      (execBoundedTokens bound tokens stack ≡ just result)
+      (BoundedForthTrace bound tokens stack result)
+  boundedExecutionTrace-equivalence bound tokens stack result stackBound =
+    equivalence
+      (execBoundedTokens-trace bound tokens stack result stackBound)
+      (boundedForthTrace-executes-bounded bound tokens stack result)
+
   boundedAddAtLimit :
     execBoundedTokens 9
       (pushLiteral 4 ∷ pushLiteral 5 ∷ addWord ∷ []) [] ≡
