@@ -1357,6 +1357,8 @@ rendererCertificate sourceModule definitions
   , "   textSwapWord; textRollWord; textTrueWord; textFalseWord; textIf; renderForthWordText;"
   , "   mapBoolForthTokensAsText; renderBoolCode; compileBoolCaseWithResidual; compileBoolProof;"
   , "   BoolProof; boolTrueProof; boolFalseProof; boolProofDerivation; interpretBoolProof; boolProof-forth-sound-residual;"
+  , "   MALLP; dualPos; boolFormula; boolPairFormula; boolPairAssumption; one⁺;"
+  , "   linearSourceContext; linearSourceFormula; linearWord64Type;"
   , "   boolNot; boolInvertCode; boolInvertMALLP-derivation; boolInvertMALLP-forth-sound-residual;"
   , "   boolCaseWithResidualMALLP; boolCaseWithResidualMALLP-forth-sound-residual; execBoolTokens;"
   , "   compileBoolPairSwap; boolPairSwapMALLP; boolPairSwapMALLP-forth-sound-residual;"
@@ -1641,6 +1643,7 @@ rendererCertificate sourceModule definitions
         [ proofName <> " : BoolProof"
         , proofName <> " = " <> proofTerm
         , ""
+        , derivationName <> " : MALLP [] (just boolFormula)"
         , derivationName <> " = boolProofDerivation " <> proofName
         , ""
         , compilerTokensName <> " : List ForthTextToken"
@@ -1700,6 +1703,7 @@ rendererCertificate sourceModule definitions
         , tokenProofName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
         , tokenProofName <> " = refl"
         , ""
+        , "invertBoolMALLPDerivation" <> index <> " : MALLP (dualPos boolFormula ∷ []) (just boolFormula)"
         , "invertBoolMALLPDerivation" <> index <> " = boolInvertMALLP-derivation"
         , ""
         , sourceSemanticsName <> " :"
@@ -1758,6 +1762,7 @@ rendererCertificate sourceModule definitions
         , "  " <> compilerTokensName <> " ≡ " <> modelTokensName
         , tokenProofName <> " = refl"
         , ""
+        , derivationName <> " : MALLP (dualPos boolFormula ∷ dualPos boolFormula ∷ []) (just boolFormula)"
         , derivationName <> " = boolCaseWithResidualMALLP"
         , ""
         , sourceSemanticsName <> " :"
@@ -1817,6 +1822,7 @@ rendererCertificate sourceModule definitions
         , tokenProofName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
         , tokenProofName <> " = refl"
         , ""
+        , derivationName <> " : MALLP (boolPairAssumption ∷ []) (just boolPairFormula)"
         , derivationName <> " = boolPairSwapMALLP"
         , ""
         , sourceSemanticsName <> " :"
@@ -1869,6 +1875,7 @@ rendererCertificate sourceModule definitions
         , tokenProofName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
         , tokenProofName <> " = refl"
         , ""
+        , "unitMALLPDerivation" <> suffix <> " : MALLP [] (just one⁺)"
         , "unitMALLPDerivation" <> suffix <> " = unitOneProof"
         , ""
         , "unitSourceSemantics" <> suffix <> " : " <> sourceName <> " ≡ tt"
@@ -1909,6 +1916,7 @@ rendererCertificate sourceModule definitions
         , tokenProofName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
         , tokenProofName <> " = refl"
         , ""
+        , "word64MALLPDerivation" <> suffix <> " : MALLP (linearSourceContext (linearWord64Type ∷ [])) (just (linearSourceFormula linearWord64Type))"
         , "word64MALLPDerivation" <> suffix <> " = linearWord64IdentityMALLP"
         , ""
         , "word64SourceSemantics" <> suffix <> " :"
