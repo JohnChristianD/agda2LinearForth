@@ -1113,6 +1113,373 @@ sourceAgdaName sourceModule name =
   T.pack (prettyShow sourceModule) <> "." <>
     T.pack (prettyShow (qnameName name))
 
+
+compilerWitnessCertificate
+  :: TopLevelModuleName
+  -> Int
+  -> CompiledDefinition
+  -> [Text]
+compilerWitnessCertificate sourceModule position definition =
+  case compiledWitness definition of
+    Just (NatResourceWitness _) -> []
+    Just (BoolConstantWitness value) ->
+      boolConstantCertificate sourceModule suffix definition value
+    Just (BoolFunctionWitness arity expression) ->
+      boolFunctionCertificate sourceModule suffix definition arity expression
+    Just (BoolPairWitness pairType constructor expression) ->
+      boolPairCertificate sourceModule suffix definition pairType constructor expression
+    Just UnitWitness ->
+      unitCertificate sourceModule suffix definition
+    Just Word64IdentityWitness ->
+      word64Certificate sourceModule suffix definition
+    Nothing ->
+      error ("compiled definition has no semantic witness: " ++ prettyShow (compiledName definition))
+  where
+    suffix = T.pack (show position)
+
+boolConstantCertificate
+  :: TopLevelModuleName
+  -> Text
+  -> CompiledDefinition
+  -> Bool
+  -> [Text]
+boolConstantCertificate sourceModule suffix definition value =
+  [ proofName <> " : BoolProof"
+  , proofName <> " = " <> proofTerm
+  , ""
+  , derivationName <> " : MALLP [] (just boolFormula)"
+  , derivationName <> " = boolProofDerivation " <> proofName
+  , ""
+  , compilerTokensName <> " : List BoolForthToken"
+  , compilerTokensName <> " = " <> formalBoolTokenList (compiledTokens definition)
+  , ""
+  , modelTokensName <> " : List BoolForthToken"
+  , modelTokensName <> " = renderBoolCode (compileBoolProof " <> proofName <> ")"
+  , ""
+  , tokenCorrespondenceName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
+  , tokenCorrespondenceName <> " = refl"
+  , ""
+  , textCorrespondenceName <> " :"
+  , "  mapBoolForthTokensAsText " <> compilerTokensName
+      <> " ≡ " <> formalTokenList (compiledTokens definition)
+  , textCorrespondenceName <> " = refl"
+  , ""
+  , executionName <> " :"
+  , "  (residualStack : List Bool) →"
+  , "  execBoolTokens " <> compilerTokensName
+      <> " residualStack ≡ just (interpretBoolProof " <> proofName <> " ∷ residualStack)"
+  , executionName <> " residualStack ="
+  , "  trans (cong (λ tokens → execBoolTokens tokens residualStack) "
+      <> tokenCorrespondenceName <> ")"
+  , "    (boolProofForthSound " <> proofName <> " residualStack)"
+  , ""
+  , sourceSemanticsName <> " : " <> sourceFunction <> " ≡ " <> boolLiteral
+  , sourceSemanticsName <> " = refl"
+  , ""
+  , sourceSoundName <> " :"
+  , "  (residualStack : List Bool) →"
+  , "  execBoolTokens " <> compilerTokensName
+      <> " residualStack ≡ just (" <> sourceFunction <> " ∷ residualStack)"
+  , sourceSoundName <> " residualStack ="
+  , "  trans (" <> executionName <> " residualStack)"
+  , "    (cong (λ result → just (result ∷ residualStack))"
+  , "      (sym " <> sourceSemanticsName <> "))"
+  , ""
+  ]
+  where
+    proofName = "boolConstantProof" <> suffix
+    derivationName = "boolConstantMALLP" <> suffix
+    compilerTokensName = "boolConstantCompilerTokens" <> suffix
+    modelTokensName = "boolConstantModelTokens" <> suffix
+    tokenCorrespondenceName = "boolConstantTokenCorrespondence" <> suffix
+    textCorrespondenceName = "boolConstantTextCorrespondence" <> suffix
+    executionName = "boolConstantExecution" <> suffix
+    sourceSemanticsName = "boolConstantSourceSemantics" <> suffix
+    sourceSoundName = "boolConstantSourceSound" <> suffix
+    proofTerm = if value then "boolTrueProof" else "boolFalseProof"
+    boolLiteral = if value then "true" else "false"
+    sourceFunction = sourceAgdaName sourceModule (compiledName definition)
+
+boolFunctionCertificate
+  :: TopLevelModuleName
+  -> Text
+  -> CompiledDefinition
+  -> Int
+  -> BoolExpr
+  -> [Text]
+boolFunctionCertificate sourceModule suffix definition arity expression =
+  case (arity, expression) of
+    (1, BoolVariable 0) ->
+      emitBoolFunction
+        "dualPos boolFormula ∷ []" "boolIdentityMALLP"
+        "renderBoolCode (boolIdentity {Γ = boolCell ∷ []})"
+        ["argument0"] "argument0" "argument0" "refl"
+        ["sourceSemantics argument0 = refl"]
+    (1, BoolConditional (BoolVariable 0) (BoolLiteral False) (BoolLiteral True)) ->
+      emitBoolFunction
+        "dualPos boolFormula ∷ []" "invertBoolMALLP"
+        "renderBoolCode (compileBoolRuntimeCase invertBoolProof)"
+        ["argument0"] "argument0" "boolNot argument0"
+        "invertBoolRuntimeMALLP-forth-sound argument0 residualStack"
+        [ "sourceSemantics true = refl"
+        , "sourceSemantics false = refl"
+        ]
+    (2, BoolConditional (BoolVariable 1) (BoolVariable 0) (BoolVariable 0)) ->
+      emitBoolFunction
+        "dualPos boolFormula ∷ dualPos boolFormula ∷ []"
+        "boolCaseWithResidualMALLP"
+        "renderBoolCode compileBoolCaseWithResidual"
+        ["argument0", "argument1"]
+        "argument1" "argument1"
+        "boolCaseWithResidualMALLP-forth-sound argument0 argument1 residualStack"
+        [ "sourceSemantics true argument1 = refl"
+        , "sourceSemantics false argument1 = refl"
+        ]
+    _ -> error ("uncertified Bool expression reached certificate generation: " ++ show expression)
+  where
+    emitBoolFunction contextTerm derivationTerm modelTerm argumentNames
+      stackArguments expectedResult modelProof sourceSemanticsClauses =
+        let sourceFunction = sourceAgdaName sourceModule (compiledName definition)
+            derivationName = "boolFunctionMALLP" <> suffix
+            compilerTokensName = "boolFunctionCompilerTokens" <> suffix
+            modelTokensName = "boolFunctionModelTokens" <> suffix
+            tokenCorrespondenceName = "boolFunctionTokenCorrespondence" <> suffix
+            textCorrespondenceName = "boolFunctionTextCorrespondence" <> suffix
+            executionName = "boolFunctionExecution" <> suffix
+            sourceSemanticsName = "boolFunctionSourceSemantics" <> suffix
+            sourceSoundName = "boolFunctionSourceSound" <> suffix
+            argumentBinders =
+              T.intercalate " → "
+                [ "(" <> argument <> " : Bool)" | argument <- argumentNames ]
+            sourceCall = T.unwords (sourceFunction : argumentNames)
+            stackTerm =
+              T.intercalate " ∷ " stackArguments <> " ∷ residualStack"
+            argumentClause = T.unwords argumentNames
+            sourceSemanticsType =
+              T.intercalate " → "
+                ([ "(" <> argument <> " : Bool)" | argument <- argumentNames ]
+                  ++ [ sourceCall <> " ≡ " <> expectedResult ])
+            executionType =
+              (if null argumentNames then [] else [ "  " <> argumentBinders <> " →" ])
+                ++ [ "  (residualStack : List Bool) →"
+                   , "  execBoolTokens " <> compilerTokensName
+                       <> " (" <> stackTerm <> ") ≡"
+                   , "  just (" <> expectedResult <> " ∷ residualStack)"
+                   ]
+            sourceSoundBody =
+              [ sourceSoundName <> " " <> argumentClause <> " residualStack ="
+              , "  trans (" <> executionName <> " " <> argumentClause <> " residualStack)"
+              , "    (cong (λ result → just (result ∷ residualStack))"
+              , "      (sym (" <> sourceSemanticsName <> " " <> argumentClause <> ")))"
+              ]
+        in
+          [ derivationName <> " : MALLP (" <> contextTerm <> ") (just boolFormula)"
+          , derivationName <> " = " <> derivationTerm
+          , ""
+          , compilerTokensName <> " : List BoolForthToken"
+          , compilerTokensName <> " = " <> formalBoolTokenList (compiledTokens definition)
+          , ""
+          , modelTokensName <> " : List BoolForthToken"
+          , modelTokensName <> " = " <> modelTerm
+          , ""
+          , tokenCorrespondenceName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
+          , tokenCorrespondenceName <> " = refl"
+          , ""
+          , textCorrespondenceName <> " :"
+          , "  mapBoolForthTokensAsText " <> compilerTokensName
+              <> " ≡ " <> formalTokenList (compiledTokens definition)
+          , textCorrespondenceName <> " = refl"
+          , ""
+          , executionName <> " :"
+          ] ++ executionType ++
+          [ executionName <> " " <> argumentClause <> " residualStack ="
+          , "  trans (cong (λ tokens → execBoolTokens tokens (" <> stackTerm <> "))"
+              <> " " <> tokenCorrespondenceName <> ")"
+          , "    (" <> modelProof <> ")"
+          , ""
+          , sourceSemanticsName <> " : " <> sourceSemanticsType
+          ] ++ sourceSemanticsClauses ++
+          [ ""
+          , sourceSoundName <> " :"
+          ] ++ executionType ++ sourceSoundBody ++
+          [ "" ]
+
+boolPairCertificate
+  :: TopLevelModuleName
+  -> Text
+  -> CompiledDefinition
+  -> QName
+  -> QName
+  -> BoolPairExpr
+  -> [Text]
+boolPairCertificate sourceModule suffix definition pairType constructor expression =
+  let sourceFunction = sourceAgdaName sourceModule (compiledName definition)
+      pairTypeName = sourceAgdaName sourceModule pairType
+      constructorName = sourceAgdaName sourceModule constructor
+      isSwap = expression == BoolPairFields 0 1
+      derivationTerm = if isSwap then "boolPairSwapMALLP" else "boolPairIdentityMALLP"
+      modelTerm =
+        if isSwap
+          then "renderBoolCode compileBoolPairSwap"
+          else "renderBoolCode (boolIdentity {Γ = boolCell ∷ boolCell ∷ []})"
+      modelProof =
+        if isSwap
+          then "boolPairSwapMALLP-forth-sound first second residualStack"
+          else "boolPairIdentityForthSound second first residualStack"
+      outputFirst = if isSwap then "second" else "first"
+      outputSecond = if isSwap then "first" else "second"
+      derivationName = "boolPairMALLP" <> suffix
+      compilerTokensName = "boolPairCompilerTokens" <> suffix
+      modelTokensName = "boolPairModelTokens" <> suffix
+      tokenCorrespondenceName = "boolPairTokenCorrespondence" <> suffix
+      textCorrespondenceName = "boolPairTextCorrespondence" <> suffix
+      stackName = "boolPairStack" <> suffix
+      sourceSemanticsName = "boolPairSourceSemantics" <> suffix
+      executionName = "boolPairExecution" <> suffix
+      sourceSoundName = "boolPairSourceSound" <> suffix
+  in
+    [ stackName <> " : " <> pairTypeName <> " → List Bool → List Bool"
+    , stackName <> " (" <> constructorName <> " first second) residualStack ="
+    , "  second ∷ first ∷ residualStack"
+    , ""
+    , derivationName <> " : MALLP (dualPos boolPairFormula ∷ []) (just boolPairFormula)"
+    , derivationName <> " = " <> derivationTerm
+    , ""
+    , compilerTokensName <> " : List BoolForthToken"
+    , compilerTokensName <> " = " <> formalBoolTokenList (compiledTokens definition)
+    , ""
+    , modelTokensName <> " : List BoolForthToken"
+    , modelTokensName <> " = " <> modelTerm
+    , ""
+    , tokenCorrespondenceName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
+    , tokenCorrespondenceName <> " = refl"
+    , ""
+    , textCorrespondenceName <> " :"
+    , "  mapBoolForthTokensAsText " <> compilerTokensName
+        <> " ≡ " <> formalTokenList (compiledTokens definition)
+    , textCorrespondenceName <> " = refl"
+    , ""
+    , sourceSemanticsName <> " :"
+    , "  (first second : Bool) →"
+    , "  " <> sourceFunction <> " (" <> constructorName <> " first second) ≡"
+    , "    " <> constructorName <> " " <> outputFirst <> " " <> outputSecond
+    , sourceSemanticsName <> " first second = refl"
+    , ""
+    , executionName <> " :"
+    , "  (first second : Bool) →"
+    , "  (residualStack : List Bool) →"
+    , "  execBoolTokens " <> compilerTokensName
+        <> " (" <> stackName <> " (" <> constructorName
+        <> " first second) residualStack) ≡"
+    , "  just (" <> outputFirst <> " ∷ " <> outputSecond <> " ∷ residualStack)"
+    , executionName <> " first second residualStack ="
+    , "  trans (cong (λ tokens → execBoolTokens tokens ("
+        <> stackName <> " (" <> constructorName
+        <> " first second) residualStack)) " <> tokenCorrespondenceName <> ")"
+    , "    (" <> modelProof <> ")"
+    , ""
+    , sourceSoundName <> " :"
+    , "  (first second : Bool) →"
+    , "  (residualStack : List Bool) →"
+    , "  execBoolTokens " <> compilerTokensName
+        <> " (" <> stackName <> " (" <> constructorName
+        <> " first second) residualStack) ≡"
+    , "  just (" <> stackName <> " (" <> sourceFunction
+        <> " (" <> constructorName <> " first second)) residualStack)"
+    , sourceSoundName <> " first second residualStack ="
+    , "  trans (" <> executionName <> " first second residualStack)"
+    , "    (cong (λ pairValue → just (" <> stackName
+        <> " pairValue residualStack))"
+    , "      (sym (" <> sourceSemanticsName <> " first second)))"
+    , ""
+    ]
+
+unitCertificate
+  :: TopLevelModuleName
+  -> Text
+  -> CompiledDefinition
+  -> [Text]
+unitCertificate sourceModule suffix definition =
+  [ derivationName <> " : MALLP [] (just one⁺)"
+  , derivationName <> " = unitOneProof"
+  , ""
+  , compilerTokensName <> " : List ForthToken"
+  , compilerTokensName <> " = " <> formalNatTokenList (compiledTokens definition)
+  , ""
+  , modelTokensName <> " : List ForthToken"
+  , modelTokensName <> " = compileUnitProof unitOneProof"
+  , ""
+  , tokenCorrespondenceName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
+  , tokenCorrespondenceName <> " = refl"
+  , ""
+  , sourceSemanticsName <> " : " <> sourceFunction <> " ≡ tt"
+  , sourceSemanticsName <> " = refl"
+  , ""
+  , executionName <> " : (residualStack : List Nat) →"
+  , "  execTokens " <> compilerTokensName <> " residualStack ≡ just residualStack"
+  , executionName <> " residualStack ="
+  , "  trans (cong (λ tokens → execTokens tokens residualStack) "
+      <> tokenCorrespondenceName <> ") refl"
+  , ""
+  ]
+  where
+    derivationName = "unitMALLP" <> suffix
+    compilerTokensName = "unitCompilerTokens" <> suffix
+    modelTokensName = "unitModelTokens" <> suffix
+    tokenCorrespondenceName = "unitTokenCorrespondence" <> suffix
+    sourceSemanticsName = "unitSourceSemantics" <> suffix
+    executionName = "unitExecution" <> suffix
+    sourceFunction = sourceAgdaName sourceModule (compiledName definition)
+
+word64Certificate
+  :: TopLevelModuleName
+  -> Text
+  -> CompiledDefinition
+  -> [Text]
+word64Certificate sourceModule suffix definition =
+  [ derivationName <> " :"
+  , "  MALLP (dualPos word64Formula ∷ []) (just word64Formula)"
+  , derivationName <> " = word64IdentityMALLP"
+  , ""
+  , compilerTokensName <> " : List ForthToken"
+  , compilerTokensName <> " = " <> formalNatTokenList (compiledTokens definition)
+  , ""
+  , tokenCorrespondenceName <> " : " <> compilerTokensName <> " ≡ word64IdentityTokens"
+  , tokenCorrespondenceName <> " = refl"
+  , ""
+  , sourceSemanticsName <> " :"
+  , "  (word : Word64) → " <> sourceFunction <> " word ≡ word"
+  , sourceSemanticsName <> " word = refl"
+  , ""
+  , representationName <> " :"
+  , "  {word : Word64} →"
+  , "  (representation : Word64Representation word) → Word64Representation word"
+  , representationName <> " representation ="
+  , "  word64IdentityPreservesRepresentation representation"
+  , ""
+  , executionName <> " :"
+  , "  {word : Word64} →"
+  , "  (representation : Word64Representation word) →"
+  , "  (residualStack : List Nat) →"
+  , "  execTokens " <> compilerTokensName
+      <> " (lowLimb representation ∷ highLimb representation ∷ residualStack) ≡"
+  , "  just (lowLimb representation ∷ highLimb representation ∷ residualStack)"
+  , executionName <> " representation residualStack ="
+  , "  trans (cong (λ tokens → execTokens tokens"
+      <> " (lowLimb representation ∷ highLimb representation ∷ residualStack))"
+      <> " " <> tokenCorrespondenceName <> ")"
+  , "    (word64IdentityForthSound representation residualStack)"
+  , ""
+  ]
+  where
+    derivationName = "word64IdentityMALLPGenerated" <> suffix
+    compilerTokensName = "word64IdentityCompilerTokens" <> suffix
+    tokenCorrespondenceName = "word64IdentityTokenCorrespondence" <> suffix
+    sourceSemanticsName = "word64IdentitySourceSemantics" <> suffix
+    representationName = "word64IdentityRepresentationPreserved" <> suffix
+    executionName = "word64IdentityExecution" <> suffix
+    sourceFunction = sourceAgdaName sourceModule (compiledName definition)
+
 rendererCertificate :: TopLevelModuleName -> [CompiledDefinition] -> Text
 rendererCertificate sourceModule definitions = T.unlines $
   [ "{-# OPTIONS --with-K --rewriting --confluence-check --lossy-unification --exact-split --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}"
