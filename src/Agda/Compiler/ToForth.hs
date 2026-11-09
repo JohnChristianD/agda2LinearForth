@@ -1315,7 +1315,8 @@ rendererCertificate sourceModule definitions = T.unlines $
   , "   natLinearProof; natBinaryProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
   , "   evalNatLinearExpr; evalNatBinaryLinearExpr; evalNatResourceExpr; natLinearMALLP-forth-sound; natBinaryResourceMALLP-forth-sound; renderNatBinaryResource;"
   , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate;"
-  , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; NatStackBounded; execBoundedTokens; execBoundedTokens-preserves; cong; cong₂; trans; sym;"
+  , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; NatStackBounded; execBoundedTokens; execBoundedTokens-preserves;"
+  , "   BoundedForthTrace; execBoundedTokens-trace; cong; cong₂; trans; sym;"
   , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm)"
   , ""
   ] ++ concat
@@ -1398,6 +1399,7 @@ rendererCertificate sourceModule definitions = T.unlines $
         ; executionName = "natResourceCompilerExecution" <> index
         ; sourceSoundName = "natResourceSourceSound" <> index
         ; boundedSoundName = "natResourceBoundedSourceSound" <> index
+        ; boundedTraceName = "natResourceBoundedTrace" <> index
         ; sourceProofName = "sourceNatResourceSemantics" <> index
         ; arity = length (natResourceVariables expression)
         ; argumentNames =
@@ -1421,6 +1423,8 @@ rendererCertificate sourceModule definitions = T.unlines $
         ; sourceSoundArguments = T.unwords (sourceSoundName : argumentNames)
         ; boundedSoundArguments =
             T.unwords (boundedSoundName : ("bound" : argumentNames))
+        ; boundedTraceArguments =
+            T.unwords (boundedTraceName : ("bound" : argumentNames))
         ; resourceTerm = fst (agdaNatResourceExprTerm expression)
         ; sourceTypeLines =
             (if null argumentNames then [] else [ "  " <> argumentBinders <> " →" ])
@@ -1488,6 +1492,21 @@ rendererCertificate sourceModule definitions = T.unlines $
         , "    (" <> initialStack <> ") result ("
             <> sourceCall <> " ∷ residualStack)"
         , "    boundedExecution (" <> sourceSoundArguments <> " residualStack)"
+        , ""
+        , boundedTraceName <> " :"
+        , "  (bound : Nat) →"
+        ] ++
+        (if null argumentNames then [] else [ "  " <> argumentBinders <> " →" ]) ++
+        [ "  (residualStack : List Nat) →"
+        , "  (inputStackBounded : NatStackBounded bound (" <> initialStack <> ")) →"
+        , "  (result : List Nat) →"
+        , "  execBoundedTokens bound " <> compilerTokensName
+        , "    (" <> initialStack <> ") ≡ just result →"
+        , "  BoundedForthTrace bound " <> compilerTokensName
+        , "    (" <> initialStack <> ") result"
+        , boundedTraceArguments <> " residualStack inputStackBounded result boundedExecution ="
+        , "  execBoundedTokens-trace bound " <> compilerTokensName
+        , "    (" <> initialStack <> ") result inputStackBounded boundedExecution"
         , ""
         ]
       | (index, definition, expression) <-
