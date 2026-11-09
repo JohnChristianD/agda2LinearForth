@@ -1240,7 +1240,7 @@ rendererCertificate sourceModule definitions = T.unlines $
   , "   natLinearProof; natBinaryProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
   , "   evalNatLinearExpr; evalNatBinaryLinearExpr; natLinearMALLP-forth-sound; natBinaryResourceMALLP-forth-sound; renderNatBinaryResource;"
   , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate;"
-  , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; cong; trans;"
+  , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; cong; trans; sym;"
   , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm)"
   , ""
   ] ++ concat
