@@ -179,6 +179,16 @@ jobs:
               exit 1
             }
           done
+          # A successful bounded-cell execution must return exactly the
+          # source result. Overflow remains an explicit target failure.
+          test "$(grep -cE '^natResourceBoundedSourceSound[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 20
+          test "$(grep -c 'inputStackBounded : NatStackBounded bound' MALLPEmittedRenderer.agda)" -eq 20
+          for witness in boundedAddAtLimit boundedAddOverflow boundedMonusUnderflow boundedMultiplyOverflow boundedLiteralOverflow; do
+            grep -Fq "$witness" formal/MALLPForth.agda || {
+              echo "missing bounded Forth semantics witness: $witness"
+              exit 1
+            }
+          done
           # Every emitted source definition must have one renderer equality.
           # A changed compiler output set requires an explicit coverage review.
           test "$(grep -cE '^actualWord[0-9]+ : String' MALLPEmittedRenderer.agda)" -eq 29
