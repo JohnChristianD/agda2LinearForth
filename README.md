@@ -72,10 +72,10 @@ The strict fixture currently pins **29 emitted Forth definitions**. The generic 
 | --- | --- | --- |
 | General admitted Nat resources | Exact Haskell token list, MALLP derivation, formal execution, source equality, residual-stack preservation | Bounded-machine completeness requires an explicit intermediate-state bound trace; actual Gforth remains external |
 | Unary/direct-binary Nat | Specialized derivations, token correspondence, and source equalities | These specialized witnesses are narrower than arbitrary source programs |
-| Bool | Formal Bool code/token semantics; Haskell text correspondence for `chooseBool` | Not every accepted Haskell Bool definition has an individual generated source-to-token theorem |
-| Bool pair | Formal tensor swap and Haskell token correspondence for `swapBoolPair` | No general generated theorem for every accepted pair function |
-| Unit | Formal multiplicative-unit proof and identity stack effect | Haskell-emitted Unit words lack the same per-definition source theorem as Nat |
-| Word64 identity | Formal two-cell identity stack code | No generated source-Word64-to-two-cell refinement theorem for every emitted identity definition |
+| Bool | Per-definition token, execution, and source-semantic certificates for admitted closed values, inversion, and the chooser/case resource form | The admitted Bool resource grammar remains deliberately limited to those certified forms |
+| Bool pair | Generated encoder fixes the source pair layout as `second ∷ first`; token equality, MALLP tensor-swap derivation, target execution, and source-to-target composition are checked | Only the detected one-constructor, two-Bool field-swap shape is admitted |
+| Unit | Per-definition source result (`tt`), exact empty-token correspondence, multiplicative-unit proof, and residual-stack identity are checked | Unit is represented by the empty target stack effect, not a runtime cell |
+| Word64 identity | Generated certificate uses `Word64Representation`, explicit high/low-limb encoding, residual-stack preservation, and the formal two-cell identity code | The representation witness is supplied; constructing it for arbitrary words, Word64 arithmetic, and concrete Gforth limb semantics remain outside the theorem |
 | Gforth runtime/parser | Integration and boundary tests | `MALLP-PARSE-NAT`, arithmetic words, stack/error behavior, and Gforth internals are not mechanized as an implementation refinement |
 
 The bounded Nat machine proves that successful bounded execution preserves the corresponding unbounded result. The converse is conditional: every intermediate abstract stack and operation result must stay within the cell bound. `BoundedExecutionTrace` records that condition token by token; a final-result bound alone is insufficient because an intermediate addition or multiplication may overflow before later code reduces the value.
