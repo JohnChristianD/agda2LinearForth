@@ -1,4 +1,4 @@
-{-# OPTIONS --with-K --rewriting --confluence-check --lossy-unification --exact-split --guardedness --type-in-type --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
+{-# OPTIONS --rewriting --confluence-check --sized-types --type-in-type --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
 -- ```Agda
 ------------------------------------------------------------------------
 -- SovereignRationalSED
@@ -30,12 +30,13 @@ open import Agda.Builtin.Word.Properties using (primWord64ToNatInjective) public
 open import Agda.Builtin.Unit public
 open import Agda.Builtin.Strict public
 open import Agda.Builtin.Coinduction public
+open import Agda.Builtin.Size public
 import Agda.Builtin.Reflection as Reflection
 open import Agda.Builtin.Reflection.Properties
   using (primMetaToNatInjective; primQNameToWord64sInjective) public
 -- Agda has no Agda.Builtin.Empty module; define the empty type locally.
 data ⊥ : Set where
--- Removing Levels through Rewriting
+
 postulate
   Id : (Set → Set) → Set → Set → Set
   ext : Set → Set → Set
