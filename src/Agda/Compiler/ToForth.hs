@@ -290,6 +290,17 @@ compileNatResourceBinary active context operation left right = do
     , afterRight
     )
 
+-- The generated Agda Bool machine currently has checked models for the
+-- unary complement and the two-argument additive chooser. Keep admission
+-- aligned with those semantic certificates rather than admitting any linear
+-- Bool tree merely because its resource paths happen to be well-formed.
+supportedBoolResourceProgram :: Int -> BoolExpr -> Bool
+supportedBoolResourceProgram 1
+  (BoolConditional (BoolVariable 0) (BoolLiteral False) (BoolLiteral True)) = True
+supportedBoolResourceProgram 2
+  (BoolConditional (BoolVariable 1) (BoolVariable 0) (BoolVariable 0)) = True
+supportedBoolResourceProgram _ _ = False
+
 compileBoolResourceExpr
   :: [Int]
   -> BoolExpr
@@ -401,6 +412,9 @@ compileBoolPairFunction owner constructor term = do
   if actualResources /= expectedResources
     then unsupported "MALLP tensor elimination must consume both BoolPair fields exactly once"
     else pure ()
+  if expression /= BoolPairFields 0 1
+    then unsupported "BoolPair field permutation is outside the Agda-certified tensor-swap fragment"
+    else pure ()
   (firstCode, firstTokens, afterFirst) <-
     either unsupported pure (compileBoolPairResource 0 expectedResources first)
   (secondCode, secondTokens, remaining) <-
@@ -427,6 +441,9 @@ compileBoolResourceFunction owner arity term = do
         filter ((/= expectedResources) . sort) (boolExprResourcePaths expression)
   if not (null invalidPaths)
     then unsupported "MALLP linearity violation: every Bool argument must occur exactly once on every additive branch"
+    else pure ()
+  if not (supportedBoolResourceProgram arity expression)
+    then unsupported "Bool resource tree is linear but outside the Agda-certified Bool complement/chooser fragment"
     else pure ()
   (code, tokens, remaining) <-
     either unsupported pure (compileBoolResourceExpr expectedResources expression)
