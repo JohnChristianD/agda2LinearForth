@@ -1298,7 +1298,7 @@ boolFunctionCertificate sourceModule suffix definition arity expression =
           , "    (" <> modelProof <> ")"
           , ""
           , sourceSemanticsName <> " : " <> sourceSemanticsType
-          ] ++ sourceSemanticsClauses ++
+          ] ++ map (T.replace "sourceSemantics" sourceSemanticsName) sourceSemanticsClauses ++
           [ ""
           , sourceSoundName <> " :"
           ] ++ executionType ++ sourceSoundBody ++
@@ -1492,14 +1492,24 @@ rendererCertificate sourceModule definitions = T.unlines $
   , "open import MALLPForth using"
   , "  (ForthTextToken; textPushLiteral; textAddWord; textMonusWord; textMultiplyWord;"
   , "   textSwapWord; textRollWord; textTrueWord; textFalseWord; textIf; renderForthWordText;"
+  , "   BoolForthToken; pushTrueToken; pushFalseToken; boolSwapToken; boolIfToken;"
   , "   mapBoolForthTokensAsText; renderBoolCode; compileBoolCaseWithResidual;"
-  , "   compileBoolPairSwap; Nat; zero; suc; just; NatOp; addOp; monusOp; multiplyOp;"
+  , "   compileBoolPairSwap; boolIdentity; BoolStackType; boolCell;"
+  , "   BoolProof; boolTrueProof; boolFalseProof; boolProofDerivation; interpretBoolProof;"
+  , "   compileBoolProof; boolProofForthSound; boolIdentityMALLP;"
+  , "   invertBoolMALLP; invertBoolProof; boolNot; invertBoolRuntimeMALLP-forth-sound;"
+  , "   boolCaseWithResidualMALLP; boolCaseWithResidualMALLP-forth-sound;"
+  , "   boolFormula; boolPairFormula; boolPairIdentityMALLP; boolPairSwapMALLP;"
+  , "   boolPairIdentityForthSound; boolPairSwapMALLP-forth-sound;"
+  , "   Nat; Bool; Word64; zero; suc; just; NatOp; addOp; monusOp; multiplyOp;"
   , "   ForthToken; pushLiteral; addWord; monusWord; multiplyWord; swapWord; rollWord;"
-  , "   MALLPNatTheory; natContext; natFormula; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
+  , "   MALLP; dualPos; one⁺; MALLPNatTheory; natContext; natFormula; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
   , "   evalNatResourceExpr;"
   , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate;"
   , "   execTokens; NatStackBounded; execBoundedTokens; execBoundedTokens-preserves;"
   , "   BoundedForthTrace; execBoundedTokens-trace; cong; cong₂; trans; sym;"
+  , "   unitOneProof; compileUnitProof; word64Formula; word64IdentityMALLP; word64IdentityTokens;"
+  , "   Word64Representation; highLimb; lowLimb; word64IdentityPreservesRepresentation; word64IdentityForthSound;"
   , "   applyNatOp; natAdd-comm)"
   , ""
   ] ++ concat
@@ -1648,36 +1658,9 @@ rendererCertificate sourceModule definitions = T.unlines $
           ]
     ]
     ++ concat
-    [ [ "chooseBoolCompilerTokens : List ForthTextToken"
-      , "chooseBoolCompilerTokens = " <> formalTokenList (compiledTokens definition)
-      , ""
-      , "chooseBoolMALLPTokens : List ForthTextToken"
-      , "chooseBoolMALLPTokens = mapBoolForthTokensAsText"
-          <> " (renderBoolCode compileBoolCaseWithResidual)"
-      , ""
-      , "chooseBoolTokenCorrespondence :"
-      , "  chooseBoolCompilerTokens ≡ chooseBoolMALLPTokens"
-      , "chooseBoolTokenCorrespondence = refl"
-      , ""
+      [ compilerWitnessCertificate sourceModule position definition
+      | (position, definition) <- zip [0 :: Int ..] definitions
       ]
-    | definition <- definitions
-    , safeForthName (compiledName definition) == "chooseBool"
-    ] ++ concat
-    [ [ "swapBoolPairCompilerTokens : List ForthTextToken"
-      , "swapBoolPairCompilerTokens = " <> formalTokenList (compiledTokens definition)
-      , ""
-      , "swapBoolPairMALLPTokens : List ForthTextToken"
-      , "swapBoolPairMALLPTokens = mapBoolForthTokensAsText"
-          <> " (renderBoolCode compileBoolPairSwap)"
-      , ""
-      , "swapBoolPairTokenCorrespondence :"
-      , "  swapBoolPairCompilerTokens ≡ swapBoolPairMALLPTokens"
-      , "swapBoolPairTokenCorrespondence = refl"
-      , ""
-      ]
-    | definition <- definitions
-    , safeForthName (compiledName definition) == "swapBoolPair"
-    ]
 
 emitForthModule :: () -> () -> IsMain -> TopLevelModuleName -> [Maybe CompiledDefinition] -> TCM ()
 emitForthModule _ _ _ moduleName maybeDefinitions = do
