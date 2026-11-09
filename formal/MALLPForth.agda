@@ -2846,17 +2846,15 @@ module StrictNatCompiler where
   rollList-preserves-bounded bound (suc depth) [] result () bounded
   rollList-preserves-bounded bound (suc depth) (head ∷ tail) result equality
     (natStackBoundedCons headBound tailBound)
-      with rollList depth tail in rolled
-  ... | nothing with equality
-  ...   | ()
-  ... | just [] with equality
-  ...   | ()
-  ... | just (selected ∷ rest) with equality
-  ...   | refl with rollList-preserves-bounded bound depth tail
+      with rollList depth tail in rolled | equality
+  ... | nothing | ()
+  ... | just [] | ()
+  ... | just (selected ∷ rest) | refl
+      with rollList-preserves-bounded bound depth tail
         (selected ∷ rest) rolled tailBound
-  ...     | natStackBoundedCons selectedBound restBound =
-          natStackBoundedCons selectedBound
-            (natStackBoundedCons headBound restBound)
+  ... | natStackBoundedCons selectedBound restBound =
+        natStackBoundedCons selectedBound
+          (natStackBoundedCons headBound restBound)
 
   execBoundedToken-preserves-bounded :
     (bound : Nat) (token : ForthToken) (stack result : List Nat) →
@@ -2926,11 +2924,9 @@ module StrictNatCompiler where
       (natStackBoundedCons topBound restBound)
   execBoundedToken-preserves-bounded bound (rollWord depth) stack result
     stackBound execution
-      with rollList depth stack in rolled
-  ... | nothing with execution
-  ...   | ()
-  ... | just nextStack with execution
-  ...   | refl =
+      with rollList depth stack in rolled | execution
+  ... | nothing | ()
+  ... | just nextStack | refl =
     rollList-preserves-bounded bound depth stack nextStack rolled stackBound
 
   execBoundedToken-complete :
