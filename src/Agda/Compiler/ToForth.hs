@@ -113,12 +113,16 @@ data NatResourceExpr
   = NatResourceLiteral Natural
   | NatResourceVariable Int
   | NatResourceBinary NatOp NatResourceExpr NatResourceExpr
+  -- Treeless PAdd has its operands reversed relative to source order.
+  | NatResourceAddReversed NatResourceExpr NatResourceExpr
   deriving (Eq, Show)
 
 natResourceVariables :: NatResourceExpr -> [Int]
 natResourceVariables (NatResourceLiteral _) = []
 natResourceVariables (NatResourceVariable index) = [index]
 natResourceVariables (NatResourceBinary _ left right) =
+  natResourceVariables left ++ natResourceVariables right
+natResourceVariables (NatResourceAddReversed left right) =
   natResourceVariables left ++ natResourceVariables right
 
 decodeNatResourceTerm :: [QName] -> [NatResourceExpr] -> TTerm -> TCM NatResourceExpr
@@ -151,7 +155,7 @@ decodeNatResourceTerm callStack environment term = do
         -- Keep the two cases explicit: commutativity is not definitional,
         -- and the generated source certificate checks each orientation.
         (PAdd, [left, right]) ->
-          pure (NatResourceBinary NatAdd right left)
+          pure (NatResourceAddReversed right left)
         (PMul, [left, right]) ->
           pure (NatResourceBinary NatMultiply left right)
         (PSub, [_, _]) ->
@@ -255,7 +259,19 @@ compileNatResourceExpr active context (NatResourceVariable index) =
   compileResourceUse
     "MALLP resource is missing, duplicated, or out of scope: "
     active context index
-compileNatResourceExpr active context (NatResourceBinary operation left right) = do
+compileNatResourceExpr active context (NatResourceBinary operation left right) =
+  compileNatResourceBinary active context operation left right
+compileNatResourceExpr active context (NatResourceAddReversed left right) =
+  compileNatResourceBinary active context NatAdd left right
+
+compileNatResourceBinary
+  :: Int
+  -> [Int]
+  -> NatOp
+  -> NatResourceExpr
+  -> NatResourceExpr
+  -> Either String (FthForm, [FormalToken], [Int])
+compileNatResourceBinary active context operation left right = do
   (leftCode, leftTokens, afterLeft) <- compileNatResourceExpr active context left
   (rightCode, rightTokens, afterRight) <-
     compileNatResourceExpr (active + 1) afterLeft right
@@ -447,6 +463,8 @@ natResourceClosedExpr (NatResourceLiteral value) =
 natResourceClosedExpr (NatResourceVariable _) = Nothing
 natResourceClosedExpr (NatResourceBinary operation left right) =
   NatBinary operation <$> natResourceClosedExpr left <*> natResourceClosedExpr right
+natResourceClosedExpr (NatResourceAddReversed left right) =
+  NatBinary NatAdd <$> natResourceClosedExpr left <*> natResourceClosedExpr right
 
 -- Translate the exact-once unary resource tree to the Agda proof-term grammar.
 -- Since the source checker has already established that index 0 occurs once,
@@ -454,6 +472,14 @@ natResourceClosedExpr (NatResourceBinary operation left right) =
 natResourceLinearExpr :: NatResourceExpr -> Maybe NatLinearExpr
 natResourceLinearExpr (NatResourceVariable 0) = Just NatArgument
 natResourceLinearExpr (NatResourceBinary operation left right) =
+  natResourceLinearBinary operation left right
+natResourceLinearExpr (NatResourceAddReversed left right) =
+  natResourceLinearBinary NatAdd left right
+natResourceLinearExpr _ = Nothing
+
+natResourceLinearBinary
+  :: NatOp -> NatResourceExpr -> NatResourceExpr -> Maybe NatLinearExpr
+natResourceLinearBinary operation left right =
   case (natResourceLinearExpr left, natResourceClosedExpr right) of
     (Just input, Just closed) ->
       Just (NatLinearLeft operation input closed)
@@ -462,7 +488,6 @@ natResourceLinearExpr (NatResourceBinary operation left right) =
         (Just closed, Just input) ->
           Just (NatLinearRight operation closed input)
         _ -> Nothing
-natResourceLinearExpr _ = Nothing
 
 -- Recognize a direct binary operation over the two live arguments. Treeless
 -- index 1 denotes the first source argument; index 0 denotes the second.
@@ -473,6 +498,9 @@ natResourceBinaryLinearExpr
 natResourceBinaryLinearExpr
   (NatResourceBinary operation (NatResourceVariable 0) (NatResourceVariable 1)) =
     Just (NatBinaryArgumentsExchanged operation)
+natResourceBinaryLinearExpr
+  (NatResourceAddReversed (NatResourceVariable _) (NatResourceVariable _)) =
+    Just (NatBinaryArgumentsExchanged NatAdd)
 natResourceBinaryLinearExpr _ = Nothing
 
 decodeNatPrimitive :: TPrim -> [NatExpr] -> Either String NatExpr
@@ -1174,6 +1202,13 @@ agdaNatResourceExprTerm (NatResourceLiteral value) =
 agdaNatResourceExprTerm (NatResourceVariable index) =
   ("resourceArgument", [index])
 agdaNatResourceExprTerm (NatResourceBinary operation left right) =
+  agdaNatResourceBinaryTerm operation left right
+agdaNatResourceExprTerm (NatResourceAddReversed left right) =
+  agdaNatResourceBinaryTerm NatAdd left right
+
+agdaNatResourceBinaryTerm
+  :: NatOp -> NatResourceExpr -> NatResourceExpr -> (Text, [Int])
+agdaNatResourceBinaryTerm operation left right =
   let (leftTerm, leftResources) = agdaNatResourceExprTerm left
       (rightTerm, rightResources) = agdaNatResourceExprTerm right
   in ( "(resourceBinary " <> agdaNatOpTerm operation <> " "
@@ -1181,16 +1216,39 @@ agdaNatResourceExprTerm (NatResourceBinary operation left right) =
      , leftResources ++ rightResources
      )
 
--- The compiler's initial resource vector labels source arguments by
--- position.  Reify those labels in expression-leaf order for Agda's evaluator.
-agdaNatResourceEnvironmentTerm :: [Int] -> Text
-agdaNatResourceEnvironmentTerm =
+-- Treeless variables use de Bruijn order: index zero is the final source
+-- argument.  Reify each resource label back into source argument order.
+agdaNatResourceEnvironmentTerm :: Int -> [Int] -> Text
+agdaNatResourceEnvironmentTerm arity =
   foldr
     (\index environment ->
       "(natEnvironmentCons argument"
-        <> T.pack (show index)
+        <> T.pack (show (arity - index - 1))
         <> " " <> environment <> ")")
     "natEnvironmentNil"
+
+agdaNatResourceEvalTerm :: Int -> NatResourceExpr -> Text
+agdaNatResourceEvalTerm arity expression =
+  let (expressionTerm, variables) = agdaNatResourceExprTerm expression
+      environment = agdaNatResourceEnvironmentTerm arity variables
+  in "(evalNatResourceExpr " <> expressionTerm <> " (" <> environment <> "))"
+
+-- Prove source evaluation equals the resource-tree evaluator.  PAdd nodes
+-- are the only Treeless nodes whose operand order differs from source order.
+agdaNatResourceSourceProofTerm :: Int -> NatResourceExpr -> Text
+agdaNatResourceSourceProofTerm _ (NatResourceLiteral _) = "refl"
+agdaNatResourceSourceProofTerm _ (NatResourceVariable _) = "refl"
+agdaNatResourceSourceProofTerm arity (NatResourceBinary operation left right) =
+  "(cong₂ (applyNatOp " <> agdaNatOpTerm operation <> ") "
+    <> agdaNatResourceSourceProofTerm arity left <> " "
+    <> agdaNatResourceSourceProofTerm arity right <> ")"
+agdaNatResourceSourceProofTerm arity (NatResourceAddReversed left right) =
+  "(trans (cong₂ (applyNatOp addOp) "
+    <> agdaNatResourceSourceProofTerm arity right <> " "
+    <> agdaNatResourceSourceProofTerm arity left <> ") "
+    <> "(natAdd-comm "
+    <> agdaNatResourceEvalTerm arity right <> " "
+    <> agdaNatResourceEvalTerm arity left <> "))"
 
 agdaNatIndexTerm :: Int -> Text
 agdaNatIndexTerm arity =
@@ -1237,9 +1295,9 @@ rendererCertificate sourceModule definitions = T.unlines $
   , "   ForthToken; pushLiteral; addWord; monusWord; multiplyWord; swapWord; rollWord;"
   , "   MALLPNatTheory; natContext; natFormula; natLinear-proof-derivation; natBinary-proof-derivation;"
   , "   natLinearProof; natBinaryProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
-  , "   evalNatLinearExpr; evalNatBinaryLinearExpr; natLinearMALLP-forth-sound; natBinaryResourceMALLP-forth-sound; renderNatBinaryResource;"
+  , "   evalNatLinearExpr; evalNatBinaryLinearExpr; evalNatResourceExpr; natLinearMALLP-forth-sound; natBinaryResourceMALLP-forth-sound; renderNatBinaryResource;"
   , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate;"
-  , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; cong; trans; sym;"
+  , "   Stack; StackType; natCell; pushCell; forgetStack; execTokens; cong; cong₂; trans; sym;"
   , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm)"
   , ""
   ] ++ concat
@@ -1332,7 +1390,9 @@ rendererCertificate sourceModule definitions = T.unlines $
               T.pack (prettyShow (qnameName (compiledName definition)))
         ; sourceCall = T.unwords (sourceFunction : argumentNames)
         ; resourceEnvironment =
-            agdaNatResourceEnvironmentTerm (natResourceVariables expression)
+            agdaNatResourceEnvironmentTerm arity (natResourceVariables expression)
+        ; sourceProofTerm =
+            agdaNatResourceSourceProofTerm arity expression
         ; sourceProofArguments = T.unwords (sourceProofName : argumentNames)
         ; resourceTerm = fst (agdaNatResourceExprTerm expression)
         ; sourceTypeLines =
@@ -1353,7 +1413,7 @@ rendererCertificate sourceModule definitions = T.unlines $
         , sourceProofName <> " :"
         ] ++ sourceTypeLines ++
         [ sourceProofArguments <> " ="
-        , "  trans refl"
+        , "  trans (" <> sourceProofTerm <> ")"
         , "    (sym (natResourceProof-adequate " <> expressionName
             <> " (" <> resourceEnvironment <> ")))"
         , ""
