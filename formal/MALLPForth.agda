@@ -2820,6 +2820,144 @@ module StrictNatCompiler where
         (sym (execBoundedTokens-sound bound tokens stack result boundedSuccess))
         sourceSuccess)
 
+  natBoundFalseNotTrue : false ≡ true → ⊥
+  natBoundFalseNotTrue ()
+
+  natStackBoundedHead :
+    {bound value : Nat} {stack : List Nat} →
+    NatStackBounded bound (value ∷ stack) →
+    natWithinBound value bound ≡ true
+  natStackBoundedHead (natStackBoundedCons valueBound _) = valueBound
+
+  natStackBoundedTail :
+    {bound value : Nat} {stack : List Nat} →
+    NatStackBounded bound (value ∷ stack) →
+    NatStackBounded bound stack
+  natStackBoundedTail (natStackBoundedCons _ stackBound) = stackBound
+
+  -- Completeness for one bounded step needs both bounded input and bounded
+  -- output stacks. These carry the operand and intermediate-result side
+  -- conditions omitted by a final-result-only bound.
+  execBoundedToken-complete :
+    (bound : Nat) (token : ForthToken) (stack result : List Nat) →
+    NatStackBounded bound stack →
+    execToken token stack ≡ just result →
+    NatStackBounded bound result →
+    execBoundedToken bound token stack ≡ just result
+  execBoundedToken-complete bound (pushLiteral value) stack .(value ∷ stack)
+    inputBound refl (natStackBoundedCons valueBound restBound)
+    with natWithinBound value bound in valueCheck
+  ... | true = refl
+  ... | false =
+    ⊥-elim (natBoundFalseNotTrue (trans valueCheck (sym valueBound)))
+  execBoundedToken-complete bound addWord [] result natStackBoundedNil () resultBound
+  execBoundedToken-complete bound addWord (value ∷ []) result
+    (natStackBoundedCons _ natStackBoundedNil) () resultBound
+  execBoundedToken-complete bound addWord (right ∷ left ∷ stack)
+    .((left + right) ∷ stack)
+    (natStackBoundedCons rightBound (natStackBoundedCons leftBound stackBound))
+    refl (natStackBoundedCons resultBound resultStackBound)
+    with natWithinBound left bound in leftCheck
+       | natWithinBound right bound in rightCheck
+       | natWithinBound (left + right) bound in resultCheck
+  ... | true | true | true = refl
+  ... | false | _ | _ =
+    ⊥-elim (natBoundFalseNotTrue (trans leftCheck (sym leftBound)))
+  ... | true | false | _ =
+    ⊥-elim (natBoundFalseNotTrue (trans rightCheck (sym rightBound)))
+  ... | true | true | false =
+    ⊥-elim (natBoundFalseNotTrue (trans resultCheck (sym resultBound)))
+  execBoundedToken-complete bound monusWord [] result natStackBoundedNil () resultBound
+  execBoundedToken-complete bound monusWord (value ∷ []) result
+    (natStackBoundedCons _ natStackBoundedNil) () resultBound
+  execBoundedToken-complete bound monusWord (right ∷ left ∷ stack)
+    .(applyNatOp monusOp left right ∷ stack)
+    (natStackBoundedCons rightBound (natStackBoundedCons leftBound stackBound))
+    refl resultBound
+    with natWithinBound left bound in leftCheck
+       | natWithinBound right bound in rightCheck
+  ... | true | true = refl
+  ... | false | _ =
+    ⊥-elim (natBoundFalseNotTrue (trans leftCheck (sym leftBound)))
+  ... | true | false =
+    ⊥-elim (natBoundFalseNotTrue (trans rightCheck (sym rightBound)))
+  execBoundedToken-complete bound multiplyWord [] result natStackBoundedNil () resultBound
+  execBoundedToken-complete bound multiplyWord (value ∷ []) result
+    (natStackBoundedCons _ natStackBoundedNil) () resultBound
+  execBoundedToken-complete bound multiplyWord (right ∷ left ∷ stack)
+    .((left * right) ∷ stack)
+    (natStackBoundedCons rightBound (natStackBoundedCons leftBound stackBound))
+    refl (natStackBoundedCons resultBound resultStackBound)
+    with natWithinBound left bound in leftCheck
+       | natWithinBound right bound in rightCheck
+       | natWithinBound (left * right) bound in resultCheck
+  ... | true | true | true = refl
+  ... | false | _ | _ =
+    ⊥-elim (natBoundFalseNotTrue (trans leftCheck (sym leftBound)))
+  ... | true | false | _ =
+    ⊥-elim (natBoundFalseNotTrue (trans rightCheck (sym rightBound)))
+  ... | true | true | false =
+    ⊥-elim (natBoundFalseNotTrue (trans resultCheck (sym resultBound)))
+  execBoundedToken-complete bound swapWord stack result inputBound stepBound resultBound =
+    stepBound
+  execBoundedToken-complete bound (rollWord depth) stack result inputBound stepBound resultBound =
+    stepBound
+
+  -- A bounded execution trace records every intermediate abstract stack.
+  -- It is exactly the side condition needed for the converse bounded-machine
+  -- theorem: final boundedness alone cannot rule out an intermediate overflow.
+  data BoundedExecutionTrace (bound : Nat) :
+      List ForthToken → List Nat → List Nat → Set where
+    boundedTraceDone :
+      {stack : List Nat} →
+      NatStackBounded bound stack →
+      BoundedExecutionTrace bound [] stack stack
+
+    boundedTraceStep :
+      {token : ForthToken} {tokens : List ForthToken}
+      {before after final : List Nat} →
+      NatStackBounded bound before →
+      execToken token before ≡ just after →
+      NatStackBounded bound after →
+      BoundedExecutionTrace bound tokens after final →
+      BoundedExecutionTrace bound (token ∷ tokens) before final
+
+  boundedExecutionTrace-unbounded :
+    {bound : Nat} {tokens : List ForthToken} {before final : List Nat} →
+    BoundedExecutionTrace bound tokens before final →
+    execTokens tokens before ≡ just final
+  boundedExecutionTrace-unbounded (boundedTraceDone stackBound) = refl
+  boundedExecutionTrace-unbounded
+    (boundedTraceStep beforeBound step afterBound rest)
+    rewrite step = boundedExecutionTrace-unbounded rest
+
+  boundedExecutionTrace-bounded :
+    {bound : Nat} {tokens : List ForthToken} {before final : List Nat} →
+    BoundedExecutionTrace bound tokens before final →
+    execBoundedTokens bound tokens before ≡ just final
+  boundedExecutionTrace-bounded (boundedTraceDone stackBound) = refl
+  boundedExecutionTrace-bounded {bound = bound}
+    (boundedTraceStep {token = token} {tokens = tokens}
+      {before = before} {after = after}
+      beforeBound step afterBound rest)
+    rewrite execBoundedToken-complete bound token before after
+      beforeBound step afterBound =
+      boundedExecutionTrace-bounded rest
+
+  -- Converse to successful bounded preservation, under an explicit proof
+  -- that every intermediate abstract stack and operation result fits.
+  execBoundedTokens-complete :
+    {bound : Nat} {tokens : List ForthToken} {before final : List Nat} →
+    BoundedExecutionTrace bound tokens before final →
+    execBoundedTokens bound tokens before ≡ just final
+  execBoundedTokens-complete = boundedExecutionTrace-bounded
+
+  execBoundedTokens-complete-unbounded :
+    {bound : Nat} {tokens : List ForthToken} {before final : List Nat} →
+    BoundedExecutionTrace bound tokens before final →
+    execTokens tokens before ≡ just final
+  execBoundedTokens-complete-unbounded = boundedExecutionTrace-unbounded
+
   boundedAddAtLimit :
     execBoundedTokens 9
       (pushLiteral 4 ∷ pushLiteral 5 ∷ addWord ∷ []) [] ≡
