@@ -1172,6 +1172,39 @@ agdaNatExprTerm (NatBinary operation left right) =
   "(binary " <> agdaNatOpTerm operation <> " "
     <> agdaNatExprTerm left <> " " <> agdaNatExprTerm right <> ")"
 
+agdaNatCountTerm :: Int -> Text
+agdaNatCountTerm count
+  | count <= 0 = "zero"
+  | otherwise = "suc (" <> agdaNatCountTerm (count - 1) <> ")"
+
+agdaNatResourceExprTerm :: NatResourceExpr -> Text
+agdaNatResourceExprTerm (NatResourceLiteral value) =
+  "(resourceLiteral " <> T.pack (show value) <> ")"
+agdaNatResourceExprTerm (NatResourceVariable _) = "resourceArgument"
+agdaNatResourceExprTerm (NatResourceBinary operation left right) =
+  "(resourceBinary " <> agdaNatOpTerm operation <> " "
+    <> agdaNatResourceExprTerm left <> " "
+    <> agdaNatResourceExprTerm right <> ")"
+
+agdaNatResourceEnvironmentTerm :: Int -> [Int] -> Text
+agdaNatResourceEnvironmentTerm arity indices =
+  foldr cons "natEnvironmentNil" (map sourceArgument indices)
+  where
+    sourceArgument index =
+      "sourceArg" <> T.pack (show (arity - index - 1))
+    cons argument rest =
+      "(natEnvironmentCons " <> argument <> " " <> rest <> ")"
+
+agdaNatSourceArguments :: Int -> [Text]
+agdaNatSourceArguments arity =
+  ["sourceArg" <> T.pack (show index) | index <- [0 .. arity - 1]]
+
+agdaNatSourceApplication :: TopLevelModuleName -> QName -> [Text] -> Text
+agdaNatSourceApplication sourceModule name arguments =
+  T.unwords
+    ((T.pack (prettyShow sourceModule) <> "."
+       <> T.pack (prettyShow (qnameName name))) : arguments)
+
 agdaNatLinearExprTerm :: NatLinearExpr -> Text
 agdaNatLinearExprTerm NatArgument = "natArgument"
 agdaNatLinearExprTerm (NatLinearLeft operation input right) =
@@ -1225,6 +1258,8 @@ rendererCertificate sourceModule definitions = T.unlines $
   , "   compileBoolPairSwap; Nat; zero; suc; just; NatOp; addOp; monusOp; multiplyOp;"
   , "   NatExpr; literal; binary; NatLinearExpr; natArgument; natLinearLeft; natLinearRight;"
   , "   NatBinaryLinearExpr; natBinaryArguments; natBinaryArgumentsExchanged;"
+  , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary;"
+  , "   natResource-proof-derivation; evalNatResourceExpr;"
   , "   ForthToken; pushLiteral; addWord; monusWord; multiplyWord; swapWord; rollWord;"
   , "   MALLPNatTheory; natContext; natFormula; natLinear-proof-derivation; natBinary-proof-derivation;"
   , "   natLinearProof; natBinaryProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
@@ -1252,6 +1287,43 @@ rendererCertificate sourceModule definitions = T.unlines $
          , ""
          ]
     | (position, definition) <- zip [0 :: Int ..] definitions
+    ] ++ concat
+    [ let { expressionName = "natResourceExpression" <> index
+          ; derivationName = "natResourceDerivation" <> index
+          ; semanticsName = "sourceNatResourceSemantics" <> index
+          ; arguments = agdaNatSourceArguments arity
+          ; application = agdaNatSourceApplication sourceModule
+              (compiledName definition) arguments
+          ; binders =
+              if null arguments
+                then []
+                else ["  (" <> T.unwords arguments <> " : Nat) →"]
+          ; applicationClause = T.unwords (semanticsName : arguments)
+          }
+      in [ expressionName <> " : NatResourceExpr "
+             <> agdaNatCountTerm arity
+         , expressionName <> " = "
+             <> agdaNatResourceExprTerm expression
+         , ""
+         , derivationName <> " :"
+         , "  MALLPNatTheory (natContext " <> agdaNatCountTerm arity
+             <> ") (just natFormula)"
+         , derivationName <> " = natResource-proof-derivation "
+             <> expressionName
+         , ""
+         , semanticsName <> " :"
+         ] ++ binders ++
+         [ "  " <> application <> " ≡"
+         , "    evalNatResourceExpr " <> expressionName
+         , "      (" <> agdaNatResourceEnvironmentTerm arity order <> ")"
+         , applicationClause <> " = refl"
+         , ""
+         ]
+      | (index, definition, NatResourceWitness arity expression order) <-
+          [ (T.pack (show position), definition, witness)
+          | (position, definition) <- zip [0 :: Int ..] definitions
+          , Just witness <- [compiledNatResourceWitness definition]
+          ]
     ] ++ concat
     [ let { expressionName = "natLinearExpression" <> index
           ; derivationName = "natLinearDerivation" <> index
