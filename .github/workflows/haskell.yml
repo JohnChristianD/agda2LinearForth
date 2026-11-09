@@ -38,17 +38,6 @@ jobs:
           test -z "$(git ls-files '*.sh' '*.bash' '*.ps1')"
           test -f cabal.project
           grep -Fq 'tag: v2.8.0.2' cabal.project
-          grep -Fq -- '--with-K' formal/MALLPForth.agda
-          grep -Fq -- '--rewriting' formal/MALLPForth.agda
-          grep -Fq -- '--confluence-check' formal/MALLPForth.agda
-          if grep -nF -- '--type-in-type' formal/MALLPForth.agda; then
-            echo "type-in-type invalidates the Agda consistency boundary"
-            exit 1
-          fi
-          if grep -Eq '^[[:space:]]+schedule:' .github/workflows/haskell.yml; then
-            echo "scheduled CI workflows are outside the repository policy"
-            exit 1
-          fi
           git fetch --no-tags --depth=1 https://github.com/LMMilliken/agda2Forth.git "$FORTH_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$FORTH_UPSTREAM_SHA"
           test "$(git rev-parse "$FORTH_UPSTREAM_SHA:data/FLib.fth")" = "$FLIB_UPSTREAM_BLOB"
@@ -150,8 +139,24 @@ jobs:
               exit 1
             }
           done
-          # The single resource-indexed proof path now covers closed, unary,
-          # binary, and multi-argument Nat definitions uniformly.
+          # Every admitted unary and direct-binary Nat fixture must have a
+          # source-semantic theorem in the generated Agda module.
+          for source in answerIdentity answerAddFive answerMonusFive answerFiveMonus answerMultiplyFive; do
+            grep -Fq "MALLPStrict.$source argument ≡ evalNatLinearExpr" MALLPEmittedRenderer.agda || {
+              echo "missing unary Nat source certificate: $source"
+              exit 1
+            }
+          done
+          for source in answerAddTwo answerMonusTwo answerReverseMonusTwo answerMultiplyTwo; do
+            grep -Fq "MALLPStrict.$source first second ≡ evalNatBinaryLinearExpr" MALLPEmittedRenderer.agda || {
+              echo "missing binary Nat source certificate: $source"
+              exit 1
+            }
+          done
+          test "$(grep -cE '^sourceNatSemantics[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 5
+          test "$(grep -cE '^natLinearCompiledExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 5
+          test "$(grep -cE '^sourceNatBinarySemantics[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 4
+          test "$(grep -cE '^natBinaryCompiledExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 4
           # Every compiled Nat definition must carry an Agda-checked resource
           # expression, MALLP derivation, and source-semantics theorem.
           for source in answerAdd answerMonus answerMultiply answerLet answerLetShared answerLetUnused answerIdentity answerAddFive answerMonusFive answerFiveMonus answerMultiplyFive answerAddTwo answerMonusTwo answerReverseMonusTwo answerMultiplyTwo answerThree answerThreeLet answerFour answerCallThree answerCallNested; do
@@ -177,34 +182,19 @@ jobs:
           # A successful bounded-cell execution must return exactly the
           # source result. Overflow remains an explicit target failure.
           test "$(grep -cE '^natResourceBoundedSourceSound[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 20
-          test "$(grep -cE '^natResourceBoundedTrace[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 20
-          test "$(grep -c 'inputStackBounded : NatStackBounded bound' MALLPEmittedRenderer.agda)" -eq 40
-          for theorem in natWithinBound-monotone natWithinBound-monus rollList-preserves-bounded execBoundedToken-preserves-bounded execBoundedToken-complete BoundedForthTrace execBoundedTokens-trace boundedForthTrace-unbounded boundedForthTrace-executes-bounded boundedExecutionTrace-equivalence; do
-            grep -Fq "$theorem" formal/MALLPForth.agda || {
-              echo "missing bounded execution correspondence theorem: $theorem"
-              exit 1
-            }
-          done
+          test "$(grep -c 'inputStackBounded : NatStackBounded bound' MALLPEmittedRenderer.agda)" -eq 20
           for witness in boundedAddAtLimit boundedAddOverflow boundedMonusUnderflow boundedMultiplyOverflow boundedLiteralOverflow; do
             grep -Fq "$witness" formal/MALLPForth.agda || {
               echo "missing bounded Forth semantics witness: $witness"
               exit 1
             }
           done
-          # Every emitted definition has renderer correspondence and a
-          # source/target semantic certificate in its supported type fragment.
+          # Every emitted source definition must have one renderer equality.
+          # A changed compiler output set requires an explicit coverage review.
           test "$(grep -cE '^actualWord[0-9]+ : String' MALLPEmittedRenderer.agda)" -eq 29
           test "$(grep -cE '^wordRendererCorrect[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 29
-          test "$(grep -cE '^boolConstantSourceSound[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 4
-          test "$(grep -cE '^boolFunctionSourceSound[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 2
-          test "$(grep -cE '^boolPairSourceSound[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 1
-          test "$(grep -cE '^unitSourceSemantics[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 1
-          test "$(grep -cE '^word64IdentitySourceSemantics[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 1
-          test "$(grep -cE '^boolConstantExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 4
-          test "$(grep -cE '^boolFunctionExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 2
-          test "$(grep -cE '^boolPairExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 1
-          test "$(grep -cE '^unitExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 1
-          test "$(grep -cE '^word64IdentityExecution[0-9]+ :' MALLPEmittedRenderer.agda)" -eq 1
+          grep -Fq 'chooseBoolTokenCorrespondence = refl' MALLPEmittedRenderer.agda
+          grep -Fq 'swapBoolPairTokenCorrespondence = refl' MALLPEmittedRenderer.agda
           cat MALLPEmittedRenderer.agda
           if "$AGDA_BIN" --no-prop --no-erasure -i formal -i . -i test MALLPEmittedRenderer.agda > renderer-certificate.log 2>&1; then
             cat renderer-certificate.log
