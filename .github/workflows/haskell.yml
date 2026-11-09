@@ -95,13 +95,13 @@ jobs:
         id: mallp_proof
         continue-on-error: true
         run: |
-          "$AGDA_BIN" --no-prop --no-erasure -i formal formal/MALLPForth.agda
+          "$AGDA_BIN" --no-fast-reduce --no-projection-like --confluence-check -i formal formal/MALLPForth.agda
 
       - name: Type-check the separate RSED physics specification
         id: physics_proof
         continue-on-error: true
         run: |
-          "$AGDA_BIN" --no-prop --no-erasure -i formal formal/SovereignRationalSEDPhysics.agda
+          "$AGDA_BIN" --no-fast-reduce --no-projection-like -i formal formal/SovereignRationalSEDPhysics.agda
 
       - name: Build the Haskell Forth backend
         id: forth_backend
