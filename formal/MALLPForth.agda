@@ -2786,12 +2786,6 @@ module StrictNatCompiler where
     rewrite execBoundedToken-sound bound token stack nextStack refl =
       execBoundedTokens-sound bound tokens nextStack result proof
 
-  just-injective :
-    {A : Set} {left right : A} →
-    just left ≡ just right →
-    left ≡ right
-  just-injective refl = refl
-
   execBoundedTokens-preserves :
     (bound : Nat) (tokens : List ForthToken) (stack : List Nat) →
     (result expected : List Nat) →
