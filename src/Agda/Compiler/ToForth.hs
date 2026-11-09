@@ -53,7 +53,7 @@ data CompiledDefinition = CompiledDefinition
   { compiledName :: QName
   , compiledForm :: FthForm
   , compiledTokens :: [FormalToken]
-  , compiledNatResourceWitness :: Maybe NatResourceExpr
+  , compiledWitness :: Maybe CompilerWitness
   }
 
 -- A general arithmetic tree over labelled linear resources. Labels are
@@ -74,6 +74,38 @@ natResourceVariables (NatResourceBinary _ left right) =
   natResourceVariables left ++ natResourceVariables right
 natResourceVariables (NatResourceAddReversed left right) =
   natResourceVariables left ++ natResourceVariables right
+
+data BoolExpr
+  = BoolLiteral Bool
+  | BoolVariable Int
+  | BoolConditional BoolExpr BoolExpr BoolExpr
+  deriving (Eq, Show)
+
+data BoolPairExpr = BoolPairFields Int Int
+  deriving (Eq, Show)
+
+boolExprResourcePaths :: BoolExpr -> [[Int]]
+boolExprResourcePaths (BoolLiteral _) = [[]]
+boolExprResourcePaths (BoolVariable index) = [[index]]
+boolExprResourcePaths (BoolConditional condition whenTrue whenFalse) =
+  [ conditionPath ++ branchPath
+  | conditionPath <- boolExprResourcePaths condition
+  , branchPath <- boolExprResourcePaths whenTrue
+  ]
+  ++
+  [ conditionPath ++ branchPath
+  | conditionPath <- boolExprResourcePaths condition
+  , branchPath <- boolExprResourcePaths whenFalse
+  ]
+
+data CompilerWitness
+  = NatResourceWitness NatResourceExpr
+  | BoolConstantWitness Bool
+  | BoolFunctionWitness Int BoolExpr
+  | BoolPairWitness BoolPairExpr
+  | UnitWitness
+  | Word64IdentityWitness
+  deriving (Eq, Show)
 
 decodeNatResourceTerm :: [QName] -> [NatResourceExpr] -> TTerm -> TCM NatResourceExpr
 decodeNatResourceTerm callStack environment term = do
