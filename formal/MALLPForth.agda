@@ -2698,6 +2698,17 @@ module StrictNatCompiler where
   natWithinBound (suc value) (suc bound) =
     natWithinBound value bound
 
+  -- A concrete target stack can contain only nonnegative values that
+  -- fit the selected signed-cell bound. This is an explicit precondition
+  -- for relating the abstract Nat machine to a real Forth process.
+  data NatStackBounded (bound : Nat) : List Nat → Set where
+    natStackBoundedNil : NatStackBounded bound []
+    natStackBoundedCons :
+      {value : Nat} {stack : List Nat} →
+      natWithinBound value bound ≡ true →
+      NatStackBounded bound stack →
+      NatStackBounded bound (value ∷ stack)
+
   execBoundedToken : Nat → ForthToken → List Nat → Maybe (List Nat)
   execBoundedToken bound (pushLiteral value) stack
     with natWithinBound value bound
