@@ -1213,13 +1213,13 @@ boolFunctionCertificate sourceModule suffix definition arity expression =
       emitBoolFunction
         "dualPos boolFormula ∷ []" "boolIdentityMALLP"
         "renderBoolCode (boolIdentity {Γ = boolCell ∷ []})"
-        ["argument0"] "argument0" "argument0" "refl"
+        ["argument0"] ["argument0"] "argument0" "argument0" "refl"
         ["sourceSemantics argument0 = refl"]
     (1, BoolConditional (BoolVariable 0) (BoolLiteral False) (BoolLiteral True)) ->
       emitBoolFunction
         "dualPos boolFormula ∷ []" "invertBoolMALLP"
         "renderBoolCode (compileBoolRuntimeCase invertBoolProof)"
-        ["argument0"] "argument0" "boolNot argument0"
+        ["argument0"] ["argument0"] "argument0" "boolNot argument0"
         "invertBoolRuntimeMALLP-forth-sound argument0 residualStack"
         [ "sourceSemantics true = refl"
         , "sourceSemantics false = refl"
@@ -1229,7 +1229,7 @@ boolFunctionCertificate sourceModule suffix definition arity expression =
         "dualPos boolFormula ∷ dualPos boolFormula ∷ []"
         "boolCaseWithResidualMALLP"
         "renderBoolCode compileBoolCaseWithResidual"
-        ["argument1", "argument0"]
+        ["argument0", "argument1"] ["argument1", "argument0"]
         "argument1" "argument1"
         "boolCaseWithResidualMALLP-forth-sound argument0 argument1 residualStack"
         [ "sourceSemantics true argument1 = refl"
