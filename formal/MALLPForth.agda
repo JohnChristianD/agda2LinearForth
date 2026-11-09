@@ -1,4 +1,4 @@
-{-# OPTIONS --with-K --rewriting --confluence-check --lossy-unification --exact-split --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
+{-# OPTIONS --with-K --rewriting --confluence-check --lossy-unification --exact-split --guardedness --type-in-type --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
 -- ```Agda
 ------------------------------------------------------------------------
 -- SovereignRationalSED
@@ -2813,247 +2813,6 @@ module StrictNatCompiler where
         (sym (execBoundedTokens-sound bound tokens stack result boundedSuccess))
         sourceSuccess)
 
-  natWithinBound-monotone :
-    (value bound : Nat) →
-    natWithinBound value bound ≡ true →
-    natWithinBound value (suc bound) ≡ true
-  natWithinBound-monotone zero bound bounded = refl
-  natWithinBound-monotone (suc value) zero ()
-  natWithinBound-monotone (suc value) (suc bound) bounded =
-    natWithinBound-monotone value bound bounded
-
-  natWithinBound-monus :
-    (left right bound : Nat) →
-    natWithinBound left bound ≡ true →
-    natWithinBound (left - right) bound ≡ true
-  natWithinBound-monus zero zero bound bounded = refl
-  natWithinBound-monus zero (suc right) bound bounded = refl
-  natWithinBound-monus (suc left) zero bound bounded = bounded
-  natWithinBound-monus (suc left) (suc right) zero ()
-  natWithinBound-monus (suc left) (suc right) (suc bound) bounded =
-    natWithinBound-monotone (left - right) bound
-      (natWithinBound-monus left right bound bounded)
-
-  rollList-preserves-bounded :
-    (bound depth : Nat) (stack result : List Nat) →
-    rollList depth stack ≡ just result →
-    NatStackBounded bound stack →
-    NatStackBounded bound result
-  rollList-preserves-bounded bound zero [] result () bounded
-  rollList-preserves-bounded bound zero (head ∷ tail) result equality bounded
-    with equality
-  ... | refl = bounded
-  rollList-preserves-bounded bound (suc depth) [] result () bounded
-  rollList-preserves-bounded bound (suc depth) (head ∷ tail) result equality
-    (natStackBoundedCons headBound tailBound)
-      with rollList depth tail in rolled | equality
-  ... | nothing | ()
-  ... | just [] | ()
-  ... | just (selected ∷ rest) | refl
-      with rollList-preserves-bounded bound depth tail
-        (selected ∷ rest) rolled tailBound
-  ... | natStackBoundedCons selectedBound restBound =
-        natStackBoundedCons selectedBound
-          (natStackBoundedCons headBound restBound)
-
-  execBoundedToken-preserves-bounded :
-    (bound : Nat) (token : ForthToken) (stack result : List Nat) →
-    NatStackBounded bound stack →
-    execBoundedToken bound token stack ≡ just result →
-    NatStackBounded bound result
-  execBoundedToken-preserves-bounded bound (pushLiteral value) stack result
-    stackBound execution
-      with natWithinBound value bound in within | execution
-  ... | true | refl = natStackBoundedCons within stackBound
-  ... | false | ()
-  execBoundedToken-preserves-bounded bound addWord [] result
-    natStackBoundedNil ()
-  execBoundedToken-preserves-bounded bound addWord (value ∷ []) result
-    (natStackBoundedCons valueBound natStackBoundedNil) ()
-  execBoundedToken-preserves-bounded bound addWord
-    (right ∷ left ∷ rest) result
-    (natStackBoundedCons rightBound
-      (natStackBoundedCons leftBound restBound)) execution
-      with natWithinBound left bound in leftWithin
-         | natWithinBound right bound in rightWithin
-         | natWithinBound (left + right) bound in resultWithin
-         | execution
-  ... | true | true | true | refl =
-    natStackBoundedCons resultWithin restBound
-  ... | false | _ | _ | ()
-  ... | true | false | _ | ()
-  ... | true | true | false | ()
-  execBoundedToken-preserves-bounded bound monusWord [] result
-    natStackBoundedNil ()
-  execBoundedToken-preserves-bounded bound monusWord (value ∷ []) result
-    (natStackBoundedCons valueBound natStackBoundedNil) ()
-  execBoundedToken-preserves-bounded bound monusWord
-    (right ∷ left ∷ rest) result
-    (natStackBoundedCons rightBound
-      (natStackBoundedCons leftBound restBound)) execution
-      with natWithinBound left bound in leftWithin
-         | natWithinBound right bound in rightWithin
-         | execution
-  ... | true | true | refl =
-    natStackBoundedCons
-      (natWithinBound-monus left right bound leftWithin)
-      restBound
-  ... | false | _ | ()
-  ... | true | false | ()
-  execBoundedToken-preserves-bounded bound multiplyWord [] result
-    natStackBoundedNil ()
-  execBoundedToken-preserves-bounded bound multiplyWord (value ∷ []) result
-    (natStackBoundedCons valueBound natStackBoundedNil) ()
-  execBoundedToken-preserves-bounded bound multiplyWord
-    (right ∷ left ∷ rest) result
-    (natStackBoundedCons rightBound
-      (natStackBoundedCons leftBound restBound)) execution
-      with natWithinBound left bound in leftWithin
-         | natWithinBound right bound in rightWithin
-         | natWithinBound (left * right) bound in resultWithin
-         | execution
-  ... | true | true | true | refl =
-    natStackBoundedCons resultWithin restBound
-  ... | false | _ | _ | ()
-  ... | true | false | _ | ()
-  ... | true | true | false | ()
-  execBoundedToken-preserves-bounded bound swapWord [] result
-    natStackBoundedNil ()
-  execBoundedToken-preserves-bounded bound swapWord (top ∷ []) result
-    (natStackBoundedCons topBound natStackBoundedNil) ()
-  execBoundedToken-preserves-bounded bound swapWord
-    (top ∷ next ∷ rest) result
-    (natStackBoundedCons topBound
-      (natStackBoundedCons nextBound restBound)) refl =
-    natStackBoundedCons nextBound
-      (natStackBoundedCons topBound restBound)
-  execBoundedToken-preserves-bounded bound (rollWord depth) stack result
-    stackBound execution
-      with rollList depth stack in rolled | execution
-  ... | nothing | ()
-  ... | just nextStack | refl =
-    rollList-preserves-bounded bound depth stack nextStack rolled stackBound
-
-  execBoundedToken-complete :
-    (bound : Nat) (token : ForthToken) (stack result : List Nat) →
-    NatStackBounded bound stack →
-    NatStackBounded bound result →
-    execToken token stack ≡ just result →
-    execBoundedToken bound token stack ≡ just result
-  execBoundedToken-complete bound (pushLiteral value) stack result
-    stackBound (natStackBoundedCons valueBound resultTailBound) refl
-      rewrite valueBound = refl
-  execBoundedToken-complete bound addWord [] result natStackBoundedNil
-    resultBound ()
-  execBoundedToken-complete bound addWord (value ∷ []) result
-    (natStackBoundedCons valueBound natStackBoundedNil) resultBound ()
-  execBoundedToken-complete bound addWord (right ∷ left ∷ rest) result
-    (natStackBoundedCons rightBound
-      (natStackBoundedCons leftBound restBound))
-    (natStackBoundedCons resultBound resultTailBound) refl
-      rewrite leftBound | rightBound | resultBound = refl
-  execBoundedToken-complete bound monusWord [] result
-    natStackBoundedNil resultBound ()
-  execBoundedToken-complete bound monusWord (value ∷ []) result
-    (natStackBoundedCons valueBound natStackBoundedNil) resultBound ()
-  execBoundedToken-complete bound monusWord (right ∷ left ∷ rest) result
-    (natStackBoundedCons rightBound
-      (natStackBoundedCons leftBound restBound))
-    resultBound refl
-      rewrite leftBound | rightBound = refl
-  execBoundedToken-complete bound multiplyWord [] result
-    natStackBoundedNil resultBound ()
-  execBoundedToken-complete bound multiplyWord (value ∷ []) result
-    (natStackBoundedCons valueBound natStackBoundedNil) resultBound ()
-  execBoundedToken-complete bound multiplyWord (right ∷ left ∷ rest) result
-    (natStackBoundedCons rightBound
-      (natStackBoundedCons leftBound restBound))
-    (natStackBoundedCons resultBound resultTailBound) refl
-      rewrite leftBound | rightBound | resultBound = refl
-  execBoundedToken-complete bound swapWord [] result
-    natStackBoundedNil resultBound ()
-  execBoundedToken-complete bound swapWord (value ∷ []) result
-    (natStackBoundedCons valueBound natStackBoundedNil) resultBound ()
-  execBoundedToken-complete bound swapWord (top ∷ next ∷ rest) result
-    stackBound resultBound source = source
-  execBoundedToken-complete bound (rollWord depth) stack result
-    stackBound resultBound source = source
-
-  -- A bounded trace records every target state, including each intermediate
-  -- stack. This makes the reverse direction precise: successful unbounded
-  -- execution is bounded exactly when such a trace exists.
-  data BoundedForthTrace (bound : Nat) :
-      List ForthToken → List Nat → List Nat → Set where
-    boundedTraceDone :
-      {stack : List Nat} →
-      NatStackBounded bound stack →
-      BoundedForthTrace bound [] stack stack
-    boundedTraceStep :
-      {token : ForthToken} {tokens : List ForthToken}
-      {stack nextStack result : List Nat} →
-      NatStackBounded bound stack →
-      execToken token stack ≡ just nextStack →
-      NatStackBounded bound nextStack →
-      BoundedForthTrace bound tokens nextStack result →
-      BoundedForthTrace bound (token ∷ tokens) stack result
-
-  execBoundedTokens-trace :
-    (bound : Nat) (tokens : List ForthToken) (stack result : List Nat) →
-    NatStackBounded bound stack →
-    execBoundedTokens bound tokens stack ≡ just result →
-    BoundedForthTrace bound tokens stack result
-  execBoundedTokens-trace bound [] stack result stackBound execution
-    with execution
-  ... | refl = boundedTraceDone stackBound
-  execBoundedTokens-trace bound (token ∷ tokens) stack result
-    stackBound execution
-      with execBoundedToken bound token stack in boundedStep | execution
-  ... | nothing | ()
-  ... | just nextStack | restExecution =
-    boundedTraceStep stackBound
-      (execBoundedToken-sound bound token stack nextStack boundedStep)
-      (execBoundedToken-preserves-bounded
-        bound token stack nextStack stackBound boundedStep)
-      (execBoundedTokens-trace
-        bound tokens nextStack result
-        (execBoundedToken-preserves-bounded
-          bound token stack nextStack stackBound boundedStep)
-        restExecution)
-
-  boundedForthTrace-unbounded :
-    (bound : Nat) (tokens : List ForthToken) (stack result : List Nat) →
-    BoundedForthTrace bound tokens stack result →
-    execTokens tokens stack ≡ just result
-  boundedForthTrace-unbounded bound [] stack .stack
-    (boundedTraceDone stackBound) = refl
-  boundedForthTrace-unbounded bound (token ∷ tokens) stack result
-    (boundedTraceStep stackBound step nextBound rest)
-      rewrite step =
-        boundedForthTrace-unbounded bound tokens _ result rest
-
-  boundedForthTrace-executes-bounded :
-    (bound : Nat) (tokens : List ForthToken) (stack result : List Nat) →
-    BoundedForthTrace bound tokens stack result →
-    execBoundedTokens bound tokens stack ≡ just result
-  boundedForthTrace-executes-bounded bound [] stack .stack
-    (boundedTraceDone stackBound) = refl
-  boundedForthTrace-executes-bounded bound (token ∷ tokens) stack result
-    (boundedTraceStep stackBound step nextBound rest)
-      rewrite execBoundedToken-complete
-        bound token stack _ stackBound nextBound step =
-        boundedForthTrace-executes-bounded bound tokens _ result rest
-
-  boundedExecutionTrace-equivalence :
-    (bound : Nat) (tokens : List ForthToken) (stack result : List Nat) →
-    (stackBound : NatStackBounded bound stack) →
-    Equivalence
-      (execBoundedTokens bound tokens stack ≡ just result)
-      (BoundedForthTrace bound tokens stack result)
-  boundedExecutionTrace-equivalence bound tokens stack result stackBound =
-    equivalence
-      (execBoundedTokens-trace bound tokens stack result stackBound)
-      (boundedForthTrace-executes-bounded bound tokens stack result)
-
   boundedAddAtLimit :
     execBoundedTokens 9
       (pushLiteral 4 ∷ pushLiteral 5 ∷ addWord ∷ []) [] ≡
@@ -4012,10 +3771,6 @@ module StrictBoolCompiler where
   boolFormula : PolType posPolarity
   boolFormula = one⁺ ⊕⁺ one⁺
 
-  boolIdentityMALLP :
-    MALLP (dualPos boolFormula ∷ []) (just boolFormula)
-  boolIdentityMALLP = mallp-ax
-
   -- Pair is a multiplicative tensor of two Bool values. Its negative
   -- occurrence in the input context is the dual par; tensor introduction,
   -- exchange, and par introduction give the field-swapping linear map.
@@ -4024,10 +3779,6 @@ module StrictBoolCompiler where
 
   boolPairAssumption : PolType negPolarity
   boolPairAssumption = dualPos boolPairFormula
-
-  boolPairIdentityMALLP :
-    MALLP (boolPairAssumption ∷ []) (just boolPairFormula)
-  boolPairIdentityMALLP = mallp-ax
 
   boolPairSwapMALLP :
     MALLP (boolPairAssumption ∷ []) (just boolPairFormula)
@@ -4174,15 +3925,6 @@ module StrictBoolCompiler where
         (λ branchStack → execBoolTokens tokens branchStack)
   execBoolTokens (boolIfToken whenTrue whenFalse ∷ tokens) [] = nothing
 
-  boolPairIdentityForthSound :
-    (first second : Bool) →
-    (residualStack : List Bool) →
-    execBoolTokens
-      (renderBoolCode (boolIdentity {Γ = boolCell ∷ boolCell ∷ []}))
-      (first ∷ second ∷ residualStack) ≡
-    just (first ∷ second ∷ residualStack)
-  boolPairIdentityForthSound first second residualStack = refl
-
   compileBoolPairSwap :
     BoolForthCode (boolCell ∷ boolCell ∷ [])
       (boolCell ∷ boolCell ∷ [])
@@ -4190,11 +3932,9 @@ module StrictBoolCompiler where
 
   boolPairSwapMALLP-forth-sound :
     (first second : Bool) →
-    (residualStack : List Bool) →
     execBoolTokens (renderBoolCode compileBoolPairSwap)
-      (second ∷ first ∷ residualStack) ≡
-    just (first ∷ second ∷ residualStack)
-  boolPairSwapMALLP-forth-sound first second residualStack = refl
+      (second ∷ first ∷ []) ≡ just (first ∷ second ∷ [])
+  boolPairSwapMALLP-forth-sound first second = refl
 
   renderBoolCode-sound :
     {Γ Δ : List BoolStackType} →
@@ -4244,14 +3984,6 @@ module StrictBoolCompiler where
   boolMALLP-forth-sound boolTrueProof = refl
   boolMALLP-forth-sound boolFalseProof = refl
 
-  boolProofForthSound :
-    (proof : BoolProof) →
-    (residualStack : List Bool) →
-    execBoolTokens (renderBoolCode (compileBoolProof proof)) residualStack ≡
-    just (interpretBoolProof proof ∷ residualStack)
-  boolProofForthSound boolTrueProof residualStack = refl
-  boolProofForthSound boolFalseProof residualStack = refl
-
   -- Convert the proof-level Boolean program into the independent text-token
   -- renderer's nested IF representation. The renderer's Agda certificate
   -- checks the actual text emitted by Haskell against this token algebra.
@@ -4295,27 +4027,6 @@ module StrictBoolCompiler where
     mallp-with
       (mallp-bottom (boolProofDerivation whenTrue))
       (mallp-bottom (boolProofDerivation whenFalse))
-
-  invertBoolProof : BoolCaseProof
-  invertBoolProof = boolCaseProof boolFalseProof boolTrueProof
-
-  invertBoolMALLP :
-    MALLP (dualPos boolFormula ∷ []) (just boolFormula)
-  invertBoolMALLP = boolCaseMALLP-derivation invertBoolProof
-
-  boolNot : Bool → Bool
-  boolNot true = false
-  boolNot false = true
-
-  invertBoolRuntimeMALLP-forth-sound :
-    (value : Bool) →
-    (residualStack : List Bool) →
-    execBoolTokens
-      (renderBoolCode (compileBoolRuntimeCase invertBoolProof))
-      (value ∷ residualStack) ≡
-    just (boolNot value ∷ residualStack)
-  invertBoolRuntimeMALLP-forth-sound true residualStack = refl
-  invertBoolRuntimeMALLP-forth-sound false residualStack = refl
 
   -- Closed branch selection is compiled to the corresponding Boolean literal.
   -- The MALLP derivation above proves the eliminator consumes one Bool resource;
@@ -4388,17 +4099,16 @@ module StrictBoolCompiler where
 
   boolCaseWithResidualMALLP-forth-sound :
     (condition value : Bool) →
-    (residualStack : List Bool) →
     execBoolTokens
       (renderBoolCode compileBoolCaseWithResidual)
-      (value ∷ condition ∷ residualStack) ≡
-    just (value ∷ residualStack)
-  boolCaseWithResidualMALLP-forth-sound true value residualStack
+      (value ∷ condition ∷ []) ≡
+    just (value ∷ [])
+  boolCaseWithResidualMALLP-forth-sound true value
     rewrite bindBoolTokens-identity
-      (execBoolTokens [] (value ∷ residualStack)) = refl
-  boolCaseWithResidualMALLP-forth-sound false value residualStack
+      (execBoolTokens [] (value ∷ [])) = refl
+  boolCaseWithResidualMALLP-forth-sound false value
     rewrite bindBoolTokens-identity
-      (execBoolTokens [] (value ∷ residualStack)) = refl
+      (execBoolTokens [] (value ∷ [])) = refl
 
 open StrictBoolCompiler public
 
@@ -4913,27 +4623,6 @@ module StrictLinearDataCompiler where
     (representation : Word64Representation word) →
     Word64Representation word
   word64IdentityPreservesRepresentation representation = representation
-
-  word64Formula : PolType posPolarity
-  word64Formula = natFormula ⊗⁺ natFormula
-
-  word64IdentityMALLP :
-    MALLP (dualPos word64Formula ∷ []) (just word64Formula)
-  word64IdentityMALLP = mallp-ax
-
-  word64IdentityTokens : List ForthToken
-  word64IdentityTokens = []
-
-  -- The external Word64 representation relation supplies high/low limbs;
-  -- identity's empty token stream leaves both limbs and the caller suffix intact.
-  word64IdentityForthSound :
-    {word : Word64} →
-    (representation : Word64Representation word) →
-    (residualStack : List Nat) →
-    execTokens word64IdentityTokens
-      (lowLimb representation ∷ highLimb representation ∷ residualStack) ≡
-    just (lowLimb representation ∷ highLimb representation ∷ residualStack)
-  word64IdentityForthSound representation residualStack = refl
 
   data NatListValue : Set where
     natListNil : NatListValue
