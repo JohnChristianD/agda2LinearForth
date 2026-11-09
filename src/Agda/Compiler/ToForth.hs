@@ -52,7 +52,7 @@ data FormalToken
 data OtherWitness
   = ClosedBoolWitness Bool
   | BoolFunctionWitness Int BoolExpr
-  | BoolPairFunctionWitness QName BoolPairExpr
+  | BoolPairFunctionWitness QName QName BoolPairExpr
   | UnitWitness
   | Word64IdentityWitness
   deriving (Eq, Show)
@@ -1008,7 +1008,7 @@ compileWord64IdentityFunction owner arity term = do
 -- Recognize a closed, non-indexed one-constructor product of exactly two
 -- Bool fields. This is a small tensor slice driven by Agda's resolved type
 -- and constructor declarations, not a source-name whitelist.
-boolPairFunctionConstructor :: Definition -> TCM (Maybe QName)
+boolPairFunctionConstructor :: Definition -> TCM (Maybe (QName, QName))
 boolPairFunctionConstructor definition = do
   boolName <- getBuiltinName builtinBool
   TelV telescope resultType <- telView (defType definition)
@@ -1031,7 +1031,7 @@ boolPairFunctionConstructor definition = do
                     (I.telToList fields)
                   pure $
                     if length fieldMatches == 2 && and fieldMatches && resultMatches
-                      then Just constructor
+                      then Just (argumentName, constructor)
                       else Nothing
                 _ -> pure Nothing
         _ -> pure Nothing
@@ -1129,7 +1129,7 @@ compileDefinition definition
           Just _ -> unsupported
             "Word64 functions currently require one live owned two-limb argument"
           Nothing -> case boolPairConstructor of
-            Just constructor -> do
+            Just (pairType, constructor) -> do
               body <- toTreeless EagerEvaluation (defName definition)
               case body of
                 Nothing -> pure Nothing
@@ -1138,7 +1138,7 @@ compileDefinition definition
                     compileBoolPairFunction (defName definition) constructor term
                   pure (Just (CompiledDefinition
                     (defName definition) (strictWord (defName definition) code) tokens
-                    Nothing Nothing Nothing (Just (BoolPairFunctionWitness constructor expression))))
+                    Nothing Nothing Nothing (Just (BoolPairFunctionWitness pairType constructor expression))))
             Nothing ->
               if isUnit then do
                 body <- toTreeless EagerEvaluation (defName definition)
@@ -1331,7 +1331,7 @@ compiledDefinitionHasCertificate definition =
     (Nothing, Just (ClosedBoolWitness _)) -> True
     (Nothing, Just (BoolFunctionWitness arity expression)) ->
       supportedBoolResourceProgram arity expression
-    (Nothing, Just (BoolPairFunctionWitness _ expression)) ->
+    (Nothing, Just (BoolPairFunctionWitness _ _ expression)) ->
       expression == BoolPairFields 0 1
     (Nothing, Just UnitWitness) -> True
     (Nothing, Just Word64IdentityWitness) -> True
@@ -1363,7 +1363,7 @@ rendererCertificate sourceModule definitions
   , "   boolCaseWithResidualMALLP; boolCaseWithResidualMALLP-forth-sound-residual; execBoolTokens;"
   , "   compileBoolPairSwap; boolPairSwapMALLP; boolPairSwapMALLP-forth-sound-residual;"
   , "   unitOneProof; compileUnitProof; unitMALLP-forth-sound;"
-  , "   Stack; StackType; emptyStack; pushCell; forgetStack; word64StackShape; word64IdentityCode; renderForth-sound; linearWord64IdentityMALLP;"
+  , "   Stack; StackType; emptyStack; pushCell; forgetStack; word64StackShape; word64IdentityCode; word64IdentityCodeWithResidual; renderForth-sound; linearWord64IdentityMALLP; Word64Representation; word64Encoding; word64IdentityPreservesRepresentation; highLimb; lowLimb;"
   , "   Nat; zero; suc; just; NatOp; addOp; monusOp; multiplyOp;"
   , "   NatExpr; literal; binary; NatLinearExpr; natArgument; natLinearLeft; natLinearRight;"
   , "   NatBinaryLinearExpr; natBinaryArguments; natBinaryArgumentsExchanged;"
@@ -1806,13 +1806,18 @@ rendererCertificate sourceModule definitions
         ; sourceSemanticsName = "swapBoolPairSourceSemantics" <> suffix
         ; executionName = "swapBoolPairExecution" <> suffix
         ; sourceSoundName = "swapBoolPairSourceSound" <> suffix
+        ; encodingName = "swapBoolPairEncoding" <> suffix
         ; sourceName =
             T.pack (prettyShow sourceModule) <> "." <>
               T.pack (prettyShow (qnameName (compiledName definition)))
+        ; pairTypeName = T.pack (prettyShow pairType)
         ; constructorName = T.pack (prettyShow constructor)
         }
       in
-        [ compilerTokensName <> " : List ForthTextToken"
+        [ encodingName <> " : " <> pairTypeName <> " → List Bool"
+        , encodingName <> " (" <> constructorName <> " first second) = second ∷ first ∷ []"
+        , ""
+        , compilerTokensName <> " : List ForthTextToken"
         , compilerTokensName <> " = " <> formalTokenList (compiledTokens definition)
         , ""
         , modelTokensName <> " : List ForthTextToken"
@@ -1834,25 +1839,26 @@ rendererCertificate sourceModule definitions
         , executionName <> " :"
         , "  (first second : Bool) → (residual : List Bool) →"
         , "  execBoolTokens (renderBoolCode compileBoolPairSwap)"
-        , "    (second ∷ first ∷ residual) ≡ just (first ∷ second ∷ residual)"
+        , "    (" <> encodingName <> " (" <> constructorName <> " first second) ++ᴳ residual) ≡"
+        , "  just (" <> encodingName <> " (" <> constructorName <> " second first) ++ᴳ residual)"
         , executionName <> " first second residual ="
         , "  boolPairSwapMALLP-forth-sound-residual first second residual"
         , ""
         , sourceSoundName <> " :"
         , "  (first second : Bool) → (residual : List Bool) →"
         , "  execBoolTokens (renderBoolCode compileBoolPairSwap)"
-        , "    (second ∷ first ∷ residual) ≡ just ("
-            <> constructorName <> " second first ∷ residual)"
+        , "    (" <> encodingName <> " (" <> constructorName <> " first second) ++ᴳ residual) ≡"
+        , "  just (" <> encodingName <> " (" <> sourceName <> " (" <> constructorName <> " first second)) ++ᴳ residual)"
         , sourceSoundName <> " first second residual ="
-        , "  trans (swapBoolPairExecution first second residual)"
-        , "    (cong (λ pair → just (pair ∷ residual))"
-        , "      (sym (swapBoolPairSourceSemantics first second)))"
+        , "  trans (" <> executionName <> " first second residual)"
+        , "    (cong (λ pair → just (" <> encodingName <> " pair ++ᴳ residual))"
+        , "      (sym (" <> sourceSemanticsName <> " first second)))"
         , ""
         ]
-      | (index, definition, constructor) <-
-          [ (T.pack (show position), definition, constructor)
+      | (index, definition, pairType, constructor) <-
+          [ (T.pack (show position), definition, pairType, constructor)
           | (position, definition) <- zip [0 :: Int ..] definitions
-          , Just (BoolPairFunctionWitness constructor (BoolPairFields 0 1)) <-
+          , Just (BoolPairFunctionWitness pairType constructor (BoolPairFields 0 1)) <-
               [compiledOtherWitness definition]
           ]
     ] ++ concat
@@ -1911,7 +1917,7 @@ rendererCertificate sourceModule definitions
         , compilerTokensName <> " = " <> formalNatTokenList (compiledTokens definition)
         , ""
         , modelTokensName <> " : List ForthToken"
-        , modelTokensName <> " = renderForth word64IdentityCode"
+        , modelTokensName <> " = renderForth (word64IdentityCodeWithResidual {Γ = []})"
         , ""
         , tokenProofName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
         , tokenProofName <> " = refl"
@@ -1924,17 +1930,18 @@ rendererCertificate sourceModule definitions
         , "word64SourceSemantics" <> suffix <> " value = refl"
         , ""
         , "word64MachineSound" <> suffix <> " :"
-        , "  (encode : Word64 → List Nat) → (value : Word64) →"
-        , "  (residual : List Nat) →"
+        , "  (value : Word64) → (representation : Word64Representation value) →"
+        , "  {Γ : List StackType} → (stack : Stack Γ) →"
         , "  execTokens " <> compilerTokensName
-        , "    (encode (" <> sourceName <> " value) ++ᴳ residual) ≡"
-        , "  just (encode value ++ᴳ residual)"
-        , "word64MachineSound" <> suffix <> " encode value residual ="
+        , "    (word64Encoding representation ++ᴳ forgetStack stack) ≡"
+        , "  just (word64Encoding (word64IdentityPreservesRepresentation representation) ++ᴳ forgetStack stack)"
+        , "word64MachineSound" <> suffix <> " value representation {Γ} stack ="
         , "  trans"
         , "    (cong (λ tokens → execTokens tokens"
-        , "      (encode (" <> sourceName <> " value) ++ᴳ residual)) " <> tokenProofName <> ")"
-        , "    (cong (λ stack → just (stack ++ᴳ residual))"
-        , "      (cong encode (word64SourceSemantics" <> suffix <> " value)))"
+        , "      (word64Encoding representation ++ᴳ forgetStack stack)) " <> tokenProofName <> ")"
+        , "    (renderForth-sound (word64IdentityCodeWithResidual {Γ = Γ})"
+        , "      (pushCell (highLimb representation)"
+        , "        (pushCell (lowLimb representation) stack)))"
         , ""
         ]
       | (index, definition) <-

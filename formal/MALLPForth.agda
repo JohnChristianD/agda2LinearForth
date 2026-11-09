@@ -1,4 +1,4 @@
-{-# OPTIONS --rewriting --confluence-check --type-in-type --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
+{-# OPTIONS --rewriting --confluence-check --sized-types --type-in-type --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
 -- ```Agda
 ------------------------------------------------------------------------
 -- SovereignRationalSED
@@ -2627,6 +2627,12 @@ module StrictNatCompiler where
     execForthCode word64IdentityCode stack ≡ stack
   word64IdentityCode-correct stack = refl
 
+  word64IdentityCodeWithResidual :
+    {Γ : List StackType} →
+    ForthCode (natCell ∷ natCell ∷ Γ) (natCell ∷ natCell ∷ Γ)
+  word64IdentityCodeWithResidual = identityNat
+
+
   -- Text tokens are deliberately separate from the Nat execution machine:
   -- TRUE/FALSE have Gforth's Bool representation, not a Nat stack meaning.
   _++ᴳ_ : {A : Set} → List A → List A → List A
@@ -4838,6 +4844,13 @@ module StrictLinearDataCompiler where
     (representation : Word64Representation word) →
     Word64Representation word
   word64IdentityPreservesRepresentation representation = representation
+
+  word64Encoding :
+    {word : Word64} →
+    Word64Representation word →
+    List Nat
+  word64Encoding representation =
+    highLimb representation ∷ lowLimb representation ∷ []
 
   data NatListValue : Set where
     natListNil : NatListValue
