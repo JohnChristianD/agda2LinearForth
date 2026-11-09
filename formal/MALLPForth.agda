@@ -43,9 +43,6 @@ postulate
   Id-∙ : (A : Set → Set) (X Y : Set) → Id A X Y ≡ ext (A X) (A Y)
 {-# REWRITE refl↓ Id-∙ #-}
 
-frob-ap-kan : (A : Set → Set) → Set ≡ Set → Id A _ _
-frob-ap-kan A refl = {!!}
-
 -- Word64 equality is reflected exactly by its unsigned Nat interpretation.
 record Equivalence (A B : Set) : Set where
   constructor equivalence
