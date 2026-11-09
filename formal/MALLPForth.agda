@@ -37,15 +37,14 @@ open import Agda.Builtin.Reflection.Properties
 data ⊥ : Set where
 -- Removing Levels through Rewriting
 postulate
-  S : Set
-  F : Set → Set → Set
-  G : (Set → Set) → Set → Set → Set
-  rewF : (A : Set) → F A A ≡ S
-  rewG : (A : Set → Set) (X Y : Set) → G A X Y ≡ F (A X) (A Y)
-{-# REWRITE rewF rewG #-}
+  Id : (Set → Set) → Set → Set → Set
+  ext : Set → Set → Set
+  refl↓ : (A : Set) → ext A A ≡ Set
+  Id-∙ : (A : Set → Set) (X Y : Set) → Id A X Y ≡ ext (A X) (A Y)
+{-# REWRITE refl↓ Id-∙ #-}
 
-test : (A : Set → Set) → G A _ _
-test A x = {!!}
+frob-ap-kan : (A : Set → Set) → Set ≡ Set → Id A _ _
+frob-ap-kan A refl = {!!}
 
 -- Word64 equality is reflected exactly by its unsigned Nat interpretation.
 record Equivalence (A B : Set) : Set where
