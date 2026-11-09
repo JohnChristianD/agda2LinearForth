@@ -36,12 +36,6 @@ open import Agda.Builtin.Reflection.Properties
 -- Agda has no Agda.Builtin.Empty module; define the empty type locally.
 data ⊥ : Set where
 
-postulate
-  Id : (Set → Set) → Set → Set → Set
-  ext : Set → Set → Set
-  refl↓ : (A : Set) → ext A A ≡ Set
-  Id-∙ : (A : Set → Set) (X Y : Set) → Id A X Y ≡ ext (A X) (A Y)
-{-# REWRITE refl↓ Id-∙ #-}
 
 -- Word64 equality is reflected exactly by its unsigned Nat interpretation.
 record Equivalence (A B : Set) : Set where
