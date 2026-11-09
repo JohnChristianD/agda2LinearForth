@@ -1356,7 +1356,7 @@ rendererCertificate sourceModule definitions = T.unlines $
   , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate;"
   , "   natCell; execTokens; execBoundedTokens; execBoundedTokens-preserves;"
   , "   BoundedExecutionTrace; execBoundedTokens-complete; execBoundedTokens-complete-unbounded; cong; cong₂; trans; sym;"
-  , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm)"
+  , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm; _++ᴳ_)"
   , ""
   ] ++ concat
     [ let index = T.pack (show position)
@@ -1656,7 +1656,7 @@ rendererCertificate sourceModule definitions = T.unlines $
         , "    (cong (λ value → just (value ∷ residual))"
         , "      (sym " <> sourceSemanticsName <> "))"
         , ""
-        ] >>= mapReplaceExecution executionName
+        ]
       | (index, definition, value) <-
           [ (T.pack (show position), definition, value)
           | (position, definition) <- zip [0 :: Int ..] definitions
@@ -1900,7 +1900,7 @@ rendererCertificate sourceModule definitions = T.unlines $
         , "    (cong (λ tokens → execTokens tokens"
         , "      (encode (" <> sourceName <> " value) ++ᴳ residual)) " <> tokenProofName <> ")"
         , "    (cong (λ stack → just (stack ++ᴳ residual))"
-        , "      (sym (word64SourceSemantics" <> suffix <> " value) |> encode))"
+        , "      (cong encode (word64SourceSemantics" <> suffix <> " value)))"
         , ""
         ]
       | (index, definition) <-
