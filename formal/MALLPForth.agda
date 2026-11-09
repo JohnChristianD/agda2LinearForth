@@ -2740,36 +2740,40 @@ module StrictNatCompiler where
     execBoundedToken bound token stack ≡ just result →
     execToken token stack ≡ just result
   execBoundedToken-sound bound (pushLiteral value) stack result proof
-    with natWithinBound value bound
-  ... | true = proof
-  ... | false with proof
-  ...   | ()
+    with natWithinBound value bound | proof
+  ... | true | refl = refl
+  ... | false | ()
   execBoundedToken-sound bound addWord [] result ()
   execBoundedToken-sound bound addWord (value ∷ []) result ()
   execBoundedToken-sound bound addWord (right ∷ left ∷ stack) result proof
     with natWithinBound left bound
        | natWithinBound right bound
        | natWithinBound (left + right) bound
-  ... | true | true | true = proof
-  ... | _ | _ | _ with proof
-  ...   | ()
+       | proof
+  ... | true | true | true | refl = refl
+  ... | false | _ | _ | ()
+  ... | true | false | _ | ()
+  ... | true | true | false | ()
   execBoundedToken-sound bound monusWord [] result ()
   execBoundedToken-sound bound monusWord (value ∷ []) result ()
   execBoundedToken-sound bound monusWord (right ∷ left ∷ stack) result proof
     with natWithinBound left bound
        | natWithinBound right bound
-  ... | true | true = proof
-  ... | _ | _ with proof
-  ...   | ()
+       | proof
+  ... | true | true | refl = refl
+  ... | false | _ | ()
+  ... | true | false | ()
   execBoundedToken-sound bound multiplyWord [] result ()
   execBoundedToken-sound bound multiplyWord (value ∷ []) result ()
   execBoundedToken-sound bound multiplyWord (right ∷ left ∷ stack) result proof
     with natWithinBound left bound
        | natWithinBound right bound
        | natWithinBound (left * right) bound
-  ... | true | true | true = proof
-  ... | _ | _ | _ with proof
-  ...   | ()
+       | proof
+  ... | true | true | true | refl = refl
+  ... | false | _ | _ | ()
+  ... | true | false | _ | ()
+  ... | true | true | false | ()
   execBoundedToken-sound bound swapWord stack result proof = proof
   execBoundedToken-sound bound (rollWord depth) stack result proof = proof
 
