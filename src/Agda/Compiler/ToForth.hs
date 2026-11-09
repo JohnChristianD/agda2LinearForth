@@ -1181,15 +1181,14 @@ agdaNatResourceExprTerm (NatResourceBinary operation left right) =
      , leftResources ++ rightResources
      )
 
--- Treeless index zero denotes the final source binder.  A resource AST
--- environment follows the tree's leaf order, so translate each label back
--- to the corresponding source-level argument name.
-agdaNatResourceEnvironmentTerm :: Int -> [Int] -> Text
-agdaNatResourceEnvironmentTerm arity =
+-- The compiler's initial resource vector labels source arguments by
+-- position.  Reify those labels in expression-leaf order for Agda's evaluator.
+agdaNatResourceEnvironmentTerm :: [Int] -> Text
+agdaNatResourceEnvironmentTerm =
   foldr
     (\index environment ->
       "(natEnvironmentCons argument"
-        <> T.pack (show (arity - index - 1))
+        <> T.pack (show index)
         <> " " <> environment <> ")")
     "natEnvironmentNil"
 
@@ -1333,7 +1332,7 @@ rendererCertificate sourceModule definitions = T.unlines $
               T.pack (prettyShow (qnameName (compiledName definition)))
         ; sourceCall = T.unwords (sourceFunction : argumentNames)
         ; resourceEnvironment =
-            agdaNatResourceEnvironmentTerm arity (natResourceVariables expression)
+            agdaNatResourceEnvironmentTerm (natResourceVariables expression)
         ; sourceProofArguments = T.unwords (sourceProofName : argumentNames)
         ; resourceTerm = fst (agdaNatResourceExprTerm expression)
         ; sourceTypeLines =
