@@ -102,7 +102,7 @@ data CompilerWitness
   = NatResourceWitness NatResourceExpr
   | BoolConstantWitness Bool
   | BoolFunctionWitness Int BoolExpr
-  | BoolPairWitness QName BoolPairExpr
+  | BoolPairWitness QName QName BoolPairExpr
   | UnitWitness
   | Word64IdentityWitness
   deriving (Eq, Show)
@@ -804,7 +804,7 @@ compileWord64IdentityFunction owner arity term = do
 -- Recognize a closed, non-indexed one-constructor product of exactly two
 -- Bool fields. This is a small tensor slice driven by Agda's resolved type
 -- and constructor declarations, not a source-name whitelist.
-boolPairFunctionConstructor :: Definition -> TCM (Maybe QName)
+boolPairFunctionConstructor :: Definition -> TCM (Maybe (QName, QName))
 boolPairFunctionConstructor definition = do
   boolName <- getBuiltinName builtinBool
   TelV telescope resultType <- telView (defType definition)
@@ -827,7 +827,7 @@ boolPairFunctionConstructor definition = do
                     (I.telToList fields)
                   pure $
                     if length fieldMatches == 2 && and fieldMatches && resultMatches
-                      then Just constructor
+                      then Just (argumentName, constructor)
                       else Nothing
                 _ -> pure Nothing
         _ -> pure Nothing
@@ -925,7 +925,7 @@ compileDefinition definition
           Just _ -> unsupported
             "Word64 functions currently require one live owned two-limb argument"
           Nothing -> case boolPairConstructor of
-            Just constructor -> do
+            Just (pairType, constructor) -> do
               body <- toTreeless EagerEvaluation (defName definition)
               case body of
                 Nothing -> pure Nothing
@@ -934,7 +934,7 @@ compileDefinition definition
                     compileBoolPairFunction (defName definition) constructor term
                   pure (Just (CompiledDefinition
                     (defName definition) (strictWord (defName definition) code) tokens
-                    (Just (BoolPairWitness constructor expression))))
+                    (Just (BoolPairWitness pairType constructor expression))))
             Nothing ->
               if isUnit then do
                 body <- toTreeless EagerEvaluation (defName definition)
