@@ -30,7 +30,6 @@ open import Agda.Builtin.Word.Properties using (primWord64ToNatInjective) public
 open import Agda.Builtin.Unit public
 open import Agda.Builtin.Strict public
 open import Agda.Builtin.Coinduction public
-open import Agda.Builtin.Size public
 import Agda.Builtin.Reflection as Reflection
 open import Agda.Builtin.Reflection.Properties
   using (primMetaToNatInjective; primQNameToWord64sInjective) public
