@@ -69,16 +69,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-ghc-${{ steps.setup.outputs.ghc-version }}-cabal-${{ steps.setup.outputs.cabal-version }}-
 
-      - name: Install latest stable Agda from Hackage
+      - name: Build latest stable Agda from Hackage
         id: agda_cli
         run: |
           cabal update
-          agda_bin_dir="$RUNNER_TEMP/agda/bin"
-          mkdir -p "$agda_bin_dir"
-          cabal install Agda --installdir="$agda_bin_dir" --overwrite-policy=always
-          agda_bin="$agda_bin_dir/agda"
+          cabal build Agda:exe:agda
+          agda_bin="$(cabal list-bin Agda:exe:agda)"
           test -x "$agda_bin"
-          echo "$agda_bin_dir" >> "$GITHUB_PATH"
           echo "AGDA_BIN=$agda_bin" >> "$GITHUB_ENV"
 
       - name: Save Cabal and local build caches
