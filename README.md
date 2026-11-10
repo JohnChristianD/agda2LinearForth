@@ -43,7 +43,7 @@ Currently admitted source forms include:
 - Nat literals, addition, saturating monus, multiplication, closed lets, exact-once live Nat resources, supported `ROLL`/`SWAP` selection, and acyclic first-order Nat helper inlining.
 - Closed Bool values, selected first-order Bool functions, linear Bool resource use, and supported additive Bool cases.
 - A closed, non-indexed two-field Bool product whose two fields are each consumed exactly once.
-- Unit, represented by an empty target stack effect.
+- Nullary Unit values, represented by an empty target stack effect. Unit-returning functions with arguments are skipped: emitting no tokens for them would silently discard live resources.
 - Unary Word64 identity, represented by two target cells and no emitted operation.
 
 Recursion, arbitrary higher-order functions, general algebraic data, lists, general closure and heap behavior, general effects, general call-by-need execution, and general Word64 arithmetic are not admitted compiler features. Some have formal models or protocol signatures, but those are not evidence that the Haskell backend implements them.
@@ -84,7 +84,7 @@ The strict fixture currently pins **29 emitted Forth definitions**. The generic 
 | Unary/direct-binary Nat | Specialized derivations, token correspondence, and source equalities | These specialized witnesses are narrower than arbitrary source programs |
 | Bool | Per-definition token, execution, and source-semantic certificates for admitted closed values, inversion, and the chooser/case resource form | The admitted Bool resource grammar remains deliberately limited to those certified forms |
 | Bool pair | Generated encoder fixes the source pair layout as `second ∷ first`; token equality, MALLP tensor-swap derivation, target execution, and source-to-target composition are checked | Only the detected one-constructor, two-Bool field-swap shape is admitted |
-| Unit | Per-definition source result (`tt`), exact empty-token correspondence, multiplicative-unit proof, and residual-stack identity are checked | Unit is represented by the empty target stack effect, not a runtime cell |
+| Unit | Nullary per-definition source result (`tt`), exact empty-token correspondence, multiplicative-unit proof, and residual-stack identity are checked | Argument-bearing Unit functions are skipped; the strict fixture includes a Nat-to-Unit regression case so the 29-definition manifest rejects accidental emission |
 | Word64 identity | Generated certificate uses `Word64Representation`, explicit high/low-limb encoding, residual-stack preservation, and the formal two-cell identity code | The representation witness is supplied; constructing it for arbitrary words, Word64 arithmetic, and concrete Gforth limb semantics remain outside the theorem |
 | Gforth runtime/parser | Integration and boundary tests | `MALLP-PARSE-NAT`, arithmetic words, stack/error behavior, and Gforth internals are not mechanized as an implementation refinement |
 
@@ -182,10 +182,12 @@ OTT dependency or command change is justified.
 The Haskell backend is not verified as a general Haskell program by the
 generated certificates. Each certificate checks concrete emitted token data
 against formal Agda semantics for its covered definition. The emitter writes
-the generated certificate before the Forth module, so a certificate guard
-failure occurs before a Forth artifact is left behind. The external Gforth
-interpreter and concrete runtime words remain an external trusted/tested
-boundary.
+the generated certificate before the Forth module, so a certificate-file
+write failure prevents Forth emission. Agda type-checks that certificate in a
+separate CI step after both files have been written; a failed check fails the
+workflow, but the local compiler invocation is not transactional and does
+not itself run the certificate checker. The external Gforth interpreter and
+concrete runtime words remain an external trusted/tested boundary.
 
 Accordingly, the current result is a proof-producing, CI-checked compiler for
 a restricted fragment, with its strongest composed source-to-target theorem
