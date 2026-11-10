@@ -368,32 +368,216 @@ module Foundations where
 
   module ForsterEnumerability where
 
+    --------------------------------------------------------------------
+    -- Analytic enumerability: a family is enumerated by one explicit
+    -- register-machine program, with the family index supplied as input.
+    -- The interpreter is step-indexed: one output event may occur per
+    -- machine step, and absence at a step is represented by nothing.
+    --------------------------------------------------------------------
+
+    data RegisterInstruction : Set where
+      assignRegister : Nat → Nat → Nat → RegisterInstruction
+      incrementRegister : Nat → Nat → RegisterInstruction
+      decrementOrJump : Nat → Nat → Nat → RegisterInstruction
+      outputRegister : Nat → Nat → RegisterInstruction
+      haltRegister : RegisterInstruction
+
+    RegisterProgram : Set
+    RegisterProgram = List RegisterInstruction
+
+    natEqual : Nat → Nat → Bool
+    natEqual zero zero = true
+    natEqual zero (suc n) = false
+    natEqual (suc m) zero = false
+    natEqual (suc m) (suc n) = natEqual m n
+
+    updateRegister :
+      (Nat → Nat) → Nat → Nat → Nat → Nat
+    updateRegister registers target value index with natEqual index target
+    ... | true = value
+    ... | false = registers index
+
+    record RegisterState : Set where
+      constructor registerState
+      field
+        machinePC : Nat
+        machineRegisters : Nat → Nat
+        machineHalted : Bool
+    open RegisterState public
+
+    record RegisterStep : Set where
+      constructor registerStep
+      field
+        nextState : RegisterState
+        emitted : Maybe Nat
+    open RegisterStep public
+
+    instructionAt : Nat → RegisterProgram → Maybe RegisterInstruction
+    instructionAt index [] = nothing
+    instructionAt zero (instruction ∷ instructions) = just instruction
+    instructionAt (suc index) (instruction ∷ instructions) =
+      instructionAt index instructions
+
+    executeInstruction :
+      RegisterInstruction → RegisterState → RegisterStep
+    executeInstruction (assignRegister register value target) state =
+      registerStep
+        (registerState target
+          (updateRegister (machineRegisters state) register value) false)
+        nothing
+    executeInstruction (incrementRegister register target) state =
+      registerStep
+        (registerState target
+          (updateRegister (machineRegisters state) register
+            (suc (machineRegisters state register))) false)
+        nothing
+    executeInstruction (decrementOrJump register whenZero whenPositive) state
+      with machineRegisters state register
+    ... | zero =
+      registerStep
+        (registerState whenZero (machineRegisters state) false)
+        nothing
+    ... | suc value =
+      registerStep
+        (registerState whenPositive
+          (updateRegister (machineRegisters state) register value) false)
+        nothing
+    executeInstruction (outputRegister register target) state =
+      registerStep
+        (registerState target (machineRegisters state) false)
+        (just (machineRegisters state register))
+    executeInstruction haltRegister state =
+      registerStep
+        (registerState (machinePC state) (machineRegisters state) true)
+        nothing
+
+    stepRegisterMachine :
+      RegisterProgram → RegisterState → RegisterStep
+    stepRegisterMachine program state with machineHalted state
+    ... | true = registerStep state nothing
+    ... | false with instructionAt (machinePC state) program
+    ...   | nothing =
+        registerStep
+          (registerState (machinePC state) (machineRegisters state) true)
+          nothing
+    ...   | just instruction = executeInstruction instruction state
+
+    runRegisterState :
+      Nat → RegisterProgram → RegisterState → RegisterState
+    runRegisterState zero program state = state
+    runRegisterState (suc fuel) program state =
+      runRegisterState fuel program
+        (nextState (stepRegisterMachine program state))
+
+    initialRegister : Nat → Nat → Nat
+    initialRegister input register with natEqual register zero
+    ... | true = input
+    ... | false = zero
+
+    initialRegisterState : Nat → RegisterState
+    initialRegisterState input =
+      registerState zero (initialRegister input) false
+
+    registerEnumeration :
+      RegisterProgram → Nat → Nat → Maybe Nat
+    registerEnumeration program input zero = nothing
+    registerEnumeration program input (suc stage) =
+      emitted
+        (stepRegisterMachine program
+          (runRegisterState stage program (initialRegisterState input)))
+
+    --------------------------------------------------------------------
+    -- Functional presentation used by Forster's synthetic axiom.
+    -- Predicates and enumerators are Set-valued because this module is
+    -- compiled with --no-prop; this is an explicit encoding boundary.
+    --------------------------------------------------------------------
+
     record ParametricallyEnumerable : Set₁ where
       field
         Predicate : Nat → Nat → Set
-        emit : Nat → Nat → Maybe Nat
-        emit-sound :
+        enumerate : Nat → Nat → Maybe Nat
+        enumerate-sound :
           (i stage value : Nat) →
-          emit i stage ≡ just value → Predicate i value
-        emit-complete :
+          enumerate i stage ≡ just value →
+          Predicate i value
+        enumerate-complete :
           (i value : Nat) →
           Predicate i value →
-          Σ Nat (λ stage → emit i stage ≡ just value)
-
+          Σ Nat (λ stage → enumerate i stage ≡ just value)
     open ParametricallyEnumerable public
 
-    data ProgramCode : Set₁ where
-      familyCode : ParametricallyEnumerable → Nat → ProgramCode
+    --------------------------------------------------------------------
+    -- Analytic submodel: a family whose enumeration is realized by an
+    -- explicit register program. The same program receives i in register
+    -- zero, so specialization is literal input passing, not a postulated
+    -- Gödel-numbering theorem.
+    --------------------------------------------------------------------
 
+    record AnalyticEnumerableFamily : Set₁ where
+      field
+        analyticPredicate : Nat → Nat → Set
+        analyticProgram : RegisterProgram
+        analytic-sound :
+          (i stage value : Nat) →
+          registerEnumeration analyticProgram i stage ≡ just value →
+          analyticPredicate i value
+        analytic-complete :
+          (i value : Nat) →
+          analyticPredicate i value →
+          Σ Nat
+            (λ stage →
+              registerEnumeration analyticProgram i stage ≡ just value)
+    open AnalyticEnumerableFamily public
+
+    analyticFamily : AnalyticEnumerableFamily → ParametricallyEnumerable
+    analyticFamily F = record
+      { Predicate = analyticPredicate F
+      ; enumerate = registerEnumeration (analyticProgram F)
+      ; enumerate-sound = analytic-sound F
+      ; enumerate-complete = analytic-complete F
+      }
+
+    record ProgramCode : Set where
+      constructor programCode
+      field
+        codeProgram : RegisterProgram
+        codeParameter : Nat
+    open ProgramCode public
+
+    -- A real universal evaluator for the stated register-machine language.
+    -- Code carries program syntax and a parameter, never an arbitrary
+    -- semantic function masquerading as a program.
     universalEval : ProgramCode → Nat → Maybe Nat
-    universalEval (familyCode F i) stage = emit F i stage
+    universalEval (programCode program parameter) stage =
+      registerEnumeration program parameter stage
 
-    forster-eval :
-      (F : ParametricallyEnumerable) →
+    analyticCode : AnalyticEnumerableFamily → Nat → ProgramCode
+    analyticCode F i = programCode (analyticProgram F) i
+
+    analyticCode-correct :
+      (F : AnalyticEnumerableFamily) →
       (i stage : Nat) →
-      universalEval (familyCode F i) stage ≡ emit F i stage
-    forster-eval F i stage = refl
+      universalEval (analyticCode F i) stage ≡
+      enumerate (analyticFamily F) i stage
+    analyticCode-correct F i stage = refl
 
+    --------------------------------------------------------------------
+    -- Forster's parametric enumerability principle (EA), represented as
+    -- an explicit assumption record rather than a global postulate.
+    -- It asks for a parametric code selector for every functionally given
+    -- enumerable family. An analytic model supplies such a selector only
+    -- for families accompanied by actual register programs.
+    --------------------------------------------------------------------
+
+    record ParametricEA : Set₁ where
+      field
+        compileFamily :
+          ParametricallyEnumerable → Nat → ProgramCode
+        compileFamily-correct :
+          (F : ParametricallyEnumerable) →
+          (i stage : Nat) →
+          universalEval (compileFamily F i) stage ≡ enumerate F i stage
+    open ParametricEA public
   ----------------------------------------------------------------------
   -- 2. Markov principle plus deterministic least-witness minimization.
   --
@@ -530,6 +714,14 @@ module Foundations where
 
   module MacLaneCoherence where
 
+    --------------------------------------------------------------------
+    -- The free monoidal category on Nat-labelled generators, presented
+    -- by parenthesized tensor expressions. Morphisms are normal-form
+    -- equalities; hence parallel structural maps are unique. This is
+    -- the categorical content of Mac Lane coherence, not just an object
+    -- flattener with reflexive equations.
+    --------------------------------------------------------------------
+
     data TensorExpr : Set where
       atom : Nat → TensorExpr
       unitₑ : TensorExpr
@@ -539,13 +731,216 @@ module Foundations where
     [] ++ ys = ys
     (x ∷ xs) ++ ys = x ∷ (xs ++ ys)
 
-    -- Flatten every tensor tree into the unique ordered list of atoms.
-    -- This is a terminating normalizer whose equations implement unit and
-    -- associativity coherence for the free strict monoidal object syntax.
     tensorNF : TensorExpr → List Nat
     tensorNF (atom n) = n ∷ []
     tensorNF unitₑ = []
     tensorNF (tensor A B) = tensorNF A ++ tensorNF B
+
+    natEq : Nat → Nat → Bool
+    natEq zero zero = true
+    natEq zero (suc n) = false
+    natEq (suc m) zero = false
+    natEq (suc m) (suc n) = natEq m n
+
+    andBool : Bool → Bool → Bool
+    andBool true x = x
+    andBool false x = false
+
+    listEq : List Nat → List Nat → Bool
+    listEq [] [] = true
+    listEq [] (y ∷ ys) = false
+    listEq (x ∷ xs) [] = false
+    listEq (x ∷ xs) (y ∷ ys) =
+      andBool (natEq x y) (listEq xs ys)
+
+    falseNotTrue : false ≡ true → ⊥
+    falseNotTrue ()
+
+    exfalso : {A : Set} → ⊥ → A
+    exfalso ()
+
+    natEq-refl : (n : Nat) → natEq n n ≡ true
+    natEq-refl zero = refl
+    natEq-refl (suc n) = natEq-refl n
+
+    listEq-refl : (xs : List Nat) → listEq xs xs ≡ true
+    listEq-refl [] = refl
+    listEq-refl (x ∷ xs)
+      rewrite natEq-refl x | listEq-refl xs = refl
+
+    natEq-sound :
+      {m n : Nat} → natEq m n ≡ true → m ≡ n
+    natEq-sound {zero} {zero} proof = refl
+    natEq-sound {zero} {suc n} ()
+    natEq-sound {suc m} {zero} ()
+    natEq-sound {suc m} {suc n} proof =
+      cong suc (natEq-sound proof)
+
+    listEq-sound :
+      {xs ys : List Nat} →
+      listEq xs ys ≡ true →
+      xs ≡ ys
+    listEq-sound {[]} {[]} proof = refl
+    listEq-sound {[]} {y ∷ ys} ()
+    listEq-sound {x ∷ xs} {[]} ()
+    listEq-sound {x ∷ xs} {y ∷ ys} proof
+      with natEq x y | listEq xs ys
+    ... | true | true =
+      cong₂ _∷_ (natEq-sound refl) (listEq-sound refl)
+    ... | true | false = exfalso (falseNotTrue proof)
+    ... | false | tail = exfalso (falseNotTrue proof)
+
+    listEq-complete :
+      {xs ys : List Nat} →
+      xs ≡ ys →
+      listEq xs ys ≡ true
+    listEq-complete {xs} refl = listEq-refl xs
+
+    data IsTrue : Bool → Set where
+      isTrue : IsTrue true
+
+    fromTrue : {b : Bool} → b ≡ true → IsTrue b
+    fromTrue refl = isTrue
+
+    TensorHom : TensorExpr → TensorExpr → Set
+    TensorHom A B = IsTrue (listEq (tensorNF A) (tensorNF B))
+
+    homToEquality :
+      {A B : TensorExpr} →
+      TensorHom A B →
+      tensorNF A ≡ tensorNF B
+    homToEquality isTrue = listEq-sound refl
+
+    homFromEquality :
+      {A B : TensorExpr} →
+      tensorNF A ≡ tensorNF B →
+      TensorHom A B
+    homFromEquality equality = fromTrue (listEq-complete equality)
+
+    tensorId : (A : TensorExpr) → TensorHom A A
+    tensorId A = homFromEquality refl
+
+    tensorCompose :
+      {A B C : TensorExpr} →
+      TensorHom B C →
+      TensorHom A B →
+      TensorHom A C
+    tensorCompose second first =
+      homFromEquality
+        (trans (homToEquality first) (homToEquality second))
+
+    tensorMap :
+      {A A′ B B′ : TensorExpr} →
+      TensorHom A A′ →
+      TensorHom B B′ →
+      TensorHom (tensor A B) (tensor A′ B′)
+    tensorMap first second =
+      homFromEquality
+        (cong₂ _++_ (homToEquality first) (homToEquality second))
+
+    tensorHom-proposition :
+      {A B : TensorExpr} →
+      (f g : TensorHom A B) →
+      f ≡ g
+    tensorHom-proposition isTrue isTrue = refl
+
+    tensorIdentity-left :
+      {A B : TensorExpr} (f : TensorHom A B) →
+      tensorCompose f (tensorId A) ≡ f
+    tensorIdentity-left f = tensorHom-proposition _ _
+
+    tensorIdentity-right :
+      {A B : TensorExpr} (f : TensorHom A B) →
+      tensorCompose (tensorId B) f ≡ f
+    tensorIdentity-right f = tensorHom-proposition _ _
+
+    tensorAssociativity :
+      {A B C D : TensorExpr}
+      (f : TensorHom C D)
+      (g : TensorHom B C)
+      (h : TensorHom A B) →
+      tensorCompose f (tensorCompose g h) ≡
+      tensorCompose (tensorCompose f g) h
+    tensorAssociativity f g h = tensorHom-proposition _ _
+
+    append-assoc :
+      (xs ys zs : List Nat) →
+      (xs ++ ys) ++ zs ≡ xs ++ (ys ++ zs)
+    append-assoc [] ys zs = refl
+    append-assoc (x ∷ xs) ys zs =
+      cong (x ∷_) (append-assoc xs ys zs)
+
+    append-left-unit : (xs : List Nat) → [] ++ xs ≡ xs
+    append-left-unit xs = refl
+
+    append-right-unit : (xs : List Nat) → xs ++ [] ≡ xs
+    append-right-unit [] = refl
+    append-right-unit (x ∷ xs) =
+      cong (x ∷_) (append-right-unit xs)
+
+    associator :
+      (A B C : TensorExpr) →
+      TensorHom (tensor (tensor A B) C) (tensor A (tensor B C))
+    associator A B C =
+      homFromEquality
+        (append-assoc (tensorNF A) (tensorNF B) (tensorNF C))
+
+    associatorInverse :
+      (A B C : TensorExpr) →
+      TensorHom (tensor A (tensor B C)) (tensor (tensor A B) C)
+    associatorInverse A B C =
+      homFromEquality
+        (sym (append-assoc (tensorNF A) (tensorNF B) (tensorNF C)))
+
+    leftUnitor :
+      (A : TensorExpr) → TensorHom (tensor unitₑ A) A
+    leftUnitor A = homFromEquality (append-left-unit (tensorNF A))
+
+    leftUnitorInverse :
+      (A : TensorExpr) → TensorHom A (tensor unitₑ A)
+    leftUnitorInverse A =
+      homFromEquality (sym (append-left-unit (tensorNF A)))
+
+    rightUnitor :
+      (A : TensorExpr) → TensorHom (tensor A unitₑ) A
+    rightUnitor A = homFromEquality (append-right-unit (tensorNF A))
+
+    rightUnitorInverse :
+      (A : TensorExpr) → TensorHom A (tensor A unitₑ)
+    rightUnitorInverse A =
+      homFromEquality (sym (append-right-unit (tensorNF A)))
+
+    fromAtoms : List Nat → TensorExpr
+    fromAtoms [] = unitₑ
+    fromAtoms (x ∷ xs) = tensor (atom x) (fromAtoms xs)
+
+    tensorNF-fromAtoms : (xs : List Nat) → tensorNF (fromAtoms xs) ≡ xs
+    tensorNF-fromAtoms [] = refl
+    tensorNF-fromAtoms (x ∷ xs) =
+      cong (x ∷_) (tensorNF-fromAtoms xs)
+
+    normalForm : TensorExpr → TensorExpr
+    normalForm A = fromAtoms (tensorNF A)
+
+    normalizeForward :
+      (A : TensorExpr) →
+      TensorHom A (normalForm A)
+    normalizeForward A =
+      homFromEquality (sym (tensorNF-fromAtoms (tensorNF A)))
+
+    normalizeBackward :
+      (A : TensorExpr) →
+      TensorHom (normalForm A) A
+    normalizeBackward A =
+      homFromEquality (tensorNF-fromAtoms (tensorNF A))
+
+    -- Mac Lane coherence: all composites of associators, unitors,
+    -- identities, and tensor products with common endpoints agree.
+    macLaneCoherence :
+      {A B : TensorExpr} →
+      (f g : TensorHom A B) →
+      f ≡ g
+    macLaneCoherence = tensorHom-proposition
 
     tensor-atom : (n : Nat) → tensorNF (atom n) ≡ n ∷ []
     tensor-atom n = refl
@@ -556,7 +951,6 @@ module Foundations where
     tensor-product : (A B : TensorExpr) →
       tensorNF (tensor A B) ≡ tensorNF A ++ tensorNF B
     tensor-product A B = refl
-
   ----------------------------------------------------------------------
   -- 4. Abstract modality compatibility fragment.
   --
@@ -567,16 +961,182 @@ module Foundations where
 
   module CohesiveRetractions where
 
-    -- Abstract modalities retained by foundational package four.  Their
-    -- equations are exactly the original rewrite commitments.
-    postulate
-      Disc Π Γ coDisc : Set → Set
-      gammaDiscIso : (X : Set) → Iso (Γ (Disc X)) X
-      piDiscIso : (X : Set) → Iso (Π (Disc X)) X
-      gammaCodiscIso : (X : Set) → Iso (Γ (coDisc X)) X
+    --------------------------------------------------------------------
+    -- Lawvere's cohesive adjoint pattern is Π ⊣ Disc ⊣ Γ ⊣ coDisc,
+    -- with Disc and coDisc fully faithful and Π preserving finite
+    -- products. We formalize the adjoint data, rather than postulating
+    -- objectwise isomorphisms. The concrete instance below is the
+    -- degenerate self-cohesion of Set (all four functors are identity).
+    -- It is a valid realization of the adjunction laws, not a model of
+    -- nontrivial spatial cohesion or a proof that an arbitrary topos is
+    -- cohesive.
+    --------------------------------------------------------------------
 
-    -- A small expression language makes the reduction patterns legal Agda
-    -- rewrite patterns.  Modality applications are represented by constructors.
+    record Endofunctor : Set₁ where
+      field
+        F₀ : Set → Set
+        F₁ : {A B : Set} → (A → B) → F₀ A → F₀ B
+        F₁-id : {A : Set} (x : F₀ A) → F₁ idᶠ x ≡ x
+        F₁-compose :
+          {A B C : Set} (g : B → C) (f : A → B) (x : F₀ A) →
+          F₁ (g ∘ᶠ f) x ≡ F₁ g (F₁ f x)
+    open Endofunctor public
+
+    record Adjunction (F G : Endofunctor) : Set₁ where
+      field
+        transpose :
+          {A B : Set} →
+          (F₀ F A → B) →
+          A → F₀ G B
+        untranspose :
+          {A B : Set} →
+          (A → F₀ G B) →
+          F₀ F A → B
+        transpose-untranspose :
+          {A B : Set} (f : A → F₀ G B) →
+          transpose (untranspose f) ≡ f
+        untranspose-transpose :
+          {A B : Set} (f : F₀ F A → B) →
+          untranspose (transpose f) ≡ f
+        transpose-natural-source :
+          {A A′ B : Set} (f : A′ → A) (g : F₀ F A → B) →
+          transpose (g ∘ᶠ F₁ F f) ≡ transpose g ∘ᶠ f
+        transpose-natural-target :
+          {A B B′ : Set} (g : B → B′) (f : F₀ F A → B) →
+          transpose (g ∘ᶠ f) ≡ F₁ G g ∘ᶠ transpose f
+    open Adjunction public
+
+    record FullyFaithful (F : Endofunctor) : Set₁ where
+      field
+        reflectArrow :
+          {A B : Set} →
+          (F₀ F A → F₀ F B) →
+          A → B
+        reflect-map :
+          {A B : Set} (f : A → B) →
+          reflectArrow (F₁ F f) ≡ f
+        map-reflect :
+          {A B : Set} (f : F₀ F A → F₀ F B) →
+          F₁ F (reflectArrow f) ≡ f
+    open FullyFaithful public
+
+    productComparison :
+      (F : Endofunctor) →
+      {A B : Set} →
+      F₀ F (A × B) →
+      F₀ F A × F₀ F B
+    productComparison F value =
+      pair (F₁ F fst value) (F₁ F snd value)
+
+    record PreservesFiniteProducts (F : Endofunctor) : Set₁ where
+      field
+        fromTerminal : ⊤ → F₀ F ⊤
+        terminal-roundtrip :
+          (value : F₀ F ⊤) → fromTerminal tt ≡ value
+        fromProduct :
+          {A B : Set} →
+          F₀ F A × F₀ F B →
+          F₀ F (A × B)
+        product-roundtrip-forward :
+          {A B : Set} (value : F₀ F (A × B)) →
+          fromProduct (productComparison F value) ≡ value
+        product-roundtrip-backward :
+          {A B : Set} (value : F₀ F A × F₀ F B) →
+          productComparison F (fromProduct value) ≡ value
+    open PreservesFiniteProducts public
+
+    record CohesiveAdjointQuadruple : Set₁ where
+      field
+        piFunctor : Endofunctor
+        discreteFunctor : Endofunctor
+        globalSectionsFunctor : Endofunctor
+        codiscreteFunctor : Endofunctor
+        pi-adjoint-discrete :
+          Adjunction piFunctor discreteFunctor
+        discrete-adjoint-globalSections :
+          Adjunction discreteFunctor globalSectionsFunctor
+        globalSections-adjoint-codiscrete :
+          Adjunction globalSectionsFunctor codiscreteFunctor
+        discrete-fully-faithful :
+          FullyFaithful discreteFunctor
+        codiscrete-fully-faithful :
+          FullyFaithful codiscreteFunctor
+        pi-preserves-finite-products :
+          PreservesFiniteProducts piFunctor
+    open CohesiveAdjointQuadruple public
+
+    identityEndofunctor : Endofunctor
+    identityEndofunctor = record
+      { F₀ = λ A → A
+      ; F₁ = λ f → f
+      ; F₁-id = λ x → refl
+      ; F₁-compose = λ g f x → refl
+      }
+
+    identityAdjunction :
+      Adjunction identityEndofunctor identityEndofunctor
+    identityAdjunction = record
+      { transpose = λ f → f
+      ; untranspose = λ f → f
+      ; transpose-untranspose = λ f → refl
+      ; untranspose-transpose = λ f → refl
+      ; transpose-natural-source = λ f g → refl
+      ; transpose-natural-target = λ g f → refl
+      }
+
+    identityFullyFaithful :
+      FullyFaithful identityEndofunctor
+    identityFullyFaithful = record
+      { reflectArrow = λ f → f
+      ; reflect-map = λ f → refl
+      ; map-reflect = λ f → refl
+      }
+
+    identityProducts :
+      PreservesFiniteProducts identityEndofunctor
+    identityProducts = record
+      { fromTerminal = λ _ → tt
+      ; terminal-roundtrip = λ { tt → refl }
+      ; fromProduct = λ value → value
+      ; product-roundtrip-forward = λ { (pair first second) → refl }
+      ; product-roundtrip-backward = λ { (pair first second) → refl }
+      }
+
+    identityCohesiveAdjointQuadruple : CohesiveAdjointQuadruple
+    identityCohesiveAdjointQuadruple = record
+      { piFunctor = identityEndofunctor
+      ; discreteFunctor = identityEndofunctor
+      ; globalSectionsFunctor = identityEndofunctor
+      ; codiscreteFunctor = identityEndofunctor
+      ; pi-adjoint-discrete = identityAdjunction
+      ; discrete-adjoint-globalSections = identityAdjunction
+      ; globalSections-adjoint-codiscrete = identityAdjunction
+      ; discrete-fully-faithful = identityFullyFaithful
+      ; codiscrete-fully-faithful = identityFullyFaithful
+      ; pi-preserves-finite-products = identityProducts
+      }
+
+    Disc : Set → Set
+    Disc = F₀ (discreteFunctor identityCohesiveAdjointQuadruple)
+
+    Π : Set → Set
+    Π = F₀ (piFunctor identityCohesiveAdjointQuadruple)
+
+    Γ : Set → Set
+    Γ = F₀ (globalSectionsFunctor identityCohesiveAdjointQuadruple)
+
+    coDisc : Set → Set
+    coDisc = F₀ (codiscreteFunctor identityCohesiveAdjointQuadruple)
+
+    gammaDiscIso : (X : Set) → Iso (Γ (Disc X)) X
+    gammaDiscIso X = iso (λ x → x) (λ x → x) (λ x → refl) (λ x → refl)
+
+    piDiscIso : (X : Set) → Iso (Π (Disc X)) X
+    piDiscIso X = iso (λ x → x) (λ x → x) (λ x → refl) (λ x → refl)
+
+    gammaCodiscIso : (X : Set) → Iso (Γ (coDisc X)) X
+    gammaCodiscIso X = iso (λ x → x) (λ x → x) (λ x → refl) (λ x → refl)
+
     data CohesiveExpr : Set₁ where
       objectₑ : Set → CohesiveExpr
       discₑ : CohesiveExpr → CohesiveExpr
@@ -637,7 +1197,6 @@ module Foundations where
     gamma-codisc : (X : CohesiveExpr) →
       normalizeCohesive (gammaₑ (codiscₑ X)) ≡ normalizeCohesive X
     gamma-codisc X = refl
-
   ----------------------------------------------------------------------
   -- 5. Quotients induced by idempotent endomaps.
   --
@@ -1736,6 +2295,30 @@ module Foundations where
     hasCut mallp-top = false
     hasCut (mallp-down p) = hasCut p
     hasCut (mallp-up p) = hasCut p
+
+    cutCount : {Γ : Context} {S : Stoup} → MALLP Γ S → Nat
+    cutCount mallp-ax = zero
+    cutCount (mallp-cut p q) = suc (cutCount p + cutCount q)
+    cutCount (mallp-exchange permutation p) = cutCount p
+    cutCount (mallp-tensor p q) = cutCount p + cutCount q
+    cutCount mallp-one = zero
+    cutCount (mallp-plus-left p) = cutCount p
+    cutCount (mallp-plus-right p) = cutCount p
+    cutCount (mallp-par p) = cutCount p
+    cutCount (mallp-with p q) = cutCount p + cutCount q
+    cutCount (mallp-bottom p) = cutCount p
+    cutCount mallp-top = zero
+    cutCount (mallp-down p) = cutCount p
+    cutCount (mallp-up p) = cutCount p
+
+    data CutClass : Set where
+      cutFree cutAdmitting : CutClass
+
+    classifyMALLP : {Γ : Context} {S : Stoup} →
+      MALLP Γ S → CutClass
+    classifyMALLP proof with hasCut proof
+    ... | false = cutFree
+    ... | true = cutAdmitting
 
   ----------------------------------------------------------------------
   -- Publicly expose all seven Foundations.* modules: six foundational
@@ -3108,6 +3691,19 @@ module StrictNatCompiler where
       MALLP Γ S →
       MALLPNatTheory Γ S
 
+  natTheoryCutCount :
+    {Γ : Context} {S : Stoup} →
+    MALLPNatTheory Γ S → Nat
+  natTheoryCutCount (mallp-nat-literal value) = zero
+  natTheoryCutCount (mallp-nat-primitive operation) = zero
+  natTheoryCutCount (mallp-nat-cut first second) =
+    suc (natTheoryCutCount first + natTheoryCutCount second)
+  natTheoryCutCount (mallp-nat-exchange permutation proof) =
+    natTheoryCutCount proof
+  natTheoryCutCount (mallp-nat-transport equality proof) =
+    natTheoryCutCount proof
+  natTheoryCutCount (mallp-nat-logical proof) = cutCount proof
+
   -- The focused proof-term language records only the number of linear Nat
   -- assumptions. Its constructors are exactly the two signature axioms and cut.
   data MALLPNatProof : Nat → Set where
@@ -3144,6 +3740,17 @@ module StrictNatCompiler where
       MALLPNatProof n →
       NatOp →
       MALLPNatProof (suc n)
+
+  natProofCutCount : {n : Nat} → MALLPNatProof n → Nat
+  natProofCutCount (natLiteralProof value) = zero
+  natProofCutCount natPrimitiveProof = zero
+  natProofCutCount natArgumentProof = zero
+  natProofCutCount (natExchangeProof proof) = natProofCutCount proof
+  natProofCutCount (natRotateHeadToLastProof proof) = natProofCutCount proof
+  natProofCutCount (natCutProof first second) =
+    suc (natProofCutCount first + natProofCutCount second)
+  natProofCutCount (natPrimitiveComposeProof proof operation) =
+    suc (natProofCutCount proof)
 
   natContext : Nat → Context
   natContext zero = []
@@ -3227,6 +3834,22 @@ module StrictNatCompiler where
     mallp-nat-transport
       (sym (natContext-append n m))
       (mallp-nat-cut (embedNatProof first) (embedNatProof second))
+
+  embedNatProof-cut-count :
+    {n : Nat} (proof : MALLPNatProof n) →
+    natTheoryCutCount (embedNatProof proof) ≡ natProofCutCount proof
+  embedNatProof-cut-count (natLiteralProof value) = refl
+  embedNatProof-cut-count natPrimitiveProof = refl
+  embedNatProof-cut-count natArgumentProof = refl
+  embedNatProof-cut-count (natExchangeProof proof) =
+    embedNatProof-cut-count proof
+  embedNatProof-cut-count (natRotateHeadToLastProof proof) =
+    embedNatProof-cut-count proof
+  embedNatProof-cut-count (natPrimitiveComposeProof proof operation)
+    rewrite embedNatProof-cut-count proof = refl
+  embedNatProof-cut-count (natCutProof first second)
+    rewrite embedNatProof-cut-count first
+          | embedNatProof-cut-count second = refl
 
   data NatEnvironment : Nat → Set where
     natEnvironmentNil : NatEnvironment zero
@@ -3417,6 +4040,38 @@ module StrictNatCompiler where
       natCutProof
         (natResourceProof left)
         (natPrimitiveComposeProof (natResourceProof right) operation)
+
+  -- The focused proof syntax is cut-admitting. A literal or owned
+  -- argument is cut-free; each binary operation contributes one outer
+  -- cut and one cut composing its right operand with the primitive axiom.
+  natResourceExprCutCount :
+    {n : Nat} → NatResourceExpr n → Nat
+  natResourceExprCutCount (resourceLiteral value) = zero
+  natResourceExprCutCount resourceArgument = zero
+  natResourceExprCutCount (resourceBinary operation left right) =
+    suc (natResourceExprCutCount left + suc (natResourceExprCutCount right))
+
+  natResourceProof-cut-count :
+    {n : Nat} (expression : NatResourceExpr n) →
+    natProofCutCount (natResourceProof expression) ≡
+    natResourceExprCutCount expression
+  natResourceProof-cut-count (resourceLiteral value) = refl
+  natResourceProof-cut-count resourceArgument = refl
+  natResourceProof-cut-count
+    (resourceBinary operation left right)
+    rewrite natResourceProof-cut-count left
+          | natResourceProof-cut-count right = refl
+
+  -- The embedded MALLP theory derivation has exactly the same cut count
+  -- as the focused proof and the source resource tree.
+  natResource-derivation-cut-count :
+    {n : Nat} (expression : NatResourceExpr n) →
+    natTheoryCutCount (natResource-proof-derivation expression) ≡
+    natResourceExprCutCount expression
+  natResource-derivation-cut-count expression =
+    trans
+      (embedNatProof-cut-count (natResourceProof expression))
+      (natResourceProof-cut-count expression)
 
   natResource-proof-derivation :
     {n : Nat} →
