@@ -784,9 +784,11 @@ module Foundations where
     listEq-sound {[]} {y ∷ ys} ()
     listEq-sound {x ∷ xs} {[]} ()
     listEq-sound {x ∷ xs} {y ∷ ys} proof
-      with natEq x y | listEq xs ys
+      with natEq x y in headEquality | listEq xs ys in tailEquality
     ... | true | true =
-      cong₂ _∷_ (natEq-sound refl) (listEq-sound refl)
+      cong₂ _∷_
+        (natEq-sound headEquality)
+        (listEq-sound tailEquality)
     ... | true | false = exfalso (falseNotTrue proof)
     ... | false | tail = exfalso (falseNotTrue proof)
 
@@ -3704,6 +3706,18 @@ module StrictNatCompiler where
     natTheoryCutCount proof
   natTheoryCutCount (mallp-nat-logical proof) = cutCount proof
 
+  classifyNatTheory :
+    {Γ : Context} →
+    MALLPNatTheory Γ (just natFormula) → CutClass
+  classifyNatTheory (mallp-nat-literal value) = cutFree
+  classifyNatTheory (mallp-nat-primitive operation) = cutFree
+  classifyNatTheory (mallp-nat-cut first second) = cutAdmitting
+  classifyNatTheory (mallp-nat-exchange permutation proof) =
+    classifyNatTheory proof
+  classifyNatTheory (mallp-nat-transport equality proof) =
+    classifyNatTheory proof
+  classifyNatTheory (mallp-nat-logical proof) = classifyMALLP proof
+
   -- The focused proof-term language records only the number of linear Nat
   -- assumptions. Its constructors are exactly the two signature axioms and cut.
   data MALLPNatProof : Nat → Set where
@@ -3743,7 +3757,7 @@ module StrictNatCompiler where
 
   natProofCutCount : {n : Nat} → MALLPNatProof n → Nat
   natProofCutCount (natLiteralProof value) = zero
-  natProofCutCount natPrimitiveProof = zero
+  natProofCutCount (natPrimitiveProof operation) = zero
   natProofCutCount natArgumentProof = zero
   natProofCutCount (natExchangeProof proof) = natProofCutCount proof
   natProofCutCount (natRotateHeadToLastProof proof) = natProofCutCount proof
@@ -3839,7 +3853,7 @@ module StrictNatCompiler where
     {n : Nat} (proof : MALLPNatProof n) →
     natTheoryCutCount (embedNatProof proof) ≡ natProofCutCount proof
   embedNatProof-cut-count (natLiteralProof value) = refl
-  embedNatProof-cut-count natPrimitiveProof = refl
+  embedNatProof-cut-count (natPrimitiveProof operation) = refl
   embedNatProof-cut-count natArgumentProof = refl
   embedNatProof-cut-count (natExchangeProof proof) =
     embedNatProof-cut-count proof
@@ -4062,6 +4076,13 @@ module StrictNatCompiler where
     rewrite natResourceProof-cut-count left
           | natResourceProof-cut-count right = refl
 
+  natResource-proof-derivation :
+    {n : Nat} →
+    (expression : NatResourceExpr n) →
+    MALLPNatTheory (natContext n) (just natFormula)
+  natResource-proof-derivation expression =
+    embedNatProof (natResourceProof expression)
+
   -- The embedded MALLP theory derivation has exactly the same cut count
   -- as the focused proof and the source resource tree.
   natResource-derivation-cut-count :
@@ -4073,13 +4094,17 @@ module StrictNatCompiler where
       (embedNatProof-cut-count (natResourceProof expression))
       (natResourceProof-cut-count expression)
 
-  natResource-proof-derivation :
-    {n : Nat} →
-    (expression : NatResourceExpr n) →
-    MALLPNatTheory (natContext n) (just natFormula)
-  natResource-proof-derivation expression =
-    embedNatProof (natResourceProof expression)
 
+  natResourceClass : {n : Nat} → NatResourceExpr n → CutClass
+  natResourceClass (resourceLiteral value) = cutFree
+  natResourceClass resourceArgument = cutFree
+  natResourceClass (resourceBinary operation left right) = cutAdmitting
+
+  natResource-derivation-class :
+    {n : Nat} (expression : NatResourceExpr n) →
+    classifyNatTheory (natResource-proof-derivation expression) ≡
+    natResourceClass expression
+  natResource-derivation-class expression = refl
   natResourceProof-adequate :
     {n : Nat} →
     (expression : NatResourceExpr n) →
