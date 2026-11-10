@@ -584,6 +584,24 @@ module Foundations where
           enumerate F i stage
     open ParametricEA public
 
+    -- The selector γ for a family F maps each parameter i to the
+    -- typed code for the one universal program specialized at i.
+    parametricCode :
+      (ea : ParametricEA) →
+      (F : ParametricallyEnumerable) →
+      Nat →
+      ProgramCode
+    parametricCode ea F i = programCode (compileFamily ea F) i
+
+    parametricCode-correct :
+      (ea : ParametricEA) →
+      (F : ParametricallyEnumerable) →
+      (i stage : Nat) →
+      universalEval (parametricCode ea F i) stage ≡
+      enumerate F i stage
+    parametricCode-correct ea F i stage =
+      compileFamily-correct ea F i stage
+
     parametricEA-analytic-sound :
       (ea : ParametricEA) →
       (F : ParametricallyEnumerable) →
