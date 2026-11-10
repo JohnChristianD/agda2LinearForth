@@ -3976,9 +3976,9 @@ module StrictNatCompiler where
        | natWithinBound (left + right) bound in resultCheck
        | failure
   ... | false | _ | _ | _ =
-    absurd (natBoundFalseNotTrue (trans (sym leftCheck) leftBound))
+    absurd (natBoundFalseNotTrue leftBound)
   ... | true | false | _ | _ =
-    absurd (natBoundFalseNotTrue (trans (sym rightCheck) rightBound))
+    absurd (natBoundFalseNotTrue rightBound)
   ... | true | true | true | ()
   ... | true | true | false | refl =
     boundedTokenCellOverflow ((left + right) ∷ stack) refl
@@ -3999,9 +3999,9 @@ module StrictNatCompiler where
        | natWithinBound right bound in rightCheck
        | failure
   ... | false | _ | _ =
-    absurd (natBoundFalseNotTrue (trans (sym leftCheck) leftBound))
+    absurd (natBoundFalseNotTrue leftBound)
   ... | true | false | _ =
-    absurd (natBoundFalseNotTrue (trans (sym rightCheck) rightBound))
+    absurd (natBoundFalseNotTrue rightBound)
   ... | true | true | ()
 
   execBoundedToken-failure-classification
@@ -4020,9 +4020,9 @@ module StrictNatCompiler where
        | natWithinBound (left * right) bound in resultCheck
        | failure
   ... | false | _ | _ | _ =
-    absurd (natBoundFalseNotTrue (trans (sym leftCheck) leftBound))
+    absurd (natBoundFalseNotTrue leftBound)
   ... | true | false | _ | _ =
-    absurd (natBoundFalseNotTrue (trans (sym rightCheck) rightBound))
+    absurd (natBoundFalseNotTrue rightBound)
   ... | true | true | true | ()
   ... | true | true | false | refl =
     boundedTokenCellOverflow ((left * right) ∷ stack) refl
