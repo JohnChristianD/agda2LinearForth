@@ -46,6 +46,8 @@ Compiler classification is based on the resolved Agda type and Treeless shape. D
 
 The indexed `MALLP` judgement is the logical core. Its constructors contain no weakening, contraction, or exponential rules. Tensor introduction partitions contexts; exchange is an explicit `ContextPermutation`; additive `with` gives both mutually exclusive branches the same context. The shared branch context is additive reuse, not contraction in a single execution.
 
+The core MALLP syntax is **cut-admitting**: `mallp-cut` is a primitive derivation constructor. `hasCut`, `cutCount`, and `classifyMALLP` inspect a derivation and distinguish cut-free proofs from proofs containing cut; they do not eliminate cuts. The focused Nat proof language also admits cut. Its cut-count functions account for the cuts introduced by composition, and the resource compiler now emits a certificate equating the cut count and cut class of each generated MALLP Nat derivation with those predicted by its `NatResourceExpr`.
+
 The Haskell Nat resource decoder tracks labelled Treeless variables and requires each live argument exactly once. The Bool resource decoder checks every additive path for exact-once usage. Bool-pair lowering requires each field once. Unit owns no runtime cell. These admission checks are concrete compiler invariants; they do not by themselves prove every Haskell pass correct.
 
 `MALLPNatTheory` layers a closed arithmetic primitive signature and cut over MALLP. `MALLPProtocolTheory` declares signatures for operations such as thunk forcing, effect emission, linear application, list construction, and list folding. A declared signature states a resource contract; it does **not** prove that a concrete Haskell lowering or Gforth runtime word implements that contract.
@@ -58,7 +60,7 @@ The current Nat path is the strongest end-to-end slice:
 
 1. Haskell decodes an admitted Treeless term into a labelled Nat resource tree and checks exact-once resource use.
 2. The generated `MALLPEmittedRenderer.agda` reifies that tree as the count-indexed Agda `NatResourceExpr`.
-3. Agda constructs the associated MALLP derivation and proves its interpretation adequate for the resource evaluator.
+3. Agda constructs the associated cut-admitting MALLP derivation and proves its interpretation adequate for the resource evaluator. It also computes the derivation's cut count/class and proves these agree with the source resource tree.
 4. The certificate contains the exact token list held by the Haskell `CompiledDefinition`, not a separately handwritten expected program.
 5. Agda's `execTokens` evaluates that exact list on the source arguments and an arbitrary residual stack.
 6. A generated source-semantics equality connects the original source function to the MALLP interpretation; the equalities compose into source-result preservation.
@@ -102,10 +104,10 @@ The root `MALLPForth` module publicly re-exports all seven `Foundations` submodu
 
 | Public module | Actual role and current consumption |
 | --- | --- |
-| `ForsterEnumerability` | Generic parametrically enumerable-family interface and evaluator equation; no current compiler consumer |
+| `ForsterEnumerability` | A step-indexed register-machine interpreter is the analytic model; `AnalyticEnumerableFamily` packages a concrete program with soundness/completeness, while `ParametricEA` states Forster's synthetic parametric-enumerability principle as explicit data. No inhabitant of `ParametricEA` is postulated, and no theorem that every analytic model is Turing-equivalent is claimed. |
 | `MarkovLeastWitness` | Postulated unbounded μ-search/least-witness principle; its step rewrites have real computation clients |
-| `MacLaneCoherence` | Tensor-expression normalization and coherence equations; available to clients, but not currently required by the Haskell lowering path |
-| `CohesiveRetractions` | Abstract cohesive modalities and postulated comparison isomorphisms; orthogonal to the present discrete Forth compiler |
+| `MacLaneCoherence` | A thin free monoidal category on Nat-labelled generators: objects are parenthesized tensor expressions, homs are certified equality of flattened normal forms, and associators/unitors and Mac Lane coherence are derived computationally. |
+| `CohesiveRetractions` | The Π ⊣ Disc ⊣ Γ ⊣ coDisc adjunction data, full-faithfulness conditions, and finite-product preservation are explicit structures. The supplied executable instance is the degenerate identity cohesion on Set; this is not a nontrivial cohesive topos or a site/sheaf model. |
 | `QuotientReflection` | Idempotent endomap, fixed-point quotient/normalizer, idempotent category/monad; canonicalization rewrite is used by a reduction client |
 | `SymmetricBarRecursion` | Finite-entry threading interface with postulated symmetric bar recursion and stop/step equations; rewrite clients exercise those equations |
 | `LaurentPolarizedMALLP` | The linear logic core used directly by the Nat MALLP derivations and compiler proofs |
@@ -114,7 +116,7 @@ Thus all seven are **globally consumable** through public exports, while actual 
 
 ## Formal assumptions and unsupported claims
 
-The monolithic Agda module contains explicit postulates, including the universe/identity encoding, μ-search/least-witness assumptions, cohesive comparison isomorphisms, and symmetric bar recursion. `--with-K` is retained because parts of the fixed-point quotient development use uniqueness of identity proofs. These choices are part of the current theory; no `--safe` claim is made.
+The monolithic Agda module contains explicit postulates, including the universe/identity encoding, μ-search/least-witness assumptions, and symmetric bar recursion. The cohesive adjunction record itself is not postulated; its included Set interpretation is the identity quadruple. `--with-K` is retained because parts of the fixed-point quotient development use uniqueness of identity proofs. The root `--type-in-type` option remains a consistency-breaking trust boundary, and no `--safe` or axiom-free consistency claim is made.
 
 The Haskell backend is not verified as a general Haskell program by the generated certificates. The certificate checks the concrete emitted token data against formal Agda semantics for the covered fragment. The external Gforth interpreter and the concrete runtime file remain an external trusted/tested boundary.
 
