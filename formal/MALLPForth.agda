@@ -794,11 +794,11 @@ module Foundations where
     tensorNF unitₑ = []
     tensorNF (tensor A B) = tensorNF A ++ tensorNF B
 
-    natEq : Nat → Nat → Bool
-    natEq zero zero = true
-    natEq zero (suc n) = false
-    natEq (suc m) zero = false
-    natEq (suc m) (suc n) = natEq m n
+    tensorLabelEq : Nat → Nat → Bool
+    tensorLabelEq zero zero = true
+    tensorLabelEq zero (suc n) = false
+    tensorLabelEq (suc m) zero = false
+    tensorLabelEq (suc m) (suc n) = tensorLabelEq m n
 
     andBool : Bool → Bool → Bool
     andBool true x = x
@@ -809,7 +809,7 @@ module Foundations where
     listEq [] (y ∷ ys) = false
     listEq (x ∷ xs) [] = false
     listEq (x ∷ xs) (y ∷ ys) =
-      andBool (natEq x y) (listEq xs ys)
+      andBool (tensorLabelEq x y) (listEq xs ys)
 
     falseNotTrue : false ≡ true → ⊥
     falseNotTrue ()
@@ -817,22 +817,22 @@ module Foundations where
     exfalso : {A : Set} → ⊥ → A
     exfalso ()
 
-    natEq-refl : (n : Nat) → natEq n n ≡ true
-    natEq-refl zero = refl
-    natEq-refl (suc n) = natEq-refl n
+    tensorLabelEq-refl : (n : Nat) → tensorLabelEq n n ≡ true
+    tensorLabelEq-refl zero = refl
+    tensorLabelEq-refl (suc n) = tensorLabelEq-refl n
 
     listEq-refl : (xs : List Nat) → listEq xs xs ≡ true
     listEq-refl [] = refl
     listEq-refl (x ∷ xs)
-      rewrite natEq-refl x | listEq-refl xs = refl
+      rewrite tensorLabelEq-refl x | listEq-refl xs = refl
 
-    natEq-sound :
-      {m n : Nat} → natEq m n ≡ true → m ≡ n
-    natEq-sound {zero} {zero} proof = refl
-    natEq-sound {zero} {suc n} ()
-    natEq-sound {suc m} {zero} ()
-    natEq-sound {suc m} {suc n} proof =
-      cong suc (natEq-sound proof)
+    tensorLabelEq-sound :
+      {m n : Nat} → tensorLabelEq m n ≡ true → m ≡ n
+    tensorLabelEq-sound {zero} {zero} proof = refl
+    tensorLabelEq-sound {zero} {suc n} ()
+    tensorLabelEq-sound {suc m} {zero} ()
+    tensorLabelEq-sound {suc m} {suc n} proof =
+      cong suc (tensorLabelEq-sound proof)
 
     listEq-sound :
       {xs ys : List Nat} →
@@ -842,10 +842,10 @@ module Foundations where
     listEq-sound {[]} {y ∷ ys} ()
     listEq-sound {x ∷ xs} {[]} ()
     listEq-sound {x ∷ xs} {y ∷ ys} proof
-      with natEq x y in headEquality | listEq xs ys in tailEquality
+      with tensorLabelEq x y in headEquality | listEq xs ys in tailEquality
     ... | true | true =
       cong₂ _∷_
-        (natEq-sound headEquality)
+        (tensorLabelEq-sound headEquality)
         (listEq-sound tailEquality)
     ... | true | false = exfalso (falseNotTrue proof)
     ... | false | tail = exfalso (falseNotTrue proof)
