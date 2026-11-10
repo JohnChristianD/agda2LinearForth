@@ -573,13 +573,53 @@ module Foundations where
 
     record ParametricEA : Set₁ where
       field
+        -- One program is compiled for the whole parameterized family.
+        -- The parameter is supplied as register zero at runtime.
         compileFamily :
-          ParametricallyEnumerable → Nat → ProgramCode
+          ParametricallyEnumerable → RegisterProgram
         compileFamily-correct :
           (F : ParametricallyEnumerable) →
           (i stage : Nat) →
-          universalEval (compileFamily F i) stage ≡ enumerate F i stage
+          universalEval (programCode (compileFamily F) i) stage ≡
+          enumerate F i stage
     open ParametricEA public
+
+    parametricEA-analytic-sound :
+      (EA : ParametricEA) →
+      (F : ParametricallyEnumerable) →
+      (i stage value : Nat) →
+      registerEnumeration (compileFamily EA F) i stage ≡ just value →
+      Predicate F i value
+    parametricEA-analytic-sound EA F i stage value computation =
+      enumerate-sound F i stage value
+        (trans (sym (compileFamily-correct EA F i stage)) computation)
+
+    parametricEA-analytic-complete :
+      (EA : ParametricEA) →
+      (F : ParametricallyEnumerable) →
+      (i value : Nat) →
+      Predicate F i value →
+      Σ Nat
+        (λ stage →
+          registerEnumeration (compileFamily EA F) i stage ≡ just value)
+    parametricEA-analytic-complete EA F i value witness
+      with enumerate-complete F i value witness
+    ... | stage , computation =
+      stage , trans (compileFamily-correct EA F i stage) computation
+
+    -- A witness of synthetic EA uniformly realizes every family in the
+    -- analytic register-machine model, with correctness transported from
+    -- the functional enumerator through the interpreter equation.
+    parametricEA-analytic :
+      (EA : ParametricEA) →
+      ParametricallyEnumerable →
+      AnalyticEnumerableFamily
+    parametricEA-analytic EA F = record
+      { analyticPredicate = Predicate F
+      ; analyticProgram = compileFamily EA F
+      ; analytic-sound = parametricEA-analytic-sound EA F
+      ; analytic-complete = parametricEA-analytic-complete EA F
+      }
   ----------------------------------------------------------------------
   -- 2. Markov principle plus deterministic least-witness minimization.
   --
