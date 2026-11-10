@@ -1371,7 +1371,7 @@ rendererCertificate sourceModule definitions
   , "   MALLPNatTheory; natContext; natFormula; natLinear-proof-derivation; natBinary-proof-derivation;"
   , "   natLinearProof; natBinaryProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
   , "   evalNatLinearExpr; evalNatBinaryLinearExpr; evalNatResourceExpr; natLinearMALLP-forth-sound; natBinaryResourceMALLP-forth-sound; renderNatBinaryResource;"
-  , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate;"
+  , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate; CutClass; cutFree; cutAdmitting; classifyNatTheory; natTheoryCutCount; natResourceExprCutCount; natResourceClass; natResource-derivation-cut-count; natResource-derivation-class;"
   , "   NatStackBounded; natCell; execTokens; execBoundedTokens; execBoundedTokens-preserves;"
   , "   BoundedExecutionTrace; execBoundedTokens-complete; execBoundedTokens-complete-unbounded; cong; cong₂; trans; sym;"
   , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm; _++ᴳ_)"
@@ -1452,6 +1452,12 @@ rendererCertificate sourceModule definitions
     [ let
         { expressionName = "natResourceExpression" <> index
         ; derivationName = "natResourceDerivation" <> index
+        ; cutCountName = "natResourceCutCount" <> index
+        ; expressionCutCountName = "natResourceExpressionCutCount" <> index
+        ; cutCountProofName = "natResourceCutCountCorrespondence" <> index
+        ; cutClassName = "natResourceCutClass" <> index
+        ; expressionCutClassName = "natResourceExpressionCutClass" <> index
+        ; cutClassProofName = "natResourceCutClassCorrespondence" <> index
         ; compilerTokensName = "natResourceCompilerTokens" <> index
         ; executionName = "natResourceCompilerExecution" <> index
         ; sourceSoundName = "natResourceSourceSound" <> index
@@ -1497,6 +1503,24 @@ rendererCertificate sourceModule definitions
         , derivationName <> " : MALLPNatTheory (natContext "
             <> agdaNatIndexTerm arity <> ") (just natFormula)"
         , derivationName <> " = natResource-proof-derivation " <> expressionName
+        , ""
+        , cutCountName <> " : Nat"
+        , cutCountName <> " = natTheoryCutCount " <> derivationName
+        , ""
+        , expressionCutCountName <> " : Nat"
+        , expressionCutCountName <> " = natResourceExprCutCount " <> expressionName
+        , ""
+        , cutCountProofName <> " : " <> cutCountName <> " ≡ " <> expressionCutCountName
+        , cutCountProofName <> " = natResource-derivation-cut-count " <> expressionName
+        , ""
+        , cutClassName <> " : CutClass"
+        , cutClassName <> " = classifyNatTheory " <> derivationName
+        , ""
+        , expressionCutClassName <> " : CutClass"
+        , expressionCutClassName <> " = natResourceClass " <> expressionName
+        , ""
+        , cutClassProofName <> " : " <> cutClassName <> " ≡ " <> expressionCutClassName
+        , cutClassProofName <> " = natResource-derivation-class " <> expressionName
         , ""
         , compilerTokensName <> " : List ForthToken"
         , compilerTokensName <> " = " <> formalNatTokenList (compiledTokens definition)
