@@ -934,7 +934,7 @@ module Foundations where
     tensorIdentity-right :
       {A B : TensorExpr} (f : TensorHom A B) →
       tensorCompose {A = A} {B = B} {C = B} (tensorId B) f ≡ f
-    tensorIdentity-right f = refl
+    tensorIdentity-right refl = refl
 
     tensorAssociativity :
       {A B C D : TensorExpr}
