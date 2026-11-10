@@ -1371,7 +1371,7 @@ rendererCertificate sourceModule definitions
   , "   MALLPNatTheory; natContext; natFormula; natLinear-proof-derivation; natBinary-proof-derivation;"
   , "   natLinearProof; natBinaryProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
   , "   evalNatLinearExpr; evalNatBinaryLinearExpr; evalNatResourceExpr; natLinearMALLP-forth-sound; natBinaryResourceMALLP-forth-sound; renderNatBinaryResource;"
-  , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate; CutClass; cutFree; cutContaining; classifyNatTheory; natTheoryCutCount; natResourceExprCutCount; natResourceClass; natResource-derivation-cut-count; natResource-derivation-class;"
+  , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate; CutClass; classifyNatTheory; natTheoryCutCount; natResourceExprCutCount; natResourceClass; natResource-derivation-cut-count; natResource-derivation-class;"
   , "   NatStackBounded; natCell; execTokens; execBoundedTokens; execBoundedTokens-preserves;"
   , "   BoundedExecutionTrace; execBoundedTokens-complete; execBoundedTokens-complete-unbounded; cong; cong₂; trans; sym;"
   , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm; _++ᴳ_)"
