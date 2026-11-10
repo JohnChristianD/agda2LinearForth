@@ -928,12 +928,12 @@ module Foundations where
 
     tensorIdentity-left :
       {A B : TensorExpr} (f : TensorHom A B) →
-      tensorCompose f (tensorId A) ≡ f
+      tensorCompose {A = A} {B = A} {C = B} f (tensorId A) ≡ f
     tensorIdentity-left f = refl
 
     tensorIdentity-right :
       {A B : TensorExpr} (f : TensorHom A B) →
-      tensorCompose (tensorId B) f ≡ f
+      tensorCompose {A = A} {B = B} {C = B} (tensorId B) f ≡ f
     tensorIdentity-right f = refl
 
     tensorAssociativity :
@@ -941,23 +941,64 @@ module Foundations where
       (f : TensorHom C D)
       (g : TensorHom B C)
       (h : TensorHom A B) →
-      tensorCompose f (tensorCompose g h) ≡
-      tensorCompose (tensorCompose f g) h
-    tensorAssociativity f g h =
-      trans-assoc h g f
+      tensorCompose {A = A} {B = C} {C = D} f
+        (tensorCompose {A = A} {B = B} {C = C} g h) ≡
+      tensorCompose {A = A} {B = B} {C = D}
+        (tensorCompose {A = B} {B = C} {C = D} f g) h
+    tensorAssociativity {A} {B} {C} {D} f g h =
+      trans-assoc
+        {A = List Nat}
+        {a = tensorNF A}
+        {b = tensorNF B}
+        {c = tensorNF C}
+        {d = tensorNF D}
+        h g f
 
     tensorMap-identity :
       (A B : TensorExpr) →
-      tensorMap (tensorId A) (tensorId B) ≡ tensorId (tensor A B)
+      tensorMap
+        {A = A} {A′ = A} {B = B} {B′ = B}
+        (tensorId A) (tensorId B) ≡
+      tensorId (tensor A B)
     tensorMap-identity A B = refl
 
     tensorMap-composition :
       {A A′ A″ B B′ B″ : TensorExpr}
       (f₂ : TensorHom A′ A″) (f₁ : TensorHom A A′)
       (g₂ : TensorHom B′ B″) (g₁ : TensorHom B B′) →
-      tensorMap (tensorCompose f₂ f₁) (tensorCompose g₂ g₁) ≡
-      tensorCompose (tensorMap f₂ g₂) (tensorMap f₁ g₁)
-    tensorMap-composition f₂ f₁ g₂ g₁ = tensorHom-proposition _ _
+      tensorMap
+        {A = A} {A′ = A″} {B = B} {B′ = B″}
+        (tensorCompose {A = A} {B = A′} {C = A″} f₂ f₁)
+        (tensorCompose {A = B} {B = B′} {C = B″} g₂ g₁) ≡
+      tensorCompose
+        {A = tensor A B}
+        {B = tensor A′ B′}
+        {C = tensor A″ B″}
+        (tensorMap
+          {A = A′} {A′ = A″} {B = B′} {B′ = B″}
+          f₂ g₂)
+        (tensorMap
+          {A = A} {A′ = A′} {B = B} {B′ = B′}
+          f₁ g₁)
+    tensorMap-composition
+      {A} {A′} {A″} {B} {B′} {B″} f₂ f₁ g₂ g₁ =
+      tensorHom-proposition
+        {A = tensor A B}
+        {B = tensor A″ B″}
+        (tensorMap
+          {A = A} {A′ = A″} {B = B} {B′ = B″}
+          (tensorCompose {A = A} {B = A′} {C = A″} f₂ f₁)
+          (tensorCompose {A = B} {B = B′} {C = B″} g₂ g₁))
+        (tensorCompose
+          {A = tensor A B}
+          {B = tensor A′ B′}
+          {C = tensor A″ B″}
+          (tensorMap
+            {A = A′} {A′ = A″} {B = B′} {B′ = B″}
+            f₂ g₂)
+          (tensorMap
+            {A = A} {A′ = A′} {B = B} {B′ = B′}
+            f₁ g₁))
 
     append-assoc :
       (xs ys zs : List Nat) →
@@ -1032,7 +1073,8 @@ module Foundations where
       {A B : TensorExpr} →
       (f g : TensorHom A B) →
       f ≡ g
-    macLaneCoherence = tensorHom-proposition
+    macLaneCoherence {A} {B} f g =
+      tensorHom-proposition {A = A} {B = B} f g
 
     tensor-atom : (n : Nat) → tensorNF (atom n) ≡ n ∷ []
     tensor-atom n = refl
@@ -1146,9 +1188,16 @@ module Foundations where
       ; functorArrow = λ f → f
       ; functorArrow-respects = λ equality → equality
       ; functorIdentity =
-          categoryHomEq-refl C (categoryId C)
+          λ {A} →
+            categoryHomEq-refl C
+              {A = A} {B = A}
+              (categoryId C {A = A})
       ; functorComposition =
-          λ g f → categoryHomEq-refl C (categoryCompose C g f)
+          λ {A} {B} {C′} g f →
+            categoryHomEq-refl C
+              {A = A} {B = C′}
+              (categoryCompose C
+                {A = A} {B = B} {C = C′} g f)
       }
 
     --------------------------------------------------------------------
