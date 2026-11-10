@@ -1163,6 +1163,9 @@ module Foundations where
     -- uses pointwise equality and requires no function-extensionality axiom.
     --------------------------------------------------------------------
 
+    -- Spell out object endpoints in the laws: categoryHom is a record
+    -- family, so Agda cannot recover its indices by inverting categoryId
+    -- or categoryCompose during elaboration.
     record Functor (C D : Category) : Set₁ where
       field
         functorObject : categoryObjects C → categoryObjects D

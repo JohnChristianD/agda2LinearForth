@@ -1984,8 +1984,9 @@ emitForthModule _ _ _ moduleName maybeDefinitions = do
       baseName = prettyShow (NE.last (moduleNameParts moduleName))
       filename = baseName ++ ".fth"
   IO.liftIO $ do
-    TIO.writeFile filename output
+    -- Fail the certificate guard before leaving an executable Forth artifact.
     TIO.writeFile "MALLPEmittedRenderer.agda" (rendererCertificate moduleName definitions)
+    TIO.writeFile filename output
 
 backend :: Backend
 backend = Backend backend'

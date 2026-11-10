@@ -6,23 +6,31 @@ The target is a proof-producing compiler pipeline for an explicitly admitted sou
 
 ## Current toolchain and immutable entrypoints
 
-As of 9 November 2026, the latest official stable Agda release is **2.8.0.2**. The repository pins that release in `cabal.project`, constrains the Cabal dependency to the 2.8 series, and checks the executable's numeric version in CI. Do not replace the pin with a prerelease or an unpinned moving target.
+The current CI job installs the latest stable Agda package from Hackage. Its
+10 November 2026 run resolved **Agda 2.8.0.2**. The current `cabal.project`
+contains only `packages: .`, and `agda2forth.cabal` declares `Agda` without
+an exact version bound; the workflow has no numeric CLI version assertion.
+This is a moving latest-stable selection, not an exact pin.
 
-The root Agda module and its option pragma are intentionally retained. The normal CI invocation remains:
+The existing root and generated-renderer option pragmas are distinct and
+unchanged:
 
-~~~sh
-cabal build Agda:exe:agda
-cabal build agda2forth
-"$(cabal list-bin Agda:exe:agda)" --no-prop --no-erasure -i formal formal/MALLPForth.agda
-"$(cabal list-bin Agda:exe:agda)" --no-prop --no-erasure -i formal formal/SovereignRationalSEDPhysics.agda
-cp test/MALLPStrict.agda.src test/MALLPStrict.agda
-cabal run agda2forth -- -i test test/MALLPStrict.agda
-gforth MALLPStrict.fth
-~~~
+- Root `formal/MALLPForth.agda`: `--rewriting --confluence-check --type-in-type --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections`.
+- Generated `MALLPEmittedRenderer.agda`: `--with-K --rewriting --confluence-check --lossy-unification --exact-split --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections`.
 
-The GitHub Actions workflow runs on `push` to `master` and `pull_request`. It has no scheduled trigger. The public `agda2forth` entrypoint, existing command lines, argument shape, output names, and `formal/MALLPForth.agda` option pragma are part of the compatibility contract.
+The root module leaves K enabled by Agda's default; it does not pass
+`--without-K`. The generated certificate explicitly requests `--with-K`.
+`--lossy-unification` and `--exact-split` occur in the generated-renderer
+pragma, not the root pragma. The root `--type-in-type` option remains a
+consistency-breaking trust boundary. The workflow does not use `--safe`.
+The CLI flags `--no-prop --no-erasure` are used for the generated-renderer
+check, not for the root-module checks.
 
-Current Agda options include `--with-K`, `--rewriting`, `--confluence-check`, `--lossy-unification`, `--exact-split`, `--guardedness`, `--type-in-type`, and the existing reduction/projection options. The build uses `--no-prop --no-erasure`; it does not use `--safe`.
+The GitHub Actions workflow runs on `push` and `pull_request` only; it has
+no scheduled trigger. The public `agda2forth` entrypoint, existing command
+lines, argument shape, output names, Agda invocations, and both option
+pragmas are compatibility constraints. `MALLPEmittedRenderer.agda` is
+transient generated output, not a tracked Agda source file.
 
 **Trust boundary:** `--type-in-type` is consistency-breaking for ordinary dependent type theory, and the file also contains explicit postulates. Therefore successful Agda type-checking establishes checking relative to this configured theory and its assumptions; it is not an axiom-free consistency claim. This README does not silently change that foundation or its commands.
 
@@ -46,7 +54,7 @@ Compiler classification is based on the resolved Agda type and Treeless shape. D
 
 The indexed `MALLP` judgement is the logical core. Its constructors contain no weakening, contraction, or exponential rules. Tensor introduction partitions contexts; exchange is an explicit `ContextPermutation`; additive `with` gives both mutually exclusive branches the same context. The shared branch context is additive reuse, not contraction in a single execution.
 
-The core MALLP syntax is **cut-admitting**: `mallp-cut` is a primitive derivation constructor. `hasCut`, `cutCount`, and `classifyMALLP` inspect a derivation and distinguish cut-free proofs from proofs containing cut; they do not eliminate cuts. The focused Nat proof language also admits cut. Its cut-count functions account for the cuts introduced by composition, and the resource compiler now emits a certificate equating the cut count and cut class of each generated MALLP Nat derivation with those predicted by its `NatResourceExpr`.
+The core MALLP syntax is **cut-admitting**: `mallp-cut` is a primitive derivation constructor. `hasCut`, `cutCount`, and `classifyMALLP` inspect a derivation and distinguish cut-free proofs from proofs containing cut; they do not eliminate cuts. The focused Nat proof language also admits cut. Its cut-count functions account for the cuts introduced by composition, and the resource compiler now emits a certificate equating the cut count and cut class of each generated MALLP Nat derivation with those predicted by its `NatResourceExpr`. The count is a proof-tree metric: both branches of additive `with` contribute, even though only one branch executes.
 
 The Haskell Nat resource decoder tracks labelled Treeless variables and requires each live argument exactly once. The Bool resource decoder checks every additive path for exact-once usage. Bool-pair lowering requires each field once. Unit owns no runtime cell. These admission checks are concrete compiler invariants; they do not by themselves prove every Haskell pass correct.
 
@@ -86,17 +94,37 @@ The Forth runtime in `data/FLib.fth` checks nonnegative cell values and overflow
 
 ## Global rewrites and proof clients
 
-The root module registers the aggregate rewrite system with `--rewriting` and `--confluence-check`. The global rules are:
+The root module registers five rules with `--rewriting` and checks their
+interactions with `--confluence-check`. A separate registration retains
+`refl↓` and `Id-∙`. Directions below are the registered left-to-right
+directions.
 
-- `μ-step-true` and `μ-step-false` for least-search computation.
-- `sBR-stop` and `sBR-step` for the symmetric bar-recursion interface.
-- `quotient-raw-sound` connecting raw quotient representatives with canonicalized representatives.
+| Rule | Equation / direction | Computational client | Status |
+| --- | --- | --- | --- |
+| `μ-step-true` | `μ-search P n true ↦ n` | `leastSearch-zero-computes` | Postulated search computation |
+| `μ-step-false` | `μ-search P n false ↦ μ-search P (suc n) (P (suc n))` | `leastSearch-successor-computes` | Postulated recursive search step |
+| `sBR-stop` | A present key rewrites `symmetricBarRec ... (inDomain present)` to `base entries` | `symmetricBarRec-stop-computes` | Postulated bar-recursion stop equation |
+| `sBR-step` | An absent key rewrites to `step entries` with a continuation over `extendFresh` and the next `omega`-selected key | `symmetricBarRec-step-then-stop-computes` | Postulated recursive step equation |
+| `quotient-raw-sound` | `denoteQuotient (rawₑ x) ↦ denoteQuotient (canonicalizedₑ x)` | `quotientReflectionRewriteSmoke` | Derived from `canonicalize-idempotent` |
+| `refl↓` | `ext A A ↦ Set` | No named downstream client | Postulated universe/identity encoding rule |
+| `Id-∙` | `Id A X Y ↦ ext (A X) (A Y)` | No named downstream client | Postulated universe/identity encoding rule |
 
-A separate declaration registers `refl↓` and `Id-∙` for the project-owned universe/identity encoding. These equations are postulated; their use is an explicit axiom boundary.
+The μ clients exercise zero and successor search steps. The symmetric-bar
+clients exercise a stop and a one-step-then-stop path. The quotient client
+exercises the raw-to-canonicalized normalizer equation. The last two
+identity-encoding rules remain registered, but no compiler consumption is
+claimed for them.
 
-The registered rules have computational clients: `leastSearch-zero-computes`, `leastSearch-successor-computes`, `symmetricBarRec-stop-computes`, `symmetricBarRec-step-then-stop-computes`, and `quotientReflectionRewriteSmoke`. These clients force the equations through conversion. The aggregate confluence check checks interactions among registered rules; it does not prove the postulates, termination of unbounded search, source-to-target semantics, or the full compiler correct.
+Confluence checking verifies interactions among the registered rules; it
+does not prove the postulates or establish termination of unbounded
+μ-search or symmetric bar recursion. The bar-recursion rule still depends
+on its explicit bar-condition premise.
 
-The useful distinction is: a rewrite's equation is its abstract law; its interpreter/search/normalizer is its operational meaning; a client proof exercises the conversion rule; and the generated or fixture witness shows a concrete behavior. All four should agree. Rules without a justified operational meaning should remain explicitly axiomatic rather than be advertised as proved computation.
+The useful distinction is: a rewrite's equation is its abstract law; its
+interpreter/search/normalizer is its operational meaning; a client proof
+exercises the conversion rule; and a generated or fixture witness shows a
+concrete behavior. These layers are kept separate. A postulated equation is
+reported as an assumption even when its client computes by conversion.
 
 ## Seven public foundation exports: availability versus consumption
 
@@ -106,33 +134,84 @@ The root `MALLPForth` module publicly re-exports all seven `Foundations` submodu
 | --- | --- |
 | `ForsterEnumerability` | A step-indexed register-machine interpreter is the analytic model; `AnalyticEnumerableFamily` packages a single uniform program with soundness/completeness. `ParametricEA` states Forster's synthetic enumerability axiom as explicit data: its selector `parametricCode ea F i` is the typed-code analogue of the parameterized index function γ, and the fixed `universalEval` interprets those codes. `parametricEA-analytic` turns an EA witness into an analytic realizer. No inhabitant of `ParametricEA` is postulated; unlike the thesis's `Nat`-indexed universal enumerator, this formalization uses typed register-program syntax instead of numeric Gödel codes, and does not claim a proved equivalence with Turing-machine computability. |
 | `MarkovLeastWitness` | Postulated unbounded μ-search/least-witness principle; its step rewrites have real computation clients |
-| `MacLaneCoherence` | A thin free monoidal category on Nat-labelled generators: objects are parenthesized tensor expressions, homs are certified equality of flattened normal forms, and associators/unitors and Mac Lane coherence are derived computationally. |
-| `CohesiveRetractions` | The Π ⊣ Disc ⊣ Γ ⊣ coDisc adjunction data, full-faithfulness conditions, and finite-product preservation are explicit structures. The supplied executable instance is the degenerate identity cohesion on Set; this is not a nontrivial cohesive topos or a site/sheaf model. |
+| `MacLaneCoherence` | A thin free monoidal category on Nat-labelled generators: objects are parenthesized tensor expressions, homs are equality of flattened normal forms, and associators/unitors/coherence follow using UIP/K. This is a standalone foundation, not a Haskell compiler consumer. |
+| `CohesiveRetractions` | The Π ⊣ Disc ⊣ Γ ⊣ coDisc adjunction data, full-faithfulness conditions, and finite-product preservation are explicit structures. The old bare global modality/iso postulates are replaced by a parameterized adjoint-quadruple record plus the degenerate identity-Set instance. This is standalone, not a compiler consumer or a nontrivial cohesive topos/site model. |
 | `QuotientReflection` | Idempotent endomap, fixed-point quotient/normalizer, idempotent category/monad; canonicalization rewrite is used by a reduction client |
 | `SymmetricBarRecursion` | Finite-entry threading interface with postulated symmetric bar recursion and stop/step equations; rewrite clients exercise those equations |
 | `LaurentPolarizedMALLP` | The linear logic core used directly by the Nat MALLP derivations and compiler proofs |
 
-Thus all seven are **globally consumable** through public exports, while actual consumption is selective. The three packages with no direct compiler role are retained as public foundational developments, not artificially threaded through unrelated compiler proofs.
+Thus all seven are **globally consumable** through public exports, while actual consumption is selective. `ForsterEnumerability`, `MacLaneCoherence`, and `CohesiveRetractions` have no direct compiler consumer; they remain substantive standalone developments rather than artificial dependencies in unrelated lowering proofs.
+
+## Evidence ledger
+
+| Evidence class | Established result |
+| --- | --- |
+| Proved in Agda under the current theory | Nat resource derivation adequacy, exact-token execution and source-result equality with arbitrary residual-stack preservation; cut-count/class agreement; per-definition Bool, BoolPair, Unit, and Word64-identity certificates for the listed forms; Mac Lane coherence using K; the identity-Set cohesive model |
+| Agda typechecked | The root MALLP module and separate RSED specification, plus the generated renderer certificate, under the existing options, rewrites, and postulates; no `--safe` claim |
+| CI checked | Haskell backend build, strict-source compilation, generated certificate type-check, Forth text rendering, and the existing Gforth fixture |
+| Gforth tested | 29 emitted definitions plus decimal parsing, arithmetic, argument order, overflow, invalid-literal, and stack-boundary fixtures |
+| Assumed or unverified | `--type-in-type`, explicit postulates, general correctness of the Haskell decoder/passes, concrete `MALLP-PARSE-NAT` and runtime-word refinement, Gforth internals, and the primitive implementations declared by `MALLPProtocolTheory` |
+
+The generated certificates are per-definition witnesses, not a proof that
+the Haskell compiler implementation is correct for all inputs. Tests
+corroborate concrete runtime behavior; they do not close the Gforth trusted
+boundary.
 
 ## Formal assumptions and unsupported claims
 
-The monolithic Agda module contains explicit postulates, including the universe/identity encoding, μ-search/least-witness assumptions, and symmetric bar recursion. The cohesive adjunction record itself is not postulated; its included Set interpretation is the identity quadruple. `--with-K` is retained because parts of the fixed-point quotient development use uniqueness of identity proofs. The root `--type-in-type` option remains a consistency-breaking trust boundary, and no `--safe` or axiom-free consistency claim is made.
+The monolithic Agda module retains explicit postulates for the universe/identity
+encoding, μ-search/least-witness assumptions, and symmetric bar recursion.
+The cohesive modalities are parameterized by an explicit adjoint-quadruple
+record; the supplied Set interpretation is the identity quadruple, not a
+claim about a nontrivial cohesive topos. Mac Lane coherence uses UIP/K for
+equality of parallel tensor-normalization paths. K remains enabled by the
+root module's Agda default and is requested explicitly by the generated
+renderer pragma. The root `--type-in-type` option remains a
+consistency-breaking trust boundary. No `--safe` or axiom-free consistency
+claim is made.
 
-The Haskell backend is not verified as a general Haskell program by the generated certificates. The certificate checks the concrete emitted token data against formal Agda semantics for the covered fragment. The external Gforth interpreter and the concrete runtime file remain an external trusted/tested boundary.
+OTT was inspected but not integrated. The Agda OTT library brings a separate
+impredicative universe/Prop encoding, postulated identity/coherence
+principles, and modules that disable positivity and termination checks. It
+does not shorten a proof needed by this compiler and would enlarge the
+trusted assumptions. The separate Ott syntax tool does not emit Agda. No
+OTT dependency or command change is justified.
 
-Accordingly, the current result is a proof-producing, CI-checked compiler for a restricted fragment, with its strongest source-to-target theorem covering admitted Nat resource programs. It is not yet PureCake-level verification of every compiler pass, every accepted type, or Gforth itself.
+The Haskell backend is not verified as a general Haskell program by the
+generated certificates. Each certificate checks concrete emitted token data
+against formal Agda semantics for its covered definition. The emitter writes
+the generated certificate before the Forth module, so a certificate guard
+failure occurs before a Forth artifact is left behind. The external Gforth
+interpreter and concrete runtime words remain an external trusted/tested
+boundary.
+
+Accordingly, the current result is a proof-producing, CI-checked compiler for
+a restricted fragment, with its strongest composed source-to-target theorem
+covering admitted Nat resource programs. Other source families have
+per-definition certificates for the stated forms, not a general theorem for
+their full type families. This is not yet PureCake-level verification of
+every compiler pass or Gforth itself.
 
 ## Reproducible checks
 
-The existing GitHub Actions workflow checks repository/upstream provenance, Agda 2.8.0.2 type-checking for both tracked Agda files, Haskell backend compilation, strict-source emission, generated certificate synchronization/type-checking, and Gforth execution. It runs only on pushes to `master` and pull requests.
+The current workflow installs Agda from Hackage, type-checks both tracked
+Agda developments, builds the backend, generates and type-checks the emitted
+certificate, and executes the strict fixture under Gforth. It runs on
+`push` and `pull_request` only. The generated certificate is produced in
+the workflow; it is not a checked-in Agda file.
+
+The following are the workflow's existing commands. `agda_bin_dir` and
+`AGDA_BIN` are set by the workflow before the later steps.
 
 ~~~sh
-cabal build Agda:exe:agda
+cabal update
+cabal install Agda --installdir="$agda_bin_dir" --overwrite-policy=always
+"$AGDA_BIN" --no-fast-reduce --no-projection-like --confluence-check -i formal formal/MALLPForth.agda
+"$AGDA_BIN" --no-fast-reduce --no-projection-like -i formal formal/SovereignRationalSEDPhysics.agda
 cabal build agda2forth
-"$(cabal list-bin Agda:exe:agda)" --no-prop --no-erasure -i formal formal/MALLPForth.agda
-"$(cabal list-bin Agda:exe:agda)" --no-prop --no-erasure -i formal formal/SovereignRationalSEDPhysics.agda
 cp test/MALLPStrict.agda.src test/MALLPStrict.agda
 cabal run agda2forth -- -i test test/MALLPStrict.agda
+"$AGDA_BIN" --no-prop --no-erasure -i formal -i . -i test MALLPEmittedRenderer.agda
 gforth MALLPStrict.fth
 ~~~
 
