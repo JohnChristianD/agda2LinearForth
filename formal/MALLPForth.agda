@@ -358,12 +358,14 @@ negativeObservation-run-adequate n consume = refl
 module Foundations where
 
   ----------------------------------------------------------------------
-  -- 1. Forster-style parametric enumerability.
+  -- 1. Forster parametric enumerability: analytic machine model and
+  --    explicit synthetic EA principle.
   --
-  -- ProgramCode is a typed semantic code tree carrying an enumerable
-  -- family and its numeric parameter.  It is deliberately NOT claimed to
-  -- be a Gödel-numbering into Nat.  A concrete effective coding layer may
-  -- replace it later without changing the evaluator equation.
+  -- ProgramCode is syntax for a concrete register machine, interpreted
+  -- step-by-step below. Analytic families carry actual programs and
+  -- soundness/completeness proofs. ParametricEA states the synthetic
+  -- parametric-universality principle as an explicit witness requirement;
+  -- no inhabitant and no numeric Gödel coding are assumed here.
   ----------------------------------------------------------------------
 
   module ForsterEnumerability where
@@ -706,10 +708,8 @@ module Foundations where
           (λ i → P) (λ i → double-negated) zero)
 
   ----------------------------------------------------------------------
-  -- 3. Mac Lane monoidal coherence as canonical object normalization.
-  --
-  -- Every parenthesized tensor tree flattens to the same ordered list of
-  -- atoms. The three tensorNF equations have disjoint constructor patterns.
+  -- 3. Mac Lane coherence via the thin free monoidal category on
+  --    Nat-labelled generators and a computational normal form.
   ----------------------------------------------------------------------
 
   module MacLaneCoherence where
@@ -954,11 +954,10 @@ module Foundations where
       tensorNF (tensor A B) ≡ tensorNF A ++ tensorNF B
     tensor-product A B = refl
   ----------------------------------------------------------------------
-  -- 4. Abstract modality compatibility fragment.
-  --
-  -- These are the original object-level rewrite commitments.  They specify
-  -- only the equations registered below; no topos, sheaf site, or additional
-  -- continuity structure is assumed by this finite physical development.
+  -- 4. Lawvere-Schreiber cohesive adjoint quadruple. The laws are explicit
+  --    functor/adjunction/full-faithfulness/product data. The executable
+  --    Set instance is the degenerate identity cohesion; no nontrivial
+  --    spatial or sheaf model is claimed.
   ----------------------------------------------------------------------
 
   module CohesiveRetractions where
@@ -2313,6 +2312,8 @@ module Foundations where
     cutCount (mallp-down p) = cutCount p
     cutCount (mallp-up p) = cutCount p
 
+    -- This classifies an individual derivation by whether its tree
+    -- contains a cut node. It is not a cut-elimination result.
     data CutClass : Set where
       cutFree cutContaining : CutClass
 
