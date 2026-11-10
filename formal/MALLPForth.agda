@@ -859,6 +859,12 @@ module Foundations where
     data IsTrue : Bool → Set where
       isTrue : IsTrue true
 
+    isTrue-sound : {b : Bool} → IsTrue b → b ≡ true
+    isTrue-sound isTrue = refl
+
+    isTrue-unique : {b : Bool} → (p q : IsTrue b) → p ≡ q
+    isTrue-unique isTrue isTrue = refl
+
     fromTrue : {b : Bool} → b ≡ true → IsTrue b
     fromTrue refl = isTrue
 
@@ -869,7 +875,8 @@ module Foundations where
       {A B : TensorExpr} →
       TensorHom A B →
       tensorNF A ≡ tensorNF B
-    homToEquality isTrue = listEq-sound refl
+    homToEquality {A} {B} witness =
+      listEq-sound (isTrue-sound witness)
 
     homFromEquality :
       {A B : TensorExpr} →
@@ -902,7 +909,7 @@ module Foundations where
       {A B : TensorExpr} →
       (f g : TensorHom A B) →
       f ≡ g
-    tensorHom-proposition isTrue isTrue = refl
+    tensorHom-proposition = isTrue-unique
 
     tensorIdentity-left :
       {A B : TensorExpr} (f : TensorHom A B) →
