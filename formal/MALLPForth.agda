@@ -773,11 +773,13 @@ module Foundations where
   module MacLaneCoherence where
 
     --------------------------------------------------------------------
-    -- The free monoidal category on Nat-labelled generators, presented
-    -- by parenthesized tensor expressions. Morphisms are normal-form
-    -- equalities; hence parallel structural maps are unique. This is
-    -- the categorical content of Mac Lane coherence, not just an object
-    -- flattener with reflexive equations.
+    -- Thin free monoidal category on Nat-labelled generators.
+    --
+    -- Objects are parenthesized tensor expressions. A morphism is an
+    -- equality between their ordered atom normal forms. Normalization is
+    -- executable, hom existence is decidable, and UIP makes every hom-set
+    -- a proposition. Associators/unitors and all their coherence diagrams
+    -- are represented by these canonical normal-form paths.
     --------------------------------------------------------------------
 
     data TensorExpr : Set where
@@ -842,7 +844,8 @@ module Foundations where
     listEq-sound {[]} {y ∷ ys} ()
     listEq-sound {x ∷ xs} {[]} ()
     listEq-sound {x ∷ xs} {y ∷ ys} proof
-      with tensorLabelEq x y in headEquality | listEq xs ys in tailEquality
+      with tensorLabelEq x y in headEquality
+         | listEq xs ys in tailEquality
     ... | true | true =
       cong₂ _∷_
         (tensorLabelEq-sound headEquality)
@@ -856,73 +859,76 @@ module Foundations where
       listEq xs ys ≡ true
     listEq-complete {xs} refl = listEq-refl xs
 
-    data IsTrue : Bool → Set where
-      isTrue : IsTrue true
-
-    isTrue-sound : {b : Bool} → IsTrue b → b ≡ true
-    isTrue-sound isTrue = refl
-
-    isTrue-unique : {b : Bool} → (p q : IsTrue b) → p ≡ q
-    isTrue-unique isTrue isTrue = refl
-
-    fromTrue : {b : Bool} → b ≡ true → IsTrue b
-    fromTrue refl = isTrue
-
     TensorHom : TensorExpr → TensorExpr → Set
-    TensorHom A B = IsTrue (listEq (tensorNF A) (tensorNF B))
+    TensorHom A B = tensorNF A ≡ tensorNF B
+
+    -- A terminating decision procedure for the hom relation.  The
+    -- negative branch contains a proof that distinct normal forms cannot
+    -- be joined by a structural morphism.
+    data TensorHomDecision (A B : TensorExpr) : Set where
+      homExists : TensorHom A B → TensorHomDecision A B
+      homAbsent : (TensorHom A B → ⊥) → TensorHomDecision A B
+
+    decideTensorHom : (A B : TensorExpr) → TensorHomDecision A B
+    decideTensorHom A B
+      with listEq (tensorNF A) (tensorNF B) in equality
+    ... | true = homExists (listEq-sound equality)
+    ... | false =
+      homAbsent
+        (λ path → falseNotTrue
+          (trans (sym equality) (listEq-complete path)))
 
     homToEquality :
       {A B : TensorExpr} →
       TensorHom A B →
       tensorNF A ≡ tensorNF B
-    homToEquality {A} {B} witness =
-      listEq-sound (isTrue-sound witness)
+    homToEquality equality = equality
 
     homFromEquality :
       {A B : TensorExpr} →
       tensorNF A ≡ tensorNF B →
       TensorHom A B
-    homFromEquality equality = fromTrue (listEq-complete equality)
+    homFromEquality equality = equality
 
     tensorId : (A : TensorExpr) → TensorHom A A
-    tensorId A = homFromEquality refl
+    tensorId A = refl
 
     tensorCompose :
       {A B C : TensorExpr} →
       TensorHom B C →
       TensorHom A B →
       TensorHom A C
-    tensorCompose second first =
-      homFromEquality
-        (trans (homToEquality first) (homToEquality second))
+    tensorCompose second first = trans first second
 
     tensorMap :
       {A A′ B B′ : TensorExpr} →
       TensorHom A A′ →
       TensorHom B B′ →
       TensorHom (tensor A B) (tensor A′ B′)
-    tensorMap first second =
-      homFromEquality
-        (cong₂ _++_ (homToEquality first) (homToEquality second))
+    tensorMap first second = cong₂ _++_ first second
+
+    trans-assoc :
+      {A : Set} {a b c d : A}
+      (first : a ≡ b) (second : b ≡ c) (third : c ≡ d) →
+      trans (trans first second) third ≡
+      trans first (trans second third)
+    trans-assoc refl refl refl = refl
 
     tensorHom-proposition :
       {A B : TensorExpr} →
       (f g : TensorHom A B) →
       f ≡ g
-    tensorHom-proposition {A} {B} f g =
-      isTrue-unique
-        {b = listEq (tensorNF A) (tensorNF B)}
-        f g
+    tensorHom-proposition refl refl = refl
 
     tensorIdentity-left :
       {A B : TensorExpr} (f : TensorHom A B) →
       tensorCompose f (tensorId A) ≡ f
-    tensorIdentity-left f = tensorHom-proposition _ _
+    tensorIdentity-left f = refl
 
     tensorIdentity-right :
       {A B : TensorExpr} (f : TensorHom A B) →
       tensorCompose (tensorId B) f ≡ f
-    tensorIdentity-right f = tensorHom-proposition _ _
+    tensorIdentity-right f = refl
 
     tensorAssociativity :
       {A B C D : TensorExpr}
@@ -931,7 +937,21 @@ module Foundations where
       (h : TensorHom A B) →
       tensorCompose f (tensorCompose g h) ≡
       tensorCompose (tensorCompose f g) h
-    tensorAssociativity f g h = tensorHom-proposition _ _
+    tensorAssociativity f g h =
+      trans-assoc h g f
+
+    tensorMap-identity :
+      (A B : TensorExpr) →
+      tensorMap (tensorId A) (tensorId B) ≡ tensorId (tensor A B)
+    tensorMap-identity A B = refl
+
+    tensorMap-composition :
+      {A A′ A″ B B′ B″ : TensorExpr}
+      (f₂ : TensorHom A′ A″) (f₁ : TensorHom A A′)
+      (g₂ : TensorHom B′ B″) (g₁ : TensorHom B B′) →
+      tensorMap (tensorCompose f₂ f₁) (tensorCompose g₂ g₁) ≡
+      tensorCompose (tensorMap f₂ g₂) (tensorMap f₁ g₁)
+    tensorMap-composition f₂ f₁ g₂ g₁ = tensorHom-proposition _ _
 
     append-assoc :
       (xs ys zs : List Nat) →
@@ -952,33 +972,29 @@ module Foundations where
       (A B C : TensorExpr) →
       TensorHom (tensor (tensor A B) C) (tensor A (tensor B C))
     associator A B C =
-      homFromEquality
-        (append-assoc (tensorNF A) (tensorNF B) (tensorNF C))
+      append-assoc (tensorNF A) (tensorNF B) (tensorNF C)
 
     associatorInverse :
       (A B C : TensorExpr) →
       TensorHom (tensor A (tensor B C)) (tensor (tensor A B) C)
     associatorInverse A B C =
-      homFromEquality
-        (sym (append-assoc (tensorNF A) (tensorNF B) (tensorNF C)))
+      sym (append-assoc (tensorNF A) (tensorNF B) (tensorNF C))
 
     leftUnitor :
       (A : TensorExpr) → TensorHom (tensor unitₑ A) A
-    leftUnitor A = homFromEquality (append-left-unit (tensorNF A))
+    leftUnitor A = append-left-unit (tensorNF A)
 
     leftUnitorInverse :
       (A : TensorExpr) → TensorHom A (tensor unitₑ A)
-    leftUnitorInverse A =
-      homFromEquality (sym (append-left-unit (tensorNF A)))
+    leftUnitorInverse A = sym (append-left-unit (tensorNF A))
 
     rightUnitor :
       (A : TensorExpr) → TensorHom (tensor A unitₑ) A
-    rightUnitor A = homFromEquality (append-right-unit (tensorNF A))
+    rightUnitor A = append-right-unit (tensorNF A)
 
     rightUnitorInverse :
       (A : TensorExpr) → TensorHom A (tensor A unitₑ)
-    rightUnitorInverse A =
-      homFromEquality (sym (append-right-unit (tensorNF A)))
+    rightUnitorInverse A = sym (append-right-unit (tensorNF A))
 
     fromAtoms : List Nat → TensorExpr
     fromAtoms [] = unitₑ
@@ -996,16 +1012,16 @@ module Foundations where
       (A : TensorExpr) →
       TensorHom A (normalForm A)
     normalizeForward A =
-      homFromEquality (sym (tensorNF-fromAtoms (tensorNF A)))
+      sym (tensorNF-fromAtoms (tensorNF A))
 
     normalizeBackward :
       (A : TensorExpr) →
       TensorHom (normalForm A) A
     normalizeBackward A =
-      homFromEquality (tensorNF-fromAtoms (tensorNF A))
+      tensorNF-fromAtoms (tensorNF A)
 
-    -- Mac Lane coherence: all composites of associators, unitors,
-    -- identities, and tensor products with common endpoints agree.
+    -- Coherence: every formal composite of associators, unitors, identities
+    -- and tensor maps with common endpoints is equal.
     macLaneCoherence :
       {A B : TensorExpr} →
       (f g : TensorHom A B) →
@@ -1021,13 +1037,6 @@ module Foundations where
     tensor-product : (A B : TensorExpr) →
       tensorNF (tensor A B) ≡ tensorNF A ++ tensorNF B
     tensor-product A B = refl
-  ----------------------------------------------------------------------
-  -- 4. Lawvere-Schreiber cohesive adjoint quadruple. The laws are explicit
-  --    functor/adjunction/full-faithfulness/product data. The executable
-  --    Set instance is the degenerate identity cohesion; no nontrivial
-  --    spatial or sheaf model is claimed.
-  ----------------------------------------------------------------------
-
   module CohesiveRetractions where
 
     --------------------------------------------------------------------
@@ -4469,7 +4478,9 @@ module StrictNatCompiler where
     {n : Nat} (expression : NatResourceExpr n) →
     classifyNatTheory (natResource-proof-derivation expression) ≡
     natResourceClass expression
-  natResource-derivation-class expression = refl
+  natResource-derivation-class (resourceLiteral value) = refl
+  natResource-derivation-class resourceArgument = refl
+  natResource-derivation-class (resourceBinary operation left right) = refl
   natResourceProof-adequate :
     {n : Nat} →
     (expression : NatResourceExpr n) →
