@@ -1177,21 +1177,33 @@ module Foundations where
           categoryHomEq D (functorArrow f) (functorArrow g)
         functorIdentity :
           {A : categoryObjects C} →
-          categoryHomEq D (functorArrow (categoryId C)) (categoryId D)
+          categoryHomEq D
+            {A = functorObject A}
+            {B = functorObject A}
+            (functorArrow {A = A} {B = A} (categoryId C {A = A}))
+            (categoryId D {A = functorObject A})
         functorComposition :
           {A B C′ : categoryObjects C}
           (g : categoryHom C B C′)
           (f : categoryHom C A B) →
           categoryHomEq D
-            (functorArrow (categoryCompose C g f))
-            (categoryCompose D (functorArrow g) (functorArrow f))
+            {A = functorObject A}
+            {B = functorObject C′}
+            (functorArrow {A = A} {B = C′}
+              (categoryCompose C {A = A} {B = B} {C = C′} g f))
+            (categoryCompose D
+              {A = functorObject A}
+              {B = functorObject B}
+              {C = functorObject C′}
+              (functorArrow {A = B} {B = C′} g)
+              (functorArrow {A = A} {B = B} f))
     open Functor public
 
     identityFunctor : (C : Category) → Functor C C
     identityFunctor C = record
       { functorObject = λ A → A
-      ; functorArrow = λ f → f
-      ; functorArrow-respects = λ equality → equality
+      ; functorArrow = λ {A} {B} f → f
+      ; functorArrow-respects = λ {A} {B} equality → equality
       ; functorIdentity =
           λ {A} →
             categoryHomEq-refl C
