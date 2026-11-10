@@ -1235,14 +1235,11 @@ module Foundations where
         reflect-map :
           {A B : categoryObjects C}
           (f : categoryHom C A B) →
-          categoryHomEq D (functorArrow F (reflectArrow (functorArrow F f)))
-            (functorArrow F f)
+          categoryHomEq C (reflectArrow (functorArrow F f)) f
         map-reflect :
           {A B : categoryObjects C}
           (f : categoryHom D (functorObject F A) (functorObject F B)) →
-          categoryHomEq C
-            (reflectArrow (functorArrow F (reflectArrow f)))
-            (reflectArrow f)
+          categoryHomEq D (functorArrow F (reflectArrow f)) f
     open FullyFaithful public
 
     identityFullyFaithful :
