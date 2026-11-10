@@ -358,42 +358,286 @@ negativeObservation-run-adequate n consume = refl
 module Foundations where
 
   ----------------------------------------------------------------------
-  -- 1. Forster-style parametric enumerability.
+  -- 1. Forster parametric enumerability: analytic machine model and
+  --    explicit synthetic EA principle.
   --
-  -- ProgramCode is a typed semantic code tree carrying an enumerable
-  -- family and its numeric parameter.  It is deliberately NOT claimed to
-  -- be a Gödel-numbering into Nat.  A concrete effective coding layer may
-  -- replace it later without changing the evaluator equation.
+  -- ProgramCode is syntax for a concrete register machine, interpreted
+  -- step-by-step below. Analytic families carry actual programs and
+  -- soundness/completeness proofs. ParametricEA states the synthetic
+  -- parametric-universality principle as an explicit witness requirement;
+  -- no inhabitant and no numeric Gödel coding are assumed here.
   ----------------------------------------------------------------------
 
   module ForsterEnumerability where
 
+    --------------------------------------------------------------------
+    -- Analytic enumerability: a family is enumerated by one explicit
+    -- register-machine program, with the family index supplied as input.
+    -- The interpreter is step-indexed: one output event may occur per
+    -- machine step, and absence at a step is represented by nothing.
+    --------------------------------------------------------------------
+
+    data RegisterInstruction : Set where
+      assignRegister : Nat → Nat → Nat → RegisterInstruction
+      incrementRegister : Nat → Nat → RegisterInstruction
+      decrementOrJump : Nat → Nat → Nat → RegisterInstruction
+      outputRegister : Nat → Nat → RegisterInstruction
+      haltRegister : RegisterInstruction
+
+    RegisterProgram : Set
+    RegisterProgram = List RegisterInstruction
+
+    natEqual : Nat → Nat → Bool
+    natEqual zero zero = true
+    natEqual zero (suc n) = false
+    natEqual (suc m) zero = false
+    natEqual (suc m) (suc n) = natEqual m n
+
+    updateRegister :
+      (Nat → Nat) → Nat → Nat → Nat → Nat
+    updateRegister registers target value index with natEqual index target
+    ... | true = value
+    ... | false = registers index
+
+    record RegisterState : Set where
+      constructor registerState
+      field
+        machinePC : Nat
+        machineRegisters : Nat → Nat
+        machineHalted : Bool
+    open RegisterState public
+
+    record RegisterStep : Set where
+      constructor registerStep
+      field
+        nextState : RegisterState
+        emitted : Maybe Nat
+    open RegisterStep public
+
+    instructionAt : Nat → RegisterProgram → Maybe RegisterInstruction
+    instructionAt index [] = nothing
+    instructionAt zero (instruction ∷ instructions) = just instruction
+    instructionAt (suc index) (instruction ∷ instructions) =
+      instructionAt index instructions
+
+    executeInstruction :
+      RegisterInstruction → RegisterState → RegisterStep
+    executeInstruction (assignRegister register value target) state =
+      registerStep
+        (registerState target
+          (updateRegister (machineRegisters state) register value) false)
+        nothing
+    executeInstruction (incrementRegister register target) state =
+      registerStep
+        (registerState target
+          (updateRegister (machineRegisters state) register
+            (suc (machineRegisters state register))) false)
+        nothing
+    executeInstruction (decrementOrJump register whenZero whenPositive) state
+      with machineRegisters state register
+    ... | zero =
+      registerStep
+        (registerState whenZero (machineRegisters state) false)
+        nothing
+    ... | suc value =
+      registerStep
+        (registerState whenPositive
+          (updateRegister (machineRegisters state) register value) false)
+        nothing
+    executeInstruction (outputRegister register target) state =
+      registerStep
+        (registerState target (machineRegisters state) false)
+        (just (machineRegisters state register))
+    executeInstruction haltRegister state =
+      registerStep
+        (registerState (machinePC state) (machineRegisters state) true)
+        nothing
+
+    stepRegisterMachine :
+      RegisterProgram → RegisterState → RegisterStep
+    stepRegisterMachine program state with machineHalted state
+    ... | true = registerStep state nothing
+    ... | false with instructionAt (machinePC state) program
+    ...   | nothing =
+        registerStep
+          (registerState (machinePC state) (machineRegisters state) true)
+          nothing
+    ...   | just instruction = executeInstruction instruction state
+
+    runRegisterState :
+      Nat → RegisterProgram → RegisterState → RegisterState
+    runRegisterState zero program state = state
+    runRegisterState (suc fuel) program state =
+      runRegisterState fuel program
+        (nextState (stepRegisterMachine program state))
+
+    initialRegister : Nat → Nat → Nat
+    initialRegister input register with natEqual register zero
+    ... | true = input
+    ... | false = zero
+
+    initialRegisterState : Nat → RegisterState
+    initialRegisterState input =
+      registerState zero (initialRegister input) false
+
+    registerEnumeration :
+      RegisterProgram → Nat → Nat → Maybe Nat
+    registerEnumeration program input zero = nothing
+    registerEnumeration program input (suc stage) =
+      emitted
+        (stepRegisterMachine program
+          (runRegisterState stage program (initialRegisterState input)))
+
+    --------------------------------------------------------------------
+    -- Functional presentation used by Forster's synthetic axiom.
+    -- Predicates and enumerators are Set-valued because this module is
+    -- compiled with --no-prop; this is an explicit encoding boundary.
+    --------------------------------------------------------------------
+
     record ParametricallyEnumerable : Set₁ where
       field
         Predicate : Nat → Nat → Set
-        emit : Nat → Nat → Maybe Nat
-        emit-sound :
+        enumerate : Nat → Nat → Maybe Nat
+        enumerate-sound :
           (i stage value : Nat) →
-          emit i stage ≡ just value → Predicate i value
-        emit-complete :
+          enumerate i stage ≡ just value →
+          Predicate i value
+        enumerate-complete :
           (i value : Nat) →
           Predicate i value →
-          Σ Nat (λ stage → emit i stage ≡ just value)
-
+          Σ Nat (λ stage → enumerate i stage ≡ just value)
     open ParametricallyEnumerable public
 
-    data ProgramCode : Set₁ where
-      familyCode : ParametricallyEnumerable → Nat → ProgramCode
+    --------------------------------------------------------------------
+    -- Analytic submodel: a family whose enumeration is realized by an
+    -- explicit register program. The same program receives i in register
+    -- zero, so specialization is literal input passing, not a postulated
+    -- Gödel-numbering theorem.
+    --------------------------------------------------------------------
 
+    record AnalyticEnumerableFamily : Set₁ where
+      field
+        analyticPredicate : Nat → Nat → Set
+        analyticProgram : RegisterProgram
+        analytic-sound :
+          (i stage value : Nat) →
+          registerEnumeration analyticProgram i stage ≡ just value →
+          analyticPredicate i value
+        analytic-complete :
+          (i value : Nat) →
+          analyticPredicate i value →
+          Σ Nat
+            (λ stage →
+              registerEnumeration analyticProgram i stage ≡ just value)
+    open AnalyticEnumerableFamily public
+
+    analyticFamily : AnalyticEnumerableFamily → ParametricallyEnumerable
+    analyticFamily F = record
+      { Predicate = analyticPredicate F
+      ; enumerate = registerEnumeration (analyticProgram F)
+      ; enumerate-sound = analytic-sound F
+      ; enumerate-complete = analytic-complete F
+      }
+
+    record ProgramCode : Set where
+      constructor programCode
+      field
+        codeProgram : RegisterProgram
+        codeParameter : Nat
+    open ProgramCode public
+
+    -- A real universal evaluator for the stated register-machine language.
+    -- Code carries program syntax and a parameter, never an arbitrary
+    -- semantic function masquerading as a program.
     universalEval : ProgramCode → Nat → Maybe Nat
-    universalEval (familyCode F i) stage = emit F i stage
+    universalEval (programCode program parameter) stage =
+      registerEnumeration program parameter stage
 
-    forster-eval :
+    analyticCode : AnalyticEnumerableFamily → Nat → ProgramCode
+    analyticCode F i = programCode (analyticProgram F) i
+
+    analyticCode-correct :
+      (F : AnalyticEnumerableFamily) →
+      (i stage : Nat) →
+      universalEval (analyticCode F i) stage ≡
+      enumerate (analyticFamily F) i stage
+    analyticCode-correct F i stage = refl
+
+    --------------------------------------------------------------------
+    -- Forster's parametric enumerability principle (EA), represented as
+    -- an explicit assumption record rather than a global postulate.
+    -- It asks for a parametric code selector for every functionally given
+    -- enumerable family. An analytic model supplies such a selector only
+    -- for families accompanied by actual register programs.
+    --------------------------------------------------------------------
+
+    record ParametricEA : Set₁ where
+      field
+        -- One program is compiled for the whole parameterized family.
+        -- The parameter is supplied as register zero at runtime.
+        compileFamily :
+          ParametricallyEnumerable → RegisterProgram
+        compileFamily-correct :
+          (F : ParametricallyEnumerable) →
+          (i stage : Nat) →
+          universalEval (programCode (compileFamily F) i) stage ≡
+          enumerate F i stage
+    open ParametricEA public
+
+    -- The selector γ for a family F maps each parameter i to the
+    -- typed code for the one universal program specialized at i.
+    parametricCode :
+      (ea : ParametricEA) →
+      (F : ParametricallyEnumerable) →
+      Nat →
+      ProgramCode
+    parametricCode ea F i = programCode (compileFamily ea F) i
+
+    parametricCode-correct :
+      (ea : ParametricEA) →
       (F : ParametricallyEnumerable) →
       (i stage : Nat) →
-      universalEval (familyCode F i) stage ≡ emit F i stage
-    forster-eval F i stage = refl
+      universalEval (parametricCode ea F i) stage ≡
+      enumerate F i stage
+    parametricCode-correct ea F i stage =
+      compileFamily-correct ea F i stage
 
+    parametricEA-analytic-sound :
+      (ea : ParametricEA) →
+      (F : ParametricallyEnumerable) →
+      (i stage value : Nat) →
+      registerEnumeration (compileFamily ea F) i stage ≡ just value →
+      Predicate F i value
+    parametricEA-analytic-sound ea F i stage value computation =
+      enumerate-sound F i stage value
+        (trans (sym (compileFamily-correct ea F i stage)) computation)
+
+    parametricEA-analytic-complete :
+      (ea : ParametricEA) →
+      (F : ParametricallyEnumerable) →
+      (i value : Nat) →
+      Predicate F i value →
+      Σ Nat
+        (λ stage →
+          registerEnumeration (compileFamily ea F) i stage ≡ just value)
+    parametricEA-analytic-complete ea F i value witness
+      with enumerate-complete F i value witness
+    ... | stage , computation =
+      stage , trans (compileFamily-correct ea F i stage) computation
+
+    -- A witness of synthetic EA uniformly realizes every family in the
+    -- analytic register-machine model, with correctness transported from
+    -- the functional enumerator through the interpreter equation.
+    parametricEA-analytic :
+      (ea : ParametricEA) →
+      ParametricallyEnumerable →
+      AnalyticEnumerableFamily
+    parametricEA-analytic ea F = record
+      { analyticPredicate = Predicate F
+      ; analyticProgram = compileFamily ea F
+      ; analytic-sound = parametricEA-analytic-sound ea F
+      ; analytic-complete = parametricEA-analytic-complete ea F
+      }
   ----------------------------------------------------------------------
   -- 2. Markov principle plus deterministic least-witness minimization.
   --
@@ -522,13 +766,21 @@ module Foundations where
           (λ i → P) (λ i → double-negated) zero)
 
   ----------------------------------------------------------------------
-  -- 3. Mac Lane monoidal coherence as canonical object normalization.
-  --
-  -- Every parenthesized tensor tree flattens to the same ordered list of
-  -- atoms. The three tensorNF equations have disjoint constructor patterns.
+  -- 3. Mac Lane coherence via the thin free monoidal category on
+  --    Nat-labelled generators and a computational normal form.
   ----------------------------------------------------------------------
 
   module MacLaneCoherence where
+
+    --------------------------------------------------------------------
+    -- Thin free monoidal category on Nat-labelled generators.
+    --
+    -- Objects are parenthesized tensor expressions. A morphism is an
+    -- equality between their ordered atom normal forms. Normalization is
+    -- executable, hom existence is decidable, and UIP makes every hom-set
+    -- a proposition. Associators/unitors and all their coherence diagrams
+    -- are represented by these canonical normal-form paths.
+    --------------------------------------------------------------------
 
     data TensorExpr : Set where
       atom : Nat → TensorExpr
@@ -539,13 +791,295 @@ module Foundations where
     [] ++ ys = ys
     (x ∷ xs) ++ ys = x ∷ (xs ++ ys)
 
-    -- Flatten every tensor tree into the unique ordered list of atoms.
-    -- This is a terminating normalizer whose equations implement unit and
-    -- associativity coherence for the free strict monoidal object syntax.
     tensorNF : TensorExpr → List Nat
     tensorNF (atom n) = n ∷ []
     tensorNF unitₑ = []
     tensorNF (tensor A B) = tensorNF A ++ tensorNF B
+
+    tensorLabelEq : Nat → Nat → Bool
+    tensorLabelEq zero zero = true
+    tensorLabelEq zero (suc n) = false
+    tensorLabelEq (suc m) zero = false
+    tensorLabelEq (suc m) (suc n) = tensorLabelEq m n
+
+    andBool : Bool → Bool → Bool
+    andBool true x = x
+    andBool false x = false
+
+    listEq : List Nat → List Nat → Bool
+    listEq [] [] = true
+    listEq [] (y ∷ ys) = false
+    listEq (x ∷ xs) [] = false
+    listEq (x ∷ xs) (y ∷ ys) =
+      andBool (tensorLabelEq x y) (listEq xs ys)
+
+    falseNotTrue : false ≡ true → ⊥
+    falseNotTrue ()
+
+    exfalso : {A : Set} → ⊥ → A
+    exfalso ()
+
+    tensorLabelEq-refl : (n : Nat) → tensorLabelEq n n ≡ true
+    tensorLabelEq-refl zero = refl
+    tensorLabelEq-refl (suc n) = tensorLabelEq-refl n
+
+    listEq-refl : (xs : List Nat) → listEq xs xs ≡ true
+    listEq-refl [] = refl
+    listEq-refl (x ∷ xs)
+      rewrite tensorLabelEq-refl x | listEq-refl xs = refl
+
+    tensorLabelEq-sound :
+      {m n : Nat} → tensorLabelEq m n ≡ true → m ≡ n
+    tensorLabelEq-sound {zero} {zero} proof = refl
+    tensorLabelEq-sound {zero} {suc n} ()
+    tensorLabelEq-sound {suc m} {zero} ()
+    tensorLabelEq-sound {suc m} {suc n} proof =
+      cong suc (tensorLabelEq-sound proof)
+
+    listEq-sound :
+      {xs ys : List Nat} →
+      listEq xs ys ≡ true →
+      xs ≡ ys
+    listEq-sound {[]} {[]} proof = refl
+    listEq-sound {[]} {y ∷ ys} ()
+    listEq-sound {x ∷ xs} {[]} ()
+    listEq-sound {x ∷ xs} {y ∷ ys} proof
+      with tensorLabelEq x y in headEquality
+         | listEq xs ys in tailEquality
+    ... | true | true =
+      cong₂ _∷_
+        (tensorLabelEq-sound headEquality)
+        (listEq-sound tailEquality)
+    ... | true | false = exfalso (falseNotTrue proof)
+    ... | false | tail = exfalso (falseNotTrue proof)
+
+    listEq-complete :
+      {xs ys : List Nat} →
+      xs ≡ ys →
+      listEq xs ys ≡ true
+    listEq-complete {xs} refl = listEq-refl xs
+
+    TensorHom : TensorExpr → TensorExpr → Set
+    TensorHom A B = tensorNF A ≡ tensorNF B
+
+    -- A terminating decision procedure for the hom relation.  The
+    -- negative branch contains a proof that distinct normal forms cannot
+    -- be joined by a structural morphism.
+    data TensorHomDecision (A B : TensorExpr) : Set where
+      homExists : TensorHom A B → TensorHomDecision A B
+      homAbsent : (TensorHom A B → ⊥) → TensorHomDecision A B
+
+    decideTensorHom : (A B : TensorExpr) → TensorHomDecision A B
+    decideTensorHom A B
+      with listEq (tensorNF A) (tensorNF B) in equality
+    ... | true = homExists (listEq-sound equality)
+    ... | false =
+      homAbsent
+        (λ path → falseNotTrue
+          (trans (sym equality) (listEq-complete path)))
+
+    homToEquality :
+      {A B : TensorExpr} →
+      TensorHom A B →
+      tensorNF A ≡ tensorNF B
+    homToEquality equality = equality
+
+    homFromEquality :
+      {A B : TensorExpr} →
+      tensorNF A ≡ tensorNF B →
+      TensorHom A B
+    homFromEquality equality = equality
+
+    tensorId : (A : TensorExpr) → TensorHom A A
+    tensorId A = refl
+
+    tensorCompose :
+      {A B C : TensorExpr} →
+      TensorHom B C →
+      TensorHom A B →
+      TensorHom A C
+    tensorCompose second first = trans first second
+
+    tensorMap :
+      {A A′ B B′ : TensorExpr} →
+      TensorHom A A′ →
+      TensorHom B B′ →
+      TensorHom (tensor A B) (tensor A′ B′)
+    tensorMap first second = cong₂ _++_ first second
+
+    trans-assoc :
+      {A : Set} {a b c d : A}
+      (first : a ≡ b) (second : b ≡ c) (third : c ≡ d) →
+      trans (trans first second) third ≡
+      trans first (trans second third)
+    trans-assoc refl refl refl = refl
+
+    trans-right-unit :
+      {X : Set} {x y : X} (path : x ≡ y) →
+      trans path refl ≡ path
+    trans-right-unit refl = refl
+
+    tensorPathUIP :
+      {X : Set} (x y : X) (p q : x ≡ y) →
+      p ≡ q
+    tensorPathUIP x .x refl refl = refl
+
+    tensorHom-proposition :
+      {A B : TensorExpr} →
+      (f g : TensorHom A B) →
+      f ≡ g
+    tensorHom-proposition {A} {B} f g =
+      tensorPathUIP (tensorNF A) (tensorNF B) f g
+
+    tensorIdentity-left :
+      {A B : TensorExpr} (f : TensorHom A B) →
+      tensorCompose {A = A} {B = A} {C = B} f (tensorId A) ≡ f
+    tensorIdentity-left f = refl
+
+    tensorIdentity-right :
+      {A B : TensorExpr} (f : TensorHom A B) →
+      tensorCompose {A = A} {B = B} {C = B} (tensorId B) f ≡ f
+    tensorIdentity-right f = trans-right-unit {X = List Nat} f
+
+    tensorAssociativity :
+      {A B C D : TensorExpr}
+      (f : TensorHom C D)
+      (g : TensorHom B C)
+      (h : TensorHom A B) →
+      tensorCompose {A = A} {B = C} {C = D} f
+        (tensorCompose {A = A} {B = B} {C = C} g h) ≡
+      tensorCompose {A = A} {B = B} {C = D}
+        (tensorCompose {A = B} {B = C} {C = D} f g) h
+    tensorAssociativity {A} {B} {C} {D} f g h =
+      trans-assoc
+        {A = List Nat}
+        {a = tensorNF A}
+        {b = tensorNF B}
+        {c = tensorNF C}
+        {d = tensorNF D}
+        h g f
+
+    tensorMap-identity :
+      (A B : TensorExpr) →
+      tensorMap
+        {A = A} {A′ = A} {B = B} {B′ = B}
+        (tensorId A) (tensorId B) ≡
+      tensorId (tensor A B)
+    tensorMap-identity A B = refl
+
+    tensorMap-composition :
+      {A A′ A″ B B′ B″ : TensorExpr}
+      (f₂ : TensorHom A′ A″) (f₁ : TensorHom A A′)
+      (g₂ : TensorHom B′ B″) (g₁ : TensorHom B B′) →
+      tensorMap
+        {A = A} {A′ = A″} {B = B} {B′ = B″}
+        (tensorCompose {A = A} {B = A′} {C = A″} f₂ f₁)
+        (tensorCompose {A = B} {B = B′} {C = B″} g₂ g₁) ≡
+      tensorCompose
+        {A = tensor A B}
+        {B = tensor A′ B′}
+        {C = tensor A″ B″}
+        (tensorMap
+          {A = A′} {A′ = A″} {B = B′} {B′ = B″}
+          f₂ g₂)
+        (tensorMap
+          {A = A} {A′ = A′} {B = B} {B′ = B′}
+          f₁ g₁)
+    tensorMap-composition
+      {A} {A′} {A″} {B} {B′} {B″} f₂ f₁ g₂ g₁ =
+      tensorHom-proposition
+        {A = tensor A B}
+        {B = tensor A″ B″}
+        (tensorMap
+          {A = A} {A′ = A″} {B = B} {B′ = B″}
+          (tensorCompose {A = A} {B = A′} {C = A″} f₂ f₁)
+          (tensorCompose {A = B} {B = B′} {C = B″} g₂ g₁))
+        (tensorCompose
+          {A = tensor A B}
+          {B = tensor A′ B′}
+          {C = tensor A″ B″}
+          (tensorMap
+            {A = A′} {A′ = A″} {B = B′} {B′ = B″}
+            f₂ g₂)
+          (tensorMap
+            {A = A} {A′ = A′} {B = B} {B′ = B′}
+            f₁ g₁))
+
+    append-assoc :
+      (xs ys zs : List Nat) →
+      (xs ++ ys) ++ zs ≡ xs ++ (ys ++ zs)
+    append-assoc [] ys zs = refl
+    append-assoc (x ∷ xs) ys zs =
+      cong (x ∷_) (append-assoc xs ys zs)
+
+    append-left-unit : (xs : List Nat) → [] ++ xs ≡ xs
+    append-left-unit xs = refl
+
+    append-right-unit : (xs : List Nat) → xs ++ [] ≡ xs
+    append-right-unit [] = refl
+    append-right-unit (x ∷ xs) =
+      cong (x ∷_) (append-right-unit xs)
+
+    associator :
+      (A B C : TensorExpr) →
+      TensorHom (tensor (tensor A B) C) (tensor A (tensor B C))
+    associator A B C =
+      append-assoc (tensorNF A) (tensorNF B) (tensorNF C)
+
+    associatorInverse :
+      (A B C : TensorExpr) →
+      TensorHom (tensor A (tensor B C)) (tensor (tensor A B) C)
+    associatorInverse A B C =
+      sym (append-assoc (tensorNF A) (tensorNF B) (tensorNF C))
+
+    leftUnitor :
+      (A : TensorExpr) → TensorHom (tensor unitₑ A) A
+    leftUnitor A = append-left-unit (tensorNF A)
+
+    leftUnitorInverse :
+      (A : TensorExpr) → TensorHom A (tensor unitₑ A)
+    leftUnitorInverse A = sym (append-left-unit (tensorNF A))
+
+    rightUnitor :
+      (A : TensorExpr) → TensorHom (tensor A unitₑ) A
+    rightUnitor A = append-right-unit (tensorNF A)
+
+    rightUnitorInverse :
+      (A : TensorExpr) → TensorHom A (tensor A unitₑ)
+    rightUnitorInverse A = sym (append-right-unit (tensorNF A))
+
+    fromAtoms : List Nat → TensorExpr
+    fromAtoms [] = unitₑ
+    fromAtoms (x ∷ xs) = tensor (atom x) (fromAtoms xs)
+
+    tensorNF-fromAtoms : (xs : List Nat) → tensorNF (fromAtoms xs) ≡ xs
+    tensorNF-fromAtoms [] = refl
+    tensorNF-fromAtoms (x ∷ xs) =
+      cong (x ∷_) (tensorNF-fromAtoms xs)
+
+    normalForm : TensorExpr → TensorExpr
+    normalForm A = fromAtoms (tensorNF A)
+
+    normalizeForward :
+      (A : TensorExpr) →
+      TensorHom A (normalForm A)
+    normalizeForward A =
+      sym (tensorNF-fromAtoms (tensorNF A))
+
+    normalizeBackward :
+      (A : TensorExpr) →
+      TensorHom (normalForm A) A
+    normalizeBackward A =
+      tensorNF-fromAtoms (tensorNF A)
+
+    -- Coherence: every formal composite of associators, unitors, identities
+    -- and tensor maps with common endpoints is equal.
+    macLaneCoherence :
+      {A B : TensorExpr} →
+      (f g : TensorHom A B) →
+      f ≡ g
+    macLaneCoherence {A} {B} f g =
+      tensorHom-proposition {A = A} {B = B} f g
 
     tensor-atom : (n : Nat) → tensorNF (atom n) ≡ n ∷ []
     tensor-atom n = refl
@@ -556,27 +1090,541 @@ module Foundations where
     tensor-product : (A B : TensorExpr) →
       tensorNF (tensor A B) ≡ tensorNF A ++ tensorNF B
     tensor-product A B = refl
-
-  ----------------------------------------------------------------------
-  -- 4. Abstract modality compatibility fragment.
-  --
-  -- These are the original object-level rewrite commitments.  They specify
-  -- only the equations registered below; no topos, sheaf site, or additional
-  -- continuity structure is assumed by this finite physical development.
-  ----------------------------------------------------------------------
-
   module CohesiveRetractions where
 
-    -- Abstract modalities retained by foundational package four.  Their
-    -- equations are exactly the original rewrite commitments.
-    postulate
-      Disc Π Γ coDisc : Set → Set
-      gammaDiscIso : (X : Set) → Iso (Γ (Disc X)) X
-      piDiscIso : (X : Set) → Iso (Π (Disc X)) X
-      gammaCodiscIso : (X : Set) → Iso (Γ (coDisc X)) X
+    --------------------------------------------------------------------
+    -- The Lawvere-Schreiber cohesive core is a quadruple of functors
+    --
+    --   Π : H → G       Disc : G → H
+    --   Γ : H → G       coDisc : G → H
+    --
+    -- with Π ⊣ Disc ⊣ Γ ⊣ coDisc, Disc and coDisc fully faithful,
+    -- and Π preserving finite products.
+    --
+    -- H and G are distinct category parameters.  The record below does
+    -- not pretend that an arbitrary category is a topos: it formalizes
+    -- the adjoint-quadruple axioms and their categorical laws.  An
+    -- executable identity-Set instance is supplied as a degenerate model.
+    --------------------------------------------------------------------
 
-    -- A small expression language makes the reduction patterns legal Agda
-    -- rewrite patterns.  Modality applications are represented by constructors.
+    record Category : Set₁ where
+      field
+        categoryObjects : Set
+        categoryHom :
+          categoryObjects → categoryObjects → Set
+        categoryHomEq :
+          {A B : categoryObjects} →
+          categoryHom A B → categoryHom A B → Set
+        categoryHomEq-refl :
+          {A B : categoryObjects} →
+          (f : categoryHom A B) →
+          categoryHomEq f f
+        categoryHomEq-sym :
+          {A B : categoryObjects} {f g : categoryHom A B} →
+          categoryHomEq f g → categoryHomEq g f
+        categoryHomEq-trans :
+          {A B : categoryObjects} {f g h : categoryHom A B} →
+          categoryHomEq f g → categoryHomEq g h → categoryHomEq f h
+        categoryId :
+          {A : categoryObjects} → categoryHom A A
+        categoryCompose :
+          {A B C : categoryObjects} →
+          categoryHom B C → categoryHom A B → categoryHom A C
+        categoryCompose-respects :
+          {A B C : categoryObjects}
+          {g g′ : categoryHom B C}
+          {f f′ : categoryHom A B} →
+          categoryHomEq g g′ →
+          categoryHomEq f f′ →
+          categoryHomEq
+            (categoryCompose g f)
+            (categoryCompose g′ f′)
+        categoryCompose-assoc :
+          {A B C D : categoryObjects}
+          (h : categoryHom C D)
+          (g : categoryHom B C)
+          (f : categoryHom A B) →
+          categoryHomEq
+            (categoryCompose h (categoryCompose g f))
+            (categoryCompose (categoryCompose h g) f)
+        categoryCompose-id-left :
+          {A B : categoryObjects} →
+          (f : categoryHom A B) →
+          categoryHomEq (categoryCompose categoryId f) f
+        categoryCompose-id-right :
+          {A B : categoryObjects} →
+          (f : categoryHom A B) →
+          categoryHomEq (categoryCompose f categoryId) f
+    open Category public
+
+    --------------------------------------------------------------------
+    -- A functor preserves identities and composition up to the chosen
+    -- equality on hom-sets.  Hom equality is explicit, so the Set model
+    -- uses pointwise equality and requires no function-extensionality axiom.
+    --------------------------------------------------------------------
+
+    -- Spell out object endpoints in the laws: categoryHom is a record
+    -- family, so Agda cannot recover its indices by inverting categoryId
+    -- or categoryCompose during elaboration.
+    record Functor (C D : Category) : Set₁ where
+      field
+        functorObject : categoryObjects C → categoryObjects D
+        functorArrow :
+          {A B : categoryObjects C} →
+          categoryHom C A B →
+          categoryHom D (functorObject A) (functorObject B)
+        functorArrow-respects :
+          {A B : categoryObjects C}
+          {f g : categoryHom C A B} →
+          categoryHomEq C f g →
+          categoryHomEq D (functorArrow f) (functorArrow g)
+        functorIdentity :
+          {A : categoryObjects C} →
+          categoryHomEq D
+            {A = functorObject A}
+            {B = functorObject A}
+            (functorArrow {A = A} {B = A} (categoryId C {A = A}))
+            (categoryId D {A = functorObject A})
+        functorComposition :
+          {A B C′ : categoryObjects C}
+          (g : categoryHom C B C′)
+          (f : categoryHom C A B) →
+          categoryHomEq D
+            {A = functorObject A}
+            {B = functorObject C′}
+            (functorArrow {A = A} {B = C′}
+              (categoryCompose C {A = A} {B = B} {C = C′} g f))
+            (categoryCompose D
+              {A = functorObject A}
+              {B = functorObject B}
+              {C = functorObject C′}
+              (functorArrow {A = B} {B = C′} g)
+              (functorArrow {A = A} {B = B} f))
+    open Functor public
+
+    identityFunctor : (C : Category) → Functor C C
+    identityFunctor C = record
+      { functorObject = λ A → A
+      ; functorArrow = λ {A} {B} f → f
+      ; functorArrow-respects = λ {A} {B} equality → equality
+      ; functorIdentity =
+          λ {A} →
+            categoryHomEq-refl C
+              {A = A} {B = A}
+              (categoryId C {A = A})
+      ; functorComposition =
+          λ {A} {B} {C′} g f →
+            categoryHomEq-refl C
+              {A = A} {B = C′}
+              (categoryCompose C
+                {A = A} {B = B} {C = C′} g f)
+      }
+
+    --------------------------------------------------------------------
+    -- An adjunction is a natural isomorphism of hom-functors, represented
+    -- by transpose/untranspose and both inverse and naturality laws.
+    --------------------------------------------------------------------
+
+    record Adjunction
+      {C D : Category}
+      (F : Functor C D)
+      (G : Functor D C) : Set₁ where
+      field
+        transpose :
+          {A : categoryObjects C} {B : categoryObjects D} →
+          categoryHom D (functorObject F A) B →
+          categoryHom C A (functorObject G B)
+        untranspose :
+          {A : categoryObjects C} {B : categoryObjects D} →
+          categoryHom C A (functorObject G B) →
+          categoryHom D (functorObject F A) B
+        transpose-respects :
+          {A : categoryObjects C} {B : categoryObjects D}
+          {f g : categoryHom D (functorObject F A) B} →
+          categoryHomEq D f g →
+          categoryHomEq C (transpose f) (transpose g)
+        untranspose-respects :
+          {A : categoryObjects C} {B : categoryObjects D}
+          {f g : categoryHom C A (functorObject G B)} →
+          categoryHomEq C f g →
+          categoryHomEq D (untranspose f) (untranspose g)
+        transpose-untranspose :
+          {A : categoryObjects C} {B : categoryObjects D}
+          (f : categoryHom C A (functorObject G B)) →
+          categoryHomEq C (transpose (untranspose f)) f
+        untranspose-transpose :
+          {A : categoryObjects C} {B : categoryObjects D}
+          (f : categoryHom D (functorObject F A) B) →
+          categoryHomEq D (untranspose (transpose f)) f
+        transpose-natural-source :
+          {A A′ : categoryObjects C} {B : categoryObjects D}
+          (f : categoryHom C A′ A)
+          (g : categoryHom D (functorObject F A) B) →
+          categoryHomEq C
+            (transpose (categoryCompose D g (functorArrow F f)))
+            (categoryCompose C (transpose g) f)
+        transpose-natural-target :
+          {A : categoryObjects C} {B B′ : categoryObjects D}
+          (g : categoryHom D B B′)
+          (f : categoryHom D (functorObject F A) B) →
+          categoryHomEq C
+            (transpose (categoryCompose D g f))
+            (categoryCompose C (functorArrow G g) (transpose f))
+    open Adjunction public
+
+    identityAdjunction :
+      (C : Category) →
+      Adjunction (identityFunctor C) (identityFunctor C)
+    identityAdjunction C = record
+      { transpose = λ f → f
+      ; untranspose = λ f → f
+      ; transpose-respects = λ equality → equality
+      ; untranspose-respects = λ equality → equality
+      ; transpose-untranspose =
+          λ f → categoryHomEq-refl C f
+      ; untranspose-transpose =
+          λ f → categoryHomEq-refl C f
+      ; transpose-natural-source =
+          λ f g → categoryHomEq-refl C (categoryCompose C g f)
+      ; transpose-natural-target =
+          λ g f → categoryHomEq-refl C (categoryCompose C g f)
+      }
+
+    --------------------------------------------------------------------
+    -- Full faithfulness is the hom-set map being an isomorphism.
+    --------------------------------------------------------------------
+
+    record FullyFaithful
+      {C D : Category}
+      (F : Functor C D) : Set₁ where
+      field
+        reflectArrow :
+          {A B : categoryObjects C} →
+          categoryHom D (functorObject F A) (functorObject F B) →
+          categoryHom C A B
+        reflectArrow-respects :
+          {A B : categoryObjects C}
+          {f g : categoryHom D (functorObject F A) (functorObject F B)} →
+          categoryHomEq D f g →
+          categoryHomEq C (reflectArrow f) (reflectArrow g)
+        reflect-map :
+          {A B : categoryObjects C}
+          (f : categoryHom C A B) →
+          categoryHomEq C (reflectArrow (functorArrow F f)) f
+        map-reflect :
+          {A B : categoryObjects C}
+          (f : categoryHom D (functorObject F A) (functorObject F B)) →
+          categoryHomEq D (functorArrow F (reflectArrow f)) f
+    open FullyFaithful public
+
+    identityFullyFaithful :
+      (C : Category) →
+      FullyFaithful (identityFunctor C)
+    identityFullyFaithful C = record
+      { reflectArrow = λ f → f
+      ; reflectArrow-respects = λ equality → equality
+      ; reflect-map = λ f → categoryHomEq-refl C f
+      ; map-reflect = λ f → categoryHomEq-refl C f
+      }
+
+    --------------------------------------------------------------------
+    -- Finite products are expressed categorically by a terminal object
+    -- and binary products with the universal pairing law.
+    --------------------------------------------------------------------
+
+    record TerminalObject (C : Category) : Set₁ where
+      field
+        terminalObject : categoryObjects C
+        terminalArrow :
+          {A : categoryObjects C} →
+          categoryHom C A terminalObject
+        terminalArrow-unique :
+          {A : categoryObjects C}
+          (f : categoryHom C A terminalObject) →
+          categoryHomEq C f terminalArrow
+    open TerminalObject public
+
+    record BinaryProduct
+      (C : Category)
+      (A B : categoryObjects C) : Set₁ where
+      field
+        binaryProductObject : categoryObjects C
+        binaryProductLeft : categoryHom C binaryProductObject A
+        binaryProductRight : categoryHom C binaryProductObject B
+        binaryProductPair :
+          {X : categoryObjects C} →
+          categoryHom C X A →
+          categoryHom C X B →
+          categoryHom C X binaryProductObject
+        binaryProductPair-respects :
+          {X : categoryObjects C}
+          {f f′ : categoryHom C X A}
+          {g g′ : categoryHom C X B} →
+          categoryHomEq C f f′ →
+          categoryHomEq C g g′ →
+          categoryHomEq C
+            (binaryProductPair f g)
+            (binaryProductPair f′ g′)
+        binaryProductPair-left :
+          {X : categoryObjects C}
+          (f : categoryHom C X A)
+          (g : categoryHom C X B) →
+          categoryHomEq C
+            (categoryCompose C binaryProductLeft (binaryProductPair f g))
+            f
+        binaryProductPair-right :
+          {X : categoryObjects C}
+          (f : categoryHom C X A)
+          (g : categoryHom C X B) →
+          categoryHomEq C
+            (categoryCompose C binaryProductRight (binaryProductPair f g))
+            g
+        binaryProduct-eta :
+          {X : categoryObjects C}
+          (h : categoryHom C X binaryProductObject) →
+          categoryHomEq C
+            (binaryProductPair
+              (categoryCompose C binaryProductLeft h)
+              (categoryCompose C binaryProductRight h))
+            h
+    open BinaryProduct public
+
+    record FiniteProducts (C : Category) : Set₁ where
+      field
+        finiteTerminal : TerminalObject C
+        finiteBinaryProduct :
+          (A B : categoryObjects C) → BinaryProduct C A B
+    open FiniteProducts public
+
+    --------------------------------------------------------------------
+    -- Π preserves finite products when its canonical comparison maps
+    -- (and the terminal comparison) are isomorphisms.
+    --------------------------------------------------------------------
+
+    record PreservesFiniteProducts
+      {C D : Category}
+      (F : Functor C D)
+      (productsC : FiniteProducts C)
+      (productsD : FiniteProducts D) : Set₁ where
+      field
+        terminalComparison :
+          categoryHom D
+            (functorObject F (terminalObject (finiteTerminal productsC)))
+            (terminalObject (finiteTerminal productsD))
+        terminalComparisonInverse :
+          categoryHom D
+            (terminalObject (finiteTerminal productsD))
+            (functorObject F (terminalObject (finiteTerminal productsC)))
+        terminalComparison-left-inverse :
+          categoryHomEq D
+            (categoryCompose D terminalComparisonInverse terminalComparison)
+            (categoryId D)
+        terminalComparison-right-inverse :
+          categoryHomEq D
+            (categoryCompose D terminalComparison terminalComparisonInverse)
+            (categoryId D)
+
+        productComparison :
+          {A B : categoryObjects C} →
+          categoryHom D
+            (functorObject F
+              (binaryProductObject (finiteBinaryProduct productsC A B)))
+            (binaryProductObject (finiteBinaryProduct productsD
+              (functorObject F A) (functorObject F B)))
+        productComparisonInverse :
+          {A B : categoryObjects C} →
+          categoryHom D
+            (binaryProductObject (finiteBinaryProduct productsD
+              (functorObject F A) (functorObject F B)))
+            (functorObject F
+              (binaryProductObject (finiteBinaryProduct productsC A B)))
+        productComparison-left :
+          {A B : categoryObjects C} →
+          categoryHomEq D
+            (categoryCompose D
+              (binaryProductLeft (finiteBinaryProduct productsD
+                (functorObject F A) (functorObject F B)))
+              (productComparison {A} {B}))
+            (functorArrow F (binaryProductLeft (finiteBinaryProduct productsC A B)))
+        productComparison-right :
+          {A B : categoryObjects C} →
+          categoryHomEq D
+            (categoryCompose D
+              (binaryProductRight (finiteBinaryProduct productsD
+                (functorObject F A) (functorObject F B)))
+              (productComparison {A} {B}))
+            (functorArrow F (binaryProductRight (finiteBinaryProduct productsC A B)))
+        productComparison-left-inverse :
+          {A B : categoryObjects C} →
+          categoryHomEq D
+            (categoryCompose D
+              (productComparisonInverse {A} {B})
+              (productComparison {A} {B}))
+            (categoryId D)
+        productComparison-right-inverse :
+          {A B : categoryObjects C} →
+          categoryHomEq D
+            (categoryCompose D
+              (productComparison {A} {B})
+              (productComparisonInverse {A} {B}))
+            (categoryId D)
+    open PreservesFiniteProducts public
+
+    --------------------------------------------------------------------
+    -- Abstract cohesive adjunction core. H is the cohesive category and
+    -- G is the category of discrete homotopy types. A full cohesive topos
+    -- additionally supplies topos structure on H and the intended
+    -- ∞-groupoid structure on G; those structures are intentionally not
+    -- postulated or conflated with this adjoint-quadruple interface.
+    --------------------------------------------------------------------
+
+    record CohesiveAdjointQuadruple
+      (H G : Category)
+      (productsH : FiniteProducts H)
+      (productsG : FiniteProducts G) : Set₁ where
+      field
+        cohesivePi : Functor H G
+        cohesiveDisc : Functor G H
+        cohesiveGamma : Functor H G
+        cohesiveCodisc : Functor G H
+        pi-adjoint-disc :
+          Adjunction cohesivePi cohesiveDisc
+        disc-adjoint-gamma :
+          Adjunction cohesiveDisc cohesiveGamma
+        gamma-adjoint-codisc :
+          Adjunction cohesiveGamma cohesiveCodisc
+        disc-fully-faithful :
+          FullyFaithful cohesiveDisc
+        codisc-fully-faithful :
+          FullyFaithful cohesiveCodisc
+        pi-preserves-finite-products :
+          PreservesFiniteProducts cohesivePi productsH productsG
+    open CohesiveAdjointQuadruple public
+
+    --------------------------------------------------------------------
+    -- Set with its ordinary terminal object and binary products.
+    --------------------------------------------------------------------
+
+    setCategory : Category
+    setCategory = record
+      { categoryObjects = Set
+      ; categoryHom = λ A B → A → B
+      ; categoryHomEq = λ f g → (x : _) → f x ≡ g x
+      ; categoryHomEq-refl = λ f x → refl
+      ; categoryHomEq-sym = λ proof x → sym (proof x)
+      ; categoryHomEq-trans = λ first second x → trans (first x) (second x)
+      ; categoryId = idᶠ
+      ; categoryCompose = _∘ᶠ_
+      ; categoryCompose-respects =
+          λ {g = g₁} {g′ = g₂} {f = f₁} {f′ = f₂} eqG eqF x →
+            trans (cong g₁ (eqF x)) (eqG (f₂ x))
+      ; categoryCompose-assoc = λ h g f x → refl
+      ; categoryCompose-id-left = λ f x → refl
+      ; categoryCompose-id-right = λ f x → refl
+      }
+
+    setTerminalMap : {A : Set} → A → ⊤
+    setTerminalMap value = tt
+
+    setTerminalMap-unique :
+      {A : Set} (f : A → ⊤) (x : A) → f x ≡ tt
+    setTerminalMap-unique f x with f x
+    ... | tt = refl
+
+    setTerminalObject : TerminalObject setCategory
+    setTerminalObject = record
+      { terminalObject = ⊤
+      ; terminalArrow = setTerminalMap
+      ; terminalArrow-unique = λ f x → setTerminalMap-unique f x
+      }
+
+    setProductEta :
+      {A B : Set} (value : A × B) →
+      pair (fst value) (snd value) ≡ value
+    setProductEta (pair first second) = refl
+
+    setBinaryProduct :
+      (A B : Set) → BinaryProduct setCategory A B
+    setBinaryProduct A B = record
+      { binaryProductObject = A × B
+      ; binaryProductLeft = fst
+      ; binaryProductRight = snd
+      ; binaryProductPair = λ f g x → pair (f x) (g x)
+      ; binaryProductPair-respects =
+          λ first second x → cong₂ pair (first x) (second x)
+      ; binaryProductPair-left = λ f g x → refl
+      ; binaryProductPair-right = λ f g x → refl
+      ; binaryProduct-eta = λ h x → setProductEta (h x)
+      }
+
+    setFiniteProducts : FiniteProducts setCategory
+    setFiniteProducts = record
+      { finiteTerminal = setTerminalObject
+      ; finiteBinaryProduct = setBinaryProduct
+      }
+
+    --------------------------------------------------------------------
+    -- The identity functor preserves finite products by the canonical
+    -- comparison A×B → A×B, whose inverse is the identity.
+    --------------------------------------------------------------------
+
+    setIdentityPreservesFiniteProducts :
+      PreservesFiniteProducts
+        (identityFunctor setCategory)
+        setFiniteProducts
+        setFiniteProducts
+    setIdentityPreservesFiniteProducts = record
+      { terminalComparison = setTerminalMap
+      ; terminalComparisonInverse = setTerminalMap
+      ; terminalComparison-left-inverse = λ { tt → refl }
+      ; terminalComparison-right-inverse = λ { tt → refl }
+      ; productComparison = λ value → pair (fst value) (snd value)
+      ; productComparisonInverse = λ value → value
+      ; productComparison-left = λ value → refl
+      ; productComparison-right = λ value → refl
+      ; productComparison-left-inverse = λ value → setProductEta value
+      ; productComparison-right-inverse = λ value → setProductEta value
+      }
+
+    identitySetCohesion :
+      CohesiveAdjointQuadruple
+        setCategory setCategory setFiniteProducts setFiniteProducts
+    identitySetCohesion = record
+      { cohesivePi = identityFunctor setCategory
+      ; cohesiveDisc = identityFunctor setCategory
+      ; cohesiveGamma = identityFunctor setCategory
+      ; cohesiveCodisc = identityFunctor setCategory
+      ; pi-adjoint-disc = identityAdjunction setCategory
+      ; disc-adjoint-gamma = identityAdjunction setCategory
+      ; gamma-adjoint-codisc = identityAdjunction setCategory
+      ; disc-fully-faithful = identityFullyFaithful setCategory
+      ; codisc-fully-faithful = identityFullyFaithful setCategory
+      ; pi-preserves-finite-products = setIdentityPreservesFiniteProducts
+      }
+
+    Disc : Set → Set
+    Disc X = functorObject
+      (cohesiveDisc identitySetCohesion) X
+
+    Π : Set → Set
+    Π X = functorObject (cohesivePi identitySetCohesion) X
+
+    Γ : Set → Set
+    Γ X = functorObject (cohesiveGamma identitySetCohesion) X
+
+    coDisc : Set → Set
+    coDisc X = functorObject
+      (cohesiveCodisc identitySetCohesion) X
+
+    gammaDiscIso : (X : Set) → Iso (Γ (Disc X)) X
+    gammaDiscIso X = iso idᶠ idᶠ (λ x → refl) (λ x → refl)
+
+    piDiscIso : (X : Set) → Iso (Π (Disc X)) X
+    piDiscIso X = iso idᶠ idᶠ (λ x → refl) (λ x → refl)
+
+    gammaCodiscIso : (X : Set) → Iso (Γ (coDisc X)) X
+    gammaCodiscIso X = iso idᶠ idᶠ (λ x → refl) (λ x → refl)
+
     data CohesiveExpr : Set₁ where
       objectₑ : Set → CohesiveExpr
       discₑ : CohesiveExpr → CohesiveExpr
@@ -637,7 +1685,6 @@ module Foundations where
     gamma-codisc : (X : CohesiveExpr) →
       normalizeCohesive (gammaₑ (codiscₑ X)) ≡ normalizeCohesive X
     gamma-codisc X = refl
-
   ----------------------------------------------------------------------
   -- 5. Quotients induced by idempotent endomaps.
   --
@@ -1736,6 +2783,32 @@ module Foundations where
     hasCut mallp-top = false
     hasCut (mallp-down p) = hasCut p
     hasCut (mallp-up p) = hasCut p
+
+    cutCount : {Γ : Context} {S : Stoup} → MALLP Γ S → Nat
+    cutCount mallp-ax = zero
+    cutCount (mallp-cut p q) = suc (cutCount p + cutCount q)
+    cutCount (mallp-exchange permutation p) = cutCount p
+    cutCount (mallp-tensor p q) = cutCount p + cutCount q
+    cutCount mallp-one = zero
+    cutCount (mallp-plus-left p) = cutCount p
+    cutCount (mallp-plus-right p) = cutCount p
+    cutCount (mallp-par p) = cutCount p
+    cutCount (mallp-with p q) = cutCount p + cutCount q
+    cutCount (mallp-bottom p) = cutCount p
+    cutCount mallp-top = zero
+    cutCount (mallp-down p) = cutCount p
+    cutCount (mallp-up p) = cutCount p
+
+    -- This classifies an individual derivation by whether its tree
+    -- contains a cut node. It is not a cut-elimination result.
+    data CutClass : Set where
+      cutFree cutContaining : CutClass
+
+    classifyMALLP : {Γ : Context} {S : Stoup} →
+      MALLP Γ S → CutClass
+    classifyMALLP proof with hasCut proof
+    ... | false = cutFree
+    ... | true = cutContaining
 
   ----------------------------------------------------------------------
   -- Publicly expose all seven Foundations.* modules: six foundational
@@ -2853,6 +3926,136 @@ module StrictNatCompiler where
     NatStackBounded bound stack
   natStackBoundedTail (natStackBoundedCons _ stackBound) = stackBound
 
+  data NatStackOverflow (bound : Nat) : List Nat → Set where
+    natStackOverflowHead :
+      {value : Nat} {stack : List Nat} →
+      natWithinBound value bound ≡ false →
+      NatStackOverflow bound (value ∷ stack)
+
+  data BoundedTokenFailure
+      (bound : Nat) (token : ForthToken) (stack : List Nat) : Set where
+    boundedTokenStackError :
+      execToken token stack ≡ nothing →
+      BoundedTokenFailure bound token stack
+    boundedTokenCellOverflow :
+      (result : List Nat) →
+      execToken token stack ≡ just result →
+      NatStackOverflow bound result →
+      BoundedTokenFailure bound token stack
+
+  -- With a bounded input stack, each bounded-step failure is either the
+  -- same stack/roll failure as the unbounded token machine, or an unbounded
+  -- successful result whose new head exceeds the cell bound.
+  execBoundedToken-failure-classification :
+    (bound : Nat) (token : ForthToken) (stack : List Nat) →
+    NatStackBounded bound stack →
+    execBoundedToken bound token stack ≡ nothing →
+    BoundedTokenFailure bound token stack
+  execBoundedToken-failure-classification
+    bound (pushLiteral value) stack inputBound failure
+    with natWithinBound value bound in valueCheck
+       | failure
+  ... | true | ()
+  ... | false | refl =
+    boundedTokenCellOverflow (value ∷ stack) refl
+      (natStackOverflowHead valueCheck)
+
+  execBoundedToken-failure-classification
+    bound addWord [] inputBound failure =
+    boundedTokenStackError refl
+  execBoundedToken-failure-classification
+    bound addWord (value ∷ []) inputBound failure =
+    boundedTokenStackError refl
+  execBoundedToken-failure-classification
+    bound addWord (right ∷ left ∷ stack)
+    (natStackBoundedCons rightBound
+      (natStackBoundedCons leftBound stackBound))
+    failure
+    with natWithinBound left bound in leftCheck
+       | natWithinBound right bound in rightCheck
+       | natWithinBound (left + right) bound in resultCheck
+       | failure
+  ... | false | _ | _ | _ =
+    absurd (natBoundFalseNotTrue leftBound)
+  ... | true | false | _ | _ =
+    absurd (natBoundFalseNotTrue rightBound)
+  ... | true | true | true | ()
+  ... | true | true | false | refl =
+    boundedTokenCellOverflow ((left + right) ∷ stack) refl
+      (natStackOverflowHead resultCheck)
+
+  execBoundedToken-failure-classification
+    bound monusWord [] inputBound failure =
+    boundedTokenStackError refl
+  execBoundedToken-failure-classification
+    bound monusWord (value ∷ []) inputBound failure =
+    boundedTokenStackError refl
+  execBoundedToken-failure-classification
+    bound monusWord (right ∷ left ∷ stack)
+    (natStackBoundedCons rightBound
+      (natStackBoundedCons leftBound stackBound))
+    failure
+    with natWithinBound left bound in leftCheck
+       | natWithinBound right bound in rightCheck
+       | failure
+  ... | false | _ | _ =
+    absurd (natBoundFalseNotTrue leftBound)
+  ... | true | false | _ =
+    absurd (natBoundFalseNotTrue rightBound)
+  ... | true | true | ()
+
+  execBoundedToken-failure-classification
+    bound multiplyWord [] inputBound failure =
+    boundedTokenStackError refl
+  execBoundedToken-failure-classification
+    bound multiplyWord (value ∷ []) inputBound failure =
+    boundedTokenStackError refl
+  execBoundedToken-failure-classification
+    bound multiplyWord (right ∷ left ∷ stack)
+    (natStackBoundedCons rightBound
+      (natStackBoundedCons leftBound stackBound))
+    failure
+    with natWithinBound left bound in leftCheck
+       | natWithinBound right bound in rightCheck
+       | natWithinBound (left * right) bound in resultCheck
+       | failure
+  ... | false | _ | _ | _ =
+    absurd (natBoundFalseNotTrue leftBound)
+  ... | true | false | _ | _ =
+    absurd (natBoundFalseNotTrue rightBound)
+  ... | true | true | true | ()
+  ... | true | true | false | refl =
+    boundedTokenCellOverflow ((left * right) ∷ stack) refl
+      (natStackOverflowHead resultCheck)
+
+  execBoundedToken-failure-classification
+    bound swapWord stack inputBound failure =
+    boundedTokenStackError failure
+  execBoundedToken-failure-classification
+    bound (rollWord depth) stack inputBound failure =
+    boundedTokenStackError failure
+
+  boundedLiteralOverflowExample :
+    BoundedTokenFailure 3 (pushLiteral 4) []
+  boundedLiteralOverflowExample =
+    execBoundedToken-failure-classification
+      3 (pushLiteral 4) [] natStackBoundedNil refl
+
+  boundedAddOverflowExample :
+    BoundedTokenFailure 3 addWord (2 ∷ 2 ∷ [])
+  boundedAddOverflowExample =
+    execBoundedToken-failure-classification
+      3 addWord (2 ∷ 2 ∷ [])
+      (natStackBoundedCons refl
+        (natStackBoundedCons refl natStackBoundedNil))
+      refl
+
+  boundedAddUnderflowExample :
+    BoundedTokenFailure 3 addWord []
+  boundedAddUnderflowExample =
+    execBoundedToken-failure-classification
+      3 addWord [] natStackBoundedNil refl
+
   -- Completeness for one bounded step needs both bounded input and bounded
   -- output stacks. These carry the operand and intermediate-result side
   -- conditions omitted by a final-result-only bound.
@@ -3108,6 +4311,31 @@ module StrictNatCompiler where
       MALLP Γ S →
       MALLPNatTheory Γ S
 
+  natTheoryCutCount :
+    {Γ : Context} {S : Stoup} →
+    MALLPNatTheory Γ S → Nat
+  natTheoryCutCount (mallp-nat-literal value) = zero
+  natTheoryCutCount (mallp-nat-primitive operation) = zero
+  natTheoryCutCount (mallp-nat-cut first second) =
+    suc (natTheoryCutCount first + natTheoryCutCount second)
+  natTheoryCutCount (mallp-nat-exchange permutation proof) =
+    natTheoryCutCount proof
+  natTheoryCutCount (mallp-nat-transport equality proof) =
+    natTheoryCutCount proof
+  natTheoryCutCount (mallp-nat-logical proof) = cutCount proof
+
+  classifyNatTheory :
+    {Γ : Context} →
+    MALLPNatTheory Γ (just natFormula) → CutClass
+  classifyNatTheory (mallp-nat-literal value) = cutFree
+  classifyNatTheory (mallp-nat-primitive operation) = cutFree
+  classifyNatTheory (mallp-nat-cut first second) = cutContaining
+  classifyNatTheory (mallp-nat-exchange permutation proof) =
+    classifyNatTheory proof
+  classifyNatTheory (mallp-nat-transport equality proof) =
+    classifyNatTheory proof
+  classifyNatTheory (mallp-nat-logical proof) = classifyMALLP proof
+
   -- The focused proof-term language records only the number of linear Nat
   -- assumptions. Its constructors are exactly the two signature axioms and cut.
   data MALLPNatProof : Nat → Set where
@@ -3144,6 +4372,21 @@ module StrictNatCompiler where
       MALLPNatProof n →
       NatOp →
       MALLPNatProof (suc n)
+
+  natPlusZeroRight : (n : Nat) → n + zero ≡ n
+  natPlusZeroRight zero = refl
+  natPlusZeroRight (suc n) = cong suc (natPlusZeroRight n)
+
+  natProofCutCount : {n : Nat} → MALLPNatProof n → Nat
+  natProofCutCount (natLiteralProof value) = zero
+  natProofCutCount (natPrimitiveProof operation) = zero
+  natProofCutCount natArgumentProof = zero
+  natProofCutCount (natExchangeProof proof) = natProofCutCount proof
+  natProofCutCount (natRotateHeadToLastProof proof) = natProofCutCount proof
+  natProofCutCount (natCutProof first second) =
+    suc (natProofCutCount first + natProofCutCount second)
+  natProofCutCount (natPrimitiveComposeProof proof operation) =
+    suc (natProofCutCount proof)
 
   natContext : Nat → Context
   natContext zero = []
@@ -3227,6 +4470,23 @@ module StrictNatCompiler where
     mallp-nat-transport
       (sym (natContext-append n m))
       (mallp-nat-cut (embedNatProof first) (embedNatProof second))
+
+  embedNatProof-cut-count :
+    {n : Nat} (proof : MALLPNatProof n) →
+    natTheoryCutCount (embedNatProof proof) ≡ natProofCutCount proof
+  embedNatProof-cut-count (natLiteralProof value) = refl
+  embedNatProof-cut-count (natPrimitiveProof operation) = refl
+  embedNatProof-cut-count natArgumentProof = refl
+  embedNatProof-cut-count (natExchangeProof proof) =
+    embedNatProof-cut-count proof
+  embedNatProof-cut-count (natRotateHeadToLastProof proof) =
+    embedNatProof-cut-count proof
+  embedNatProof-cut-count (natPrimitiveComposeProof proof operation)
+    rewrite embedNatProof-cut-count proof =
+      cong suc (natPlusZeroRight (natProofCutCount proof))
+  embedNatProof-cut-count (natCutProof first second)
+    rewrite embedNatProof-cut-count first
+          | embedNatProof-cut-count second = refl
 
   data NatEnvironment : Nat → Set where
     natEnvironmentNil : NatEnvironment zero
@@ -3418,6 +4678,27 @@ module StrictNatCompiler where
         (natResourceProof left)
         (natPrimitiveComposeProof (natResourceProof right) operation)
 
+  -- The focused proof syntax is cut-admitting. A literal or owned
+  -- argument is cut-free; each binary operation contributes one outer
+  -- cut and one cut composing its right operand with the primitive axiom.
+  natResourceExprCutCount :
+    {n : Nat} → NatResourceExpr n → Nat
+  natResourceExprCutCount (resourceLiteral value) = zero
+  natResourceExprCutCount resourceArgument = zero
+  natResourceExprCutCount (resourceBinary operation left right) =
+    suc (natResourceExprCutCount left + suc (natResourceExprCutCount right))
+
+  natResourceProof-cut-count :
+    {n : Nat} (expression : NatResourceExpr n) →
+    natProofCutCount (natResourceProof expression) ≡
+    natResourceExprCutCount expression
+  natResourceProof-cut-count (resourceLiteral value) = refl
+  natResourceProof-cut-count resourceArgument = refl
+  natResourceProof-cut-count
+    (resourceBinary operation left right)
+    rewrite natResourceProof-cut-count left
+          | natResourceProof-cut-count right = refl
+
   natResource-proof-derivation :
     {n : Nat} →
     (expression : NatResourceExpr n) →
@@ -3425,6 +4706,30 @@ module StrictNatCompiler where
   natResource-proof-derivation expression =
     embedNatProof (natResourceProof expression)
 
+  -- The embedded MALLP theory derivation has exactly the same cut count
+  -- as the focused proof and the source resource tree.
+  natResource-derivation-cut-count :
+    {n : Nat} (expression : NatResourceExpr n) →
+    natTheoryCutCount (natResource-proof-derivation expression) ≡
+    natResourceExprCutCount expression
+  natResource-derivation-cut-count expression =
+    trans
+      (embedNatProof-cut-count (natResourceProof expression))
+      (natResourceProof-cut-count expression)
+
+
+  natResourceClass : {n : Nat} → NatResourceExpr n → CutClass
+  natResourceClass (resourceLiteral value) = cutFree
+  natResourceClass resourceArgument = cutFree
+  natResourceClass (resourceBinary operation left right) = cutContaining
+
+  natResource-derivation-class :
+    {n : Nat} (expression : NatResourceExpr n) →
+    classifyNatTheory (natResource-proof-derivation expression) ≡
+    natResourceClass expression
+  natResource-derivation-class (resourceLiteral value) = refl
+  natResource-derivation-class resourceArgument = refl
+  natResource-derivation-class (resourceBinary operation left right) = refl
   natResourceProof-adequate :
     {n : Nat} →
     (expression : NatResourceExpr n) →

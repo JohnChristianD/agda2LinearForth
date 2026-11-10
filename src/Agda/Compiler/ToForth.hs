@@ -1042,14 +1042,18 @@ hasBoolResult definition = do
   arity <- boolFunctionArity definition
   pure (arity == Just 0)
 
-hasUnitResult :: Definition -> TCM Bool
-hasUnitResult definition = do
+unitFunctionArity :: Definition -> TCM (Maybe Int)
+unitFunctionArity definition = do
   unitName <- getBuiltinName builtinUnit
-  TelV _ resultType <- telView (defType definition)
-  reducedResultType <- reduce resultType
-  pure $ case (unitName, I.unEl reducedResultType) of
-    (Just expected, I.Def actual []) -> expected == actual
-    _ -> False
+  TelV telescope resultType <- telView (defType definition)
+  case unitName of
+    Nothing -> pure Nothing
+    Just name -> do
+      resultIsUnit <- isBuiltinType name resultType
+      pure $
+        if resultIsUnit
+          then Just (length (I.telToList telescope))
+          else Nothing
 
 decodeUnitTerm :: TTerm -> TCM ()
 decodeUnitTerm term = do
@@ -1078,7 +1082,7 @@ compileDefinition definition
         boolArity <- boolFunctionArity definition
         boolPairConstructor <- boolPairFunctionConstructor definition
         word64Arity <- word64FunctionArity definition
-        isUnit <- hasUnitResult definition
+        unitArity <- unitFunctionArity definition
         if isNat then do
           body <- toTreeless EagerEvaluation (defName definition)
           case (natArity, body) of
@@ -1140,7 +1144,7 @@ compileDefinition definition
                     (defName definition) (strictWord (defName definition) code) tokens
                     Nothing Nothing Nothing (Just (BoolPairFunctionWitness pairType constructor expression))))
             Nothing ->
-              if isUnit then do
+              if unitArity == Just 0 then do
                 body <- toTreeless EagerEvaluation (defName definition)
                 case body of
                   Nothing -> pure Nothing
@@ -1371,7 +1375,7 @@ rendererCertificate sourceModule definitions
   , "   MALLPNatTheory; natContext; natFormula; natLinear-proof-derivation; natBinary-proof-derivation;"
   , "   natLinearProof; natBinaryProof; natEnvironmentCons; natEnvironmentNil; interpretMALLPNatProof;"
   , "   evalNatLinearExpr; evalNatBinaryLinearExpr; evalNatResourceExpr; natLinearMALLP-forth-sound; natBinaryResourceMALLP-forth-sound; renderNatBinaryResource;"
-  , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate;"
+  , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate; CutClass; classifyNatTheory; natTheoryCutCount; natResourceExprCutCount; natResourceClass; natResource-derivation-cut-count; natResource-derivation-class;"
   , "   NatStackBounded; natCell; execTokens; execBoundedTokens; execBoundedTokens-preserves;"
   , "   BoundedExecutionTrace; execBoundedTokens-complete; execBoundedTokens-complete-unbounded; cong; cong₂; trans; sym;"
   , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm; _++ᴳ_)"
@@ -1452,6 +1456,12 @@ rendererCertificate sourceModule definitions
     [ let
         { expressionName = "natResourceExpression" <> index
         ; derivationName = "natResourceDerivation" <> index
+        ; cutCountName = "natResourceCutCount" <> index
+        ; expressionCutCountName = "natResourceExpressionCutCount" <> index
+        ; cutCountProofName = "natResourceCutCountCorrespondence" <> index
+        ; cutClassName = "natResourceCutClass" <> index
+        ; expressionCutClassName = "natResourceExpressionCutClass" <> index
+        ; cutClassProofName = "natResourceCutClassCorrespondence" <> index
         ; compilerTokensName = "natResourceCompilerTokens" <> index
         ; executionName = "natResourceCompilerExecution" <> index
         ; sourceSoundName = "natResourceSourceSound" <> index
@@ -1497,6 +1507,24 @@ rendererCertificate sourceModule definitions
         , derivationName <> " : MALLPNatTheory (natContext "
             <> agdaNatIndexTerm arity <> ") (just natFormula)"
         , derivationName <> " = natResource-proof-derivation " <> expressionName
+        , ""
+        , cutCountName <> " : Nat"
+        , cutCountName <> " = natTheoryCutCount " <> derivationName
+        , ""
+        , expressionCutCountName <> " : Nat"
+        , expressionCutCountName <> " = natResourceExprCutCount " <> expressionName
+        , ""
+        , cutCountProofName <> " : " <> cutCountName <> " ≡ " <> expressionCutCountName
+        , cutCountProofName <> " = natResource-derivation-cut-count " <> expressionName
+        , ""
+        , cutClassName <> " : CutClass"
+        , cutClassName <> " = classifyNatTheory " <> derivationName
+        , ""
+        , expressionCutClassName <> " : CutClass"
+        , expressionCutClassName <> " = natResourceClass " <> expressionName
+        , ""
+        , cutClassProofName <> " : " <> cutClassName <> " ≡ " <> expressionCutClassName
+        , cutClassProofName <> " = natResource-derivation-class " <> expressionName
         , ""
         , compilerTokensName <> " : List ForthToken"
         , compilerTokensName <> " = " <> formalNatTokenList (compiledTokens definition)
@@ -1960,8 +1988,9 @@ emitForthModule _ _ _ moduleName maybeDefinitions = do
       baseName = prettyShow (NE.last (moduleNameParts moduleName))
       filename = baseName ++ ".fth"
   IO.liftIO $ do
-    TIO.writeFile filename output
+    -- Fail the certificate guard before leaving an executable Forth artifact.
     TIO.writeFile "MALLPEmittedRenderer.agda" (rendererCertificate moduleName definitions)
+    TIO.writeFile filename output
 
 backend :: Backend
 backend = Backend backend'
