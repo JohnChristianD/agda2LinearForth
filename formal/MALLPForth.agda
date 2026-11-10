@@ -914,11 +914,17 @@ module Foundations where
       trans first (trans second third)
     trans-assoc refl refl refl = refl
 
+    tensorPathUIP :
+      {X : Set} (x y : X) (p q : x ≡ y) →
+      p ≡ q
+    tensorPathUIP x .x refl refl = refl
+
     tensorHom-proposition :
       {A B : TensorExpr} →
       (f g : TensorHom A B) →
       f ≡ g
-    tensorHom-proposition refl refl = refl
+    tensorHom-proposition {A} {B} f g =
+      tensorPathUIP (tensorNF A) (tensorNF B) f g
 
     tensorIdentity-left :
       {A B : TensorExpr} (f : TensorHom A B) →
