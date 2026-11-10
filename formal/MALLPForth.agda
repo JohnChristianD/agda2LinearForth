@@ -1077,6 +1077,15 @@ module Foundations where
         categoryCompose :
           {A B C : categoryObjects} →
           categoryHom B C → categoryHom A B → categoryHom A C
+        categoryCompose-respects :
+          {A B C : categoryObjects}
+          {g g′ : categoryHom B C}
+          {f f′ : categoryHom A B} →
+          categoryHomEq g g′ →
+          categoryHomEq f f′ →
+          categoryHomEq
+            (categoryCompose g f)
+            (categoryCompose g′ f′)
         categoryCompose-assoc :
           {A B C D : categoryObjects}
           (h : categoryHom C D)
@@ -1108,6 +1117,11 @@ module Foundations where
           {A B : categoryObjects C} →
           categoryHom C A B →
           categoryHom D (functorObject A) (functorObject B)
+        functorArrow-respects :
+          {A B : categoryObjects C}
+          {f g : categoryHom C A B} →
+          categoryHomEq C f g →
+          categoryHomEq D (functorArrow f) (functorArrow g)
         functorIdentity :
           {A : categoryObjects C} →
           categoryHomEq D (functorArrow (categoryId C)) (categoryId D)
@@ -1124,6 +1138,7 @@ module Foundations where
     identityFunctor C = record
       { functorObject = λ A → A
       ; functorArrow = λ f → f
+      ; functorArrow-respects = λ equality → equality
       ; functorIdentity =
           categoryHomEq-refl C (categoryId C)
       ; functorComposition =
@@ -1148,6 +1163,16 @@ module Foundations where
           {A : categoryObjects C} {B : categoryObjects D} →
           categoryHom C A (functorObject G B) →
           categoryHom D (functorObject F A) B
+        transpose-respects :
+          {A : categoryObjects C} {B : categoryObjects D}
+          {f g : categoryHom D (functorObject F A) B} →
+          categoryHomEq D f g →
+          categoryHomEq C (transpose f) (transpose g)
+        untranspose-respects :
+          {A : categoryObjects C} {B : categoryObjects D}
+          {f g : categoryHom C A (functorObject G B)} →
+          categoryHomEq C f g →
+          categoryHomEq D (untranspose f) (untranspose g)
         transpose-untranspose :
           {A : categoryObjects C} {B : categoryObjects D}
           (f : categoryHom C A (functorObject G B)) →
@@ -1178,6 +1203,8 @@ module Foundations where
     identityAdjunction C = record
       { transpose = λ f → f
       ; untranspose = λ f → f
+      ; transpose-respects = λ equality → equality
+      ; untranspose-respects = λ equality → equality
       ; transpose-untranspose =
           λ f → categoryHomEq-refl C f
       ; untranspose-transpose =
@@ -1200,6 +1227,11 @@ module Foundations where
           {A B : categoryObjects C} →
           categoryHom D (functorObject F A) (functorObject F B) →
           categoryHom C A B
+        reflectArrow-respects :
+          {A B : categoryObjects C}
+          {f g : categoryHom D (functorObject F A) (functorObject F B)} →
+          categoryHomEq D f g →
+          categoryHomEq C (reflectArrow f) (reflectArrow g)
         reflect-map :
           {A B : categoryObjects C}
           (f : categoryHom C A B) →
@@ -1218,6 +1250,7 @@ module Foundations where
       FullyFaithful (identityFunctor C)
     identityFullyFaithful C = record
       { reflectArrow = λ f → f
+      ; reflectArrow-respects = λ equality → equality
       ; reflect-map = λ f → categoryHomEq-refl C f
       ; map-reflect = λ f → categoryHomEq-refl C f
       }
@@ -1251,6 +1284,15 @@ module Foundations where
           categoryHom C X A →
           categoryHom C X B →
           categoryHom C X binaryProductObject
+        binaryProductPair-respects :
+          {X : categoryObjects C}
+          {f f′ : categoryHom C X A}
+          {g g′ : categoryHom C X B} →
+          categoryHomEq C f f′ →
+          categoryHomEq C g g′ →
+          categoryHomEq C
+            (binaryProductPair f g)
+            (binaryProductPair f′ g′)
         binaryProductPair-left :
           {X : categoryObjects C}
           (f : categoryHom C X A)
@@ -1401,6 +1443,9 @@ module Foundations where
       ; categoryHomEq-trans = λ first second x → trans (first x) (second x)
       ; categoryId = idᶠ
       ; categoryCompose = _∘ᶠ_
+      ; categoryCompose-respects =
+          λ {g = g₁} {g′ = g₂} {f = f₁} {f′ = f₂} eqG eqF x →
+            trans (cong g₁ (eqF x)) (eqG (f₂ x))
       ; categoryCompose-assoc = λ h g f x → refl
       ; categoryCompose-id-left = λ f x → refl
       ; categoryCompose-id-right = λ f x → refl
@@ -1433,6 +1478,8 @@ module Foundations where
       ; binaryProductLeft = fst
       ; binaryProductRight = snd
       ; binaryProductPair = λ f g x → pair (f x) (g x)
+      ; binaryProductPair-respects =
+          λ first second x → cong₂ pair (first x) (second x)
       ; binaryProductPair-left = λ f g x → refl
       ; binaryProductPair-right = λ f g x → refl
       ; binaryProduct-eta = λ h x → setProductEta (h x)
