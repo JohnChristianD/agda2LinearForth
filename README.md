@@ -60,7 +60,7 @@ The current Nat path is the strongest end-to-end slice:
 
 1. Haskell decodes an admitted Treeless term into a labelled Nat resource tree and checks exact-once resource use.
 2. The generated `MALLPEmittedRenderer.agda` reifies that tree as the count-indexed Agda `NatResourceExpr`.
-3. Agda constructs the associated cut-admitting MALLP derivation and proves its interpretation adequate for the resource evaluator. It also computes the derivation's cut count/class and proves these agree with the source resource tree.
+3. Agda constructs the associated cut-containing MALLP derivation and proves its interpretation adequate for the resource evaluator. It also computes the derivation's cut count/class and proves these agree with the source resource tree.
 4. The certificate contains the exact token list held by the Haskell `CompiledDefinition`, not a separately handwritten expected program.
 5. Agda's `execTokens` evaluates that exact list on the source arguments and an arbitrary residual stack.
 6. A generated source-semantics equality connects the original source function to the MALLP interpretation; the equalities compose into source-result preservation.

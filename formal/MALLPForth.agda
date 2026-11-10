@@ -2314,13 +2314,13 @@ module Foundations where
     cutCount (mallp-up p) = cutCount p
 
     data CutClass : Set where
-      cutFree cutAdmitting : CutClass
+      cutFree cutContaining : CutClass
 
     classifyMALLP : {Γ : Context} {S : Stoup} →
       MALLP Γ S → CutClass
     classifyMALLP proof with hasCut proof
     ... | false = cutFree
-    ... | true = cutAdmitting
+    ... | true = cutContaining
 
   ----------------------------------------------------------------------
   -- Publicly expose all seven Foundations.* modules: six foundational
@@ -3711,7 +3711,7 @@ module StrictNatCompiler where
     MALLPNatTheory Γ (just natFormula) → CutClass
   classifyNatTheory (mallp-nat-literal value) = cutFree
   classifyNatTheory (mallp-nat-primitive operation) = cutFree
-  classifyNatTheory (mallp-nat-cut first second) = cutAdmitting
+  classifyNatTheory (mallp-nat-cut first second) = cutContaining
   classifyNatTheory (mallp-nat-exchange permutation proof) =
     classifyNatTheory proof
   classifyNatTheory (mallp-nat-transport equality proof) =
@@ -4098,7 +4098,7 @@ module StrictNatCompiler where
   natResourceClass : {n : Nat} → NatResourceExpr n → CutClass
   natResourceClass (resourceLiteral value) = cutFree
   natResourceClass resourceArgument = cutFree
-  natResourceClass (resourceBinary operation left right) = cutAdmitting
+  natResourceClass (resourceBinary operation left right) = cutContaining
 
   natResource-derivation-class :
     {n : Nat} (expression : NatResourceExpr n) →
