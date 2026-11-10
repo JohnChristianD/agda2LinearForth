@@ -3926,6 +3926,136 @@ module StrictNatCompiler where
     NatStackBounded bound stack
   natStackBoundedTail (natStackBoundedCons _ stackBound) = stackBound
 
+  data NatStackOverflow (bound : Nat) : List Nat → Set where
+    natStackOverflowHead :
+      {value : Nat} {stack : List Nat} →
+      natWithinBound value bound ≡ false →
+      NatStackOverflow bound (value ∷ stack)
+
+  data BoundedTokenFailure
+      (bound : Nat) (token : ForthToken) (stack : List Nat) : Set where
+    boundedTokenStackError :
+      execToken token stack ≡ nothing →
+      BoundedTokenFailure bound token stack
+    boundedTokenCellOverflow :
+      (result : List Nat) →
+      execToken token stack ≡ just result →
+      NatStackOverflow bound result →
+      BoundedTokenFailure bound token stack
+
+  -- With a bounded input stack, each bounded-step failure is either the
+  -- same stack/roll failure as the unbounded token machine, or an unbounded
+  -- successful result whose new head exceeds the cell bound.
+  execBoundedToken-failure-classification :
+    (bound : Nat) (token : ForthToken) (stack : List Nat) →
+    NatStackBounded bound stack →
+    execBoundedToken bound token stack ≡ nothing →
+    BoundedTokenFailure bound token stack
+  execBoundedToken-failure-classification
+    bound (pushLiteral value) stack inputBound failure
+    with natWithinBound value bound in valueCheck
+       | failure
+  ... | true | ()
+  ... | false | refl =
+    boundedTokenCellOverflow (value ∷ stack) refl
+      (natStackOverflowHead valueCheck)
+
+  execBoundedToken-failure-classification
+    bound addWord [] inputBound failure =
+    boundedTokenStackError refl
+  execBoundedToken-failure-classification
+    bound addWord (value ∷ []) inputBound failure =
+    boundedTokenStackError refl
+  execBoundedToken-failure-classification
+    bound addWord (right ∷ left ∷ stack)
+    (natStackBoundedCons rightBound
+      (natStackBoundedCons leftBound stackBound))
+    failure
+    with natWithinBound left bound in leftCheck
+       | natWithinBound right bound in rightCheck
+       | natWithinBound (left + right) bound in resultCheck
+       | failure
+  ... | false | _ | _ | _ =
+    absurd (natBoundFalseNotTrue (trans (sym leftCheck) leftBound))
+  ... | true | false | _ | _ =
+    absurd (natBoundFalseNotTrue (trans (sym rightCheck) rightBound))
+  ... | true | true | true | ()
+  ... | true | true | false | refl =
+    boundedTokenCellOverflow ((left + right) ∷ stack) refl
+      (natStackOverflowHead resultCheck)
+
+  execBoundedToken-failure-classification
+    bound monusWord [] inputBound failure =
+    boundedTokenStackError refl
+  execBoundedToken-failure-classification
+    bound monusWord (value ∷ []) inputBound failure =
+    boundedTokenStackError refl
+  execBoundedToken-failure-classification
+    bound monusWord (right ∷ left ∷ stack)
+    (natStackBoundedCons rightBound
+      (natStackBoundedCons leftBound stackBound))
+    failure
+    with natWithinBound left bound in leftCheck
+       | natWithinBound right bound in rightCheck
+       | failure
+  ... | false | _ | _ =
+    absurd (natBoundFalseNotTrue (trans (sym leftCheck) leftBound))
+  ... | true | false | _ =
+    absurd (natBoundFalseNotTrue (trans (sym rightCheck) rightBound))
+  ... | true | true | ()
+
+  execBoundedToken-failure-classification
+    bound multiplyWord [] inputBound failure =
+    boundedTokenStackError refl
+  execBoundedToken-failure-classification
+    bound multiplyWord (value ∷ []) inputBound failure =
+    boundedTokenStackError refl
+  execBoundedToken-failure-classification
+    bound multiplyWord (right ∷ left ∷ stack)
+    (natStackBoundedCons rightBound
+      (natStackBoundedCons leftBound stackBound))
+    failure
+    with natWithinBound left bound in leftCheck
+       | natWithinBound right bound in rightCheck
+       | natWithinBound (left * right) bound in resultCheck
+       | failure
+  ... | false | _ | _ | _ =
+    absurd (natBoundFalseNotTrue (trans (sym leftCheck) leftBound))
+  ... | true | false | _ | _ =
+    absurd (natBoundFalseNotTrue (trans (sym rightCheck) rightBound))
+  ... | true | true | true | ()
+  ... | true | true | false | refl =
+    boundedTokenCellOverflow ((left * right) ∷ stack) refl
+      (natStackOverflowHead resultCheck)
+
+  execBoundedToken-failure-classification
+    bound swapWord stack inputBound failure =
+    boundedTokenStackError failure
+  execBoundedToken-failure-classification
+    bound (rollWord depth) stack inputBound failure =
+    boundedTokenStackError failure
+
+  boundedLiteralOverflowExample :
+    BoundedTokenFailure 3 (pushLiteral 4) []
+  boundedLiteralOverflowExample =
+    execBoundedToken-failure-classification
+      3 (pushLiteral 4) [] natStackBoundedNil refl
+
+  boundedAddOverflowExample :
+    BoundedTokenFailure 3 addWord (2 ∷ 2 ∷ [])
+  boundedAddOverflowExample =
+    execBoundedToken-failure-classification
+      3 addWord (2 ∷ 2 ∷ [])
+      (natStackBoundedCons refl
+        (natStackBoundedCons refl natStackBoundedNil))
+      refl
+
+  boundedAddUnderflowExample :
+    BoundedTokenFailure 3 addWord []
+  boundedAddUnderflowExample =
+    execBoundedToken-failure-classification
+      3 addWord [] natStackBoundedNil refl
+
   -- Completeness for one bounded step needs both bounded input and bounded
   -- output stacks. These carry the operand and intermediate-result side
   -- conditions omitted by a final-result-only bound.

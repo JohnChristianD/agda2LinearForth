@@ -90,6 +90,8 @@ The strict fixture currently pins **29 emitted Forth definitions**. The generic 
 
 The bounded Nat machine proves that successful bounded execution preserves the corresponding unbounded result. The converse is conditional: every intermediate abstract stack and operation result must stay within the cell bound. `BoundedExecutionTrace` records that condition token by token; a final-result bound alone is insufficient because an intermediate addition or multiplication may overflow before later code reduces the value.
 
+At one-token granularity, `execBoundedToken-failure-classification` classifies failure under a bounded input stack: either the unbounded token has the same stack/roll error, or it succeeds with a result whose new head exceeds the cell bound. Literal, addition, and multiplication overflow have concrete Agda witnesses; monus has no overflow branch because its saturating result is bounded by its left operand. This is a formal token-model classification, not a proof of Gforth's concrete error words or of failure behavior for every whole-program path.
+
 The Forth runtime in `data/FLib.fth` checks nonnegative cell values and overflow for decimal parsing, addition, saturating monus, and multiplication. `test/gforth/mallp-strict.fs` exercises successful operations, overflow, invalid literals, argument order, and stack behavior. These tests corroborate the model but do not verify the implementation of Gforth itself.
 
 ## Global rewrites and proof clients
