@@ -1042,14 +1042,18 @@ hasBoolResult definition = do
   arity <- boolFunctionArity definition
   pure (arity == Just 0)
 
-hasUnitResult :: Definition -> TCM Bool
-hasUnitResult definition = do
+unitFunctionArity :: Definition -> TCM (Maybe Int)
+unitFunctionArity definition = do
   unitName <- getBuiltinName builtinUnit
-  TelV _ resultType <- telView (defType definition)
-  reducedResultType <- reduce resultType
-  pure $ case (unitName, I.unEl reducedResultType) of
-    (Just expected, I.Def actual []) -> expected == actual
-    _ -> False
+  TelV telescope resultType <- telView (defType definition)
+  case unitName of
+    Nothing -> pure Nothing
+    Just name -> do
+      resultIsUnit <- isBuiltinType name resultType
+      pure $
+        if resultIsUnit
+          then Just (length (I.telToList telescope))
+          else Nothing
 
 decodeUnitTerm :: TTerm -> TCM ()
 decodeUnitTerm term = do
@@ -1078,7 +1082,7 @@ compileDefinition definition
         boolArity <- boolFunctionArity definition
         boolPairConstructor <- boolPairFunctionConstructor definition
         word64Arity <- word64FunctionArity definition
-        isUnit <- hasUnitResult definition
+        unitArity <- unitFunctionArity definition
         if isNat then do
           body <- toTreeless EagerEvaluation (defName definition)
           case (natArity, body) of
@@ -1140,7 +1144,7 @@ compileDefinition definition
                     (defName definition) (strictWord (defName definition) code) tokens
                     Nothing Nothing Nothing (Just (BoolPairFunctionWitness pairType constructor expression))))
             Nothing ->
-              if isUnit then do
+              if unitArity == Just 0 then do
                 body <- toTreeless EagerEvaluation (defName definition)
                 case body of
                   Nothing -> pure Nothing
