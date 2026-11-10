@@ -1031,180 +1031,471 @@ module Foundations where
   module CohesiveRetractions where
 
     --------------------------------------------------------------------
-    -- Lawvere's cohesive adjoint pattern is Π ⊣ Disc ⊣ Γ ⊣ coDisc,
-    -- with Disc and coDisc fully faithful and Π preserving finite
-    -- products. We formalize the adjoint data, rather than postulating
-    -- objectwise isomorphisms. The concrete instance below is the
-    -- degenerate self-cohesion of Set (all four functors are identity).
-    -- It is a valid realization of the adjunction laws, not a model of
-    -- nontrivial spatial cohesion or a proof that an arbitrary topos is
-    -- cohesive.
+    -- The Lawvere-Schreiber cohesive core is a quadruple of functors
+    --
+    --   Π : H → G       Disc : G → H
+    --   Γ : H → G       coDisc : G → H
+    --
+    -- with Π ⊣ Disc ⊣ Γ ⊣ coDisc, Disc and coDisc fully faithful,
+    -- and Π preserving finite products.
+    --
+    -- H and G are distinct category parameters.  The record below does
+    -- not pretend that an arbitrary category is a topos: it formalizes
+    -- the adjoint-quadruple axioms and their categorical laws.  An
+    -- executable identity-Set instance is supplied as a degenerate model.
     --------------------------------------------------------------------
 
-    record Endofunctor : Set₁ where
+    record Category : Set₁ where
       field
-        F₀ : Set → Set
-        F₁ : {A B : Set} → (A → B) → F₀ A → F₀ B
-        F₁-id : {A : Set} (x : F₀ A) → F₁ idᶠ x ≡ x
-        F₁-compose :
-          {A B C : Set} (g : B → C) (f : A → B) (x : F₀ A) →
-          F₁ (g ∘ᶠ f) x ≡ F₁ g (F₁ f x)
-    open Endofunctor public
+        categoryObjects : Set
+        categoryHom :
+          categoryObjects → categoryObjects → Set
+        categoryHomEq :
+          {A B : categoryObjects} →
+          categoryHom A B → categoryHom A B → Set
+        categoryHomEq-refl :
+          {A B : categoryObjects} →
+          (f : categoryHom A B) →
+          categoryHomEq f f
+        categoryHomEq-sym :
+          {A B : categoryObjects} {f g : categoryHom A B} →
+          categoryHomEq f g → categoryHomEq g f
+        categoryHomEq-trans :
+          {A B : categoryObjects} {f g h : categoryHom A B} →
+          categoryHomEq f g → categoryHomEq g h → categoryHomEq f h
+        categoryId :
+          {A : categoryObjects} → categoryHom A A
+        categoryCompose :
+          {A B C : categoryObjects} →
+          categoryHom B C → categoryHom A B → categoryHom A C
+        categoryCompose-assoc :
+          {A B C D : categoryObjects}
+          (h : categoryHom C D)
+          (g : categoryHom B C)
+          (f : categoryHom A B) →
+          categoryHomEq
+            (categoryCompose h (categoryCompose g f))
+            (categoryCompose (categoryCompose h g) f)
+        categoryCompose-id-left :
+          {A B : categoryObjects} →
+          (f : categoryHom A B) →
+          categoryHomEq (categoryCompose categoryId f) f
+        categoryCompose-id-right :
+          {A B : categoryObjects} →
+          (f : categoryHom A B) →
+          categoryHomEq (categoryCompose f categoryId) f
+    open Category public
 
-    record Adjunction (F G : Endofunctor) : Set₁ where
+    --------------------------------------------------------------------
+    -- A functor preserves identities and composition up to the chosen
+    -- equality on hom-sets.  Hom equality is explicit, so the Set model
+    -- uses pointwise equality and requires no function-extensionality axiom.
+    --------------------------------------------------------------------
+
+    record Functor (C D : Category) : Set₁ where
+      field
+        functorObject : categoryObjects C → categoryObjects D
+        functorArrow :
+          {A B : categoryObjects C} →
+          categoryHom C A B →
+          categoryHom D (functorObject A) (functorObject B)
+        functorIdentity :
+          {A : categoryObjects C} →
+          categoryHomEq D (functorArrow (categoryId C)) (categoryId D)
+        functorComposition :
+          {A B C′ : categoryObjects C}
+          (g : categoryHom C B C′)
+          (f : categoryHom C A B) →
+          categoryHomEq D
+            (functorArrow (categoryCompose C g f))
+            (categoryCompose D (functorArrow g) (functorArrow f))
+    open Functor public
+
+    identityFunctor : (C : Category) → Functor C C
+    identityFunctor C = record
+      { functorObject = λ A → A
+      ; functorArrow = λ f → f
+      ; functorIdentity =
+          categoryHomEq-refl C (categoryId C)
+      ; functorComposition =
+          λ g f → categoryHomEq-refl C (categoryCompose C g f)
+      }
+
+    --------------------------------------------------------------------
+    -- An adjunction is a natural isomorphism of hom-functors, represented
+    -- by transpose/untranspose and both inverse and naturality laws.
+    --------------------------------------------------------------------
+
+    record Adjunction
+      {C D : Category}
+      (F : Functor C D)
+      (G : Functor D C) : Set₁ where
       field
         transpose :
-          {A B : Set} →
-          (F₀ F A → B) →
-          A → F₀ G B
+          {A : categoryObjects C} {B : categoryObjects D} →
+          categoryHom D (functorObject F A) B →
+          categoryHom C A (functorObject G B)
         untranspose :
-          {A B : Set} →
-          (A → F₀ G B) →
-          F₀ F A → B
+          {A : categoryObjects C} {B : categoryObjects D} →
+          categoryHom C A (functorObject G B) →
+          categoryHom D (functorObject F A) B
         transpose-untranspose :
-          {A B : Set} (f : A → F₀ G B) →
-          transpose (untranspose f) ≡ f
+          {A : categoryObjects C} {B : categoryObjects D}
+          (f : categoryHom C A (functorObject G B)) →
+          categoryHomEq C (transpose (untranspose f)) f
         untranspose-transpose :
-          {A B : Set} (f : F₀ F A → B) →
-          untranspose (transpose f) ≡ f
+          {A : categoryObjects C} {B : categoryObjects D}
+          (f : categoryHom D (functorObject F A) B) →
+          categoryHomEq D (untranspose (transpose f)) f
         transpose-natural-source :
-          {A A′ B : Set} (f : A′ → A) (g : F₀ F A → B) →
-          transpose (g ∘ᶠ F₁ F f) ≡ transpose g ∘ᶠ f
+          {A A′ : categoryObjects C} {B : categoryObjects D}
+          (f : categoryHom C A′ A)
+          (g : categoryHom D (functorObject F A) B) →
+          categoryHomEq C
+            (transpose (categoryCompose D g (functorArrow F f)))
+            (categoryCompose C (transpose g) f)
         transpose-natural-target :
-          {A B B′ : Set} (g : B → B′) (f : F₀ F A → B) →
-          transpose (g ∘ᶠ f) ≡ F₁ G g ∘ᶠ transpose f
+          {A : categoryObjects C} {B B′ : categoryObjects D}
+          (g : categoryHom D B B′)
+          (f : categoryHom D (functorObject F A) B) →
+          categoryHomEq C
+            (transpose (categoryCompose D g f))
+            (categoryCompose C (functorArrow G g) (transpose f))
     open Adjunction public
 
-    record FullyFaithful (F : Endofunctor) : Set₁ where
-      field
-        reflectArrow :
-          {A B : Set} →
-          (F₀ F A → F₀ F B) →
-          A → B
-        reflect-map :
-          {A B : Set} (f : A → B) →
-          reflectArrow (F₁ F f) ≡ f
-        map-reflect :
-          {A B : Set} (f : F₀ F A → F₀ F B) →
-          F₁ F (reflectArrow f) ≡ f
-    open FullyFaithful public
-
-    productComparison :
-      (F : Endofunctor) →
-      {A B : Set} →
-      F₀ F (A × B) →
-      F₀ F A × F₀ F B
-    productComparison F value =
-      pair (F₁ F fst value) (F₁ F snd value)
-
-    record PreservesFiniteProducts (F : Endofunctor) : Set₁ where
-      field
-        fromTerminal : ⊤ → F₀ F ⊤
-        terminal-roundtrip :
-          (value : F₀ F ⊤) → fromTerminal tt ≡ value
-        fromProduct :
-          {A B : Set} →
-          F₀ F A × F₀ F B →
-          F₀ F (A × B)
-        product-roundtrip-forward :
-          {A B : Set} (value : F₀ F (A × B)) →
-          fromProduct (productComparison F value) ≡ value
-        product-roundtrip-backward :
-          {A B : Set} (value : F₀ F A × F₀ F B) →
-          productComparison F (fromProduct value) ≡ value
-    open PreservesFiniteProducts public
-
-    record CohesiveAdjointQuadruple : Set₁ where
-      field
-        piFunctor : Endofunctor
-        discreteFunctor : Endofunctor
-        globalSectionsFunctor : Endofunctor
-        codiscreteFunctor : Endofunctor
-        pi-adjoint-discrete :
-          Adjunction piFunctor discreteFunctor
-        discrete-adjoint-globalSections :
-          Adjunction discreteFunctor globalSectionsFunctor
-        globalSections-adjoint-codiscrete :
-          Adjunction globalSectionsFunctor codiscreteFunctor
-        discrete-fully-faithful :
-          FullyFaithful discreteFunctor
-        codiscrete-fully-faithful :
-          FullyFaithful codiscreteFunctor
-        pi-preserves-finite-products :
-          PreservesFiniteProducts piFunctor
-    open CohesiveAdjointQuadruple public
-
-    identityEndofunctor : Endofunctor
-    identityEndofunctor = record
-      { F₀ = λ A → A
-      ; F₁ = λ f → f
-      ; F₁-id = λ x → refl
-      ; F₁-compose = λ g f x → refl
-      }
-
     identityAdjunction :
-      Adjunction identityEndofunctor identityEndofunctor
-    identityAdjunction = record
+      (C : Category) →
+      Adjunction (identityFunctor C) (identityFunctor C)
+    identityAdjunction C = record
       { transpose = λ f → f
       ; untranspose = λ f → f
-      ; transpose-untranspose = λ f → refl
-      ; untranspose-transpose = λ f → refl
-      ; transpose-natural-source = λ f g → refl
-      ; transpose-natural-target = λ g f → refl
+      ; transpose-untranspose =
+          λ f → categoryHomEq-refl C f
+      ; untranspose-transpose =
+          λ f → categoryHomEq-refl C f
+      ; transpose-natural-source =
+          λ f g → categoryHomEq-refl C (categoryCompose C g f)
+      ; transpose-natural-target =
+          λ g f → categoryHomEq-refl C (categoryCompose C g f)
       }
+
+    --------------------------------------------------------------------
+    -- Full faithfulness is the hom-set map being an isomorphism.
+    --------------------------------------------------------------------
+
+    record FullyFaithful
+      {C D : Category}
+      (F : Functor C D) : Set₁ where
+      field
+        reflectArrow :
+          {A B : categoryObjects C} →
+          categoryHom D (functorObject F A) (functorObject F B) →
+          categoryHom C A B
+        reflect-map :
+          {A B : categoryObjects C}
+          (f : categoryHom C A B) →
+          categoryHomEq D (functorArrow F (reflectArrow (functorArrow F f)))
+            (functorArrow F f)
+        map-reflect :
+          {A B : categoryObjects C}
+          (f : categoryHom D (functorObject F A) (functorObject F B)) →
+          categoryHomEq C
+            (reflectArrow (functorArrow F (reflectArrow f)))
+            (reflectArrow f)
+    open FullyFaithful public
 
     identityFullyFaithful :
-      FullyFaithful identityEndofunctor
-    identityFullyFaithful = record
+      (C : Category) →
+      FullyFaithful (identityFunctor C)
+    identityFullyFaithful C = record
       { reflectArrow = λ f → f
-      ; reflect-map = λ f → refl
-      ; map-reflect = λ f → refl
+      ; reflect-map = λ f → categoryHomEq-refl C f
+      ; map-reflect = λ f → categoryHomEq-refl C f
       }
 
-    identityProducts :
-      PreservesFiniteProducts identityEndofunctor
-    identityProducts = record
-      { fromTerminal = λ _ → tt
-      ; terminal-roundtrip = λ { tt → refl }
-      ; fromProduct = λ value → value
-      ; product-roundtrip-forward = λ { (pair first second) → refl }
-      ; product-roundtrip-backward = λ { (pair first second) → refl }
+    --------------------------------------------------------------------
+    -- Finite products are expressed categorically by a terminal object
+    -- and binary products with the universal pairing law.
+    --------------------------------------------------------------------
+
+    record TerminalObject (C : Category) : Set₁ where
+      field
+        terminalObject : categoryObjects C
+        terminalArrow :
+          {A : categoryObjects C} →
+          categoryHom C A terminalObject
+        terminalArrow-unique :
+          {A : categoryObjects C}
+          (f : categoryHom C A terminalObject) →
+          categoryHomEq C f terminalArrow
+    open TerminalObject public
+
+    record BinaryProduct
+      (C : Category)
+      (A B : categoryObjects C) : Set₁ where
+      field
+        binaryProductObject : categoryObjects C
+        binaryProductLeft : categoryHom C binaryProductObject A
+        binaryProductRight : categoryHom C binaryProductObject B
+        binaryProductPair :
+          {X : categoryObjects C} →
+          categoryHom C X A →
+          categoryHom C X B →
+          categoryHom C X binaryProductObject
+        binaryProductPair-left :
+          {X : categoryObjects C}
+          (f : categoryHom C X A)
+          (g : categoryHom C X B) →
+          categoryHomEq C
+            (categoryCompose C binaryProductLeft (binaryProductPair f g))
+            f
+        binaryProductPair-right :
+          {X : categoryObjects C}
+          (f : categoryHom C X A)
+          (g : categoryHom C X B) →
+          categoryHomEq C
+            (categoryCompose C binaryProductRight (binaryProductPair f g))
+            g
+        binaryProduct-eta :
+          {X : categoryObjects C}
+          (h : categoryHom C X binaryProductObject) →
+          categoryHomEq C
+            (binaryProductPair
+              (categoryCompose C binaryProductLeft h)
+              (categoryCompose C binaryProductRight h))
+            h
+    open BinaryProduct public
+
+    record FiniteProducts (C : Category) : Set₁ where
+      field
+        finiteTerminal : TerminalObject C
+        finiteBinaryProduct :
+          (A B : categoryObjects C) → BinaryProduct C A B
+    open FiniteProducts public
+
+    --------------------------------------------------------------------
+    -- Π preserves finite products when its canonical comparison maps
+    -- (and the terminal comparison) are isomorphisms.
+    --------------------------------------------------------------------
+
+    record PreservesFiniteProducts
+      {C D : Category}
+      (F : Functor C D)
+      (productsC : FiniteProducts C)
+      (productsD : FiniteProducts D) : Set₁ where
+      field
+        terminalComparison :
+          categoryHom D
+            (functorObject F (terminalObject (finiteTerminal productsC)))
+            (terminalObject (finiteTerminal productsD))
+        terminalComparisonInverse :
+          categoryHom D
+            (terminalObject (finiteTerminal productsD))
+            (functorObject F (terminalObject (finiteTerminal productsC)))
+        terminalComparison-left-inverse :
+          categoryHomEq D
+            (categoryCompose D terminalComparisonInverse terminalComparison)
+            (categoryId D)
+        terminalComparison-right-inverse :
+          categoryHomEq D
+            (categoryCompose D terminalComparison terminalComparisonInverse)
+            (categoryId D)
+
+        productComparison :
+          {A B : categoryObjects C} →
+          categoryHom D
+            (functorObject F
+              (binaryProductObject (finiteBinaryProduct productsC A B)))
+            (binaryProductObject (finiteBinaryProduct productsD
+              (functorObject F A) (functorObject F B)))
+        productComparisonInverse :
+          {A B : categoryObjects C} →
+          categoryHom D
+            (binaryProductObject (finiteBinaryProduct productsD
+              (functorObject F A) (functorObject F B)))
+            (functorObject F
+              (binaryProductObject (finiteBinaryProduct productsC A B)))
+        productComparison-left :
+          {A B : categoryObjects C} →
+          categoryHomEq D
+            (categoryCompose D
+              (binaryProductLeft (finiteBinaryProduct productsD
+                (functorObject F A) (functorObject F B)))
+              (productComparison {A} {B}))
+            (functorArrow F (binaryProductLeft (finiteBinaryProduct productsC A B)))
+        productComparison-right :
+          {A B : categoryObjects C} →
+          categoryHomEq D
+            (categoryCompose D
+              (binaryProductRight (finiteBinaryProduct productsD
+                (functorObject F A) (functorObject F B)))
+              (productComparison {A} {B}))
+            (functorArrow F (binaryProductRight (finiteBinaryProduct productsC A B)))
+        productComparison-left-inverse :
+          {A B : categoryObjects C} →
+          categoryHomEq D
+            (categoryCompose D
+              (productComparisonInverse {A} {B})
+              (productComparison {A} {B}))
+            (categoryId D)
+        productComparison-right-inverse :
+          {A B : categoryObjects C} →
+          categoryHomEq D
+            (categoryCompose D
+              (productComparison {A} {B})
+              (productComparisonInverse {A} {B}))
+            (categoryId D)
+    open PreservesFiniteProducts public
+
+    --------------------------------------------------------------------
+    -- Abstract cohesive adjunction core. H is the cohesive category and
+    -- G is the category of discrete homotopy types. A full cohesive topos
+    -- additionally supplies topos structure on H and the intended
+    -- ∞-groupoid structure on G; those structures are intentionally not
+    -- postulated or conflated with this adjoint-quadruple interface.
+    --------------------------------------------------------------------
+
+    record CohesiveAdjointQuadruple
+      (H G : Category)
+      (productsH : FiniteProducts H)
+      (productsG : FiniteProducts G) : Set₁ where
+      field
+        cohesivePi : Functor H G
+        cohesiveDisc : Functor G H
+        cohesiveGamma : Functor H G
+        cohesiveCodisc : Functor G H
+        pi-adjoint-disc :
+          Adjunction cohesivePi cohesiveDisc
+        disc-adjoint-gamma :
+          Adjunction cohesiveDisc cohesiveGamma
+        gamma-adjoint-codisc :
+          Adjunction cohesiveGamma cohesiveCodisc
+        disc-fully-faithful :
+          FullyFaithful cohesiveDisc
+        codisc-fully-faithful :
+          FullyFaithful cohesiveCodisc
+        pi-preserves-finite-products :
+          PreservesFiniteProducts cohesivePi productsH productsG
+    open CohesiveAdjointQuadruple public
+
+    --------------------------------------------------------------------
+    -- Set with its ordinary terminal object and binary products.
+    --------------------------------------------------------------------
+
+    setCategory : Category
+    setCategory = record
+      { categoryObjects = Set
+      ; categoryHom = λ A B → A → B
+      ; categoryHomEq = λ f g → (x : _) → f x ≡ g x
+      ; categoryHomEq-refl = λ f x → refl
+      ; categoryHomEq-sym = λ proof x → sym (proof x)
+      ; categoryHomEq-trans = λ first second x → trans (first x) (second x)
+      ; categoryId = idᶠ
+      ; categoryCompose = _∘ᶠ_
+      ; categoryCompose-assoc = λ h g f x → refl
+      ; categoryCompose-id-left = λ f x → refl
+      ; categoryCompose-id-right = λ f x → refl
       }
 
-    identityCohesiveAdjointQuadruple : CohesiveAdjointQuadruple
-    identityCohesiveAdjointQuadruple = record
-      { piFunctor = identityEndofunctor
-      ; discreteFunctor = identityEndofunctor
-      ; globalSectionsFunctor = identityEndofunctor
-      ; codiscreteFunctor = identityEndofunctor
-      ; pi-adjoint-discrete = identityAdjunction
-      ; discrete-adjoint-globalSections = identityAdjunction
-      ; globalSections-adjoint-codiscrete = identityAdjunction
-      ; discrete-fully-faithful = identityFullyFaithful
-      ; codiscrete-fully-faithful = identityFullyFaithful
-      ; pi-preserves-finite-products = identityProducts
+    setTerminalMap : {A : Set} → A → ⊤
+    setTerminalMap value = tt
+
+    setTerminalMap-unique :
+      {A : Set} (f : A → ⊤) (x : A) → f x ≡ tt
+    setTerminalMap-unique f x with f x
+    ... | tt = refl
+
+    setTerminalObject : TerminalObject setCategory
+    setTerminalObject = record
+      { terminalObject = ⊤
+      ; terminalArrow = setTerminalMap
+      ; terminalArrow-unique = λ f x → setTerminalMap-unique f x
+      }
+
+    setProductEta :
+      {A B : Set} (value : A × B) →
+      pair (fst value) (snd value) ≡ value
+    setProductEta (pair first second) = refl
+
+    setBinaryProduct :
+      (A B : Set) → BinaryProduct setCategory A B
+    setBinaryProduct A B = record
+      { binaryProductObject = A × B
+      ; binaryProductLeft = fst
+      ; binaryProductRight = snd
+      ; binaryProductPair = λ f g x → pair (f x) (g x)
+      ; binaryProductPair-left = λ f g x → refl
+      ; binaryProductPair-right = λ f g x → refl
+      ; binaryProduct-eta = λ h x → setProductEta (h x)
+      }
+
+    setFiniteProducts : FiniteProducts setCategory
+    setFiniteProducts = record
+      { finiteTerminal = setTerminalObject
+      ; finiteBinaryProduct = setBinaryProduct
+      }
+
+    --------------------------------------------------------------------
+    -- The identity functor preserves finite products by the canonical
+    -- comparison A×B → A×B, whose inverse is the identity.
+    --------------------------------------------------------------------
+
+    setIdentityPreservesFiniteProducts :
+      PreservesFiniteProducts
+        (identityFunctor setCategory)
+        setFiniteProducts
+        setFiniteProducts
+    setIdentityPreservesFiniteProducts = record
+      { terminalComparison = setTerminalMap
+      ; terminalComparisonInverse = setTerminalMap
+      ; terminalComparison-left-inverse = λ { tt → refl }
+      ; terminalComparison-right-inverse = λ { tt → refl }
+      ; productComparison = λ value → pair (fst value) (snd value)
+      ; productComparisonInverse = λ value → value
+      ; productComparison-left = λ value → refl
+      ; productComparison-right = λ value → refl
+      ; productComparison-left-inverse = λ value → setProductEta value
+      ; productComparison-right-inverse = λ value → setProductEta value
+      }
+
+    identitySetCohesion :
+      CohesiveAdjointQuadruple
+        setCategory setCategory setFiniteProducts setFiniteProducts
+    identitySetCohesion = record
+      { cohesivePi = identityFunctor setCategory
+      ; cohesiveDisc = identityFunctor setCategory
+      ; cohesiveGamma = identityFunctor setCategory
+      ; cohesiveCodisc = identityFunctor setCategory
+      ; pi-adjoint-disc = identityAdjunction setCategory
+      ; disc-adjoint-gamma = identityAdjunction setCategory
+      ; gamma-adjoint-codisc = identityAdjunction setCategory
+      ; disc-fully-faithful = identityFullyFaithful setCategory
+      ; codisc-fully-faithful = identityFullyFaithful setCategory
+      ; pi-preserves-finite-products = setIdentityPreservesFiniteProducts
       }
 
     Disc : Set → Set
-    Disc = F₀ (discreteFunctor identityCohesiveAdjointQuadruple)
+    Disc X = functorObject
+      (cohesiveDisc identitySetCohesion) X
 
     Π : Set → Set
-    Π = F₀ (piFunctor identityCohesiveAdjointQuadruple)
+    Π X = functorObject (cohesivePi identitySetCohesion) X
 
     Γ : Set → Set
-    Γ = F₀ (globalSectionsFunctor identityCohesiveAdjointQuadruple)
+    Γ X = functorObject (cohesiveGamma identitySetCohesion) X
 
     coDisc : Set → Set
-    coDisc = F₀ (codiscreteFunctor identityCohesiveAdjointQuadruple)
+    coDisc X = functorObject
+      (cohesiveCodisc identitySetCohesion) X
 
     gammaDiscIso : (X : Set) → Iso (Γ (Disc X)) X
-    gammaDiscIso X = iso (λ x → x) (λ x → x) (λ x → refl) (λ x → refl)
+    gammaDiscIso X = iso idᶠ idᶠ (λ x → refl) (λ x → refl)
 
     piDiscIso : (X : Set) → Iso (Π (Disc X)) X
-    piDiscIso X = iso (λ x → x) (λ x → x) (λ x → refl) (λ x → refl)
+    piDiscIso X = iso idᶠ idᶠ (λ x → refl) (λ x → refl)
 
     gammaCodiscIso : (X : Set) → Iso (Γ (coDisc X)) X
-    gammaCodiscIso X = iso (λ x → x) (λ x → x) (λ x → refl) (λ x → refl)
+    gammaCodiscIso X = iso idᶠ idᶠ (λ x → refl) (λ x → refl)
 
     data CohesiveExpr : Set₁ where
       objectₑ : Set → CohesiveExpr
