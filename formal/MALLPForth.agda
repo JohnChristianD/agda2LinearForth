@@ -909,7 +909,10 @@ module Foundations where
       {A B : TensorExpr} →
       (f g : TensorHom A B) →
       f ≡ g
-    tensorHom-proposition = isTrue-unique
+    tensorHom-proposition {A} {B} f g =
+      isTrue-unique
+        {b = listEq (tensorNF A) (tensorNF B)}
+        f g
 
     tensorIdentity-left :
       {A B : TensorExpr} (f : TensorHom A B) →
@@ -3821,6 +3824,10 @@ module StrictNatCompiler where
       NatOp →
       MALLPNatProof (suc n)
 
+  natPlusZeroRight : (n : Nat) → n + zero ≡ n
+  natPlusZeroRight zero = refl
+  natPlusZeroRight (suc n) = cong suc (natPlusZeroRight n)
+
   natProofCutCount : {n : Nat} → MALLPNatProof n → Nat
   natProofCutCount (natLiteralProof value) = zero
   natProofCutCount (natPrimitiveProof operation) = zero
@@ -3926,7 +3933,8 @@ module StrictNatCompiler where
   embedNatProof-cut-count (natRotateHeadToLastProof proof) =
     embedNatProof-cut-count proof
   embedNatProof-cut-count (natPrimitiveComposeProof proof operation)
-    rewrite embedNatProof-cut-count proof = refl
+    rewrite embedNatProof-cut-count proof =
+      cong suc (natPlusZeroRight (natProofCutCount proof))
   embedNatProof-cut-count (natCutProof first second)
     rewrite embedNatProof-cut-count first
           | embedNatProof-cut-count second = refl
