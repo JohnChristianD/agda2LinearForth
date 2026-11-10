@@ -56,6 +56,11 @@ open import Agda.Builtin.Unit using (⊤; tt)
 answerUnit : ⊤
 answerUnit = tt
 
+-- An empty Unit stack effect cannot consume a live Nat argument.
+-- The backend must skip this definition rather than silently weaken it.
+answerUnitDropsNat : Nat → ⊤
+answerUnitDropsNat value = tt
+
 -- Linear function cases: one live argument, consumed exactly once.
 answerIdentity : Nat → Nat
 answerIdentity value = value
