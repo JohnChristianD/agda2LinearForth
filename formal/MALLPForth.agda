@@ -914,6 +914,11 @@ module Foundations where
       trans first (trans second third)
     trans-assoc refl refl refl = refl
 
+    trans-right-unit :
+      {X : Set} {x y : X} (path : x ≡ y) →
+      trans path refl ≡ path
+    trans-right-unit refl = refl
+
     tensorPathUIP :
       {X : Set} (x y : X) (p q : x ≡ y) →
       p ≡ q
@@ -934,7 +939,7 @@ module Foundations where
     tensorIdentity-right :
       {A B : TensorExpr} (f : TensorHom A B) →
       tensorCompose {A = A} {B = B} {C = B} (tensorId B) f ≡ f
-    tensorIdentity-right refl = refl
+    tensorIdentity-right f = trans-right-unit {X = List Nat} f
 
     tensorAssociativity :
       {A B C D : TensorExpr}
