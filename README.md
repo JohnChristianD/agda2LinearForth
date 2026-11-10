@@ -52,7 +52,7 @@ The Haskell Nat resource decoder tracks labelled Treeless variables and requires
 
 `MALLPNatTheory` layers a closed arithmetic primitive signature and cut over MALLP. `MALLPProtocolTheory` declares signatures for operations such as thunk forcing, effect emission, linear application, list construction, and list folding. A declared signature states a resource contract; it does **not** prove that a concrete Haskell lowering or Gforth runtime word implements that contract.
 
-`MALLPRelationalDenotation` gives a Rel-style interpretation of the proof constructors. It is not presented as the complete Hamano–Scott categorical model: the reflective/coreflective adjunction, *-autonomous structure, units/counits, products, and coherence laws are not all formalized here.
+`MALLPRelationalDenotation` gives a Rel-style interpretation of the proof constructors. `CohesiveRetractions` separately specifies the cohesive adjoint quadruple and supplies the identity-Set model, but those pieces are not assembled with MALLP into Hamano–Scott's *-autonomous category with products. No categorical soundness theorem for that combined model is claimed.
 
 ## Compiler/proof correspondence
 
