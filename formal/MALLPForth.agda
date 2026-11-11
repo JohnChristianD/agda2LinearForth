@@ -5470,6 +5470,65 @@ module StrictBoolCompiler where
     mapBoolForthTokensAsText (token ∷ tokens) =
       boolForthTokenAsText token ∷ mapBoolForthTokensAsText tokens
 
+  mutual
+    decodeBoolForthTextToken : ForthTextToken → Maybe BoolForthToken
+    decodeBoolForthTextToken textTrueWord = just pushTrueToken
+    decodeBoolForthTextToken textFalseWord = just pushFalseToken
+    decodeBoolForthTextToken textSwapWord = just boolSwapToken
+    decodeBoolForthTextToken (textIf whenTrue whenFalse)
+      with decodeBoolForthTextTokens whenTrue
+         | decodeBoolForthTextTokens whenFalse
+    ... | just trueTokens | just falseTokens =
+      just (boolIfToken trueTokens falseTokens)
+    ... | nothing | _ = nothing
+    ... | just _ | nothing = nothing
+    decodeBoolForthTextToken _ = nothing
+
+    decodeBoolForthTextTokens :
+      List ForthTextToken → Maybe (List BoolForthToken)
+    decodeBoolForthTextTokens [] = just []
+    decodeBoolForthTextTokens (token ∷ tokens)
+      with decodeBoolForthTextToken token
+         | decodeBoolForthTextTokens tokens
+    ... | just decoded | just rest = just (decoded ∷ rest)
+    ... | nothing | _ = nothing
+    ... | just _ | nothing = nothing
+
+    decodeBoolForthTextToken-roundtrip :
+      (token : BoolForthToken) →
+      decodeBoolForthTextToken (boolForthTokenAsText token) ≡ just token
+    decodeBoolForthTextToken-roundtrip pushTrueToken = refl
+    decodeBoolForthTextToken-roundtrip pushFalseToken = refl
+    decodeBoolForthTextToken-roundtrip boolSwapToken = refl
+    decodeBoolForthTextToken-roundtrip (boolIfToken whenTrue whenFalse)
+      rewrite decodeBoolForthTextTokens-roundtrip whenTrue
+            | decodeBoolForthTextTokens-roundtrip whenFalse = refl
+
+    decodeBoolForthTextTokens-roundtrip :
+      (tokens : List BoolForthToken) →
+      decodeBoolForthTextTokens (mapBoolForthTokensAsText tokens) ≡ just tokens
+    decodeBoolForthTextTokens-roundtrip [] = refl
+    decodeBoolForthTextTokens-roundtrip (token ∷ tokens)
+      rewrite decodeBoolForthTextToken-roundtrip token
+            | decodeBoolForthTextTokens-roundtrip tokens = refl
+
+  -- Interpret the exact Boolean subset of the renderer's shared text-token
+  -- vocabulary. Unsupported Nat/Word64 instructions fail closed.
+  execBoolTextTokens :
+    List ForthTextToken → List Bool → Maybe (List Bool)
+  execBoolTextTokens tokens stack
+    with decodeBoolForthTextTokens tokens
+  ... | nothing = nothing
+  ... | just decoded = execBoolTokens decoded stack
+
+  execBoolTextTokens-map :
+    (tokens : List BoolForthToken) →
+    (stack : List Bool) →
+    execBoolTextTokens (mapBoolForthTokensAsText tokens) stack ≡
+    execBoolTokens tokens stack
+  execBoolTextTokens-map tokens stack
+    rewrite decodeBoolForthTextTokens-roundtrip tokens = refl
+
   boolPairSwap-token-correspondence :
     mapBoolForthTokensAsText (renderBoolCode compileBoolPairSwap) ≡
     (textSwapWord ∷ [])
