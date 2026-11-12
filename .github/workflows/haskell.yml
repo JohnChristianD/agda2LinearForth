@@ -106,6 +106,197 @@ jobs:
         run: |
           cabal build agda2forth
 
+      - name: Materialize transient strict regression fixtures
+        run: |
+          mkdir -p test/gforth
+          cat > test/MALLPStrict.agda.src <<'AGDA'
+module MALLPStrict where
+
+open import Agda.Builtin.Nat using (Nat; _+_; _*_; _-_)
+
+answerAdd : Nat
+answerAdd = 7 + 13
+answerMonus : Nat
+answerMonus = 2 - 5
+answerMultiply : Nat
+answerMultiply = (2 + 3) * 4
+answerLet : Nat
+answerLet = let value = 7 + 13 in value * 2
+answerLetShared : Nat
+answerLetShared = let value = 10 + 3 in value * value
+answerLetUnused : Nat
+answerLetUnused = let ignored = 1000 * 1000 in 7
+
+open import Agda.Builtin.Bool using (Bool; true; false)
+answerTrue : Bool
+answerTrue = true
+answerFalse : Bool
+answerFalse = false
+invertBool : Bool → Bool
+invertBool true = false
+invertBool false = true
+chooseBool : Bool → Bool → Bool
+chooseBool true value = value
+chooseBool false value = value
+data BoolPair : Set where
+  boolPair : Bool → Bool → BoolPair
+swapBoolPair : BoolPair → BoolPair
+swapBoolPair (boolPair first second) = boolPair second first
+answerMatchedTrue : Bool
+answerMatchedTrue = invertBool true
+answerMatchedFalse : Bool
+answerMatchedFalse = invertBool false
+
+open import Agda.Builtin.Unit using (⊤; tt)
+answerUnit : ⊤
+answerUnit = tt
+answerUnitDropsNat : Nat → ⊤
+answerUnitDropsNat value = tt
+answerIdentity : Nat → Nat
+answerIdentity value = value
+answerAddFive : Nat → Nat
+answerAddFive value = value + 5
+answerMonusFive : Nat → Nat
+answerMonusFive value = value - 5
+answerFiveMonus : Nat → Nat
+answerFiveMonus value = 5 - value
+answerMultiplyFive : Nat → Nat
+answerMultiplyFive value = value * 5
+
+open import Agda.Builtin.Int using (Int; pos)
+open import Agda.Builtin.Word using (Word64)
+answerWord64Identity : Word64 → Word64
+answerWord64Identity value = value
+answerInt : Int
+answerInt = pos 2
+answerAddTwo : Nat → Nat → Nat
+answerAddTwo x y = x + y
+answerMonusTwo : Nat → Nat → Nat
+answerMonusTwo x y = x - y
+answerReverseMonusTwo : Nat → Nat → Nat
+answerReverseMonusTwo x y = y - x
+answerMultiplyTwo : Nat → Nat → Nat
+answerMultiplyTwo x y = x * y
+answerThree : Nat → Nat → Nat → Nat
+answerThree x y z = (x + z) * y
+answerThreeLet : Nat → Nat → Nat → Nat
+answerThreeLet x y z = let partial = x + z in partial * y
+answerFour : Nat → Nat → Nat → Nat → Nat
+answerFour w x y z = (w + y) * (x + z)
+answerCallThree : Nat → Nat → Nat → Nat
+answerCallThree x y z = answerAddTwo x (y + z)
+answerCallNested : Nat → Nat → Nat → Nat
+answerCallNested x y z = answerMultiplyTwo (x + z) y
+AGDA
+          cat > test/gforth/mallp-strict.fs <<'FORTH'
+: strict-assert-boolean { actual expected -- }
+  actual expected <> IF
+    ." strict MALLP boolean mismatch" cr
+    -4202 THROW
+  THEN
+;
+: strict-assert-bool-pair { actual-bottom actual-top expected-bottom expected-top -- }
+  actual-bottom expected-bottom <> IF
+    ." strict MALLP pair bottom mismatch" cr
+    -4204 THROW
+  THEN
+  actual-top expected-top <> IF
+    ." strict MALLP pair top mismatch" cr
+    -4205 THROW
+  THEN
+;
+: strict-assert-word64 { actual-high actual-low expected-high expected-low -- }
+  actual-high expected-high <> IF
+    ." strict MALLP Word64 high limb mismatch" cr
+    -4206 THROW
+  THEN
+  actual-low expected-low <> IF
+    ." strict MALLP Word64 low limb mismatch" cr
+    -4207 THROW
+  THEN
+;
+: strict-assert-natural { actual expected -- }
+  actual expected <> IF
+    ." strict MALLP natural mismatch" cr
+    -4201 THROW
+  THEN
+;
+answerAdd 20 strict-assert-natural
+answerMonus 0 strict-assert-natural
+answerMultiply 20 strict-assert-natural
+answerLet 40 strict-assert-natural
+answerLetShared 169 strict-assert-natural
+answerLetUnused 7 strict-assert-natural
+answerTrue TRUE strict-assert-boolean
+answerFalse FALSE strict-assert-boolean
+answerMatchedTrue FALSE strict-assert-boolean
+answerMatchedFalse TRUE strict-assert-boolean
+TRUE invertBool FALSE strict-assert-boolean
+FALSE invertBool TRUE strict-assert-boolean
+TRUE FALSE chooseBool FALSE strict-assert-boolean
+FALSE TRUE chooseBool TRUE strict-assert-boolean
+TRUE FALSE swapBoolPair FALSE TRUE strict-assert-bool-pair
+answerUnit
+10 answerIdentity 10 strict-assert-natural
+10 answerAddFive 15 strict-assert-natural
+3 answerMonusFive 0 strict-assert-natural
+3 answerFiveMonus 2 strict-assert-natural
+4 answerMultiplyFive 20 strict-assert-natural
+7 13 answerAddTwo 20 strict-assert-natural
+2 5 answerMonusTwo 0 strict-assert-natural
+5 2 answerMonusTwo 3 strict-assert-natural
+2 5 answerReverseMonusTwo 3 strict-assert-natural
+4 5 answerMultiplyTwo 20 strict-assert-natural
+4294967295 4294967295 answerWord64Identity
+4294967295 4294967295 strict-assert-word64
+2 3 4 answerThree 18 strict-assert-natural
+2 3 4 answerThreeLet 18 strict-assert-natural
+2 3 4 5 answerFour 48 strict-assert-natural
+2 3 4 answerCallThree 9 strict-assert-natural
+2 3 4 answerCallNested 18 strict-assert-natural
+: testStrictOverflow ( -- )
+  MALLP-MAX-NAT 1 MALLP-NAT-ADD { ignored }
+;
+' testStrictOverflow CATCH MALLP-ERR-OVERFLOW strict-assert-natural
+: testStrictNegative ( -- )
+  -1 MALLP-CHECK-NAT
+;
+' testStrictNegative CATCH MALLP-ERR-NEGATIVE strict-assert-natural
+MALLP-MAX-NAT 0 MALLP-NAT-ADD MALLP-MAX-NAT strict-assert-natural
+: testStrictMultiplyOverflow ( -- )
+  MALLP-MAX-NAT 2 MALLP-NAT-MUL { ignored }
+;
+' testStrictMultiplyOverflow CATCH MALLP-ERR-OVERFLOW strict-assert-natural
+: testStrictParseMax ( -- )
+  MALLP-MAX-NAT 0 <# #S #> MALLP-PARSE-NAT
+  MALLP-MAX-NAT strict-assert-natural
+;
+testStrictParseMax
+s" 000123" MALLP-PARSE-NAT 123 strict-assert-natural
+: testStrictLiteralEmpty ( -- )
+  s" " MALLP-PARSE-NAT { ignored }
+;
+' testStrictLiteralEmpty CATCH MALLP-ERR-LITERAL strict-assert-natural
+: testStrictLiteralInvalid ( -- )
+  s" 12x" MALLP-PARSE-NAT { ignored }
+;
+' testStrictLiteralInvalid CATCH MALLP-ERR-LITERAL strict-assert-natural
+: testStrictLiteralNegative ( -- )
+  s" -1" MALLP-PARSE-NAT { ignored }
+;
+' testStrictLiteralNegative CATCH MALLP-ERR-LITERAL strict-assert-natural
+: testStrictLiteralOverflow ( -- )
+  s" 999999999999999999999999999999999999999999999999999999999999999999"
+    MALLP-PARSE-NAT { ignored }
+;
+' testStrictLiteralOverflow CATCH MALLP-ERR-OVERFLOW strict-assert-natural
+: assert-empty-stack ( -- )
+  depth 0<> IF -4203 THROW THEN
+;
+assert-empty-stack
+cr ." mallp-strict-tests-passed" cr
+BYE
+FORTH
       - name: Compile strict MALLP source and emit Forth
         id: forth_emit
         run: |
