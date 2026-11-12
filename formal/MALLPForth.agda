@@ -816,7 +816,7 @@ module Foundations where
       allFalseBefore-lift refl
         (boundedSearch-minimal fuel (λ i → P (suc i)) n
           (trans smaller
-            (cong just (suc-injective (just-injective result))))
+            (cong just (suc-injective (just-injective result)))))
 
     boundedSearch-least :
       (fuel : Nat) (P : Nat → Bool) (n : Nat) →
