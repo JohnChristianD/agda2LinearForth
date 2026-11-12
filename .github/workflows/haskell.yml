@@ -50,62 +50,6 @@ jobs:
           ld --version
           printf 'int main(void) { return 0; }\n' | gcc -fuse-ld=gold -x c -o "$RUNNER_TEMP/gold-linker-smoke" -
 
-      - name: Set up GHC
-        uses: haskell-actions/setup@v2
-        id: setup
-        with:
-          ghc-version: '9.2.8'
-          cabal-version: '3.10.3.0'
-          cabal-update: false
-
-      - name: Restore Cabal and local build caches
-        id: build_cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ steps.setup.outputs.cabal-store }}
-            dist-newstyle
-          key: ${{ runner.os }}-ghc-${{ steps.setup.outputs.ghc-version }}-cabal-${{ steps.setup.outputs.cabal-version }}-${{ hashFiles('cabal.project', 'agda2forth.cabal') }}-local-build-v2
-          restore-keys: |
-            ${{ runner.os }}-ghc-${{ steps.setup.outputs.ghc-version }}-cabal-${{ steps.setup.outputs.cabal-version }}-
-
-      - name: Install latest stable Agda from Hackage
-        id: agda_cli
-        run: |
-          cabal update
-          agda_bin_dir="$RUNNER_TEMP/agda/bin"
-          mkdir -p "$agda_bin_dir"
-          cabal install Agda --installdir="$agda_bin_dir" --overwrite-policy=always
-          agda_bin="$agda_bin_dir/agda"
-          test -x "$agda_bin"
-          echo "$agda_bin_dir" >> "$GITHUB_PATH"
-          echo "AGDA_BIN=$agda_bin" >> "$GITHUB_ENV"
-
-      - name: Save Cabal and local build caches
-        if: always() && steps.agda_cli.outcome == 'success' && steps.build_cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ steps.setup.outputs.cabal-store }}
-            dist-newstyle
-          key: ${{ runner.os }}-ghc-${{ steps.setup.outputs.ghc-version }}-cabal-${{ steps.setup.outputs.cabal-version }}-${{ hashFiles('cabal.project', 'agda2forth.cabal') }}-local-build-v2
-
-      # The Forth token algebra and canonical renderer are in MALLPForth.agda.
-      - name: Type-check MALLP, rewrite system, and integrated Forth renderer
-        id: mallp_proof
-        run: |
-          "$AGDA_BIN" --no-fast-reduce --no-projection-like --confluence-check -i formal formal/MALLPForth.agda
-
-      - name: Type-check the separate RSED physics specification
-        id: physics_proof
-        run: |
-          "$AGDA_BIN" --no-fast-reduce --no-projection-like -i formal formal/SovereignRationalSEDPhysics.agda
-
-      - name: Build the Haskell Forth backend
-        id: forth_backend
-        run: |
-          cabal build agda2forth
-
       - name: Materialize transient strict regression fixtures
         run: |
           mkdir -p test/gforth
@@ -298,6 +242,62 @@ jobs:
           cr ." mallp-strict-tests-passed" cr
           BYE
           FORTH
+
+      - name: Set up GHC
+        uses: haskell-actions/setup@v2
+        id: setup
+        with:
+          ghc-version: '9.2.8'
+          cabal-version: '3.10.3.0'
+          cabal-update: false
+
+      - name: Restore Cabal and local build caches
+        id: build_cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ steps.setup.outputs.cabal-store }}
+            dist-newstyle
+          key: ${{ runner.os }}-ghc-${{ steps.setup.outputs.ghc-version }}-cabal-${{ steps.setup.outputs.cabal-version }}-${{ hashFiles('cabal.project', 'agda2forth.cabal') }}-local-build-v2
+          restore-keys: |
+            ${{ runner.os }}-ghc-${{ steps.setup.outputs.ghc-version }}-cabal-${{ steps.setup.outputs.cabal-version }}-
+
+      - name: Install latest stable Agda from Hackage
+        id: agda_cli
+        run: |
+          cabal update
+          agda_bin_dir="$RUNNER_TEMP/agda/bin"
+          mkdir -p "$agda_bin_dir"
+          cabal install Agda --installdir="$agda_bin_dir" --overwrite-policy=always
+          agda_bin="$agda_bin_dir/agda"
+          test -x "$agda_bin"
+          echo "$agda_bin_dir" >> "$GITHUB_PATH"
+          echo "AGDA_BIN=$agda_bin" >> "$GITHUB_ENV"
+
+      - name: Save Cabal and local build caches
+        if: always() && steps.agda_cli.outcome == 'success' && steps.build_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ steps.setup.outputs.cabal-store }}
+            dist-newstyle
+          key: ${{ runner.os }}-ghc-${{ steps.setup.outputs.ghc-version }}-cabal-${{ steps.setup.outputs.cabal-version }}-${{ hashFiles('cabal.project', 'agda2forth.cabal') }}-local-build-v2
+
+      # The Forth token algebra and canonical renderer are in MALLPForth.agda.
+      - name: Type-check MALLP, rewrite system, and integrated Forth renderer
+        id: mallp_proof
+        run: |
+          "$AGDA_BIN" --no-fast-reduce --no-projection-like --confluence-check -i formal formal/MALLPForth.agda
+
+      - name: Type-check the separate RSED physics specification
+        id: physics_proof
+        run: |
+          "$AGDA_BIN" --no-fast-reduce --no-projection-like -i formal formal/SovereignRationalSEDPhysics.agda
+
+      - name: Build the Haskell Forth backend
+        id: forth_backend
+        run: |
+          cabal build agda2forth
 
       - name: Compile strict MALLP source and emit Forth
         id: forth_emit
