@@ -70,9 +70,9 @@ The current Nat path is the strongest end-to-end slice:
 2. The generated `MALLPEmittedRenderer.agda` reifies that tree as the count-indexed Agda `NatResourceExpr`.
 3. Agda constructs the associated cut-containing MALLP derivation and proves its interpretation adequate for the resource evaluator. It also computes the derivation's cut count/class and proves these agree with the source resource tree.
 4. The certificate contains the exact token list held by the Haskell `CompiledDefinition`, not a separately handwritten expected program.
-5. Agda's `execTokens` evaluates that exact list on the source arguments and an arbitrary residual stack.
-6. A generated source-semantics equality connects the original source function to the MALLP interpretation; the equalities compose into source-result preservation.
-7. A renderer equality checks the Forth text actually emitted by Haskell against the formal text renderer.
+5. Agda's `execTokens` evaluates that exact Nat token list on the source arguments and an arbitrary residual stack.
+6. For Bool and BoolPair, the generated certificate decodes the exact Haskell-emitted `ForthTextToken` list into the Boolean machine's token grammar, then executes that list on an arbitrary residual stack. The decoder rejects non-Boolean instructions; a proved round trip connects the renderer's Boolean token encoding to the executable Boolean machine.
+7. Generated source equalities connect each admitted source function to its MALLP interpretation and machine result. A separate renderer equality checks the exact Forth text emitted by Haskell against the formal text renderer.
 
 The strict fixture currently pins **29 emitted Forth definitions**. The generic Nat resource certificate manifest covers **20 Nat definitions**. The unary and direct-binary Nat paths also retain specialized witnesses.
 
@@ -82,8 +82,8 @@ The strict fixture currently pins **29 emitted Forth definitions**. The generic 
 | --- | --- | --- |
 | General admitted Nat resources | Exact Haskell token list, MALLP derivation, formal execution, source equality, residual-stack preservation | Bounded-machine completeness requires an explicit intermediate-state bound trace; actual Gforth remains external |
 | Unary/direct-binary Nat | Specialized derivations, token correspondence, and source equalities | These specialized witnesses are narrower than arbitrary source programs |
-| Bool | Per-definition token, execution, and source-semantic certificates for admitted closed values, inversion, and the chooser/case resource form | The admitted Bool resource grammar remains deliberately limited to those certified forms |
-| Bool pair | Generated encoder fixes the source pair layout as `second ∷ first`; token equality, MALLP tensor-swap derivation, target execution, and source-to-target composition are checked | Only the detected one-constructor, two-Bool field-swap shape is admitted |
+| Bool | Per-definition exact Haskell token equality, fail-closed text-token decoding, Boolean-machine execution on arbitrary residual stacks, MALLP derivations, and source-result equalities for closed values, inversion, and chooser/case | The Boolean decoder handles only `TRUE`, `FALSE`, `SWAP`, and nested `IF`; it is not a parser or semantics for arbitrary Forth text |
+| Bool pair | Generated encoder fixes source pair layout as `second ∷ first`; exact emitted text-token decoding, MALLP tensor-swap derivation, Boolean-machine execution, and source-to-target composition are checked | Only the detected one-constructor, two-Bool field-swap shape is admitted |
 | Unit | Nullary per-definition source result (`tt`), exact empty-token correspondence, multiplicative-unit proof, and residual-stack identity are checked | Argument-bearing Unit functions are skipped; the strict fixture includes a Nat-to-Unit regression case so the 29-definition manifest rejects accidental emission |
 | Word64 identity | Generated certificate uses `Word64Representation`, explicit high/low-limb encoding, residual-stack preservation, and the formal two-cell identity code | The representation witness is supplied; constructing it for arbitrary words, Word64 arithmetic, and concrete Gforth limb semantics remain outside the theorem |
 | Gforth runtime/parser | Integration and boundary tests | `MALLP-PARSE-NAT`, arithmetic words, stack/error behavior, and Gforth internals are not mechanized as an implementation refinement |
@@ -153,6 +153,8 @@ Thus all seven are **globally consumable** through public exports, while actual 
 | CI checked | Haskell backend build, strict-source compilation, generated certificate type-check, Forth text rendering, and the existing Gforth fixture |
 | Gforth tested | 29 emitted definitions plus decimal parsing, arithmetic, argument order, overflow, invalid-literal, and stack-boundary fixtures |
 | Assumed or unverified | `--type-in-type`, explicit postulates, general correctness of the Haskell decoder/passes, concrete `MALLP-PARSE-NAT` and runtime-word refinement, Gforth internals, and the primitive implementations declared by `MALLPProtocolTheory` |
+
+The Boolean text-token decoder is a formal decoder for the compiler's typed token AST, not a parser for arbitrary rendered Forth strings. Its round-trip theorem makes the Boolean execution proof consume the same token constructors emitted in the generated certificate. The generic renderer equality then connects those constructors with the actual output string.
 
 The generated certificates are per-definition witnesses, not a proof that
 the Haskell compiler implementation is correct for all inputs. Tests
