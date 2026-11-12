@@ -1,264 +1,138 @@
 # agda2MALLPForth
 
-`agda2MALLPForth` is a Haskell backend that emits a deliberately small Forth subset for Agda definitions. The project studies a polarized multiplicative-additive linear logic (MALLP) account of resource use, a formal Forth token machine, and generated Agda correspondence certificates.
+`agda2MALLPForth` is a Haskell backend for a deliberately small Agda-to-Forth fragment. Its formal companion studies Laurent's polarized multiplicative-additive linear logic (MALLP), a typed Forth token machine, and generated Agda correspondence certificates.
 
-The target is a proof-producing compiler pipeline for an explicitly admitted source fragment. The project is **not yet a fully verified Agda-to-Gforth compiler**, and the formal model is not a formalization of Gforth itself.
+**Scope:** this is a proof-producing compiler prototype for an explicitly admitted source subset. It is not a verified compiler for all Agda, and the Agda machine is not a formalization of the Gforth implementation.
 
-## Current toolchain and immutable entrypoints
+## Toolchain and compatibility
 
-The current CI job installs the latest stable Agda package from Hackage. Its
-10 November 2026 run resolved **Agda 2.8.0.2**. The current `cabal.project`
-contains only `packages: .`, and `agda2forth.cabal` declares `Agda` without
-an exact version bound; the workflow has no numeric CLI version assertion.
-This is a moving latest-stable selection, not an exact pin.
+CI installs the latest stable Agda package from Hackage. The latest observed run resolved Agda 2.8.0.2. `cabal.project` contains `packages: .`; the Cabal file leaves Agda version selection open. This is a moving toolchain selection rather than a fixed compiler pin.
 
-The root and generated-renderer option pragmas remain distinct:
+The root pragma is:
 
-- Root `formal/MALLPForth.agda`: `--rewriting --confluence-check --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections`.
-- Generated `MALLPEmittedRenderer.agda`: `--with-K --rewriting --confluence-check --lossy-unification --exact-split --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections`.
+```agda
+{-# OPTIONS --rewriting --confluence-check --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
+```
 
-The root module leaves K enabled by Agda's default; it does not pass
-`--without-K`. The generated certificate explicitly requests `--with-K`.
-`--lossy-unification` and `--exact-split` occur in the generated-renderer
-pragma, not the root pragma. This branch removes only the root
-`--type-in-type` option; every other pragma entry, the generated-renderer
-pragma, and every CLI invocation are preserved. The workflow does not use
-`--safe`. The CLI flags `--no-prop --no-erasure` are used for the
-generated-renderer check, not for the root-module checks.
+The generated renderer pragma remains separate and retains `--with-K`, `--rewriting`, `--confluence-check`, `--lossy-unification`, `--exact-split`, and its existing remaining options. Root `--type-in-type` has been removed. K remains enabled by Agda's default in the root module. No `--safe` claim is made.
 
+CI triggers on `push` and `pull_request`; there is no schedule. The public `agda2forth` entrypoint, CLI argument shape, existing compiler invocation, generated renderer filename, and remaining Agda options are compatibility boundaries.
 
-The GitHub Actions workflow runs on `push` and `pull_request` only; it has
-no scheduled trigger. The public `agda2forth` entrypoint, existing command
-lines, argument shape, output names, Agda invocations, and both option
-pragmas are compatibility constraints. `MALLPEmittedRenderer.agda` is
-transient generated output, not a tracked Agda source file.
+`Set : Set` is a universe-formation judgement, not an Agda term or proposition. Its double negation is therefore not a well-typed postulate. The development uses the predicative universe hierarchy instead.
 
-**Trust boundary:** the root module now uses Agda's predicative universe hierarchy; the `Id`/`ext` encoding signatures are lifted to `Set₁`. Explicit positive and negative postulates remain, so successful type-checking is relative to those assumptions, K/UIP, and the rest of the configured theory. No axiom-free consistency claim is made. `Set : Set` is a universe-formation judgement, not an Agda term or proposition; its double negation cannot be added as a well-typed axiom.
+## Foundations: positive and negative sides
 
-## Admission and failure behavior
+The root module publicly re-exports six `Foundations` packages and the separate MALLP calculus. Their assumptions, constructive content, and non-claims are deliberately distinguished.
 
-The backend reads Agda's Treeless representation and recognizes a closed, first-order subset. It fails closed for unsupported term shapes rather than treating the full Agda language as compilable.
+| Package | Positive or constructive content | Negative boundary / not claimed |
+| --- | --- | --- |
+| `ForsterEnumerability` | A concrete register-machine interpreter; analytic enumerable families; a global positive `parametricEA : ParametricEA` postulate; uniform family compilation with the parameter supplied at runtime. Soundness and completeness preserve the enumerated range. | PEA is assumed, not derived for every family. Range equality does not require identical stage-by-stage output. Typed program syntax is not proved equivalent to numeric Gödel coding or Turing computability. |
+| `SymmetricBarRecursion` | A finite-partial-map interface for Spector-style symmetric bar recursion; positive stop/step equations; finite selection products, backward induction, Bellman equations, and conditional optimality proofs. | `symmetricBarRec` and its equations are postulated under `SymmetricBarCondition`. They do not provide a terminating evaluator by themselves. The full Escardó–Oliva equivalence is not formalized here. |
+| `DoubleNegation` | Double-negated excluded middle is proved intuitionistically. Double-negated DNE and Peirce follow from it. | The remaining negative assumptions are `¬¬FunctionExtensionality` and countable `¬¬DNS`; neither supplies a positive proof or a decision procedure. |
+| `MacLaneCoherence` | A thin free monoidal category on Nat-labelled generators, with executable tensor normal forms and coherence proofs. | The proof uses K/UIP. It has no direct compiler consumer and is not a general coherence theorem for arbitrary MALLP models. |
+| `CohesiveRetractions` | An abstract `Π ⊣ Disc ⊣ Γ ⊣ coDisc` record, full-faithfulness and finite-product preservation contracts, plus a concrete nonidentity finite-posetal model: three H-objects and two G-objects with distinct modalities. | The finite model is a pair of thin finite categories, not a cohesive topos or ∞-topos. It is not assembled with MALLP into the Hamano–Scott *-autonomous categorical model. |
+| `QuotientReflection` | Idempotent endomaps, fixed-point carriers, normalizer/kernel correspondence, a reflective subcategory and idempotent reflection monad; a raw-to-canonical semantic rewrite. | This is a proof-relevant type-theoretic quotient/reflection construction, not proof that arbitrary user data has a useful canonicalizer. |
+| `LaurentPolarizedMALLP` | Proof-relevant polarized MALLP syntax with tensor, par, additives, shifts, exchange, and cut. It is used by selected Nat and Bool resource derivations. | There are no weakening, contraction, or exponential rules. A positive cut-elimination normalizer record is postulated; it is not a derived Gentzen reduction procedure and has no relational-denotation preservation theorem yet. |
 
-Currently admitted source forms include:
+## Is MALLP needed for Bellman optimization?
 
-- Nat literals, addition, saturating monus, multiplication, closed lets, exact-once live Nat resources, supported `ROLL`/`SWAP` selection, and acyclic first-order Nat helper inlining.
-- Closed Bool values, selected first-order Bool functions, linear Bool resource use, and supported additive Bool cases.
-- A closed, non-indexed two-field Bool product whose two fields are each consumed exactly once.
-- Nullary Unit values, represented by an empty target stack effect. Unit-returning functions with arguments are skipped: emitting no tokens for them would silently discard live resources.
+**No, not for the finite Bellman theorem itself.** The finite selection-product and backward-induction development is generic in move type, payoff type, preorder, horizon, and a supplied selector. Its Bellman equations and induction proofs need neither PEA nor MALLP.
+
+**SBR matters beyond the finite horizon.** It is the intended general recursion interface for bar-recursive or infinite-horizon constructions. In this file, however, the SBR operator remains an assumption and the formal bridge from SBR to selection is only a one-step instance. The complete general bar-recursion/backward-induction equivalence is not yet proved.
+
+**MALLP matters when an optimizer must be represented as a resource-safe program.** It can certify concrete strategies whose inputs are used linearly. It is not needed to prove an abstract argmax law, and it cannot automatically represent arbitrary functions that duplicate or discard inputs. The current compiler proves selected Nat/Bool resource paths; it does not compile every strategy function.
+
+**The other foundations are conditional infrastructure, not prerequisites for finite optimality:** PEA concerns uniform enumerability and effective codes; double-negation schemas concern logical strength; quotient reflection is relevant when states or payoffs are identified by an idempotent normalizer; cohesion matters when state spaces carry a genuine cohesive structure; Mac Lane coherence governs monoidal syntax. None independently establishes existence of an optimizer.
+
+An optimal selector is always a premise in the general theorem. To establish existence for a particular problem, supply an attaining choice principle, a finite search argument, compactness/continuity hypotheses, or another domain-specific existence proof. No theorem here says that every arbitrary payoff has a maximum.
+
+## Selection and Bellman layer
+
+A selection function has type `Selection X R = (X → R) → X`. Its product composes a first move with a continuation-dependent response for the second move. `productSelection-bellman` states the resulting continuation equation. `backwardInduction` recursively builds a selector for finite plays, and `backwardInduction-bellman` gives its Bellman decomposition.
+
+`OptimalSelection` packages the local condition that a chosen move is at least as good as every candidate in a supplied preorder. `productSelection-optimal` and `backwardInduction-optimal` prove global optimality from those local premises. These proofs are constructive and finite; they do not construct local maximizers.
+
+`symmetricBarRec-selection-one-step` connects a one-step selection instance with the registered SBR stop/step equations. This is a small bridge, not the full general theorem.
+
+Reference: Martín Escardó and Paulo Oliva, [“Selection Functions, Bar Recursion and Backward Induction”](https://doi.org/10.1017/S0960129509990351), *Mathematical Structures in Computer Science* 20(2), 127–168 (2010).
+
+## MALLP resource discipline and compiler admission
+
+MALLP contexts contain negative formulas and at most one positive stoup. Tensor partitions resources; exchange is represented by `ContextPermutation`; additive `with` gives the same context to mutually exclusive branches. That shared branch context is additive choice, not simultaneous contraction.
+
+The backend admits a narrow closed, first-order fragment:
+
+- Nat literals, addition, saturating monus, multiplication, closed lets, exact-once live Nat resources, supported `ROLL`/`SWAP`, and acyclic first-order Nat helper inlining.
+- Closed Bool values, selected first-order Bool functions, linear Bool use, and supported additive cases.
+- A non-indexed two-field Bool product when both fields are consumed exactly once.
+- Nullary Unit values, represented by an empty target stack effect. Argument-bearing Unit functions are skipped rather than silently discarding their live input.
 - Unary Word64 identity, represented by two target cells and no emitted operation.
 
-Recursion, arbitrary higher-order functions, general algebraic data, lists, general closure and heap behavior, general effects, general call-by-need execution, and general Word64 arithmetic are not admitted compiler features. Some have formal models or protocol signatures, but those are not evidence that the Haskell backend implements them.
+Recursion, arbitrary higher-order functions, general ADTs/lists, general heap/closure behavior, general effects, general call-by-need execution, and general Word64 arithmetic are not admitted backend features. Formal signatures or models for some of these constructs do not imply a working Haskell lowering.
 
-Compiler classification is based on the resolved Agda type and Treeless shape. Definitions marked `no-compilation` or with unusable modality are intentionally skipped. Unsupported admitted-shape attempts produce compiler errors; absence of a generated word is not a proof of semantic preservation.
+`MALLPNatTheory` gives closed arithmetic primitives a linear MALLP signature; composition is cut. `MALLPProtocolTheory` states resource contracts for operations such as thunk forcing, effect emission, application, and list folding. A signature is an assumption about an operation, not a proof that Haskell or Gforth implements it.
 
-## MALLP resource discipline
-
-The indexed `MALLP` judgement is the logical core. Its constructors contain no weakening, contraction, or exponential rules. Tensor introduction partitions contexts; exchange is an explicit `ContextPermutation`; additive `with` gives both mutually exclusive branches the same context. The shared branch context is additive reuse, not contraction in a single execution.
-
-
-
-The core MALLP syntax remains **cut-admitting**: `mallp-cut` is a primitive derivation constructor. `hasCut`, `cutCount`, and `classifyMALLP` inspect and classify cut use. A positive `mallpCutElimination` postulate supplies a same-sequent normalizer whose result is cut-free and whose operation is idempotent; the two corresponding equations are registered as rewrite rules. This is a complete *axiomatized normalization contract*, not a derived Gentzen reduction algorithm. It currently carries no proof that the normalizer preserves the relational denotation below, so semantic soundness of that oracle remains an explicit trust obligation. The focused Nat proof language also admits cut. Its cut-count functions account for the cuts introduced by composition, and the resource compiler emits a certificate equating the cut count and cut class of each generated MALLP Nat derivation with those predicted by its `NatResourceExpr`. The count is a proof-tree metric: both branches of additive `with` contribute, even though only one branch executes.
-
-The Haskell Nat resource decoder tracks labelled Treeless variables and requires each live argument exactly once. The Bool resource decoder checks every additive path for exact-once usage. Bool-pair lowering requires each field once. Unit owns no runtime cell. These admission checks are concrete compiler invariants; they do not by themselves prove every Haskell pass correct.
-
-`MALLPNatTheory` layers a closed arithmetic primitive signature and cut over MALLP. `MALLPProtocolTheory` declares signatures for operations such as thunk forcing, effect emission, linear application, list construction, and list folding. A declared signature states a resource contract; it does **not** prove that a concrete Haskell lowering or Gforth runtime word implements that contract.
-
-`MALLPRelationalDenotation` gives a Rel-style interpretation of the proof constructors. `CohesiveRetractions` separately specifies the cohesive adjoint quadruple and supplies the identity-Set model, but those pieces are not assembled with MALLP into Hamano–Scott's *-autonomous category with products. No categorical soundness theorem for that combined model is claimed.
-
-## SBR, selection products, and Bellman optimality
-
-`Foundations.SymmetricBarRecursion` is now the second foundation, immediately after Forster enumerability. Its `symmetricBarRec` operator and the `sBR-stop`/`sBR-step` equations remain positive postulates; the supplied `SymmetricBarCondition` is still a premise. Markov/μ-search and its least-witness axiom have been deleted. The bounded finite-prefix search, `LeastWitness`, soundness, minimality, and completeness proofs remain as ordinary structurally recursive results under `FiniteListComputation`; these finite results do not require MP.
-
-The SBR foundation also contains Escardó–Oliva-style selection functions `Selection X R = (X → R) → X`, their product, and finite `backwardInduction`. `productSelection-bellman` and `backwardInduction-bellman` state the compositional Bellman equations. For an explicit preorder on payoffs, `OptimalSelection` says each local selector chooses an element at least as good as every candidate; `productSelection-optimal` and `backwardInduction-optimal` prove global optimality from those local optimality premises. These theorems do not manufacture maximizers: existence of an optimal selector is a separate input. `symmetricBarRec-selection-one-step` proves an actual one-step selection instance by conversion using the registered SBR step/stop equations. This is a formal finite bridge, not a mechanization of the whole Escardó–Oliva equivalence between general bar recursion and iterated selection products.
-
-Reference: Martín Escardó and Paulo Oliva, [“Selection Functions, Bar Recursion and Backward Induction”](https://doi.org/10.1017/S0960129509990351), *Mathematical Structures in Computer Science* 20(2), 127–168 (2010). They establish bar recursion as a generalization of backward induction and explain finite bar recursion through the selection monad.
-
-The Bellman results are generic over payoff functions, but their translation into MALLP is constrained by MALLP's actual resource discipline. MALLP has no weakening, contraction, or exponentials. Thus an arbitrary unrestricted function that duplicates or discards inputs is not automatically representable as an MALLP program. A Bellman strategy has an MALLP derivation only when its concrete operations admit a linear resource derivation (or are supplied as explicitly trusted primitives); no universal arbitrary-function MALLP compiler theorem is claimed.
+`MALLPRelationalDenotation` interprets the MALLP proof constructors in a Rel-style semantics. It is not yet combined with the finite cohesive model into the full Hamano–Scott categorical model. The cut-normalizer assumption is not yet shown sound for this relational denotation.
 
 ## Compiler/proof correspondence
 
-The current Nat path is the strongest end-to-end slice:
+The strongest end-to-end slice is the admitted Nat path:
 
-1. Haskell decodes an admitted Treeless term into a labelled Nat resource tree and checks exact-once resource use.
-2. The generated `MALLPEmittedRenderer.agda` reifies that tree as the count-indexed Agda `NatResourceExpr`.
-3. Agda constructs the associated cut-containing MALLP derivation and proves its interpretation adequate for the resource evaluator. It also computes the derivation's cut count/class and proves these agree with the source resource tree.
-4. The certificate contains the exact token list held by the Haskell `CompiledDefinition`, not a separately handwritten expected program.
-5. Agda's `execTokens` evaluates that exact Nat token list on the source arguments and an arbitrary residual stack.
-6. For Bool and BoolPair, the generated certificate decodes the exact Haskell-emitted `ForthTextToken` list into the Boolean machine's token grammar, then executes that list on an arbitrary residual stack. The decoder rejects non-Boolean instructions; a proved round trip connects the renderer's Boolean token encoding to the executable Boolean machine.
-7. Generated source equalities connect each admitted source function to its MALLP interpretation and machine result. A separate renderer equality checks the exact Forth text emitted by Haskell against the formal text renderer.
+1. Haskell decodes a Treeless definition into a labelled Nat resource tree and checks exact-once use of every live input.
+2. The generated `MALLPEmittedRenderer.agda` reifies that tree as `NatResourceExpr`.
+3. Agda constructs the corresponding cut-containing MALLP derivation, proves resource adequacy, and equates its cut count/class with the source tree.
+4. The generated certificate uses the exact token list carried by the Haskell `CompiledDefinition`.
+5. Agda executes that token list on the source inputs and an arbitrary residual stack, proving source-result equality.
+6. Bool and BoolPair paths decode the exact emitted text-token list into the supported Boolean machine grammar and execute it with residual-stack preservation.
+7. Renderer equalities connect the formal token renderer with the actual Forth string emitted by Haskell.
 
-The strict fixture currently pins **29 emitted Forth definitions**. The generic Nat resource certificate manifest covers **20 Nat definitions**. The unary and direct-binary Nat paths also retain specialized witnesses.
+The strict regression fixture pins 29 emitted Forth definitions. The generic Nat resource certificate manifest covers 20 Nat definitions. These are per-definition witnesses, not a theorem that the Haskell compiler is correct for all inputs.
 
-### Coverage by source family
-
-| Source family | Current formal/compiler link | Remaining boundary |
+| Source family | Established link | Boundary |
 | --- | --- | --- |
-| General admitted Nat resources | Exact Haskell token list, MALLP derivation, formal execution, source equality, residual-stack preservation | Bounded-machine completeness requires an explicit intermediate-state bound trace; actual Gforth remains external |
-| Unary/direct-binary Nat | Specialized derivations, token correspondence, and source equalities | These specialized witnesses are narrower than arbitrary source programs |
-| Bool | Per-definition exact Haskell token equality, fail-closed text-token decoding, Boolean-machine execution on arbitrary residual stacks, MALLP derivations, and source-result equalities for closed values, inversion, and chooser/case | The Boolean decoder handles only `TRUE`, `FALSE`, `SWAP`, and nested `IF`; it is not a parser or semantics for arbitrary Forth text |
-| Bool pair | Generated encoder fixes source pair layout as `second ∷ first`; exact emitted text-token decoding, MALLP tensor-swap derivation, Boolean-machine execution, and source-to-target composition are checked | Only the detected one-constructor, two-Bool field-swap shape is admitted |
-| Unit | Nullary per-definition source result (`tt`), exact empty-token correspondence, multiplicative-unit proof, and residual-stack identity are checked | Argument-bearing Unit functions are skipped; the strict fixture includes a Nat-to-Unit regression case so the 29-definition manifest rejects accidental emission |
-| Word64 identity | Generated certificate uses `Word64Representation`, explicit high/low-limb encoding, residual-stack preservation, and the formal two-cell identity code | The representation witness is supplied; constructing it for arbitrary words, Word64 arithmetic, and concrete Gforth limb semantics remain outside the theorem |
-| Gforth runtime/parser | Integration and boundary tests | `MALLP-PARSE-NAT`, arithmetic words, stack/error behavior, and Gforth internals are not mechanized as an implementation refinement |
+| Nat | Resource derivation, exact Haskell token correspondence, formal token execution, source equality, residual-stack preservation. | Bounded-machine converse needs intermediate-state bounds; real Gforth remains external. |
+| Bool | Exact token decoding, formal Boolean-machine execution, MALLP derivations, source equalities for admitted shapes. | Decoder recognizes only the supported TRUE/FALSE/SWAP/IF grammar, not arbitrary Forth. |
+| BoolPair | Exact emitted-token decoding, tensor field-swap derivation, source/target composition. | Only the detected two-Bool field-swap shape is admitted. |
+| Unit | Nullary source result, empty-token correspondence, multiplicative-unit proof, stack identity. | Argument-bearing Unit functions are skipped. |
+| Word64 | Explicit high/low limb representation and unary identity correspondence. | Constructing representations for all words, arithmetic, and real Gforth limb semantics are outside this theorem. |
+| Gforth | Runtime fixture exercises arithmetic, parsing, overflow, invalid literals, argument order, and stack behavior. | `MALLP-PARSE-NAT`, runtime words, and Gforth internals are not mechanized as an implementation refinement. |
 
-The bounded Nat machine proves that successful bounded execution preserves the corresponding unbounded result. The converse is conditional: every intermediate abstract stack and operation result must stay within the cell bound. `BoundedExecutionTrace` records that condition token by token; a final-result bound alone is insufficient because an intermediate addition or multiplication may overflow before later code reduces the value.
+## Registered rewrite system
 
-At one-token granularity, `execBoundedToken-failure-classification` classifies failure under a bounded input stack: either the unbounded token has the same stack/roll error, or it succeeds with a result whose new head exceeds the cell bound. Literal, addition, and multiplication overflow have concrete Agda witnesses; monus has no overflow branch because its saturating result is bounded by its left operand. This is a formal token-model classification, not a proof of Gforth's concrete error words or of failure behavior for every whole-program path.
+The root module registers five rules and checks their combined confluence with `--confluence-check`. The universe/identity equations `refl↓` and `Id-∙` are retained in a separate registration.
 
-The Forth runtime in `data/FLib.fth` checks nonnegative cell values and overflow for decimal parsing, addition, saturating monus, and multiplication. `test/gforth/mallp-strict.fs` exercises successful operations, overflow, invalid literals, argument order, and stack behavior. These tests corroborate the model but do not verify the implementation of Gforth itself.
+| Registered rule | Direction | Status / client |
+| --- | --- | --- |
+| `parametricCodePEA-code` | `parametricCodePEA F i ↦ programCode (compileFamily parametricEA F) i` | Positive PEA code-selection equation; `parametricEA-rewrite-client`. |
+| `sBR-stop` | A present key reduces `symmetricBarRec` to `base entries`. | Positive SBR stop equation; stop computation client. |
+| `sBR-step` | An absent key reduces to `step entries` with a continuation over the extended map. | Positive SBR step equation; step-then-stop client. |
+| `quotient-raw-sound` | `denoteQuotient (rawₑ x) ↦ denoteQuotient (canonicalizedₑ x)`. | Derived from idempotence; quotient reduction client. |
+| `cutEliminate-idempotent` | `cutEliminate (cutEliminate proof) ↦ cutEliminate proof`. | Positive cut-normalizer contract; idempotence client. |
 
-## Global rewrites and proof clients
+`cutEliminate-cut-free` remains a theorem of the postulated normalizer record, but is **not** a registered rewrite. Registering it alongside idempotence created an overlap: `hasCut (cutEliminate (cutEliminate p))` had two distinct immediate reducts. Keeping only the idempotence rewrite preserves confluence of the registered system.
 
-The root module registers five rules with `--rewriting` and checks their
-interactions with `--confluence-check`. A separate registration retains
-`refl↓` and `Id-∙`. Directions below are the registered left-to-right
-directions.
+Confluence checks interactions among rewrite rules. It does not prove the postulates, establish termination of SBR, or make the cut-elimination oracle semantically sound. A rewrite equation can be useful as a conversion law without defining a terminating evaluator.
 
-| Rule | Equation / direction | Computational client | Status |
-| --- | --- | --- | --- |
-| `parametricCodePEA-code` | `parametricCodePEA F i ↦ programCode (compileFamily parametricEA F) i` | `parametricEA-rewrite-client` | Positive Forster PEA selector; one program is chosen uniformly for each family, with the parameter supplied as input |
-| `sBR-stop` | A present key rewrites `symmetricBarRec ... (inDomain present)` to `base entries` | `symmetricBarRec-stop-computes` and one-step selection bridge | Positive SBR stop equation |
-| `sBR-step` | An absent key rewrites to `step entries` with a continuation over `extendFresh` and the next `omega`-selected key | `symmetricBarRec-step-then-stop-computes` and one-step selection bridge | Positive SBR recursive step equation |
-| `quotient-raw-sound` | `denoteQuotient (rawₑ x) ↦ denoteQuotient (canonicalizedₑ x)` | `quotientReflectionRewriteSmoke` | Derived from `canonicalize-idempotent` |
-| `cutEliminate-idempotent` | `cutEliminate (cutEliminate proof) ↦ cutEliminate proof` | `cutEliminate-idempotent-client` | Positive cut-elimination oracle law |
-| `refl↓` | `ext A A ↦ Set` | No named downstream client | Positive universe/identity encoding rewrite |
-| `Id-∙` | `Id A X Y ↦ ext (A X) (A Y)` | No named downstream client | Positive universe/identity encoding rewrite |
+## Assumption ledger
 
-The finite `boundedSearch` evaluator remains structurally recursive on its fuel:
-every successful result is proved to satisfy the predicate and to have all
-earlier candidates false, while a `LeastWitness P n` forces fuel
-`suc n` to return `just n`. No unbounded μ-search or Markov postulate
-remains. The SBR clients exercise stop, step-then-stop, and a one-step
-selection instance. The selection-product/backward-induction theorems
-establish Bellman composition and conditional optimality from locally
-optimal selectors. The quotient client exercises raw-to-canonical
-reflection. PEA supplies one program per enumerable family, uniformly
-parameterized by input; soundness/completeness preserve the enumerated range,
-not the original stage order. PEA does not establish uniqueness of codes.
+Positive assumptions:
 
-Confluence checking verifies interactions among the registered rules; it
-does not prove the positive postulates, SBR termination, or semantic soundness
-of the cut-elimination oracle. The SBR computation still depends on its
-explicit bar-condition premise. The cut-elimination rewrite equations make
-the assumed normalizer canonical/idempotent; they do not constitute a
-derived Gentzen algorithm.
+- `Id`, `ext`, `refl↓`, and `Id-∙` for the universe/identity encoding.
+- `parametricEA : ParametricEA`, preserving enumeration range uniformly by a single program per family and runtime parameter.
+- `symmetricBarRec`, `sBR-stop`, and `sBR-step`, under `SymmetricBarCondition`.
+- `mallpCutElimination`, giving a same-sequent, cut-free, idempotent normalizer.
 
+Negative assumptions:
 
-The useful distinction is: a rewrite's equation is its abstract law; its
-interpreter/search/normalizer is its operational meaning; a client proof
-exercises the conversion rule; and a generated or fixture witness shows a
-concrete behavior. These layers are kept separate. A postulated equation is
-reported as an assumption even when its client computes by conversion.
+- `¬¬FunctionExtensionality` at the stated universe levels.
+- Countable `¬¬DNS` for families `Nat → Set ℓ`.
 
-## Seven public foundation exports: availability versus consumption
+Constructively derived rather than postulated:
 
-The root `MALLPForth` module publicly re-exports all seven `Foundations` submodules. That makes their declarations available to importers of the root module. It does **not** mean every package is consumed by the Forth compiler.
+- `¬¬ExcludedMiddle`, double-negated DNE and Peirce, finite bounded-search correctness, finite Bellman equations, conditional finite optimality, finite cohesive-model laws, and quotient-reflection laws.
 
-| Public module | Actual role and current consumption |
-| --- | --- |
-| `ForsterEnumerability` | A step-indexed register-machine interpreter is the analytic model; `AnalyticEnumerableFamily` packages one uniform program with soundness/completeness. The global positive `parametricEA : ParametricEA` postulate supplies one program for every parametrically enumerable family, with the family parameter supplied at runtime. Its soundness/completeness fields preserve the enumerated range (rather than requiring the same stage-by-stage output sequence); `parametricCodePEA-code` is the registered code-selection rewrite. Codes remain typed register-program syntax, not a proved equivalence with numeric Gödel codes or Turing-machine computability. |
-| `SymmetricBarRecursion` | Positive postulated symmetric bar recursion over finite partial maps, with stop/step rewrite equations; also contains selection products, finite backward induction, Bellman equations, conditional optimality proofs, and a one-step SBR/selection bridge. |
-| `DoubleNegation` | Negative postulates for double-negated excluded middle, function extensionality, and countable double-negation shift. Double-negated DNE and Peirce are derived from double-negated excluded middle; no classical witness is supplied. |
-| `MacLaneCoherence` | A thin free monoidal category on Nat-labelled generators: objects are parenthesized tensor expressions, homs are equality of flattened normal forms, and associators/unitors/coherence follow using UIP/K. This is a standalone foundation, not a Haskell compiler consumer. |
-| `CohesiveRetractions` | The Π ⊣ Disc ⊣ Γ ⊣ coDisc adjunction data, full-faithfulness conditions, and finite-product preservation are explicit structures. The supplied Set model remains the degenerate identity-Set instance, not a nontrivial cohesive topos/site model. |
-| `QuotientReflection` | Idempotent endomap, fixed-point quotient/normalizer, idempotent category/monad; canonicalization rewrite is used by a reduction client. |
-| `LaurentPolarizedMALLP` | The linear logic core used directly by the Nat MALLP derivations and compiler proofs; its positive cut-elimination oracle preserves the sequent, returns cut-free proofs, and is idempotent. Idempotence is a registered rewrite; cut-freeness is an explicit theorem of the oracle record. |
+## CI and trust boundary
 
-Thus all seven are **globally consumable** through public exports, while actual consumption is selective. `ForsterEnumerability`, `MacLaneCoherence`, and `CohesiveRetractions` have no direct compiler consumer; they remain substantive standalone developments rather than artificial dependencies in unrelated lowering proofs.
+The workflow installs Gforth and the current Haskell/Agda toolchain, type-checks `formal/MALLPForth.agda` with rewrite confluence checking, type-checks `formal/SovereignRationalSEDPhysics.agda`, builds the backend, compiles the strict source fixture, type-checks the generated renderer certificate, and runs the Gforth fixture. The source and Forth fixtures are materialized transiently by CI; no tracked test directory is required.
 
-## Evidence ledger
-
-| Evidence class | Established result |
-| --- | --- |
-| Proved in Agda under the current theory | Nat resource derivation adequacy, exact-token execution and source-result equality with arbitrary residual-stack preservation; constructive bounded-search soundness, leastness, and completeness from an explicit least-witness; finite selection-product and backward-induction Bellman equations; conditional global optimality from local optimal selectors; one-step SBR/selection correspondence; cut-count/class agreement; per-definition Bool, BoolPair, Unit, and Word64-identity certificates for the listed forms; Mac Lane coherence using K; the identity-Set cohesive model |
-| Agda typechecked | Baseline master checks cover the root MALLP module and separate RSED specification, plus the generated renderer certificate. The SBR/PEA/Bellman/negative-axiom/cut-normalizer branch is awaiting its own CI result; no `--safe` claim |
-| CI checked | Haskell backend build, strict-source compilation, generated certificate type-check, Forth text rendering, and the existing Gforth fixture |
-| Gforth tested | 29 emitted definitions plus decimal parsing, arithmetic, argument order, overflow, invalid-literal, and stack-boundary fixtures |
-| Assumed or unverified | Positive identity/universe encoding, global PEA, symmetric bar recursion, and cut-elimination normalizer postulates; double-negated classical/function-extensionality/DNS schemas; semantic preservation of cut elimination; general correctness of the Haskell decoder/passes; concrete `MALLP-PARSE-NAT` and runtime-word refinement; Gforth internals; and primitive implementations declared by `MALLPProtocolTheory` |
-
-The Boolean text-token decoder is a formal decoder for the compiler's typed token AST, not a parser for arbitrary rendered Forth strings. Its round-trip theorem makes the Boolean execution proof consume the same token constructors emitted in the generated certificate. The generic renderer equality then connects those constructors with the actual output string.
-
-The generated certificates are per-definition witnesses, not a proof that
-the Haskell compiler implementation is correct for all inputs. Tests
-corroborate concrete runtime behavior; they do not close the Gforth trusted
-boundary.
-
-## Formal assumptions and unsupported claims
-
-The remaining positive postulates are the universe/identity encoding (`Id`,
-`ext`, `refl↓`, `Id-∙`), Forster PEA, the symmetric bar-recursion operator
-with its stop/step equations, and the MALLP cut-elimination normalizer
-record. PEA's universal selector preserves enumerated ranges and is uniformly
-parameterized; it does not impose a stage-by-stage identity with each input
-enumerator. The negative postulates are double-negated excluded middle,
-function extensionality, and countable DNS; double-negated DNE and Peirce are derived.
-The μ-search and Markov/least-witness postulates have been removed; the
-finite bounded-search proofs remain constructive.
-
-The MALLP cut-elimination oracle preserves the indexed sequent, returns a
-cut-free derivation, and is idempotent. It does not currently include a
-relational-denotation preservation theorem or a derived reduction procedure.
-Therefore the cut-elimination law is an explicit trusted assumption, not a
-verified implementation. The Bellman results prove finite compositionality
-and optimality conditional on local optimal selectors; they do not establish
-existence of a maximum for every payoff.
-
-The cohesive modalities are parameterized by an explicit adjoint-quadruple
-record. Its object universe is lifted predicatively so `Set` itself can be
-a category object; the supplied Set interpretation is still the identity
-quadruple, not a nontrivial cohesive topos. Mac Lane coherence uses UIP/K for
-equality of parallel tensor-normalization paths. K remains enabled by the
-root module's Agda default and is requested explicitly by the generated
-renderer pragma. The root `--type-in-type` option has been removed.
-`Set : Set` is a universe-formation judgement rather than a well-typed
-proposition, so no double-negated axiom for that judgement is supplied. No
-`--safe` or axiom-free consistency claim is made.
-
-OTT was inspected but not integrated. The Agda OTT library brings a separate
-impredicative universe/Prop encoding, postulated identity/coherence
-principles, and modules that disable positivity and termination checks. It
-does not shorten a proof needed by this compiler and would enlarge the
-trusted assumptions. The separate Ott syntax tool does not emit Agda. No
-OTT dependency or command change is justified.
-
-The Haskell backend is not verified as a general Haskell program by the
-generated certificates. Each certificate checks concrete emitted token data
-against formal Agda semantics for its covered definition. The emitter writes
-the generated certificate before the Forth module, so a certificate-file
-write failure prevents Forth emission. Agda type-checks that certificate in a
-separate CI step after both files have been written; a failed check fails the
-workflow, but the local compiler invocation is not transactional and does
-not itself run the certificate checker. The external Gforth interpreter and
-concrete runtime words remain an external trusted/tested boundary.
-
-Accordingly, the current result is a proof-producing, CI-checked compiler for
-a restricted fragment, with its strongest composed source-to-target theorem
-covering admitted Nat resource programs. Other source families have
-per-definition certificates for the stated forms, not a general theorem for
-their full type families. This is not yet PureCake-level verification of
-every compiler pass or Gforth itself.
-
-## Reproducible checks
-
-The current workflow installs Agda from Hackage, type-checks both tracked
-Agda developments, builds the backend, generates and type-checks the emitted
-certificate, and executes the strict fixture under Gforth. It runs on
-`push` and `pull_request` only. The generated certificate is produced in
-the workflow; it is not a checked-in Agda file.
-
-The following are the workflow's existing commands. `agda_bin_dir` and
-`AGDA_BIN` are set by the workflow before the later steps.
-
-~~~sh
-cabal update
-cabal install Agda --installdir="$agda_bin_dir" --overwrite-policy=always
-"$AGDA_BIN" --no-fast-reduce --no-projection-like --confluence-check -i formal formal/MALLPForth.agda
-"$AGDA_BIN" --no-fast-reduce --no-projection-like -i formal formal/SovereignRationalSEDPhysics.agda
-cabal build agda2forth
-cp test/MALLPStrict.agda.src test/MALLPStrict.agda
-cabal run agda2forth -- -i test test/MALLPStrict.agda
-"$AGDA_BIN" --no-prop --no-erasure -i formal -i . -i test MALLPEmittedRenderer.agda
-gforth MALLPStrict.fth
-~~~
-
-The test fixture is a finite regression corpus, not a universal semantics theorem. Any newly admitted source construct must gain a real decoder/resource contract, a source-to-MALLP derivation, an exact emitted-token certificate, a target-machine simulation, and a documented external-runtime boundary before it is advertised as verified.
+Successful CI establishes that these checks pass under the declared options and assumptions. It does not discharge positive postulates, prove PEA/SBR consistency, verify Gforth, establish general Haskell compiler correctness, or prove the MALLP cut-normalizer preserves the Rel denotation. The PR remains an isolated feature branch until reviewed and merged.
