@@ -2381,7 +2381,6 @@ module Foundations where
     finiteGammaUntranspose {cohH0} {cohG0} h0m = g00
     finiteGammaUntranspose {cohH0} {cohG1} h01 = g01
     finiteGammaUntranspose {cohHmid} {cohG0} hmm = g00
-    finiteGammaUntranspose {cohHmid} {cohG1} hmm = g01
     finiteGammaUntranspose {cohHmid} {cohG1} hm1 = g01
     finiteGammaUntranspose {cohH1} {cohG0} ()
     finiteGammaUntranspose {cohH1} {cohG1} h11 = g11
