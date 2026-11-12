@@ -2149,10 +2149,10 @@ module Foundations where
     -- It is a finite preorder model, not a claim that H is a cohesive topos.
     --------------------------------------------------------------------
 
-    data FiniteHObject : Set where
+    data FiniteHObject : Set₁ where
       cohH0 cohHmid cohH1 : FiniteHObject
 
-    data FiniteGObject : Set where
+    data FiniteGObject : Set₁ where
       cohG0 cohG1 : FiniteGObject
 
     data HArrow : FiniteHObject → FiniteHObject → Set where
