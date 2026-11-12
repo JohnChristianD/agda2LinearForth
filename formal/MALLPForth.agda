@@ -854,6 +854,20 @@ module Foundations where
         (leastWitnessChoice-correct
           (λ i → P) (λ i → double-negated) zero)
 
+    -- Under the existing least-witness assumption, the terminating
+    -- bounded evaluator reproduces μ's least result when given enough fuel.
+    -- This does not establish termination of the unbounded μ-search itself.
+    leastSearch-bounded-computes :
+      (P : Nat → Bool) →
+      ¬ (¬ BooleanWitness P) →
+      boundedSearch (suc (leastSearch P)) P ≡ just (leastSearch P)
+    leastSearch-bounded-computes P double-negated =
+      boundedSearch-complete P (leastSearch P)
+        (leastWitnessChoice-correct
+          (λ i → P)
+          (λ i → double-negated)
+          zero)
+
   ----------------------------------------------------------------------
   -- 3. Mac Lane coherence via the thin free monoidal category on
   --    Nat-labelled generators and a computational normal form.
