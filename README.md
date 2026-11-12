@@ -111,7 +111,15 @@ directions.
 | `refl↓` | `ext A A ↦ Set` | No named downstream client | Postulated universe/identity encoding rule |
 | `Id-∙` | `Id A X Y ↦ ext (A X) (A Y)` | No named downstream client | Postulated universe/identity encoding rule |
 
-The μ clients exercise zero and successor search steps. The symmetric-bar
+The μ clients exercise zero and successor search steps. The separate
+`boundedSearch` evaluator is structurally recursive on its fuel:
+every successful result is proved to satisfy the predicate and to have all
+earlier candidates false, while a `LeastWitness P n` forces fuel
+`suc n` to return `just n`. The theorem
+`leastSearch-bounded-computes` connects the existing assumed
+μ/least-witness result with this finite evaluator. This establishes finite
+prefix computation and leastness only; it does not prove termination of
+unbounded μ-search or discharge the least-witness postulate. The symmetric-bar
 clients exercise a stop and a one-step-then-stop path. The quotient client
 exercises the raw-to-canonicalized normalizer equation. The last two
 identity-encoding rules remain registered, but no compiler consumption is
@@ -148,7 +156,7 @@ Thus all seven are **globally consumable** through public exports, while actual 
 
 | Evidence class | Established result |
 | --- | --- |
-| Proved in Agda under the current theory | Nat resource derivation adequacy, exact-token execution and source-result equality with arbitrary residual-stack preservation; cut-count/class agreement; per-definition Bool, BoolPair, Unit, and Word64-identity certificates for the listed forms; Mac Lane coherence using K; the identity-Set cohesive model |
+| Proved in Agda under the current theory | Nat resource derivation adequacy, exact-token execution and source-result equality with arbitrary residual-stack preservation; bounded μ-prefix search soundness, leastness, and completeness from a supplied least-witness proof; cut-count/class agreement; per-definition Bool, BoolPair, Unit, and Word64-identity certificates for the listed forms; Mac Lane coherence using K; the identity-Set cohesive model |
 | Agda typechecked | The root MALLP module and separate RSED specification, plus the generated renderer certificate, under the existing options, rewrites, and postulates; no `--safe` claim |
 | CI checked | Haskell backend build, strict-source compilation, generated certificate type-check, Forth text rendering, and the existing Gforth fixture |
 | Gforth tested | 29 emitted definitions plus decimal parsing, arithmetic, argument order, overflow, invalid-literal, and stack-boundary fixtures |
