@@ -2691,8 +2691,10 @@ module Foundations where
         cohesiveTrans
           (normalizeG-sound expression)
           (cohesiveSym (piDiscSemantics expression))
-      normalizeG-sound (piExpr expression) =
-        cohesiveCong finitePiObject (normalizeH-sound expression)
+      normalizeG-sound (piExpr (hAtom object)) = refl
+      normalizeG-sound (piExpr (codiscExpr expression)) =
+        cohesiveCong finitePiObject
+          (normalizeH-sound (codiscExpr expression))
       normalizeG-sound (gammaExpr (discExpr expression)) =
         cohesiveTrans
           (normalizeG-sound expression)
@@ -2701,8 +2703,8 @@ module Foundations where
         cohesiveTrans
           (normalizeG-sound expression)
           (cohesiveSym (gammaCodiscSemantics expression))
-      normalizeG-sound (gammaExpr expression) =
-        cohesiveCong finiteGammaObject (normalizeH-sound expression)
+      normalizeG-sound (gammaExpr (hAtom object)) =
+        cohesiveCong finiteGammaObject (normalizeH-sound (hAtom object))
 
     mutual
       normalizeH-idempotent :
