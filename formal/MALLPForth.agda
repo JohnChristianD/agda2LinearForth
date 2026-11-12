@@ -1,4 +1,4 @@
-{-# OPTIONS --rewriting --confluence-check --type-in-type --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
+{-# OPTIONS --rewriting --confluence-check --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
 -- ```Agda
 ------------------------------------------------------------------------
 -- SovereignRationalSED
@@ -37,8 +37,8 @@ open import Agda.Builtin.Reflection.Properties
 data ⊥ : Set where
 
 postulate
-  Id : (Set → Set) → Set → Set → Set
-  ext : Set → Set → Set
+  Id : (Set → Set) → Set → Set → Set₁
+  ext : Set → Set → Set₁
   refl↓ : (A : Set) → ext A A ≡ Set
   Id-∙ : (A : Set → Set) (X Y : Set) → Id A X Y ≡ ext (A X) (A Y)
 {-# REWRITE refl↓ Id-∙ #-}
@@ -137,8 +137,11 @@ renderForthWordText name tokens =
 infixr 3 _×_
 infixr 9 _∘ᶠ_
 
-¬_ : Set → Set
+¬_ : ∀ {ℓ : Level} → Set ℓ → Set ℓ
 ¬ P = P → ⊥
+
+⊥-elim : ∀ {ℓ : Level} {A : Set ℓ} → ⊥ → A
+⊥-elim ()
 
 record _×_ (A B : Set) : Set where
   constructor pair
@@ -244,6 +247,160 @@ module FiniteListComputation where
   lookup-tabulate (suc n) f zero zero<successor = refl
   lookup-tabulate (suc n) f (suc i) (successor<successor bound) =
     lookup-tabulate n (λ j → f (suc j)) i bound
+
+
+    BooleanWitness : (Nat → Bool) → Set
+    BooleanWitness P = Σ Nat (λ n → P n ≡ true)
+
+    data AllFalseBefore (P : Nat → Bool) : Nat → Set where
+      before-zero : AllFalseBefore P zero
+      before-suc :
+        {n : Nat} →
+        AllFalseBefore P n →
+        P n ≡ false →
+        AllFalseBefore P (suc n)
+
+    record LeastWitness (P : Nat → Bool) (n : Nat) : Set where
+      field
+        witness-holds : P n ≡ true
+        all-earlier-false : AllFalseBefore P n
+
+    open LeastWitness public
+
+    -- Finite prefix evaluator. Fuel counts tested candidates: fuel zero
+    -- tests none, while fuel (suc n) tests exactly indices zero through n.
+    -- This evaluator is structurally recursive and independent of unbounded search.
+    boundedSearch : Nat → (Nat → Bool) → Maybe Nat
+    boundedSearch zero P = nothing
+    boundedSearch (suc fuel) P with P zero
+    ... | true = just zero
+    ... | false with boundedSearch fuel (λ n → P (suc n))
+    ...   | nothing = nothing
+    ...   | just n = just (suc n)
+
+    boundedSearch-sound :
+      (fuel : Nat) (P : Nat → Bool) (n : Nat) →
+      boundedSearch fuel P ≡ just n → P n ≡ true
+    maybeNothingNotJust : {A : Set} {x : A} → nothing ≡ just x → ⊥
+    maybeNothingNotJust ()
+
+    just-injective : {A : Set} {x y : A} → just x ≡ just y → x ≡ y
+    just-injective refl = refl
+
+    zeroNotSuc : {n : Nat} → zero ≡ suc n → ⊥
+    zeroNotSuc ()
+
+    sucNotZero : {n : Nat} → suc n ≡ zero → ⊥
+    sucNotZero ()
+
+    suc-injective : {m n : Nat} → suc m ≡ suc n → m ≡ n
+    suc-injective refl = refl
+
+    absurd : {A : Set} → ⊥ → A
+    absurd ()
+
+    boundedSearch-sound zero P n ()
+    boundedSearch-sound (suc fuel) P zero result with P zero
+    ... | true = refl
+    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
+    ...   | nothing = absurd (maybeNothingNotJust result)
+    ...   | just k = absurd (sucNotZero (just-injective result))
+    boundedSearch-sound (suc fuel) P (suc n) result with P zero
+    ... | true = absurd (zeroNotSuc (just-injective result))
+    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
+    ...   | nothing = absurd (maybeNothingNotJust result)
+    ...   | just k =
+      boundedSearch-sound fuel (λ i → P (suc i)) n
+        (trans smaller (cong just (suc-injective (just-injective result))))
+
+    boundedSearch-falseNotTrue : false ≡ true → ⊥
+    boundedSearch-falseNotTrue ()
+
+    boundedSearch-trueNotFalse : true ≡ false → ⊥
+    boundedSearch-trueNotFalse ()
+
+    allFalseBefore-first :
+      {P : Nat → Bool} {n : Nat} →
+      AllFalseBefore P (suc n) → P zero ≡ false
+    allFalseBefore-first {n = zero} (before-suc before-zero first) = first
+    allFalseBefore-first {n = suc n}
+      (before-suc (before-suc earlier next) last) =
+      allFalseBefore-first (before-suc earlier next)
+
+    allFalseBefore-tail :
+      {P : Nat → Bool} {n : Nat} →
+      AllFalseBefore P (suc n) →
+      AllFalseBefore (λ i → P (suc i)) n
+    allFalseBefore-tail {n = zero} (before-suc before-zero first) =
+      before-zero
+    allFalseBefore-tail {n = suc n}
+      (before-suc (before-suc earlier next) last) =
+      before-suc (allFalseBefore-tail (before-suc earlier next)) last
+
+    allFalseBefore-lift :
+      {P : Nat → Bool} {n : Nat} →
+      P zero ≡ false →
+      AllFalseBefore (λ i → P (suc i)) n →
+      AllFalseBefore P (suc n)
+    allFalseBefore-lift first before-zero =
+      before-suc before-zero first
+    allFalseBefore-lift first (before-suc earlier next) =
+      before-suc (allFalseBefore-lift first earlier) next
+
+    leastWitness-tail :
+      {P : Nat → Bool} {n : Nat} →
+      LeastWitness P (suc n) →
+      LeastWitness (λ i → P (suc i)) n
+    leastWitness-tail witness = record
+      { witness-holds = witness-holds witness
+      ; all-earlier-false =
+          allFalseBefore-tail (all-earlier-false witness)
+      }
+
+    boundedSearch-minimal :
+      (fuel : Nat) (P : Nat → Bool) (n : Nat) →
+      boundedSearch fuel P ≡ just n → AllFalseBefore P n
+    boundedSearch-minimal zero P n ()
+    boundedSearch-minimal (suc fuel) P zero result with P zero
+    ... | true = before-zero
+    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
+    ...   | nothing = absurd (maybeNothingNotJust result)
+    ...   | just k = absurd (sucNotZero (just-injective result))
+    boundedSearch-minimal (suc fuel) P (suc n) result with P zero in first
+    ... | true = absurd (zeroNotSuc (just-injective result))
+    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
+    ...   | nothing = absurd (maybeNothingNotJust result)
+    ...   | just k =
+      allFalseBefore-lift first
+        (boundedSearch-minimal fuel (λ i → P (suc i)) n
+          (trans smaller
+            (cong just (suc-injective (just-injective result)))))
+
+    boundedSearch-least :
+      (fuel : Nat) (P : Nat → Bool) (n : Nat) →
+      boundedSearch fuel P ≡ just n → LeastWitness P n
+    boundedSearch-least fuel P n result = record
+      { witness-holds = boundedSearch-sound fuel P n result
+      ; all-earlier-false = boundedSearch-minimal fuel P n result
+      }
+
+    boundedSearch-complete :
+      (P : Nat → Bool) (n : Nat) →
+      LeastWitness P n →
+      boundedSearch (suc n) P ≡ just n
+    boundedSearch-complete P zero witness with P zero in first
+    ... | true = refl
+    ... | false =
+      absurd (boundedSearch-falseNotTrue
+        (trans (sym first) (witness-holds witness)))
+    boundedSearch-complete P (suc n) witness with P zero in first
+    ... | true =
+      absurd (boundedSearch-trueNotFalse
+        (trans (sym first)
+          (allFalseBefore-first (all-earlier-false witness))))
+    ... | false
+      rewrite boundedSearch-complete
+        (λ i → P (suc i)) n (leastWitness-tail witness) = refl
 
 open FiniteListComputation public
 
@@ -584,6 +741,27 @@ module Foundations where
           enumerate F i stage
     open ParametricEA public
 
+    -- Positive synthetic PEA assumption: one selector supplies codes
+    -- uniformly for every parameter of every enumerable family.
+    postulate
+      parametricEA : ParametricEA
+
+    abstract
+      parametricCodePEA :
+        (F : ParametricallyEnumerable) →
+        Nat →
+        ProgramCode
+      parametricCodePEA F i = parametricCode parametricEA F i
+
+      parametricCodePEA-correct :
+        (F : ParametricallyEnumerable) →
+        (i stage : Nat) →
+        universalEval (parametricCodePEA F i) stage ≡
+        enumerate F i stage
+      parametricCodePEA-correct F i stage =
+        parametricCode-correct parametricEA F i stage
+
+
     -- The selector γ for a family F maps each parameter i to the
     -- typed code for the one universal program specialized at i.
     parametricCode :
@@ -639,240 +817,450 @@ module Foundations where
       ; analytic-complete = parametricEA-analytic-complete ea F
       }
   ----------------------------------------------------------------------
-  -- 2. Markov principle plus deterministic least-witness minimization.
+  -- 2. Spector-style symmetric bar recursion over finite partial maps.
   --
-  -- μ-search is an intentionally unbounded rewrite computation.  For a
-  -- predicate with a witness it advances in natural order and returns the
-  -- first witness.  With no witness it keeps reducing forever.
-  -- ArithmeticalCountableChoiceLeastWitness is the stated logical choice
-  -- principle, tied to μ-search.  The step equations alone do not prove
-  -- Markov's principle or termination when no witness exists.
+  -- The control functional chooses the next key.  A present key hits the
+  -- bar; an absent key is extended with a value supplied by the step
+  -- functional.  SymmetricBarCondition supplies branchwise bar coverage.
   ----------------------------------------------------------------------
 
-  module MarkovLeastWitness where
+  module SymmetricBarRecursion where
 
-    BooleanWitness : (Nat → Bool) → Set
-    BooleanWitness P = Σ Nat (λ n → P n ≡ true)
+    FiniteEntries : Set → Set
+    FiniteEntries X = List (Nat × X)
 
-    data AllFalseBefore (P : Nat → Bool) : Nat → Set where
-      before-zero : AllFalseBefore P zero
-      before-suc :
-        {n : Nat} →
-        AllFalseBefore P n →
-        P n ≡ false →
-        AllFalseBefore P (suc n)
+    natEq : Nat → Nat → Bool
+    natEq = _==_
 
-    record LeastWitness (P : Nat → Bool) (n : Nat) : Set where
+    memberKey : {X : Set} → Nat → FiniteEntries X → Bool
+    memberKey n [] = false
+    memberKey n ((pair k value) ∷ entries) with natEq n k
+    ... | true = true
+    ... | false = memberKey n entries
+
+    lookupKey : {X : Set} → Nat → FiniteEntries X → Maybe X
+    lookupKey n [] = nothing
+    lookupKey n ((pair k value) ∷ entries) with natEq n k
+    ... | true = just value
+    ... | false = lookupKey n entries
+
+    -- A finite partial map carries a proof that its key list has no
+    -- duplicates.  This prevents the association-list representation from
+    -- silently making lookup order part of the mathematical object.
+    data UniqueKeys {X : Set} : FiniteEntries X → Set where
+      unique-empty : UniqueKeys []
+      unique-cons :
+        {key : Nat} {value : X} {entries : FiniteEntries X} →
+        memberKey key entries ≡ false →
+        UniqueKeys entries →
+        UniqueKeys (pair key value ∷ entries)
+
+    record PartialMap (X : Set) : Set where
+      constructor partialMap
       field
-        witness-holds : P n ≡ true
-        all-earlier-false : AllFalseBefore P n
+        mapEntries : FiniteEntries X
+        keys-unique : UniqueKeys mapEntries
+    open PartialMap public
 
-    open LeastWitness public
+    emptyMap : {X : Set} → PartialMap X
+    emptyMap = partialMap [] unique-empty
 
-    postulate
-      μ-search : (Nat → Bool) → Nat → Bool → Nat
-      μ-step-true :
-        (P : Nat → Bool) → (n : Nat) →
-        μ-search P n true ≡ n
-      μ-step-false :
-        (P : Nat → Bool) → (n : Nat) →
-        μ-search P n false ≡ μ-search P (suc n) (P (suc n))
+    streamOf : {X : Set} → FiniteEntries X → X → Nat → X
+    streamOf entries default n with lookupKey n entries
+    ... | just value = value
+    ... | nothing = default
 
-    leastSearch : (Nat → Bool) → Nat
-    leastSearch P = μ-search P zero (P zero)
+    extendFresh :
+      {X : Set} →
+      (entries : PartialMap X) →
+      (key : Nat) →
+      memberKey key (mapEntries entries) ≡ false →
+      X → PartialMap X
+    extendFresh entries key fresh value =
+      partialMap
+        (pair key value ∷ mapEntries entries)
+        (unique-cons fresh (keys-unique entries))
 
-    -- The intended arithmetical countable least-witness principle.
-    -- The choice function is not hidden behind an existential: it is
-    -- definitionally i ↦ leastSearch (P i).  The postulate says that, under
-    -- pointwise double-negated existence, each such search returns its
-    -- least witness.  This packages the countable family of Markov steps
-    -- with the deterministic μ-minimizer.  It is stronger than MP_B alone.
-    ArithmeticalCountableChoiceLeastWitness : Set
-    ArithmeticalCountableChoiceLeastWitness =
-      (P : Nat → Nat → Bool) →
-      ((i : Nat) → ¬ (¬ BooleanWitness (P i))) →
-      (i : Nat) → LeastWitness (P i) (leastSearch (P i))
+    data DomainDecision {X : Set}
+      (entries : PartialMap X) (key : Nat) : Set where
+      inDomain :
+        memberKey key (mapEntries entries) ≡ true → DomainDecision entries key
+      outDomain :
+        memberKey key (mapEntries entries) ≡ false → DomainDecision entries key
 
-    postulate
-      arithmeticalCountableChoiceLeastWitness :
-        ArithmeticalCountableChoiceLeastWitness
+    decideDomain :
+      {X : Set} →
+      (entries : PartialMap X) →
+      (key : Nat) →
+      DomainDecision entries key
+    decideDomain entries key
+      with memberKey key (mapEntries entries) in membership
+    ... | true = inDomain membership
+    ... | false = outDomain membership
 
-    leastWitnessChoice :
-      (P : Nat → Nat → Bool) →
-      ((i : Nat) → ¬ (¬ BooleanWitness (P i))) → Nat → Nat
-    leastWitnessChoice P double-negated i = leastSearch (P i)
+    threadEntries :
+      {X : Set} →
+      (entries : PartialMap X) →
+      (key : Nat) →
+      DomainDecision entries key →
+      X →
+      PartialMap X
+    threadEntries entries key (inDomain present) value = entries
+    threadEntries entries key (outDomain absent) value =
+      extendFresh entries key absent value
 
-    leastWitnessChoice-correct :
-      (P : Nat → Nat → Bool) →
-      (double-negated : (i : Nat) → ¬ (¬ BooleanWitness (P i))) →
-      (i : Nat) → LeastWitness (P i) (leastWitnessChoice P double-negated i)
-    leastWitnessChoice-correct P double-negated i =
-      arithmeticalCountableChoiceLeastWitness P double-negated i
+    threadEntries-contains-zero :
+      {X : Set} →
+      (entries : PartialMap X) →
+      (decision : DomainDecision entries zero) →
+      (value : X) →
+      memberKey zero
+        (mapEntries (threadEntries entries zero decision value)) ≡ true
+    threadEntries-contains-zero entries (inDomain present) value = present
+    threadEntries-contains-zero entries (outDomain absent) value = refl
 
-    -- Finite prefix evaluator. Fuel counts tested candidates: fuel zero
-    -- tests none, while fuel (suc n) tests exactly indices zero through n.
-    -- This evaluator is structurally recursive and independent of μ-search.
-    boundedSearch : Nat → (Nat → Bool) → Maybe Nat
-    boundedSearch zero P = nothing
-    boundedSearch (suc fuel) P with P zero
-    ... | true = just zero
-    ... | false with boundedSearch fuel (λ n → P (suc n))
-    ...   | nothing = nothing
-    ...   | just n = just (suc n)
+    omegaThread :
+      {X : Set} →
+      (omega : (Nat → X) → Nat) →
+      (default : X) →
+      (alpha : Nat → X) →
+      (initial : PartialMap X) →
+      Nat → PartialMap X
+    omegaThread omega default alpha initial zero = initial
+    omegaThread omega default alpha initial (suc n) =
+      let entries = omegaThread omega default alpha initial n
+          key = omega (streamOf (mapEntries entries) default)
+      in threadEntries entries key (decideDomain entries key) (alpha key)
 
-    boundedSearch-sound :
-      (fuel : Nat) (P : Nat → Bool) (n : Nat) →
-      boundedSearch fuel P ≡ just n → P n ≡ true
-    maybeNothingNotJust : {A : Set} {x : A} → nothing ≡ just x → ⊥
-    maybeNothingNotJust ()
-
-    just-injective : {A : Set} {x y : A} → just x ≡ just y → x ≡ y
-    just-injective refl = refl
-
-    zeroNotSuc : {n : Nat} → zero ≡ suc n → ⊥
-    zeroNotSuc ()
-
-    sucNotZero : {n : Nat} → suc n ≡ zero → ⊥
-    sucNotZero ()
-
-    suc-injective : {m n : Nat} → suc m ≡ suc n → m ≡ n
-    suc-injective refl = refl
-
-    absurd : {A : Set} → ⊥ → A
-    absurd ()
-
-    boundedSearch-sound zero P n ()
-    boundedSearch-sound (suc fuel) P zero result with P zero
-    ... | true = refl
-    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-    ...   | nothing = absurd (maybeNothingNotJust result)
-    ...   | just k = absurd (sucNotZero (just-injective result))
-    boundedSearch-sound (suc fuel) P (suc n) result with P zero
-    ... | true = absurd (zeroNotSuc (just-injective result))
-    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-    ...   | nothing = absurd (maybeNothingNotJust result)
-    ...   | just k =
-      boundedSearch-sound fuel (λ i → P (suc i)) n
-        (trans smaller (cong just (suc-injective (just-injective result))))
-
-    boundedSearch-falseNotTrue : false ≡ true → ⊥
-    boundedSearch-falseNotTrue ()
-
-    boundedSearch-trueNotFalse : true ≡ false → ⊥
-    boundedSearch-trueNotFalse ()
-
-    allFalseBefore-first :
-      {P : Nat → Bool} {n : Nat} →
-      AllFalseBefore P (suc n) → P zero ≡ false
-    allFalseBefore-first {n = zero} (before-suc before-zero first) = first
-    allFalseBefore-first {n = suc n}
-      (before-suc (before-suc earlier next) last) =
-      allFalseBefore-first (before-suc earlier next)
-
-    allFalseBefore-tail :
-      {P : Nat → Bool} {n : Nat} →
-      AllFalseBefore P (suc n) →
-      AllFalseBefore (λ i → P (suc i)) n
-    allFalseBefore-tail {n = zero} (before-suc before-zero first) =
-      before-zero
-    allFalseBefore-tail {n = suc n}
-      (before-suc (before-suc earlier next) last) =
-      before-suc (allFalseBefore-tail (before-suc earlier next)) last
-
-    allFalseBefore-lift :
-      {P : Nat → Bool} {n : Nat} →
-      P zero ≡ false →
-      AllFalseBefore (λ i → P (suc i)) n →
-      AllFalseBefore P (suc n)
-    allFalseBefore-lift first before-zero =
-      before-suc before-zero first
-    allFalseBefore-lift first (before-suc earlier next) =
-      before-suc (allFalseBefore-lift first earlier) next
-
-    leastWitness-tail :
-      {P : Nat → Bool} {n : Nat} →
-      LeastWitness P (suc n) →
-      LeastWitness (λ i → P (suc i)) n
-    leastWitness-tail witness = record
-      { witness-holds = witness-holds witness
-      ; all-earlier-false =
-          allFalseBefore-tail (all-earlier-false witness)
-      }
-
-    boundedSearch-minimal :
-      (fuel : Nat) (P : Nat → Bool) (n : Nat) →
-      boundedSearch fuel P ≡ just n → AllFalseBefore P n
-    boundedSearch-minimal zero P n ()
-    boundedSearch-minimal (suc fuel) P zero result with P zero
-    ... | true = before-zero
-    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-    ...   | nothing = absurd (maybeNothingNotJust result)
-    ...   | just k = absurd (sucNotZero (just-injective result))
-    boundedSearch-minimal (suc fuel) P (suc n) result with P zero in first
-    ... | true = absurd (zeroNotSuc (just-injective result))
-    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-    ...   | nothing = absurd (maybeNothingNotJust result)
-    ...   | just k =
-      allFalseBefore-lift first
-        (boundedSearch-minimal fuel (λ i → P (suc i)) n
-          (trans smaller
-            (cong just (suc-injective (just-injective result)))))
-
-    boundedSearch-least :
-      (fuel : Nat) (P : Nat → Bool) (n : Nat) →
-      boundedSearch fuel P ≡ just n → LeastWitness P n
-    boundedSearch-least fuel P n result = record
-      { witness-holds = boundedSearch-sound fuel P n result
-      ; all-earlier-false = boundedSearch-minimal fuel P n result
-      }
-
-    boundedSearch-complete :
-      (P : Nat → Bool) (n : Nat) →
-      LeastWitness P n →
-      boundedSearch (suc n) P ≡ just n
-    boundedSearch-complete P zero witness with P zero in first
-    ... | true = refl
-    ... | false =
-      absurd (boundedSearch-falseNotTrue
-        (trans (sym first) (witness-holds witness)))
-    boundedSearch-complete P (suc n) witness with P zero in first
-    ... | true =
-      absurd (boundedSearch-trueNotFalse
-        (trans (sym first)
-          (allFalseBefore-first (all-earlier-false witness))))
-    ... | false
-      rewrite boundedSearch-complete
-        (λ i → P (suc i)) n (leastWitness-tail witness) = refl
-
-    MarkovPrinciple : Set
-    MarkovPrinciple =
-      (P : Nat → Bool) →
-      ¬ (¬ BooleanWitness P) →
-      BooleanWitness P
-
-    markovPrinciple : MarkovPrinciple
-    markovPrinciple P double-negated =
-      leastSearch P ,
-      witness-holds
-        (leastWitnessChoice-correct
-          (λ i → P) (λ i → double-negated) zero)
-
-    -- Under the existing least-witness assumption, the terminating
-    -- bounded evaluator reproduces μ's least result when given enough fuel.
-    -- This does not establish termination of the unbounded μ-search itself.
-    leastSearch-bounded-computes :
-      (P : Nat → Bool) →
-      ¬ (¬ BooleanWitness P) →
-      boundedSearch (suc (leastSearch P)) P ≡ just (leastSearch P)
-    leastSearch-bounded-computes P double-negated =
-      boundedSearch-complete P (leastSearch P)
-        (leastWitnessChoice-correct
-          (λ i → P)
-          (λ i → double-negated)
+    omegaThread-step-zero :
+      {X : Set} →
+      (default : X) →
+      (alpha : Nat → X) →
+      (initial : PartialMap X) →
+      (fuel : Nat) →
+      memberKey zero
+        (mapEntries
+          (omegaThread (λ stream → zero) default alpha initial (suc fuel)))
+        ≡ true
+    omegaThread-step-zero default alpha initial fuel =
+      threadEntries-contains-zero
+        (omegaThread (λ stream → zero) default alpha initial fuel)
+        (decideDomain
+          (omegaThread (λ stream → zero) default alpha initial fuel)
           zero)
+        (alpha zero)
+
+    SymmetricBarCondition :
+      {X : Set} →
+      (omega : (Nat → X) → Nat) →
+      X → Set
+    SymmetricBarCondition {X} omega default =
+      (initial : PartialMap X) →
+      (alpha : Nat → X) →
+      Σ Nat
+        (λ n →
+          memberKey
+            (omega (streamOf
+              (mapEntries (omegaThread omega default alpha initial n)) default))
+            (mapEntries (omegaThread omega default alpha initial n)) ≡ true)
+
+
+
+    --------------------------------------------------------------------
+    -- Selection products and finite backward induction.
+    --
+    -- A selection function chooses an element in response to a payoff.
+    -- The Bellman product law composes such choices. Optimality is a
+    -- separate premise: arbitrary payoffs need not attain maxima.
+    --------------------------------------------------------------------
+
+    Selection : Set → Set → Set
+    Selection X R = (X → R) → X
+
+    selectedOutcome :
+      {X R : Set} → Selection X R → (X → R) → R
+    selectedOutcome choose payoff = payoff (choose payoff)
+
+    productSelection :
+      {X Y R : Set} →
+      Selection X R →
+      (X → Selection Y R) →
+      Selection (X × Y) R
+    productSelection chooseX chooseY payoff =
+      let
+        response : X → Y
+        response x = chooseY x (λ y → payoff (pair x y))
+
+        first : X
+        first = chooseX (λ x → payoff (pair x (response x)))
+      in pair first (response first)
+
+    productSelection-bellman :
+      {X Y R : Set} →
+      (chooseX : Selection X R) →
+      (chooseY : X → Selection Y R) →
+      (payoff : X × Y → R) →
+      selectedOutcome (productSelection chooseX chooseY) payoff ≡
+      selectedOutcome chooseX
+        (λ x → selectedOutcome (chooseY x) (λ y → payoff (pair x y)))
+    productSelection-bellman chooseX chooseY payoff = refl
+
+    record Preorder (R : Set) : Set₁ where
+      field
+        below : R → R → Set
+        below-refl : (value : R) → below value value
+        below-trans :
+          {left middle right : R} →
+          below left middle →
+          below middle right →
+          below left right
+    open Preorder public
+
+    OptimalSelection :
+      {X R : Set} →
+      (order : Preorder R) →
+      Selection X R →
+      Set
+    OptimalSelection {X} {R} order choose =
+      (payoff : X → R) →
+      (candidate : X) →
+      below order (payoff candidate) (payoff (choose payoff))
+
+    productSelection-optimal :
+      {X Y R : Set} →
+      (order : Preorder R) →
+      (chooseX : Selection X R) →
+      (chooseY : X → Selection Y R) →
+      OptimalSelection order chooseX →
+      ((x : X) → OptimalSelection order (chooseY x)) →
+      (payoff : X × Y → R) →
+      (candidate : X × Y) →
+      below order
+        (payoff candidate)
+        (selectedOutcome (productSelection chooseX chooseY) payoff)
+    productSelection-optimal order chooseX chooseY optimalX optimalY
+      payoff (pair x y) =
+      below-trans order
+        (optimalY x (λ y′ → payoff (pair x y′)) y)
+        (optimalX
+          (λ x′ →
+            payoff (pair x′ (chooseY x′ (λ y′ → payoff (pair x′ y′)))))
+          x)
+
+    data Play (X : Set) : Nat → Set where
+      noMoves : Play X zero
+      prependMove : {n : Nat} → X → Play X n → Play X (suc n)
+
+    backwardInduction :
+      {X R : Set} →
+      (horizon : Nat) →
+      Selection X R →
+      Selection (Play X horizon) R
+    backwardInduction zero choose payoff = noMoves
+    backwardInduction (suc horizon) choose payoff =
+      let
+        suffix : X → Play X horizon
+        suffix x =
+          backwardInduction horizon choose
+            (λ rest → payoff (prependMove x rest))
+
+        first : X
+        first = choose (λ x → payoff (prependMove x (suffix x)))
+      in prependMove first (suffix first)
+
+    backwardInduction-bellman :
+      {X R : Set} →
+      (horizon : Nat) →
+      (choose : Selection X R) →
+      (payoff : Play X (suc horizon) → R) →
+      selectedOutcome (backwardInduction (suc horizon) choose) payoff ≡
+      selectedOutcome choose
+        (λ x →
+          selectedOutcome
+            (backwardInduction horizon choose)
+            (λ rest → payoff (prependMove x rest)))
+    backwardInduction-bellman horizon choose payoff = refl
+
+    backwardInduction-optimal :
+      {X R : Set} →
+      (order : Preorder R) →
+      (choose : Selection X R) →
+      OptimalSelection order choose →
+      (horizon : Nat) →
+      OptimalSelection order (backwardInduction horizon choose)
+    backwardInduction-optimal order choose optimal zero payoff noMoves =
+      below-refl order (payoff noMoves)
+    backwardInduction-optimal order choose optimal (suc horizon)
+      payoff (prependMove firstMove rest) =
+      below-trans order
+        (backwardInduction-optimal order choose optimal horizon
+          (λ suffix → payoff (prependMove firstMove suffix))
+          rest)
+        (optimal
+          (λ move →
+            payoff
+              (prependMove move
+                (backwardInduction horizon choose
+                  (λ suffix → payoff (prependMove move suffix)))))
+          firstMove)
+
+    postulate
+      symmetricBarRec :
+        {X R : Set} →
+        (omega : (Nat → X) → Nat) →
+        (default : X) →
+        SymmetricBarCondition omega default →
+        (base : PartialMap X → R) →
+        (step : PartialMap X → (X → R) → R) →
+        (entries : PartialMap X) →
+        (key : Nat) →
+        DomainDecision entries key → R
+
+      sBR-stop :
+        {X R : Set} →
+        (omega : (Nat → X) → Nat) →
+        (default : X) →
+        (condition : SymmetricBarCondition omega default) →
+        (base : PartialMap X → R) →
+        (step : PartialMap X → (X → R) → R) →
+        (entries : PartialMap X) →
+        (key : Nat) →
+        (present : memberKey key (mapEntries entries) ≡ true) →
+        symmetricBarRec omega default condition base step entries key
+          (inDomain present) ≡ base entries
+
+      sBR-step :
+        {X R : Set} →
+        (omega : (Nat → X) → Nat) →
+        (default : X) →
+        (condition : SymmetricBarCondition omega default) →
+        (base : PartialMap X → R) →
+        (step : PartialMap X → (X → R) → R) →
+        (entries : PartialMap X) →
+        (key : Nat) →
+        (absent : memberKey key (mapEntries entries) ≡ false) →
+        symmetricBarRec omega default condition base step entries key
+          (outDomain absent) ≡
+        step entries
+          (λ value →
+            let nextEntries = extendFresh entries key absent value
+                nextKey = omega (streamOf (mapEntries nextEntries) default)
+            in symmetricBarRec omega default condition base step
+                 nextEntries nextKey (decideDomain nextEntries nextKey))
+
+    symmetricBarRecAt :
+      {X R : Set} →
+      (omega : (Nat → X) → Nat) →
+      (default : X) →
+      SymmetricBarCondition omega default →
+      (base : PartialMap X → R) →
+      (step : PartialMap X → (X → R) → R) →
+      PartialMap X → R
+    symmetricBarRecAt omega default condition base step entries =
+      symmetricBarRec omega default condition base step entries
+        (omega (streamOf (mapEntries entries) default))
+        (decideDomain entries (omega (streamOf (mapEntries entries) default)))
 
   ----------------------------------------------------------------------
-  -- 3. Mac Lane coherence via the thin free monoidal category on
+  -- 3. Double-negated logical principles.
+  --
+  -- Negative axioms assert stability of schemas; they do not supply
+  -- classical witnesses as computational data. DNE and Peirce are
+  -- derived under double-negated excluded middle. Function extensionality
+  -- and double-negation shift remain separate schemas.
+  --
+  -- Set : Set is a universe-formation judgement, not a proposition or
+  -- Agda term. Its double negation is therefore not expressible as a
+  -- well-typed postulate. The standard predicative universe hierarchy is
+  -- retained instead.
+  ----------------------------------------------------------------------
+
+  module DoubleNegation where
+
+    infixr 4 _⊎ᴺ_
+
+    data _⊎ᴺ_ {a b : Level} (A : Set a) (B : Set b) : Set (a ⊔ b) where
+      leftᴺ : A → A ⊎ᴺ B
+      rightᴺ : B → A ⊎ᴺ B
+
+    ExcludedMiddleAt : (ℓ : Level) → Set (lsuc ℓ)
+    ExcludedMiddleAt ℓ = (P : Set ℓ) → P ⊎ᴺ (¬ P)
+
+    DoubleNegationEliminationAt : (ℓ : Level) → Set (lsuc ℓ)
+    DoubleNegationEliminationAt ℓ =
+      (P : Set ℓ) → ¬ (¬ P) → P
+
+    PeirceAt : (ℓ : Level) → Set (lsuc ℓ)
+    PeirceAt ℓ =
+      (P Q : Set ℓ) → ((P → Q) → P) → P
+
+    FunctionExtensionalityAt :
+      (a b : Level) → Set (lsuc (a ⊔ b))
+    FunctionExtensionalityAt a b =
+      {A : Set a} {B : Set b} →
+      (f g : A → B) →
+      ((x : A) → f x ≡ g x) →
+      f ≡ g
+
+    DoubleNegationShiftAt : (ℓ : Level) → Set (lsuc ℓ)
+    DoubleNegationShiftAt ℓ =
+      {P : Nat → Set ℓ} →
+      ((n : Nat) → ¬ (¬ P n)) →
+      ¬ (¬ ((n : Nat) → P n))
+
+    mapDoubleNegation :
+      {a b : Level} {P : Set a} {Q : Set b} →
+      (P → Q) → ¬ (¬ P) → ¬ (¬ Q)
+    mapDoubleNegation f notNotP notQ =
+      notNotP (λ p → notQ (f p))
+
+    excludedMiddle-implies-dne :
+      (ℓ : Level) →
+      ExcludedMiddleAt ℓ →
+      DoubleNegationEliminationAt ℓ
+    excludedMiddle-implies-dne ℓ excluded P notNotP
+      with excluded P
+    ... | leftᴺ witness = witness
+    ... | rightᴺ refute = ⊥-elim (notNotP refute)
+
+    excludedMiddle-implies-peirce :
+      (ℓ : Level) →
+      ExcludedMiddleAt ℓ →
+      PeirceAt ℓ
+    excludedMiddle-implies-peirce ℓ excluded P Q continuation
+      with excluded P
+    ... | leftᴺ witness = witness
+    ... | rightᴺ refute =
+      continuation (λ witness → ⊥-elim (refute witness))
+
+    postulate
+      doubleNegatedExcludedMiddle :
+        (ℓ : Level) → ¬ (¬ (ExcludedMiddleAt ℓ))
+
+      doubleNegatedFunctionExtensionality :
+        (a b : Level) →
+        ¬ (¬ (FunctionExtensionalityAt a b))
+
+      doubleNegatedDNS :
+        (ℓ : Level) → ¬ (¬ (DoubleNegationShiftAt ℓ))
+
+    doubleNegatedDNE :
+      (ℓ : Level) →
+      ¬ (¬ (DoubleNegationEliminationAt ℓ))
+    doubleNegatedDNE ℓ =
+      mapDoubleNegation
+        (excludedMiddle-implies-dne ℓ)
+        (doubleNegatedExcludedMiddle ℓ)
+
+    doubleNegatedPeirce :
+      (ℓ : Level) → ¬ (¬ (PeirceAt ℓ))
+    doubleNegatedPeirce ℓ =
+      mapDoubleNegation
+        (excludedMiddle-implies-peirce ℓ)
+        (doubleNegatedExcludedMiddle ℓ)
+
+  ----------------------------------------------------------------------
+  -- 4. Mac Lane coherence via the thin free monoidal category on
   --    Nat-labelled generators and a computational normal form.
   ----------------------------------------------------------------------
 
@@ -1792,7 +2180,7 @@ module Foundations where
       normalizeCohesive (gammaₑ (codiscₑ X)) ≡ normalizeCohesive X
     gamma-codisc X = refl
   ----------------------------------------------------------------------
-  -- 5. Quotients induced by idempotent endomaps.
+  -- 6. Quotients induced by idempotent endomaps.
   --
   -- This is an Agda, proof-relevant encoding of the Cedille-style
   -- idempotent-function construction. Nuo Li's normalizer laws are
@@ -2435,211 +2823,6 @@ module Foundations where
         sym (canonicalize-idempotent f x)
 
   ----------------------------------------------------------------------
-  -- 6. Spector-style symmetric bar recursion over finite partial maps.
-  --
-  -- The control functional chooses the next key.  A present key hits the
-  -- bar; an absent key is extended with a value supplied by the step
-  -- functional.  SymmetricBarCondition supplies branchwise bar coverage.
-  ----------------------------------------------------------------------
-
-  module SymmetricBarRecursion where
-
-    FiniteEntries : Set → Set
-    FiniteEntries X = List (Nat × X)
-
-    natEq : Nat → Nat → Bool
-    natEq = _==_
-
-    memberKey : {X : Set} → Nat → FiniteEntries X → Bool
-    memberKey n [] = false
-    memberKey n ((pair k value) ∷ entries) with natEq n k
-    ... | true = true
-    ... | false = memberKey n entries
-
-    lookupKey : {X : Set} → Nat → FiniteEntries X → Maybe X
-    lookupKey n [] = nothing
-    lookupKey n ((pair k value) ∷ entries) with natEq n k
-    ... | true = just value
-    ... | false = lookupKey n entries
-
-    -- A finite partial map carries a proof that its key list has no
-    -- duplicates.  This prevents the association-list representation from
-    -- silently making lookup order part of the mathematical object.
-    data UniqueKeys {X : Set} : FiniteEntries X → Set where
-      unique-empty : UniqueKeys []
-      unique-cons :
-        {key : Nat} {value : X} {entries : FiniteEntries X} →
-        memberKey key entries ≡ false →
-        UniqueKeys entries →
-        UniqueKeys (pair key value ∷ entries)
-
-    record PartialMap (X : Set) : Set where
-      constructor partialMap
-      field
-        mapEntries : FiniteEntries X
-        keys-unique : UniqueKeys mapEntries
-    open PartialMap public
-
-    emptyMap : {X : Set} → PartialMap X
-    emptyMap = partialMap [] unique-empty
-
-    streamOf : {X : Set} → FiniteEntries X → X → Nat → X
-    streamOf entries default n with lookupKey n entries
-    ... | just value = value
-    ... | nothing = default
-
-    extendFresh :
-      {X : Set} →
-      (entries : PartialMap X) →
-      (key : Nat) →
-      memberKey key (mapEntries entries) ≡ false →
-      X → PartialMap X
-    extendFresh entries key fresh value =
-      partialMap
-        (pair key value ∷ mapEntries entries)
-        (unique-cons fresh (keys-unique entries))
-
-    data DomainDecision {X : Set}
-      (entries : PartialMap X) (key : Nat) : Set where
-      inDomain :
-        memberKey key (mapEntries entries) ≡ true → DomainDecision entries key
-      outDomain :
-        memberKey key (mapEntries entries) ≡ false → DomainDecision entries key
-
-    decideDomain :
-      {X : Set} →
-      (entries : PartialMap X) →
-      (key : Nat) →
-      DomainDecision entries key
-    decideDomain entries key
-      with memberKey key (mapEntries entries) in membership
-    ... | true = inDomain membership
-    ... | false = outDomain membership
-
-    threadEntries :
-      {X : Set} →
-      (entries : PartialMap X) →
-      (key : Nat) →
-      DomainDecision entries key →
-      X →
-      PartialMap X
-    threadEntries entries key (inDomain present) value = entries
-    threadEntries entries key (outDomain absent) value =
-      extendFresh entries key absent value
-
-    threadEntries-contains-zero :
-      {X : Set} →
-      (entries : PartialMap X) →
-      (decision : DomainDecision entries zero) →
-      (value : X) →
-      memberKey zero
-        (mapEntries (threadEntries entries zero decision value)) ≡ true
-    threadEntries-contains-zero entries (inDomain present) value = present
-    threadEntries-contains-zero entries (outDomain absent) value = refl
-
-    omegaThread :
-      {X : Set} →
-      (omega : (Nat → X) → Nat) →
-      (default : X) →
-      (alpha : Nat → X) →
-      (initial : PartialMap X) →
-      Nat → PartialMap X
-    omegaThread omega default alpha initial zero = initial
-    omegaThread omega default alpha initial (suc n) =
-      let entries = omegaThread omega default alpha initial n
-          key = omega (streamOf (mapEntries entries) default)
-      in threadEntries entries key (decideDomain entries key) (alpha key)
-
-    omegaThread-step-zero :
-      {X : Set} →
-      (default : X) →
-      (alpha : Nat → X) →
-      (initial : PartialMap X) →
-      (fuel : Nat) →
-      memberKey zero
-        (mapEntries
-          (omegaThread (λ stream → zero) default alpha initial (suc fuel)))
-        ≡ true
-    omegaThread-step-zero default alpha initial fuel =
-      threadEntries-contains-zero
-        (omegaThread (λ stream → zero) default alpha initial fuel)
-        (decideDomain
-          (omegaThread (λ stream → zero) default alpha initial fuel)
-          zero)
-        (alpha zero)
-
-    SymmetricBarCondition :
-      {X : Set} →
-      (omega : (Nat → X) → Nat) →
-      X → Set
-    SymmetricBarCondition {X} omega default =
-      (initial : PartialMap X) →
-      (alpha : Nat → X) →
-      Σ Nat
-        (λ n →
-          memberKey
-            (omega (streamOf
-              (mapEntries (omegaThread omega default alpha initial n)) default))
-            (mapEntries (omegaThread omega default alpha initial n)) ≡ true)
-
-    postulate
-      symmetricBarRec :
-        {X R : Set} →
-        (omega : (Nat → X) → Nat) →
-        (default : X) →
-        SymmetricBarCondition omega default →
-        (base : PartialMap X → R) →
-        (step : PartialMap X → (X → R) → R) →
-        (entries : PartialMap X) →
-        (key : Nat) →
-        DomainDecision entries key → R
-
-      sBR-stop :
-        {X R : Set} →
-        (omega : (Nat → X) → Nat) →
-        (default : X) →
-        (condition : SymmetricBarCondition omega default) →
-        (base : PartialMap X → R) →
-        (step : PartialMap X → (X → R) → R) →
-        (entries : PartialMap X) →
-        (key : Nat) →
-        (present : memberKey key (mapEntries entries) ≡ true) →
-        symmetricBarRec omega default condition base step entries key
-          (inDomain present) ≡ base entries
-
-      sBR-step :
-        {X R : Set} →
-        (omega : (Nat → X) → Nat) →
-        (default : X) →
-        (condition : SymmetricBarCondition omega default) →
-        (base : PartialMap X → R) →
-        (step : PartialMap X → (X → R) → R) →
-        (entries : PartialMap X) →
-        (key : Nat) →
-        (absent : memberKey key (mapEntries entries) ≡ false) →
-        symmetricBarRec omega default condition base step entries key
-          (outDomain absent) ≡
-        step entries
-          (λ value →
-            let nextEntries = extendFresh entries key absent value
-                nextKey = omega (streamOf (mapEntries nextEntries) default)
-            in symmetricBarRec omega default condition base step
-                 nextEntries nextKey (decideDomain nextEntries nextKey))
-
-    symmetricBarRecAt :
-      {X R : Set} →
-      (omega : (Nat → X) → Nat) →
-      (default : X) →
-      SymmetricBarCondition omega default →
-      (base : PartialMap X → R) →
-      (step : PartialMap X → (X → R) → R) →
-      PartialMap X → R
-    symmetricBarRecAt omega default condition base step entries =
-      symmetricBarRec omega default condition base step entries
-        (omega (streamOf (mapEntries entries) default))
-        (decideDomain entries (omega (streamOf (mapEntries entries) default)))
-
-  ----------------------------------------------------------------------
   -- 7. LAURENT'S MULTIPLICATIVE-ADDITIVE POLARIZED LINEAR LOGIC (MALLP)
   --
   -- This is Laurent's polarized linear fragment WITHOUT exponentials.
@@ -2916,13 +3099,57 @@ module Foundations where
     ... | false = cutFree
     ... | true = cutContaining
 
+    record MALLPCutElimination : Set₁ where
+      field
+        normalizeCutProof :
+          {Γ : Context} {S : Stoup} →
+          MALLP Γ S →
+          MALLP Γ S
+        normalizeCutProof-cutFree :
+          {Γ : Context} {S : Stoup} →
+          (proof : MALLP Γ S) →
+          hasCut (normalizeCutProof proof) ≡ false
+        normalizeCutProof-idempotent :
+          {Γ : Context} {S : Stoup} →
+          (proof : MALLP Γ S) →
+          normalizeCutProof (normalizeCutProof proof) ≡
+          normalizeCutProof proof
+    open MALLPCutElimination public
+
+    postulate
+      mallpCutElimination : MALLPCutElimination
+
+    abstract
+      cutEliminate :
+        {Γ : Context} {S : Stoup} →
+        MALLP Γ S →
+        MALLP Γ S
+      cutEliminate proof =
+        normalizeCutProof mallpCutElimination proof
+
+      cutEliminate-idempotent :
+        {Γ : Context} {S : Stoup} →
+        (proof : MALLP Γ S) →
+        cutEliminate (cutEliminate proof) ≡ cutEliminate proof
+      cutEliminate-idempotent proof =
+        normalizeCutProof-idempotent mallpCutElimination proof
+
+      cutEliminate-cut-free :
+        {Γ : Context} {S : Stoup} →
+        (proof : MALLP Γ S) →
+        hasCut (cutEliminate proof) ≡ false
+      cutEliminate-cut-free proof =
+        normalizeCutProof-cutFree mallpCutElimination proof
+
+
   ----------------------------------------------------------------------
   -- Publicly expose all seven Foundations.* modules: six foundational
   -- packages and Laurent's MALLP calculus. No Seely structure is included.
   ----------------------------------------------------------------------
 
   open ForsterEnumerability public
-  open MarkovLeastWitness public
+  open SymmetricBarRecursion public
+  open DoubleNegation public
   open MacLaneCoherence public
   open CohesiveRetractions public
   open QuotientReflection public
@@ -2930,7 +3157,8 @@ module Foundations where
   open LaurentPolarizedMALLP public
 
 open Foundations.ForsterEnumerability public
-open Foundations.MarkovLeastWitness public
+open Foundations.SymmetricBarRecursion public
+open Foundations.DoubleNegation public
 open Foundations.MacLaneCoherence public
 open Foundations.CohesiveRetractions public
 open Foundations.QuotientReflection public
@@ -3563,11 +3791,12 @@ reflectedBoxArityWitness :
 reflectedBoxArityWitness = pair refl (pair refl refl)
 
 {-# REWRITE
-  μ-step-true
-  μ-step-false
+  parametricCodePEA-correct
   sBR-stop
   sBR-step
   quotient-raw-sound
+  cutEliminate-idempotent
+  cutEliminate-cut-free
 #-}
 -- This reduction uses the active quotient rewrite rule.
 quotientReflectionRewriteSmoke :
@@ -3590,13 +3819,31 @@ falseThenTrue : Nat → Bool
 falseThenTrue zero = false
 falseThenTrue (suc n) = true
 
-leastSearch-zero-computes :
-  Foundations.MarkovLeastWitness.leastSearch alwaysTrue ≡ zero
-leastSearch-zero-computes = refl
+boundedSearch-zero-computes :
+  boundedSearch (suc zero) alwaysTrue ≡ just zero
+boundedSearch-zero-computes = refl
 
-leastSearch-successor-computes :
-  Foundations.MarkovLeastWitness.leastSearch falseThenTrue ≡ suc zero
-leastSearch-successor-computes = refl
+boundedSearch-successor-computes :
+  boundedSearch (suc (suc zero)) falseThenTrue ≡ just (suc zero)
+boundedSearch-successor-computes = refl
+
+parametricEA-rewrite-client :
+  (F : ParametricallyEnumerable) →
+  (i stage : Nat) →
+  universalEval (parametricCodePEA F i) stage ≡ enumerate F i stage
+parametricEA-rewrite-client F i stage = refl
+
+cutEliminate-cut-free-client :
+  {Γ : Context} {S : Stoup} →
+  (proof : MALLP Γ S) →
+  hasCut (cutEliminate proof) ≡ false
+cutEliminate-cut-free-client proof = refl
+
+cutEliminate-idempotent-client :
+  {Γ : Context} {S : Stoup} →
+  (proof : MALLP Γ S) →
+  cutEliminate (cutEliminate proof) ≡ cutEliminate proof
+cutEliminate-idempotent-client proof = refl
 
 ------------------------------------------------------------------------
 -- Strict closed-Nat Forth combinator semantics
