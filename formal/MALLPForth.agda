@@ -249,158 +249,158 @@ module FiniteListComputation where
     lookup-tabulate n (λ j → f (suc j)) i bound
 
 
-    BooleanWitness : (Nat → Bool) → Set
-    BooleanWitness P = Σ Nat (λ n → P n ≡ true)
+  BooleanWitness : (Nat → Bool) → Set
+  BooleanWitness P = Σ Nat (λ n → P n ≡ true)
 
-    data AllFalseBefore (P : Nat → Bool) : Nat → Set where
-      before-zero : AllFalseBefore P zero
-      before-suc :
-        {n : Nat} →
-        AllFalseBefore P n →
-        P n ≡ false →
-        AllFalseBefore P (suc n)
-
-    record LeastWitness (P : Nat → Bool) (n : Nat) : Set where
-      field
-        witness-holds : P n ≡ true
-        all-earlier-false : AllFalseBefore P n
-
-    open LeastWitness public
-
-    -- Finite prefix evaluator. Fuel counts tested candidates: fuel zero
-    -- tests none, while fuel (suc n) tests exactly indices zero through n.
-    -- This evaluator is structurally recursive and independent of unbounded search.
-    boundedSearch : Nat → (Nat → Bool) → Maybe Nat
-    boundedSearch zero P = nothing
-    boundedSearch (suc fuel) P with P zero
-    ... | true = just zero
-    ... | false with boundedSearch fuel (λ n → P (suc n))
-    ...   | nothing = nothing
-    ...   | just n = just (suc n)
-
-    boundedSearch-sound :
-      (fuel : Nat) (P : Nat → Bool) (n : Nat) →
-      boundedSearch fuel P ≡ just n → P n ≡ true
-    maybeNothingNotJust : {A : Set} {x : A} → nothing ≡ just x → ⊥
-    maybeNothingNotJust ()
-
-    just-injective : {A : Set} {x y : A} → just x ≡ just y → x ≡ y
-    just-injective refl = refl
-
-    zeroNotSuc : {n : Nat} → zero ≡ suc n → ⊥
-    zeroNotSuc ()
-
-    sucNotZero : {n : Nat} → suc n ≡ zero → ⊥
-    sucNotZero ()
-
-    suc-injective : {m n : Nat} → suc m ≡ suc n → m ≡ n
-    suc-injective refl = refl
-
-    absurd : {A : Set} → ⊥ → A
-    absurd ()
-
-    boundedSearch-sound zero P n ()
-    boundedSearch-sound (suc fuel) P zero result with P zero
-    ... | true = refl
-    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-    ...   | nothing = absurd (maybeNothingNotJust result)
-    ...   | just k = absurd (sucNotZero (just-injective result))
-    boundedSearch-sound (suc fuel) P (suc n) result with P zero
-    ... | true = absurd (zeroNotSuc (just-injective result))
-    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-    ...   | nothing = absurd (maybeNothingNotJust result)
-    ...   | just k =
-      boundedSearch-sound fuel (λ i → P (suc i)) n
-        (trans smaller (cong just (suc-injective (just-injective result))))
-
-    boundedSearch-falseNotTrue : false ≡ true → ⊥
-    boundedSearch-falseNotTrue ()
-
-    boundedSearch-trueNotFalse : true ≡ false → ⊥
-    boundedSearch-trueNotFalse ()
-
-    allFalseBefore-first :
-      {P : Nat → Bool} {n : Nat} →
-      AllFalseBefore P (suc n) → P zero ≡ false
-    allFalseBefore-first {n = zero} (before-suc before-zero first) = first
-    allFalseBefore-first {n = suc n}
-      (before-suc (before-suc earlier next) last) =
-      allFalseBefore-first (before-suc earlier next)
-
-    allFalseBefore-tail :
-      {P : Nat → Bool} {n : Nat} →
-      AllFalseBefore P (suc n) →
-      AllFalseBefore (λ i → P (suc i)) n
-    allFalseBefore-tail {n = zero} (before-suc before-zero first) =
-      before-zero
-    allFalseBefore-tail {n = suc n}
-      (before-suc (before-suc earlier next) last) =
-      before-suc (allFalseBefore-tail (before-suc earlier next)) last
-
-    allFalseBefore-lift :
-      {P : Nat → Bool} {n : Nat} →
-      P zero ≡ false →
-      AllFalseBefore (λ i → P (suc i)) n →
+  data AllFalseBefore (P : Nat → Bool) : Nat → Set where
+    before-zero : AllFalseBefore P zero
+    before-suc :
+      {n : Nat} →
+      AllFalseBefore P n →
+      P n ≡ false →
       AllFalseBefore P (suc n)
-    allFalseBefore-lift first before-zero =
-      before-suc before-zero first
-    allFalseBefore-lift first (before-suc earlier next) =
-      before-suc (allFalseBefore-lift first earlier) next
 
-    leastWitness-tail :
-      {P : Nat → Bool} {n : Nat} →
-      LeastWitness P (suc n) →
-      LeastWitness (λ i → P (suc i)) n
-    leastWitness-tail witness = record
-      { witness-holds = witness-holds witness
-      ; all-earlier-false =
-          allFalseBefore-tail (all-earlier-false witness)
-      }
+  record LeastWitness (P : Nat → Bool) (n : Nat) : Set where
+    field
+      witness-holds : P n ≡ true
+      all-earlier-false : AllFalseBefore P n
 
-    boundedSearch-minimal :
-      (fuel : Nat) (P : Nat → Bool) (n : Nat) →
-      boundedSearch fuel P ≡ just n → AllFalseBefore P n
-    boundedSearch-minimal zero P n ()
-    boundedSearch-minimal (suc fuel) P zero result with P zero
-    ... | true = before-zero
-    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-    ...   | nothing = absurd (maybeNothingNotJust result)
-    ...   | just k = absurd (sucNotZero (just-injective result))
-    boundedSearch-minimal (suc fuel) P (suc n) result with P zero in first
-    ... | true = absurd (zeroNotSuc (just-injective result))
-    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-    ...   | nothing = absurd (maybeNothingNotJust result)
-    ...   | just k =
-      allFalseBefore-lift first
-        (boundedSearch-minimal fuel (λ i → P (suc i)) n
-          (trans smaller
-            (cong just (suc-injective (just-injective result)))))
+  open LeastWitness public
 
-    boundedSearch-least :
-      (fuel : Nat) (P : Nat → Bool) (n : Nat) →
-      boundedSearch fuel P ≡ just n → LeastWitness P n
-    boundedSearch-least fuel P n result = record
-      { witness-holds = boundedSearch-sound fuel P n result
-      ; all-earlier-false = boundedSearch-minimal fuel P n result
-      }
+  -- Finite prefix evaluator. Fuel counts tested candidates: fuel zero
+  -- tests none, while fuel (suc n) tests exactly indices zero through n.
+  -- This evaluator is structurally recursive and independent of unbounded search.
+  boundedSearch : Nat → (Nat → Bool) → Maybe Nat
+  boundedSearch zero P = nothing
+  boundedSearch (suc fuel) P with P zero
+  ... | true = just zero
+  ... | false with boundedSearch fuel (λ n → P (suc n))
+  ...   | nothing = nothing
+  ...   | just n = just (suc n)
 
-    boundedSearch-complete :
-      (P : Nat → Bool) (n : Nat) →
-      LeastWitness P n →
-      boundedSearch (suc n) P ≡ just n
-    boundedSearch-complete P zero witness with P zero in first
-    ... | true = refl
-    ... | false =
-      absurd (boundedSearch-falseNotTrue
-        (trans (sym first) (witness-holds witness)))
-    boundedSearch-complete P (suc n) witness with P zero in first
-    ... | true =
-      absurd (boundedSearch-trueNotFalse
-        (trans (sym first)
-          (allFalseBefore-first (all-earlier-false witness))))
-    ... | false
-      rewrite boundedSearch-complete
-        (λ i → P (suc i)) n (leastWitness-tail witness) = refl
+  boundedSearch-sound :
+    (fuel : Nat) (P : Nat → Bool) (n : Nat) →
+    boundedSearch fuel P ≡ just n → P n ≡ true
+  maybeNothingNotJust : {A : Set} {x : A} → nothing ≡ just x → ⊥
+  maybeNothingNotJust ()
+
+  just-injective : {A : Set} {x y : A} → just x ≡ just y → x ≡ y
+  just-injective refl = refl
+
+  zeroNotSuc : {n : Nat} → zero ≡ suc n → ⊥
+  zeroNotSuc ()
+
+  sucNotZero : {n : Nat} → suc n ≡ zero → ⊥
+  sucNotZero ()
+
+  suc-injective : {m n : Nat} → suc m ≡ suc n → m ≡ n
+  suc-injective refl = refl
+
+  absurd : {A : Set} → ⊥ → A
+  absurd ()
+
+  boundedSearch-sound zero P n ()
+  boundedSearch-sound (suc fuel) P zero result with P zero
+  ... | true = refl
+  ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
+  ...   | nothing = absurd (maybeNothingNotJust result)
+  ...   | just k = absurd (sucNotZero (just-injective result))
+  boundedSearch-sound (suc fuel) P (suc n) result with P zero
+  ... | true = absurd (zeroNotSuc (just-injective result))
+  ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
+  ...   | nothing = absurd (maybeNothingNotJust result)
+  ...   | just k =
+    boundedSearch-sound fuel (λ i → P (suc i)) n
+      (trans smaller (cong just (suc-injective (just-injective result))))
+
+  boundedSearch-falseNotTrue : false ≡ true → ⊥
+  boundedSearch-falseNotTrue ()
+
+  boundedSearch-trueNotFalse : true ≡ false → ⊥
+  boundedSearch-trueNotFalse ()
+
+  allFalseBefore-first :
+    {P : Nat → Bool} {n : Nat} →
+    AllFalseBefore P (suc n) → P zero ≡ false
+  allFalseBefore-first {n = zero} (before-suc before-zero first) = first
+  allFalseBefore-first {n = suc n}
+    (before-suc (before-suc earlier next) last) =
+    allFalseBefore-first (before-suc earlier next)
+
+  allFalseBefore-tail :
+    {P : Nat → Bool} {n : Nat} →
+    AllFalseBefore P (suc n) →
+    AllFalseBefore (λ i → P (suc i)) n
+  allFalseBefore-tail {n = zero} (before-suc before-zero first) =
+    before-zero
+  allFalseBefore-tail {n = suc n}
+    (before-suc (before-suc earlier next) last) =
+    before-suc (allFalseBefore-tail (before-suc earlier next)) last
+
+  allFalseBefore-lift :
+    {P : Nat → Bool} {n : Nat} →
+    P zero ≡ false →
+    AllFalseBefore (λ i → P (suc i)) n →
+    AllFalseBefore P (suc n)
+  allFalseBefore-lift first before-zero =
+    before-suc before-zero first
+  allFalseBefore-lift first (before-suc earlier next) =
+    before-suc (allFalseBefore-lift first earlier) next
+
+  leastWitness-tail :
+    {P : Nat → Bool} {n : Nat} →
+    LeastWitness P (suc n) →
+    LeastWitness (λ i → P (suc i)) n
+  leastWitness-tail witness = record
+    { witness-holds = witness-holds witness
+    ; all-earlier-false =
+        allFalseBefore-tail (all-earlier-false witness)
+    }
+
+  boundedSearch-minimal :
+    (fuel : Nat) (P : Nat → Bool) (n : Nat) →
+    boundedSearch fuel P ≡ just n → AllFalseBefore P n
+  boundedSearch-minimal zero P n ()
+  boundedSearch-minimal (suc fuel) P zero result with P zero
+  ... | true = before-zero
+  ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
+  ...   | nothing = absurd (maybeNothingNotJust result)
+  ...   | just k = absurd (sucNotZero (just-injective result))
+  boundedSearch-minimal (suc fuel) P (suc n) result with P zero in first
+  ... | true = absurd (zeroNotSuc (just-injective result))
+  ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
+  ...   | nothing = absurd (maybeNothingNotJust result)
+  ...   | just k =
+    allFalseBefore-lift first
+      (boundedSearch-minimal fuel (λ i → P (suc i)) n
+        (trans smaller
+          (cong just (suc-injective (just-injective result)))))
+
+  boundedSearch-least :
+    (fuel : Nat) (P : Nat → Bool) (n : Nat) →
+    boundedSearch fuel P ≡ just n → LeastWitness P n
+  boundedSearch-least fuel P n result = record
+    { witness-holds = boundedSearch-sound fuel P n result
+    ; all-earlier-false = boundedSearch-minimal fuel P n result
+    }
+
+  boundedSearch-complete :
+    (P : Nat → Bool) (n : Nat) →
+    LeastWitness P n →
+    boundedSearch (suc n) P ≡ just n
+  boundedSearch-complete P zero witness with P zero in first
+  ... | true = refl
+  ... | false =
+    absurd (boundedSearch-falseNotTrue
+      (trans (sym first) (witness-holds witness)))
+  boundedSearch-complete P (suc n) witness with P zero in first
+  ... | true =
+    absurd (boundedSearch-trueNotFalse
+      (trans (sym first)
+        (allFalseBefore-first (all-earlier-false witness))))
+  ... | false
+    rewrite boundedSearch-complete
+      (λ i → P (suc i)) n (leastWitness-tail witness) = refl
 
 open FiniteListComputation public
 
@@ -741,6 +741,24 @@ module Foundations where
           enumerate F i stage
     open ParametricEA public
 
+    -- The selector γ for a family F maps each parameter i to the
+    -- typed code for the one universal program specialized at i.
+    parametricCode :
+      (ea : ParametricEA) →
+      (F : ParametricallyEnumerable) →
+      Nat →
+      ProgramCode
+    parametricCode ea F i = programCode (compileFamily ea F) i
+
+    parametricCode-correct :
+      (ea : ParametricEA) →
+      (F : ParametricallyEnumerable) →
+      (i stage : Nat) →
+      universalEval (parametricCode ea F i) stage ≡
+      enumerate F i stage
+    parametricCode-correct ea F i stage =
+      compileFamily-correct ea F i stage
+
     -- Positive synthetic PEA assumption: one selector supplies codes
     -- uniformly for every parameter of every enumerable family.
     postulate
@@ -760,25 +778,6 @@ module Foundations where
         enumerate F i stage
       parametricCodePEA-correct F i stage =
         parametricCode-correct parametricEA F i stage
-
-
-    -- The selector γ for a family F maps each parameter i to the
-    -- typed code for the one universal program specialized at i.
-    parametricCode :
-      (ea : ParametricEA) →
-      (F : ParametricallyEnumerable) →
-      Nat →
-      ProgramCode
-    parametricCode ea F i = programCode (compileFamily ea F) i
-
-    parametricCode-correct :
-      (ea : ParametricEA) →
-      (F : ParametricallyEnumerable) →
-      (i stage : Nat) →
-      universalEval (parametricCode ea F i) stage ≡
-      enumerate F i stage
-    parametricCode-correct ea F i stage =
-      compileFamily-correct ea F i stage
 
     parametricEA-analytic-sound :
       (ea : ParametricEA) →
