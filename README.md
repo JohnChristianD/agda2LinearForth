@@ -109,19 +109,18 @@ The Forth runtime in `data/FLib.fth` checks nonnegative cell values and overflow
 
 ## Global rewrites and proof clients
 
-The root module registers six rules with `--rewriting` and checks their
+The root module registers five rules with `--rewriting` and checks their
 interactions with `--confluence-check`. A separate registration retains
 `refl↓` and `Id-∙`. Directions below are the registered left-to-right
 directions.
 
 | Rule | Equation / direction | Computational client | Status |
 | --- | --- | --- | --- |
-| `parametricCodePEA-correct` | `universalEval (parametricCodePEA F i) stage ↦ enumerate F i stage` | `parametricEA-rewrite-client` | Positive global Forster PEA postulate; uniform across every family and parameter |
+| `parametricCodePEA-code` | `parametricCodePEA F i ↦ programCode (compileFamily parametricEA F) i` | `parametricEA-rewrite-client` | Positive Forster PEA selector; one program is chosen uniformly for each family, with the parameter supplied as input |
 | `sBR-stop` | A present key rewrites `symmetricBarRec ... (inDomain present)` to `base entries` | `symmetricBarRec-stop-computes` and one-step selection bridge | Positive SBR stop equation |
 | `sBR-step` | An absent key rewrites to `step entries` with a continuation over `extendFresh` and the next `omega`-selected key | `symmetricBarRec-step-then-stop-computes` and one-step selection bridge | Positive SBR recursive step equation |
 | `quotient-raw-sound` | `denoteQuotient (rawₑ x) ↦ denoteQuotient (canonicalizedₑ x)` | `quotientReflectionRewriteSmoke` | Derived from `canonicalize-idempotent` |
 | `cutEliminate-idempotent` | `cutEliminate (cutEliminate proof) ↦ cutEliminate proof` | `cutEliminate-idempotent-client` | Positive cut-elimination oracle law |
-| `cutEliminate-cut-free` | `hasCut (cutEliminate proof) ↦ false` | `cutEliminate-cut-free-client` | Positive cut-elimination oracle law |
 | `refl↓` | `ext A A ↦ Set` | No named downstream client | Positive universe/identity encoding rewrite |
 | `Id-∙` | `Id A X Y ↦ ext (A X) (A Y)` | No named downstream client | Positive universe/identity encoding rewrite |
 
@@ -133,8 +132,9 @@ remains. The SBR clients exercise stop, step-then-stop, and a one-step
 selection instance. The selection-product/backward-induction theorems
 establish Bellman composition and conditional optimality from locally
 optimal selectors. The quotient client exercises raw-to-canonical
-reflection. PEA supplies one uniform selector, but does not establish
-uniqueness of codes.
+reflection. PEA supplies one program per enumerable family, uniformly
+parameterized by input; soundness/completeness preserve the enumerated range,
+not the original stage order. PEA does not establish uniqueness of codes.
 
 Confluence checking verifies interactions among the registered rules; it
 does not prove the positive postulates, SBR termination, or semantic soundness
@@ -156,13 +156,13 @@ The root `MALLPForth` module publicly re-exports all seven `Foundations` submodu
 
 | Public module | Actual role and current consumption |
 | --- | --- |
-| `ForsterEnumerability` | A step-indexed register-machine interpreter is the analytic model; `AnalyticEnumerableFamily` packages one uniform program with soundness/completeness. The global positive `parametricEA : ParametricEA` postulate supplies one code selector for every parametrically enumerable family and parameter; `parametricCodePEA-correct` is its registered evaluation rewrite. Codes remain typed register-program syntax, not a proved equivalence with numeric Gödel codes or Turing-machine computability. |
+| `ForsterEnumerability` | A step-indexed register-machine interpreter is the analytic model; `AnalyticEnumerableFamily` packages one uniform program with soundness/completeness. The global positive `parametricEA : ParametricEA` postulate supplies one program for every parametrically enumerable family, with the family parameter supplied at runtime. Its soundness/completeness fields preserve the enumerated range (rather than requiring the same stage-by-stage output sequence); `parametricCodePEA-code` is the registered code-selection rewrite. Codes remain typed register-program syntax, not a proved equivalence with numeric Gödel codes or Turing-machine computability. |
 | `SymmetricBarRecursion` | Positive postulated symmetric bar recursion over finite partial maps, with stop/step rewrite equations; also contains selection products, finite backward induction, Bellman equations, conditional optimality proofs, and a one-step SBR/selection bridge. |
 | `DoubleNegation` | Negative postulates for double-negated excluded middle, function extensionality, and countable double-negation shift. Double-negated DNE and Peirce are derived from double-negated excluded middle; no classical witness is supplied. |
 | `MacLaneCoherence` | A thin free monoidal category on Nat-labelled generators: objects are parenthesized tensor expressions, homs are equality of flattened normal forms, and associators/unitors/coherence follow using UIP/K. This is a standalone foundation, not a Haskell compiler consumer. |
 | `CohesiveRetractions` | The Π ⊣ Disc ⊣ Γ ⊣ coDisc adjunction data, full-faithfulness conditions, and finite-product preservation are explicit structures. The supplied Set model remains the degenerate identity-Set instance, not a nontrivial cohesive topos/site model. |
 | `QuotientReflection` | Idempotent endomap, fixed-point quotient/normalizer, idempotent category/monad; canonicalization rewrite is used by a reduction client. |
-| `LaurentPolarizedMALLP` | The linear logic core used directly by the Nat MALLP derivations and compiler proofs; its cut-free normalizer is a positive postulate with registered cut-free/idempotence equations. |
+| `LaurentPolarizedMALLP` | The linear logic core used directly by the Nat MALLP derivations and compiler proofs; its positive cut-elimination oracle preserves the sequent, returns cut-free proofs, and is idempotent. Idempotence is a registered rewrite; cut-freeness is an explicit theorem of the oracle record. |
 
 Thus all seven are **globally consumable** through public exports, while actual consumption is selective. `ForsterEnumerability`, `MacLaneCoherence`, and `CohesiveRetractions` have no direct compiler consumer; they remain substantive standalone developments rather than artificial dependencies in unrelated lowering proofs.
 
@@ -188,8 +188,10 @@ boundary.
 The remaining positive postulates are the universe/identity encoding (`Id`,
 `ext`, `refl↓`, `Id-∙`), Forster PEA, the symmetric bar-recursion operator
 with its stop/step equations, and the MALLP cut-elimination normalizer
-record. The negative postulates are double-negated excluded middle, function
-extensionality, and countable DNS; double-negated DNE and Peirce are derived.
+record. PEA's universal selector preserves enumerated ranges and is uniformly
+parameterized; it does not impose a stage-by-stage identity with each input
+enumerator. The negative postulates are double-negated excluded middle,
+function extensionality, and countable DNS; double-negated DNE and Peirce are derived.
 The μ-search and Markov/least-witness postulates have been removed; the
 finite bounded-search proofs remain constructive.
 
@@ -202,8 +204,9 @@ and optimality conditional on local optimal selectors; they do not establish
 existence of a maximum for every payoff.
 
 The cohesive modalities are parameterized by an explicit adjoint-quadruple
-record; the supplied Set interpretation is the identity quadruple, not a
-claim about a nontrivial cohesive topos. Mac Lane coherence uses UIP/K for
+record. Its object universe is lifted predicatively so `Set` itself can be
+a category object; the supplied Set interpretation is still the identity
+quadruple, not a nontrivial cohesive topos. Mac Lane coherence uses UIP/K for
 equality of parallel tensor-normalization paths. K remains enabled by the
 root module's Agda default and is requested explicitly by the generated
 renderer pragma. The root `--type-in-type` option has been removed.
