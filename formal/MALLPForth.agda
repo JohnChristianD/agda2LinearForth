@@ -2621,7 +2621,7 @@ module Foundations where
             (λ source →
               GArrow source
                 (finitePiObject (finiteHMeet A B)))
-            (sym (finitePiPreservesMeet A B))
+            (finitePiPreservesMeet A B)
             (gArrowRefl (finitePiObject (finiteHMeet A B)))
       ; productComparison-left = tt
       ; productComparison-right = tt
