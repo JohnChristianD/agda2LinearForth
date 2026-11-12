@@ -1,19 +1,23 @@
 {-# OPTIONS --rewriting --confluence-check --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
 -- ```Agda
 ------------------------------------------------------------------------
--- SovereignRationalSED
+-- SovereignRationalSED / MALLPForth
 --
--- Six original foundational packages plus Laurent's constructive MALLP
--- calculus, without exponentials or Seely structure.  Finite-list computation
--- remains a separate helper witness.  Rewrite rules are registered once
--- at the outer module so Agda checks the combined rewrite system together.
--- The physical modules do not treat logical rewrite equations as physical
--- laws; they expose explicit finite data and proof obligations.
+-- Six Foundations packages are public: Forster PEA, symmetric bar recursion,
+-- negative logical schemas, Mac Lane coherence, cohesive adjunctions, and
+-- idempotent quotient reflection. Laurent MALLP is the separate resource
+-- calculus used by selected compiler proofs. Finite-list computation is an
+-- auxiliary constructive helper, not an axiom package.
+--
+-- The root rewrite pragma checks the combined registered system. A rewrite
+-- equation is a conversion law, not automatically a terminating evaluator.
+-- Physical specifications remain separate from logical assumptions.
 ------------------------------------------------------------------------
 
 module MALLPForth where
 
---Required for Polymorphism:
+-- Primitive universe levels for the predicative category and identity
+-- encodings below. The root module deliberately omits --type-in-type.
 open import Agda.Primitive using (Level; lsuc; _⊔_) public
 open import Agda.Builtin.Nat public hiding (_<_)
 open import Agda.Builtin.Bool public
@@ -515,14 +519,13 @@ negativeObservation-run-adequate n consume = refl
 module Foundations where
 
   ----------------------------------------------------------------------
-  -- 1. Forster parametric enumerability: analytic machine model and
-  --    explicit synthetic EA principle.
+  -- 1. Forster parametric enumerability.
   --
-  -- ProgramCode is syntax for a concrete register machine, interpreted
-  -- step-by-step below. Analytic families carry actual programs and
-  -- soundness/completeness proofs. ParametricEA states the synthetic
-  -- parametric-universality principle as an explicit witness requirement;
-  -- no inhabitant and no numeric Gödel coding are assumed here.
+  -- ProgramCode is syntax for the concrete register machine below.
+  -- Analytic families supply executable programs. ParametricEA expresses
+  -- uniform family compilation as a positive global postulate. Its typed
+  -- code representation is not a theorem about numeric Gödel coding or
+  -- equivalence with Turing-machine computability.
   ----------------------------------------------------------------------
 
   module ForsterEnumerability where
@@ -856,9 +859,11 @@ module Foundations where
   ----------------------------------------------------------------------
   -- 2. Spector-style symmetric bar recursion over finite partial maps.
   --
-  -- The control functional chooses the next key.  A present key hits the
-  -- bar; an absent key is extended with a value supplied by the step
-  -- functional.  SymmetricBarCondition supplies branchwise bar coverage.
+  -- The control functional chooses the next key. A present key stops at
+  -- the base case; an absent key extends the finite partial map using the
+  -- step functional. SymmetricBarCondition is an explicit bar-coverage
+  -- premise. The operator and stop/step equations are positive assumptions,
+  -- not a derived terminating evaluator.
   ----------------------------------------------------------------------
 
   module SymmetricBarRecursion where
@@ -1006,9 +1011,10 @@ module Foundations where
     --------------------------------------------------------------------
     -- Selection products and finite backward induction.
     --
-    -- A selection function chooses an element in response to a payoff.
-    -- The Bellman product law composes such choices. Optimality is a
-    -- separate premise: arbitrary payoffs need not attain maxima.
+    -- A selection function responds to a payoff with a chosen move.
+    -- Product selection composes these responses by Bellman's continuation
+    -- equation. Optimality is extra data: arbitrary payoffs need not attain
+    -- maxima, and this layer never manufactures an optimizer.
     --------------------------------------------------------------------
 
     Selection : (X R : Set) → Set
@@ -1199,12 +1205,12 @@ module Foundations where
         (decideDomain entries (omega (streamOf (mapEntries entries) default)))
 
   ----------------------------------------------------------------------
-  -- 3. Double-negated logical principles.
+  -- 3. Double-negated logical schemas.
   --
-  -- Negative axioms assert stability of schemas; they do not supply
-  -- classical witnesses as computational data. DNE and Peirce are
-  -- derived under double-negated excluded middle. Function extensionality
-  -- and double-negation shift remain separate schemas.
+  -- ¬¬excluded-middle is proved intuitionistically below. DNE and Peirce
+  -- in double-negated form follow from that theorem. The remaining negative
+  -- assumptions are ¬¬function-extensionality and ¬¬countable DNS; neither
+  -- supplies a positive witness or a classical decision procedure.
   --
   -- Set : Set is a universe-formation judgement, not a proposition or
   -- Agda term. Its double negation is therefore not expressible as a
@@ -1270,16 +1276,17 @@ module Foundations where
     ... | rightᴺ refute =
       continuation (λ witness → ⊥-elim (refute witness))
 
-    -- Double-negated excluded middle is intuitionistically derivable.
-    -- Keep it as a theorem, not an extra classical assumption.
+    -- ¬¬LEM is derivable intuitionistically: refuting both alternatives
+    -- yields a contradiction. It is a theorem, not a classical assumption.
     doubleNegatedExcludedMiddle :
       (ℓ : Level) → ¬ (¬ (ExcludedMiddleAt ℓ))
     doubleNegatedExcludedMiddle ℓ refute =
       refute
         (rightᴺ (λ witness → refute (leftᴺ witness)))
 
-    -- These schemas remain negative assumptions: they assert double
-    -- negation only and provide neither an extensionality proof nor DNS.
+    -- The only negative assumptions in this module are ¬¬function
+    -- extensionality and ¬¬countable DNS. Neither supplies the corresponding
+    -- positive principle.
     postulate
       doubleNegatedFunctionExtensionality :
         (a b : Level) →
@@ -1631,18 +1638,18 @@ module Foundations where
   module CohesiveRetractions where
 
     --------------------------------------------------------------------
-    -- The Lawvere-Schreiber cohesive core is a quadruple of functors
+    -- Lawvere–Schreiber cohesive structure is the adjoint quadruple
     --
     --   Π : H → G       Disc : G → H
     --   Γ : H → G       coDisc : G → H
     --
-    -- with Π ⊣ Disc ⊣ Γ ⊣ coDisc, Disc and coDisc fully faithful,
-    -- and Π preserving finite products.
+    -- satisfying Π ⊣ Disc ⊣ Γ ⊣ coDisc, full faithfulness of Disc/coDisc,
+    -- and finite-product preservation by Π.
     --
-    -- H and G are distinct category parameters.  The record below does
-    -- not pretend that an arbitrary category is a topos: it formalizes
-    -- the adjoint-quadruple axioms and their categorical laws.  An
-    -- executable identity-Set instance is supplied as a degenerate model.
+    -- H and G remain distinct categories. This record states the categorical
+    -- laws only; a cohesive topos also needs topos structure on H and
+    -- ∞-groupoid structure on G. A concrete nonidentity three-element/
+    -- two-element finite-poset model is supplied below, not a cohesive topos.
     --------------------------------------------------------------------
 
     record Category : Set₂ where
@@ -1696,9 +1703,9 @@ module Foundations where
     open Category public
 
     --------------------------------------------------------------------
-    -- A functor preserves identities and composition up to the chosen
-    -- equality on hom-sets.  Hom equality is explicit, so the Set model
-    -- uses pointwise equality and requires no function-extensionality axiom.
+    -- A functor preserves identities and composition up to the target
+    -- category's chosen hom equality. That equality is explicit in each
+    -- model, so no global function-extensionality assumption is needed.
     --------------------------------------------------------------------
 
     -- Spell out object endpoints in the laws: categoryHom is a record
@@ -2009,11 +2016,10 @@ module Foundations where
     open PreservesFiniteProducts public
 
     --------------------------------------------------------------------
-    -- Abstract cohesive adjunction core. H is the cohesive category and
-    -- G is the category of discrete homotopy types. A full cohesive topos
-    -- additionally supplies topos structure on H and the intended
-    -- ∞-groupoid structure on G; those structures are intentionally not
-    -- postulated or conflated with this adjoint-quadruple interface.
+    -- Abstract cohesive adjunction core. H is the cohesive category and G
+    -- the category of discrete homotopy types. A full cohesive topos also
+    -- needs topos structure on H and ∞-groupoid structure on G. Those
+    -- structures remain outside this adjoint-quadruple interface.
     --------------------------------------------------------------------
 
     record CohesiveAdjointQuadruple
@@ -2562,10 +2568,6 @@ module Foundations where
     finitePiGamma-distinct ()
 
 
-
-    --------------------------------------------------------------------
-    -- Set with its ordinary terminal object and binary products.
-    --------------------------------------------------------------------
 
     --------------------------------------------------------------------
     -- Typed syntax over the finite nonidentity model.
@@ -3385,11 +3387,11 @@ module Foundations where
   -- idempotent cut-free normal form. This is assumed, not derived by
   -- Gentzen reductions, and its denotational preservation remains open.
   --
-  -- Categorical semantics is intentionally not smuggled in via a Seely
-  -- comonad.  Hamano-Scott's MALLP model uses an adjunction between
-  -- reflective/coreflective full subcategories of a *-autonomous category
-  -- with products.  That categorical model is a separate obligation; this
-  -- module specifies formulas, duality, and proof-relevant rules only.
+  -- Categorical semantics is not inferred from a Seely comonad. The
+  -- Hamano–Scott model requires reflective/coreflective full subcategories
+  -- inside a *-autonomous category with products. The finite cohesive
+  -- preorder above does not supply that category or connect its modalities
+  -- to MALLP. This module specifies formulas, duality, and proof rules.
   -- Rule reference: Laurent, "Polarized games", section 3.1 (MALLP).
   ----------------------------------------------------------------------
 
