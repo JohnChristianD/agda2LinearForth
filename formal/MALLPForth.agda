@@ -721,11 +721,10 @@ module Foundations where
     analyticCode-correct F i stage = refl
 
     --------------------------------------------------------------------
-    -- Forster's parametric enumerability principle (EA), represented as
-    -- an explicit assumption record rather than a global postulate.
-    -- It asks for a parametric code selector for every functionally given
-    -- enumerable family. An analytic model supplies such a selector only
-    -- for families accompanied by actual register programs.
+    -- Forster's parametric enumerability principle (EA). The record is
+    -- the contract for a uniform code selector for every functionally
+    -- given enumerable family. A global positive axiom inhabitant is
+    -- supplied below; the analytic model remains the explicit-code submodel.
     --------------------------------------------------------------------
 
     record ParametricEA : Set₁ where
@@ -2833,7 +2832,10 @@ module Foundations where
   -- No weakening or contraction constructors occur here.  Tensor splits
   -- resources between premises; with has the usual additive shared-context
   -- rule (one branch is selected by additive observation), not contraction.
-  -- Cut is included as a derivation rule; cut elimination is not asserted.
+  -- Cut is included as a derivation rule. A positive cut-elimination
+  -- oracle is supplied below: it preserves the sequent and returns an
+  -- idempotent cut-free normal form. This is assumed, not derived by
+  -- Gentzen reductions, and its denotational preservation remains open.
   --
   -- Categorical semantics is intentionally not smuggled in via a Seely
   -- comonad.  Hamano-Scott's MALLP model uses an adjunction between
@@ -3098,6 +3100,8 @@ module Foundations where
     ... | false = cutFree
     ... | true = cutContaining
 
+    -- The oracle's result has exactly the same indexed sequent as its input;
+    -- cut-free and idempotent laws are part of the axiom's contract.
     record MALLPCutElimination : Set₁ where
       field
         normalizeCutProof :
@@ -3152,7 +3156,6 @@ module Foundations where
   open MacLaneCoherence public
   open CohesiveRetractions public
   open QuotientReflection public
-  open SymmetricBarRecursion public
   open LaurentPolarizedMALLP public
 
 open Foundations.ForsterEnumerability public
@@ -3161,7 +3164,6 @@ open Foundations.DoubleNegation public
 open Foundations.MacLaneCoherence public
 open Foundations.CohesiveRetractions public
 open Foundations.QuotientReflection public
-open Foundations.SymmetricBarRecursion public
 open Foundations.LaurentPolarizedMALLP public
 
 ------------------------------------------------------------------------
@@ -6667,6 +6669,24 @@ symmetricBarRec-step-then-stop-computes :
   step emptyMap
     (λ value → base (zeroKeyMap value))
 symmetricBarRec-step-then-stop-computes default base step = refl
+
+
+-- A one-step selection is an instance of the SBR step/stop equations.
+-- The continuation records the payoff of each newly threaded value, and
+-- the step algebra selects exactly the value chosen by the selection map.
+symmetricBarRec-selection-one-step :
+  {X R : Set} →
+  (default : X) →
+  (choose : Selection X R) →
+  (payoff : X → R) →
+  symmetricBarRec constantZeroOmega default
+    (constantZeroBarCondition default)
+    (λ entries → payoff (streamOf (mapEntries entries) default zero))
+    (λ entries continuation → selectedOutcome choose continuation)
+    emptyMap zero (outDomain refl)
+  ≡ selectedOutcome choose payoff
+symmetricBarRec-selection-one-step default choose payoff = refl
+
 
 
 -- ```
