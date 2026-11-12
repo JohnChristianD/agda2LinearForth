@@ -1,6 +1,6 @@
 {-# OPTIONS --rewriting --confluence-check --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
 -- ```Agda
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- SovereignRationalSED / MALLPForth
 --
 -- Six Foundations packages are public: Forster PEA, symmetric bar recursion,
@@ -12,7 +12,7 @@
 -- The root rewrite pragma checks the combined registered system. A rewrite
 -- equation is a conversion law, not automatically a terminating evaluator.
 -- Physical specifications remain separate from logical assumptions.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 module MALLPForth where
 
@@ -134,9 +134,9 @@ renderForthWordText name tokens =
         (primStringAppend (renderForthTokensText tokens) ";")))
 
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- Small utilities
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 infixr 3 _×_
 infixr 9 _∘ᶠ_
@@ -191,7 +191,7 @@ record Iso (A B : Set) : Set where
     to-from  : (y : B) → to (from y) ≡ y
 open Iso public
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- FINITE LIST COMPUTATION
 --
 -- Auxiliary constructive witness; separate from the six foundational
@@ -200,7 +200,7 @@ open Iso public
 -- No bounded-index container is introduced. Finite prefixes
 -- are enumerated by tabulateList; lookupPrefix records bounded lookup as
 -- Maybe, while lookupListOr supplies an explicit default for sparse tails.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 infix 4 _<_
 
@@ -234,12 +234,12 @@ lookupListOr fallback zero (x ∷ xs) = x
 lookupListOr fallback (suc i) [] = fallback
 lookupListOr fallback (suc i) (x ∷ xs) = lookupListOr fallback i xs
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- FINITE LIST COMPUTATION: AUXILIARY CONSTRUCTIVE WITNESS
 --
 -- This theorem remains available to finite-prefix code, separate from the
 -- six foundational packages and Laurent MALLP.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 module FiniteListComputation where
 
@@ -408,9 +408,9 @@ module FiniteListComputation where
 
 open FiniteListComputation public
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- CONATURALS: CONSTRUCTIVE COINDUCTIVE TIME HORIZONS
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 record Conat : Set where
   coinductive
@@ -432,7 +432,7 @@ fromNat zero = zero∞
 fromNat (suc n) = suc∞ (fromNat n)
 
 -- A bounded observation: after k observations, an infinite value is
--- represented by the cutoff k.  This always terminates by recursion on k.
+-- represented by the cutoff k. This always terminates by recursion on k.
 finiteApproximation : Nat → Conat → Nat
 finiteApproximation zero n = zero
 finiteApproximation (suc k) n with observeConat n
@@ -458,11 +458,11 @@ _+∞_ : Conat → Conat → Conat
 ... | nothing = observeConat b
 ... | just predecessor = just (predecessor +∞ b)
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- CONATURAL STREAMS AND A NEGATIVE OBSERVATION VIEW
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
--- A stream whose length is a conatural.  Its finite prefixes are always
+-- A stream whose length is a conatural. Its finite prefixes are always
 -- computable; an infinite horizon is observed one constructor at a time.
 record ConatStream (A : Set) : Set where
   coinductive
@@ -480,7 +480,7 @@ observeStream (mapConatStream f stream) with observeStream stream
 ... | nothing = nothing
 ... | just (pair value rest) = just (pair (f value) (mapConatStream f rest))
 
--- The bound, rather than the stream, controls recursion.  This evaluator is
+-- The bound, rather than the stream, controls recursion. This evaluator is
 -- total even for an infinite stream and is the executable observation API.
 foldConatPrefix : {A R : Set} → (A → R → R) → R → Nat → ConatStream A → R
 foldConatPrefix step initial zero stream = initial
@@ -489,9 +489,9 @@ foldConatPrefix step initial (suc n) stream with observeStream stream
 ... | just (pair value rest) =
       step value (foldConatPrefix step initial n rest)
 
--- Continuation/negative view of one observation.  This is a polarized
+-- Continuation/negative view of one observation. This is a polarized
 -- consumer interface, not a claim that the entire Conat type is a Laurent
--- MALLP formula.  Encoding and decoding the observation are definitionally
+-- MALLP formula. Encoding and decoding the observation are definitionally
 -- adequate and require no extensionality axiom.
 ConatObservationNegative : Set₁
 ConatObservationNegative = {R : Set} → (Maybe Conat → R) → R
@@ -512,13 +512,13 @@ negativeObservation-run-adequate : (n : Conat) {R : Set} →
   encodeConatObservationNegative n consume ≡ consume (observeConat n)
 negativeObservation-run-adequate n consume = refl
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- MODULE 1: SIX FOUNDATIONAL PACKAGES AND LAURENT MALLP
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 module Foundations where
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- 1. Forster parametric enumerability.
   --
   -- ProgramCode is syntax for the concrete register machine below.
@@ -526,16 +526,16 @@ module Foundations where
   -- uniform family compilation as a positive global postulate. Its typed
   -- code representation is not a theorem about numeric Gödel coding or
   -- equivalence with Turing-machine computability.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   module ForsterEnumerability where
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Analytic enumerability: a family is enumerated by one explicit
     -- register-machine program, with the family index supplied as input.
     -- The interpreter is step-indexed: one output event may occur per
     -- machine step, and absence at a step is represented by nothing.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     data RegisterInstruction : Set where
       assignRegister : Nat → Nat → Nat → RegisterInstruction
@@ -648,11 +648,11 @@ module Foundations where
         (stepRegisterMachine program
           (runRegisterState stage program (initialRegisterState input)))
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Functional presentation used by Forster's synthetic axiom.
     -- Predicates and enumerators are Set-valued because this module is
     -- compiled with --no-prop; this is an explicit encoding boundary.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     record ParametricallyEnumerable : Set₁ where
       field
@@ -668,12 +668,12 @@ module Foundations where
           Σ Nat (λ stage → enumerate i stage ≡ just value)
     open ParametricallyEnumerable public
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Analytic submodel: a family whose enumeration is realized by an
     -- explicit register program. The same program receives i in register
     -- zero, so specialization is literal input passing, not a postulated
     -- Gödel-numbering theorem.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     record AnalyticEnumerableFamily : Set₁ where
       field
@@ -723,12 +723,12 @@ module Foundations where
       enumerate (analyticFamily F) i stage
     analyticCode-correct F i stage = refl
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Forster's parametric enumerability principle (EA). The record is
     -- the contract for a uniform code selector for every functionally
     -- given enumerable family. A global positive axiom inhabitant is
     -- supplied below; the analytic model remains the explicit-code submodel.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     record ParametricEA : Set₁ where
       field
@@ -856,7 +856,7 @@ module Foundations where
       ; analytic-sound = parametricEA-analytic-sound ea F
       ; analytic-complete = parametricEA-analytic-complete ea F
       }
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- 2. Spector-style symmetric bar recursion over finite partial maps.
   --
   -- The control functional chooses the next key. A present key stops at
@@ -864,7 +864,7 @@ module Foundations where
   -- step functional. SymmetricBarCondition is an explicit bar-coverage
   -- premise. The operator and stop/step equations are positive assumptions,
   -- not a derived terminating evaluator.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   module SymmetricBarRecursion where
 
@@ -887,7 +887,7 @@ module Foundations where
     ... | false = lookupKey n entries
 
     -- A finite partial map carries a proof that its key list has no
-    -- duplicates.  This prevents the association-list representation from
+    -- duplicates. This prevents the association-list representation from
     -- silently making lookup order part of the mathematical object.
     data UniqueKeys {X : Set} : FiniteEntries X → Set where
       unique-empty : UniqueKeys []
@@ -1008,14 +1008,14 @@ module Foundations where
 
 
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Selection products and finite backward induction.
     --
     -- A selection function responds to a payoff with a chosen move.
     -- Product selection composes these responses by Bellman's continuation
     -- equation. Optimality is extra data: arbitrary payoffs need not attain
     -- maxima, and this layer never manufactures an optimizer.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     Selection : (X R : Set) → Set
     Selection X R = (X → R) → X
@@ -1204,7 +1204,7 @@ module Foundations where
         (omega (streamOf (mapEntries entries) default))
         (decideDomain entries (omega (streamOf (mapEntries entries) default)))
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- 3. Double-negated logical schemas.
   --
   -- ¬¬excluded-middle is proved intuitionistically below. DNE and Peirce
@@ -1216,7 +1216,7 @@ module Foundations where
   -- Agda term. Its double negation is therefore not expressible as a
   -- well-typed postulate. The standard predicative universe hierarchy is
   -- retained instead.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   module DoubleNegation where
 
@@ -1310,14 +1310,14 @@ module Foundations where
         (excludedMiddle-implies-peirce ℓ)
         (doubleNegatedExcludedMiddle ℓ)
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- 4. Mac Lane coherence via the thin free monoidal category on
-  --    Nat-labelled generators and a computational normal form.
-  ----------------------------------------------------------------------
+  -- Nat-labelled generators and a computational normal form.
+  -- --------------------------------------------------------------------
 
   module MacLaneCoherence where
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Thin free monoidal category on Nat-labelled generators.
     --
     -- Objects are parenthesized tensor expressions. A morphism is an
@@ -1325,7 +1325,7 @@ module Foundations where
     -- executable, hom existence is decidable, and UIP makes every hom-set
     -- a proposition. Associators/unitors and all their coherence diagrams
     -- are represented by these canonical normal-form paths.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     data TensorExpr : Set where
       atom : Nat → TensorExpr
@@ -1407,7 +1407,7 @@ module Foundations where
     TensorHom : TensorExpr → TensorExpr → Set
     TensorHom A B = tensorNF A ≡ tensorNF B
 
-    -- A terminating decision procedure for the hom relation.  The
+    -- A terminating decision procedure for the hom relation. The
     -- negative branch contains a proof that distinct normal forms cannot
     -- be joined by a structural morphism.
     data TensorHomDecision (A B : TensorExpr) : Set where
@@ -1637,11 +1637,11 @@ module Foundations where
     tensor-product A B = refl
   module CohesiveRetractions where
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Lawvere–Schreiber cohesive structure is the adjoint quadruple
     --
-    --   Π : H → G       Disc : G → H
-    --   Γ : H → G       coDisc : G → H
+    -- Π : H → G Disc : G → H
+    -- Γ : H → G coDisc : G → H
     --
     -- satisfying Π ⊣ Disc ⊣ Γ ⊣ coDisc, full faithfulness of Disc/coDisc,
     -- and finite-product preservation by Π.
@@ -1650,7 +1650,7 @@ module Foundations where
     -- laws only; a cohesive topos also needs topos structure on H and
     -- ∞-groupoid structure on G. A concrete nonidentity three-element/
     -- two-element finite-poset model is supplied below, not a cohesive topos.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     record Category : Set₂ where
       field
@@ -1702,11 +1702,11 @@ module Foundations where
           categoryHomEq (categoryCompose f categoryId) f
     open Category public
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- A functor preserves identities and composition up to the target
     -- category's chosen hom equality. That equality is explicit in each
     -- model, so no global function-extensionality assumption is needed.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     -- Spell out object endpoints in the laws: categoryHom is a record
     -- family, so Agda cannot recover its indices by inverting categoryId
@@ -1765,10 +1765,10 @@ module Foundations where
                 {A = A} {B = B} {C = C′} g f)
       }
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- An adjunction is a natural isomorphism of hom-functors, represented
     -- by transpose/untranspose and both inverse and naturality laws.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     record Adjunction
       {C D : Category}
@@ -1835,9 +1835,9 @@ module Foundations where
           λ g f → categoryHomEq-refl C (categoryCompose C g f)
       }
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Full faithfulness is the hom-set map being an isomorphism.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     record FullyFaithful
       {C D : Category}
@@ -1872,10 +1872,10 @@ module Foundations where
       ; map-reflect = λ f → categoryHomEq-refl C f
       }
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Finite products are expressed categorically by a terminal object
     -- and binary products with the universal pairing law.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     record TerminalObject (C : Category) : Set₂ where
       field
@@ -1941,10 +1941,10 @@ module Foundations where
           (A B : categoryObjects C) → BinaryProduct C A B
     open FiniteProducts public
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Π preserves finite products when its canonical comparison maps
     -- (and the terminal comparison) are isomorphisms.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     record PreservesFiniteProducts
       {C D : Category}
@@ -2015,12 +2015,12 @@ module Foundations where
             (categoryId D)
     open PreservesFiniteProducts public
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Abstract cohesive adjunction core. H is the cohesive category and G
     -- the category of discrete homotopy types. A full cohesive topos also
     -- needs topos structure on H and ∞-groupoid structure on G. Those
     -- structures remain outside this adjoint-quadruple interface.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     record CohesiveAdjointQuadruple
       (H G : Category)
@@ -2569,12 +2569,12 @@ module Foundations where
 
 
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Typed syntax over the finite nonidentity model.
     --
     -- H-objects and G-objects are different sorts. Disc/coDisc move G→H;
     -- Pi/Gamma move H→G. This prevents ill-typed modality compositions.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     cohesiveSym :
       {a : Level} {A : Set a} {x y : A} →
@@ -2636,10 +2636,10 @@ module Foundations where
     gammaCodiscSemantics expression =
       finiteGammaCodisc-object (denoteG expression)
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Structural normal forms. The three composite modality laws reduce
     -- in G; H syntax retains the two embedding modalities.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     mutual
       normalizeH : CohesiveHExpr → CohesiveHExpr
@@ -2727,14 +2727,14 @@ module Foundations where
       finitePiObject cohHmid ≡ finiteGammaObject cohHmid → ⊥
     finitePosetalCohesion-Pi-Gamma-distinct = finitePiGamma-distinct
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- 6. Quotients induced by idempotent endomaps.
   --
   -- This is an Agda, proof-relevant encoding of the Cedille-style
   -- idempotent-function construction. Nuo Li's normalizer laws are
   -- recorded separately and shown equivalent to the induced kernel
   -- relation. A non-setoid idempotent reflection monad is built below.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   module QuotientReflection where
 
@@ -2828,7 +2828,7 @@ module Foundations where
         (normalization-idempotent N)
 
     -- Conversely, each idempotent map supplies a normalizer for its
-    -- kernel relation.  No second quotient carrier is introduced.
+    -- kernel relation. No second quotient carrier is introduced.
     kernelNormalizer :
       {A : Set} (f : IdempotentEndomap A) →
       NormalizerFor A (QuotientRelation f)
@@ -2841,19 +2841,19 @@ module Foundations where
         (λ related → related)
         (canonicalize-idempotent f)
 
-    ------------------------------------------------------------------
+    -- ----------------------------------------------------------------
     -- A non-setoid categorical reflection on idempotent endomaps.
     --
-    -- Objects are types equipped with an idempotent normalizer.  No
+    -- Objects are types equipped with an idempotent normalizer. No
     -- equivalence relation is stored on the carrier, and quotient values
     -- are ordinary Agda types: the fixed points of the normalizer.
     --
-    -- Morphisms commute with the chosen normalizers.  Equality of
+    -- Morphisms commute with the chosen normalizers. Equality of
     -- morphisms is pointwise equality; this avoids assuming function
     -- extensionality for the category laws.
-    ------------------------------------------------------------------
+    -- ----------------------------------------------------------------
 
-    -- The project is compiled with --with-K.  This proof uses K to identify
+    -- The project is compiled with --with-K. This proof uses K to identify
     -- equality witnesses when constructing paths in the fixed-point Sigma.
     -- It does not use --prop, proof erasure, or an erasure axiom.
     identityProofUnique :
@@ -3317,7 +3317,7 @@ module Foundations where
         (idempotentIdentity (reflectObject X))
     reflectMultiplication-inverse-right X q = refl
 
-    -- This monad is induced by the fixed-point reflection.  Its unit sends
+    -- This monad is induced by the fixed-point reflection. Its unit sends
     -- each input to its canonical representative; its multiplication is an
     -- isomorphism, witnessed by the two inverse laws above.
     quotientReflectionMonad : IdempotentMonad idempotentObjectCategory
@@ -3370,16 +3370,16 @@ module Foundations where
       quotient-raw-sound f x =
         sym (canonicalize-idempotent f x)
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- 7. LAURENT'S MULTIPLICATIVE-ADDITIVE POLARIZED LINEAR LOGIC (MALLP)
   --
   -- This is Laurent's polarized linear fragment WITHOUT exponentials.
   -- Positive and negative formulas are separated by polarity; down/up
   -- are polarity shifts, not Seely modalities and not an adjoint pair
-  -- asserted to be inverse.  Contexts contain only negative formulas and
+  -- asserted to be inverse. Contexts contain only negative formulas and
   -- a stoup contains at most one positive formula.
   --
-  -- No weakening or contraction constructors occur here.  Tensor splits
+  -- No weakening or contraction constructors occur here. Tensor splits
   -- resources between premises; with has the usual additive shared-context
   -- rule (one branch is selected by additive observation), not contraction.
   -- Cut is included as a derivation rule. A positive cut-elimination
@@ -3393,7 +3393,7 @@ module Foundations where
   -- preorder above does not supply that category or connect its modalities
   -- to MALLP. This module specifies formulas, duality, and proof rules.
   -- Rule reference: Laurent, "Polarized games", section 3.1 (MALLP).
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   module LaurentPolarizedMALLP where
 
@@ -3404,8 +3404,8 @@ module Foundations where
     infixr 6 _⊕⁺_ _&⁻_
 
     -- Laurent's MALLP grammar:
-    --   P ::= X⊥ | 1 | 0 | P ⊗ P | P ⊕ P | ↓N
-    --   N ::= X  | ⊥ | ⊤ | N ⅋ N | N & N | ↑P
+    -- P ::= X⊥ | 1 | 0 | P ⊗ P | P ⊕ P | ↓N
+    -- N ::= X | ⊥ | ⊤ | N ⅋ N | N & N | ↑P
     data PolType : Polarity → Set where
       atom⁺ : Nat → PolType posPolarity
       atom⁻ : Nat → PolType negPolarity
@@ -3480,7 +3480,7 @@ module Foundations where
     (x ∷ xs) ++ᴸ ys = x ∷ (xs ++ᴸ ys)
 
     -- Lists are a concrete presentation of finite contexts; exchange is
-    -- witnessed explicitly, without quotient equality or setoids.  The
+    -- witnessed explicitly, without quotient equality or setoids. The
     -- negative context plus optional positive stoup enforces Laurent's
     -- at-most-one-positive-formula invariant by construction.
     data ContextPermutation {A : Set} : List A → List A → Set where
@@ -3573,7 +3573,7 @@ module Foundations where
         {Γ : Context} {S : Stoup} →
         MALLP (top⁻ ∷ Γ) S
 
-      -- Polarity shifts.  Down moves a negative formula into the positive
+      -- Polarity shifts. Down moves a negative formula into the positive
       -- stoup, with the remaining context negative; up moves the positive
       -- stoup into the negative context.
       mallp-down :
@@ -3695,10 +3695,10 @@ module Foundations where
         normalizeCutProof-cutFree mallpCutElimination proof
 
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- Publicly expose all seven Foundations.* modules: six foundational
   -- packages and Laurent's MALLP calculus. No Seely structure is included.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   open ForsterEnumerability public
   open SymmetricBarRecursion public
@@ -3716,7 +3716,7 @@ open Foundations.CohesiveRetractions public
 open Foundations.QuotientReflection public
 open Foundations.LaurentPolarizedMALLP public
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- A relational denotation for every Laurent MALLP proof constructor.
 --
 -- Atoms are interpreted parametrically. Positive/negative tensor and
@@ -3730,7 +3730,7 @@ open Foundations.LaurentPolarizedMALLP public
 -- It is deliberately not labelled as the full Hamano-Scott categorical
 -- model: that stronger result needs the reflective/coreflective adjunction
 -- and its *-autonomous coherence data as explicit Agda structures.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 module MALLPRelationalDenotation (Atom : Nat → Set) where
 
@@ -3956,7 +3956,7 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
     MALLPRelation proof environment result
 
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- GENERIC LINEAR SOURCE TERMS: STRUCTURAL MALLP DERIVATION
 --
 -- This small, reusable source core indexes every term by its exact live
@@ -3968,7 +3968,7 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
 -- A closure stores its environment once and its code expects that same
 -- environment paired with its explicit argument. No captured resource is
 -- copied into code or silently discarded at closure creation.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 data LinearSourceType : Set where
   linearNatType linearIntType linearWord64Type linearBoolType linearUnitType : LinearSourceType
@@ -4223,14 +4223,14 @@ linearMaybeIdentityMALLP :
     (just (linearSourceFormula (linearMaybeType A)))
 linearMaybeIdentityMALLP = deriveMALLP linearMaybeIdentity
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- REFLECTION-GENERATED ADT SHAPES
 --
 -- Reflection inspects the kernel-resolved datatype declaration and its
 -- constructor Pi telescopes, then emits a quoted description. This is
 -- compile-time metadata only: it does not decide linearity, runtime layout,
 -- or a MALLP derivation. Those are checked by the typed source core above.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 record ReflectedConstructorShape : Set where
   constructor reflectedConstructorShape
@@ -4358,9 +4358,9 @@ quotientReflectionRewriteSmoke :
 quotientReflectionRewriteSmoke A f x = refl
 
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- Rewrite computation smoke witnesses
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 alwaysTrue : Nat → Bool
 alwaysTrue n = true
@@ -4397,14 +4397,14 @@ cutEliminate-idempotent-client :
   cutEliminate (cutEliminate proof) ≡ cutEliminate proof
 cutEliminate-idempotent-client proof = refl
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- Strict closed-Nat Forth combinator semantics
 --
 -- This compiler fragment has no variables, closures, heap, implicit copy,
--- implicit drop, exponentials, or garbage collector.  Each syntax child is
+-- implicit drop, exponentials, or garbage collector. Each syntax child is
 -- visited once; each combinator returns exactly one Nat and preserves the
 -- caller's residual stack.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 module StrictNatCompiler where
 
@@ -4685,7 +4685,7 @@ module StrictNatCompiler where
   ... | nothing = nothing
   ... | just nextStack = execTokens tokens nextStack
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- Bounded Gforth Nat machine.
   --
   -- FLib.fth represents source Nats in a signed Forth cell. Its runtime
@@ -4693,7 +4693,7 @@ module StrictNatCompiler where
   -- cell bound. This interpreter gives those partial-success semantics to
   -- the same emitted token algebra. The bound is a parameter because
   -- Gforth's CELL-BITS is platform-dependent.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   natWithinBound : Nat → Nat → Bool
   natWithinBound zero bound = true
@@ -5168,14 +5168,14 @@ module StrictNatCompiler where
           | renderForth-sound first stack
           | renderForth-sound second (execForthCode first stack) = refl
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- A closed, proof-carrying MALLP theory for the implemented Nat slice.
   --
   -- Numerals are nullary constants. Each arithmetic primitive is a linear
   -- axiom Nat- ⊗ Nat- ⊢ Nat+, and composition is MALLP cut. Thus every
   -- source subterm is consumed once; this is a theory over MALLP, with an
   -- explicit primitive signature, rather than bare proof-tree syntax.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   natFormula : PolType posPolarity
   natFormula = atom⁺ zero
@@ -5533,14 +5533,14 @@ module StrictNatCompiler where
     rewrite natExprProof-adequate left
           | natExprProof-adequate right = refl
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- General finite linear Nat trees.
   --
   -- The index n counts live Nat assumptions. Literal leaves consume zero
   -- resources; an argument leaf consumes exactly one; binary composition
   -- partitions n+m assumptions between its two premises. This makes
   -- duplication and discard unrepresentable in this source core.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   data NatResourceExpr : Nat → Set where
     resourceLiteral :
@@ -5743,13 +5743,13 @@ module StrictNatCompiler where
         (λ value → just (value ∷ forgetStack stack))
         (sym (natLinearProof-adequate expression argument)))
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- Binary linear Nat primitives.
   --
-  -- The two source arguments are each consumed once.  The incoming stack
+  -- The two source arguments are each consumed once. The incoming stack
   -- has the second argument at its head, matching the environment order
-  -- used by the MALLP primitive signature.  Exchange is explicit.
-  ----------------------------------------------------------------------
+  -- used by the MALLP primitive signature. Exchange is explicit.
+  -- --------------------------------------------------------------------
 
   data NatBinaryLinearExpr : Set where
     natBinaryArguments : NatOp → NatBinaryLinearExpr
@@ -5911,16 +5911,16 @@ module StrictNatCompiler where
     natBinaryMALLP-forth-sound
       (natBinaryArgumentsExchanged operation) first second stack
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- Closed PureLang lets: substitution without weakening or contraction.
   --
-  -- A closed binding owns no MALLP assumptions.  A zero-use binding may be
+  -- A closed binding owns no MALLP assumptions. A zero-use binding may be
   -- skipped, and a multi-use binding may be inlined into independent copies
-  -- of its closed proof.  This is distinct from copying or discarding a live
-  -- linear resource.  The theorem is intentionally restricted to a closed
+  -- of its closed proof. This is distinct from copying or discarding a live
+  -- linear resource. The theorem is intentionally restricted to a closed
   -- Nat term; open environments need the resource-indexed judgement below
   -- this compiler layer before analogous transformations are admitted.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   data NatLocalIndex : Nat → Set where
     local-zero : {n : Nat} → NatLocalIndex (suc n)
@@ -6131,13 +6131,13 @@ module StrictNatCompiler where
     resultCells (stackContractOf e) ≡ suc zero
   compiledNat-result e = refl
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- Pure Boolean values as additive MALLP proofs
 --
--- Bool = 1 ⊕ 1.  True and False are the two additive introductions; their
--- proofs consume no linear assumptions.  The target uses Forth's canonical
+-- Bool = 1 ⊕ 1. True and False are the two additive introductions; their
+-- proofs consume no linear assumptions. The target uses Forth's canonical
 -- TRUE/FALSE values and preserves any caller-owned residual stack.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 module StrictBoolCompiler where
 
@@ -6604,13 +6604,13 @@ open StrictBoolCompiler public
 
 open StrictNatCompiler public
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- Pure Unit as the MALLP multiplicative unit
 --
--- Unit is the formula 1.  Its unique source value carries no target cell;
+-- Unit is the formula 1. Its unique source value carries no target cell;
 -- compiling its proof is the identity stack transition, with no emitted
 -- Forth tokens and no consumption of the caller's residual stack.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 module StrictUnitCompiler where
 
@@ -6638,13 +6638,13 @@ open StrictUnitCompiler public
 
 
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- Linear call-by-need state and explicit effect protocols
 --
 -- These are primitive *signatures over unchanged MALLP*, not additions to
--- Laurent's logical rules.  A store/effect token is an ordinary linear
+-- Laurent's logical rules. A store/effect token is an ordinary linear
 -- resource: every operation consumes one token and returns exactly one.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 module StrictStatefulProtocol where
 
@@ -6674,7 +6674,7 @@ module StrictStatefulProtocol where
   linearClosureFormula domain codomain =
     down⁺ (dualPos domain ⅋⁻ up⁻ codomain)
 
-  -- Computation signatures are layered over MALLP.  The only extra axioms
+  -- Computation signatures are layered over MALLP. The only extra axioms
   -- below are declared operations with explicit resource/stack contracts.
   data MALLPProtocolTheory : Context → Stoup → Set where
     protocol-logical :
@@ -6719,7 +6719,7 @@ module StrictStatefulProtocol where
         (just (natFormula ⊗⁺ thunkStoreFormula))
 
     -- Emission consumes exactly one event payload and one effect capability,
-    -- returning the updated capability.  No ambient unrestricted effect is
+    -- returning the updated capability. No ambient unrestricted effect is
     -- available in this signature.
     primitive-effect-emit :
       MALLPProtocolTheory
@@ -6751,9 +6751,9 @@ module StrictStatefulProtocol where
         (dualPos listNatFormula ∷ dualPos natFormula ∷ [])
         (just natFormula)
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- A total PureLang thunk fragment with explicit call-by-need update.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   data ThunkExpr : Set where
     thunkLiteral : Nat → ThunkExpr
@@ -6826,9 +6826,9 @@ module StrictStatefulProtocol where
   forceThunk-caches stateToken =
     sym (cacheThunkState-idempotent _)
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- An explicit linear event protocol.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   appendEvent : List Nat → Nat → List Nat
   appendEvent [] event = event ∷ []
@@ -6872,14 +6872,14 @@ module StrictStatefulProtocol where
 open StrictStatefulProtocol public
 
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- Linear closures, tensor/sum data, and finite list recursors
 --
 -- The proof terms below use existing MALLP introduction/elimination rules.
 -- Primitive application and list runtime operations are isolated in explicit
--- MALLPProtocolTheory signatures.  This does not add a recursive connective
+-- MALLPProtocolTheory signatures. This does not add a recursive connective
 -- to MALLP: list recursion is structural over finite Agda values.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 module StrictLinearDataCompiler where
 
@@ -6915,7 +6915,7 @@ module StrictLinearDataCompiler where
     MALLP (dualPos (A ⊕⁺ B) ∷ Γ) S
   linearSumElim = mallp-with
 
-  -- Γ remains present while the domain resource is abstracted.  The closure
+  -- Γ remains present while the domain resource is abstracted. The closure
   -- introduction consumes the argument resource once and preserves captures.
   linearClosureIntro :
     {Γ : Context} {A B : PolType posPolarity} →
@@ -7163,14 +7163,14 @@ module StrictLinearDataCompiler where
 
 open StrictLinearDataCompiler public
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- Executable witnesses for the assumed symmetric bar-recursion equations.
 --
 -- A constant-zero control functional reaches its bar after at most one
 -- extension: an initial map either contains key zero already, or the first
--- extension inserts it.  These examples force both registered rewrite rules
+-- extension inserts it. These examples force both registered rewrite rules
 -- to participate in Agda conversion, including step followed by stop.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 constantZeroOmega : {X : Set} → (Nat → X) → Nat
 constantZeroOmega stream = zero
