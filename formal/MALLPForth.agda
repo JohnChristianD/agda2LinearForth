@@ -2181,19 +2181,19 @@ module Foundations where
       {A B C : FiniteHObject} →
       HArrow B C → HArrow A B → HArrow A C
     hArrowCompose h00 q = q
-    hArrowCompose h0m hmm = h0m
-    hArrowCompose h0m hm1 = h01
-    hArrowCompose h01 h11 = h01
+    hArrowCompose h0m h00 = h0m
+    hArrowCompose h01 h00 = h01
     hArrowCompose hmm q = q
-    hArrowCompose hm1 h11 = hm1
-    hArrowCompose h11 h11 = h11
+    hArrowCompose hm1 h0m = h01
+    hArrowCompose hm1 hmm = hm1
+    hArrowCompose h11 q = q
 
     gArrowCompose :
       {A B C : FiniteGObject} →
       GArrow B C → GArrow A B → GArrow A C
     gArrowCompose g00 q = q
-    gArrowCompose g01 g11 = g01
-    gArrowCompose g11 g11 = g11
+    gArrowCompose g01 g00 = g01
+    gArrowCompose g11 q = q
 
     finiteHCategory : Category
     finiteHCategory = record
@@ -2335,7 +2335,6 @@ module Foundations where
       HArrow A (finiteDiscObject B) →
       GArrow (finitePiObject A) B
     finitePiUntranspose {cohH0} {cohG0} h00 = g00
-    finitePiUntranspose {cohH0} {cohG1} h00 = g01
     finitePiUntranspose {cohH0} {cohG1} h0m = g01
     finitePiUntranspose {cohH0} {cohG1} h01 = g01
     finitePiUntranspose {cohHmid} {cohG0} ()
@@ -2380,9 +2379,7 @@ module Foundations where
       {A : FiniteHObject} {B : FiniteGObject} →
       HArrow A (finiteCodiscObject B) →
       GArrow (finiteGammaObject A) B
-    finiteGammaUntranspose {cohH0} {cohG0} h00 = g00
     finiteGammaUntranspose {cohH0} {cohG0} h0m = g00
-    finiteGammaUntranspose {cohH0} {cohG1} h00 = g01
     finiteGammaUntranspose {cohH0} {cohG1} h0m = g01
     finiteGammaUntranspose {cohH0} {cohG1} h01 = g01
     finiteGammaUntranspose {cohHmid} {cohG0} hmm = g00
@@ -2623,10 +2620,10 @@ module Foundations where
                 (finitePiObject (finiteHMeet A B)))
             (sym (finitePiPreservesMeet A B))
             (gArrowRefl (finitePiObject (finiteHMeet A B)))
-      ; productComparison-left = λ _ → tt
-      ; productComparison-right = λ _ → tt
-      ; productComparison-left-inverse = λ _ → tt
-      ; productComparison-right-inverse = λ _ → tt
+      ; productComparison-left = tt
+      ; productComparison-right = tt
+      ; productComparison-left-inverse = tt
+      ; productComparison-right-inverse = tt
       }
 
     finitePosetalCohesion :
