@@ -2133,6 +2133,544 @@ module Foundations where
       ; pi-preserves-finite-products = setIdentityPreservesFiniteProducts
       }
 
+
+    --------------------------------------------------------------------
+    -- A nondegenerate finite posetal cohesive model.
+    --
+    -- H is the three-element chain h0 < hm < h1 and G is the two-element
+    -- chain g0 < g1. The four modalities are distinct:
+    --
+    --   Disc(g0)=h0       coDisc(g0)=hm
+    --   Π(hm)=g1          Γ(hm)=g0
+    --
+    -- They form Π ⊣ Disc ⊣ Γ ⊣ coDisc; Disc and coDisc are fully faithful,
+    -- and Π preserves finite products (the meet operation). This gives a
+    -- concrete nonidentity witness for the abstract adjoint-quadruple law.
+    -- It is a finite preorder model, not a claim that H is a cohesive topos.
+    --------------------------------------------------------------------
+
+    data FiniteHObject : Set where
+      cohH0 cohHmid cohH1 : FiniteHObject
+
+    data FiniteGObject : Set where
+      cohG0 cohG1 : FiniteGObject
+
+    data HArrow : FiniteHObject → FiniteHObject → Set where
+      h00 : HArrow cohH0 cohH0
+      h0m : HArrow cohH0 cohHmid
+      h01 : HArrow cohH0 cohH1
+      hmm : HArrow cohHmid cohHmid
+      hm1 : HArrow cohHmid cohH1
+      h11 : HArrow cohH1 cohH1
+
+    data GArrow : FiniteGObject → FiniteGObject → Set where
+      g00 : GArrow cohG0 cohG0
+      g01 : GArrow cohG0 cohG1
+      g11 : GArrow cohG1 cohG1
+
+    hArrowRefl : (A : FiniteHObject) → HArrow A A
+    hArrowRefl cohH0 = h00
+    hArrowRefl cohHmid = hmm
+    hArrowRefl cohH1 = h11
+
+    gArrowRefl : (A : FiniteGObject) → GArrow A A
+    gArrowRefl cohG0 = g00
+    gArrowRefl cohG1 = g11
+
+    hArrowCompose :
+      {A B C : FiniteHObject} →
+      HArrow B C → HArrow A B → HArrow A C
+    hArrowCompose h00 q = q
+    hArrowCompose h0m hmm = h0m
+    hArrowCompose h0m hm1 = h01
+    hArrowCompose h01 h11 = h01
+    hArrowCompose hmm q = q
+    hArrowCompose hm1 h11 = hm1
+    hArrowCompose h11 h11 = h11
+
+    gArrowCompose :
+      {A B C : FiniteGObject} →
+      GArrow B C → GArrow A B → GArrow A C
+    gArrowCompose g00 q = q
+    gArrowCompose g01 g11 = g01
+    gArrowCompose g11 g11 = g11
+
+    finiteHCategory : Category
+    finiteHCategory = record
+      { categoryObjects = FiniteHObject
+      ; categoryHom = HArrow
+      ; categoryHomEq = λ _ _ → ⊤
+      ; categoryHomEq-refl = λ _ → tt
+      ; categoryHomEq-sym = λ _ → tt
+      ; categoryHomEq-trans = λ _ _ → tt
+      ; categoryId = hArrowRefl _
+      ; categoryCompose = hArrowCompose
+      ; categoryCompose-respects = λ _ _ → tt
+      ; categoryCompose-assoc = λ _ _ _ → tt
+      ; categoryCompose-id-left = λ _ → tt
+      ; categoryCompose-id-right = λ _ → tt
+      }
+
+    finiteGCategory : Category
+    finiteGCategory = record
+      { categoryObjects = FiniteGObject
+      ; categoryHom = GArrow
+      ; categoryHomEq = λ _ _ → ⊤
+      ; categoryHomEq-refl = λ _ → tt
+      ; categoryHomEq-sym = λ _ → tt
+      ; categoryHomEq-trans = λ _ _ → tt
+      ; categoryId = gArrowRefl _
+      ; categoryCompose = gArrowCompose
+      ; categoryCompose-respects = λ _ _ → tt
+      ; categoryCompose-assoc = λ _ _ _ → tt
+      ; categoryCompose-id-left = λ _ → tt
+      ; categoryCompose-id-right = λ _ → tt
+      }
+
+    finitePiObject : FiniteHObject → FiniteGObject
+    finitePiObject cohH0 = cohG0
+    finitePiObject cohHmid = cohG1
+    finitePiObject cohH1 = cohG1
+
+    finiteDiscObject : FiniteGObject → FiniteHObject
+    finiteDiscObject cohG0 = cohH0
+    finiteDiscObject cohG1 = cohH1
+
+    finiteGammaObject : FiniteHObject → FiniteGObject
+    finiteGammaObject cohH0 = cohG0
+    finiteGammaObject cohHmid = cohG0
+    finiteGammaObject cohH1 = cohG1
+
+    finiteCodiscObject : FiniteGObject → FiniteHObject
+    finiteCodiscObject cohG0 = cohHmid
+    finiteCodiscObject cohG1 = cohH1
+
+    finitePiArrow :
+      {A B : FiniteHObject} →
+      HArrow A B →
+      GArrow (finitePiObject A) (finitePiObject B)
+    finitePiArrow h00 = g00
+    finitePiArrow h0m = g01
+    finitePiArrow h01 = g01
+    finitePiArrow hmm = g11
+    finitePiArrow hm1 = g11
+    finitePiArrow h11 = g11
+
+    finiteDiscArrow :
+      {A B : FiniteGObject} →
+      GArrow A B →
+      HArrow (finiteDiscObject A) (finiteDiscObject B)
+    finiteDiscArrow g00 = h00
+    finiteDiscArrow g01 = h01
+    finiteDiscArrow g11 = h11
+
+    finiteGammaArrow :
+      {A B : FiniteHObject} →
+      HArrow A B →
+      GArrow (finiteGammaObject A) (finiteGammaObject B)
+    finiteGammaArrow h00 = g00
+    finiteGammaArrow h0m = g00
+    finiteGammaArrow h01 = g01
+    finiteGammaArrow hmm = g00
+    finiteGammaArrow hm1 = g01
+    finiteGammaArrow h11 = g11
+
+    finiteCodiscArrow :
+      {A B : FiniteGObject} →
+      GArrow A B →
+      HArrow (finiteCodiscObject A) (finiteCodiscObject B)
+    finiteCodiscArrow g00 = hmm
+    finiteCodiscArrow g01 = hm1
+    finiteCodiscArrow g11 = h11
+
+    finitePiFunctor : Functor finiteHCategory finiteGCategory
+    finitePiFunctor = record
+      { functorObject = finitePiObject
+      ; functorArrow = finitePiArrow
+      ; functorArrow-respects = λ _ → tt
+      ; functorIdentity = tt
+      ; functorComposition = λ _ _ → tt
+      }
+
+    finiteDiscFunctor : Functor finiteGCategory finiteHCategory
+    finiteDiscFunctor = record
+      { functorObject = finiteDiscObject
+      ; functorArrow = finiteDiscArrow
+      ; functorArrow-respects = λ _ → tt
+      ; functorIdentity = tt
+      ; functorComposition = λ _ _ → tt
+      }
+
+    finiteGammaFunctor : Functor finiteHCategory finiteGCategory
+    finiteGammaFunctor = record
+      { functorObject = finiteGammaObject
+      ; functorArrow = finiteGammaArrow
+      ; functorArrow-respects = λ _ → tt
+      ; functorIdentity = tt
+      ; functorComposition = λ _ _ → tt
+      }
+
+    finiteCodiscFunctor : Functor finiteGCategory finiteHCategory
+    finiteCodiscFunctor = record
+      { functorObject = finiteCodiscObject
+      ; functorArrow = finiteCodiscArrow
+      ; functorArrow-respects = λ _ → tt
+      ; functorIdentity = tt
+      ; functorComposition = λ _ _ → tt
+      }
+
+    finitePiTranspose :
+      {A : FiniteHObject} {B : FiniteGObject} →
+      GArrow (finitePiObject A) B →
+      HArrow A (finiteDiscObject B)
+    finitePiTranspose {cohH0} {cohG0} g00 = h00
+    finitePiTranspose {cohH0} {cohG1} g01 = h01
+    finitePiTranspose {cohHmid} {cohG0} ()
+    finitePiTranspose {cohHmid} {cohG1} g11 = hm1
+    finitePiTranspose {cohH1} {cohG0} ()
+    finitePiTranspose {cohH1} {cohG1} g11 = h11
+
+    finitePiUntranspose :
+      {A : FiniteHObject} {B : FiniteGObject} →
+      HArrow A (finiteDiscObject B) →
+      GArrow (finitePiObject A) B
+    finitePiUntranspose {cohH0} {cohG0} h00 = g00
+    finitePiUntranspose {cohH0} {cohG1} h00 = g01
+    finitePiUntranspose {cohH0} {cohG1} h0m = g01
+    finitePiUntranspose {cohH0} {cohG1} h01 = g01
+    finitePiUntranspose {cohHmid} {cohG0} ()
+    finitePiUntranspose {cohHmid} {cohG1} hm1 = g11
+    finitePiUntranspose {cohH1} {cohG0} ()
+    finitePiUntranspose {cohH1} {cohG1} h11 = g11
+
+    finiteDiscTranspose :
+      {A : FiniteGObject} {B : FiniteHObject} →
+      HArrow (finiteDiscObject A) B →
+      GArrow A (finiteGammaObject B)
+    finiteDiscTranspose {cohG0} {cohH0} h00 = g00
+    finiteDiscTranspose {cohG0} {cohHmid} h0m = g00
+    finiteDiscTranspose {cohG0} {cohH1} h01 = g01
+    finiteDiscTranspose {cohG1} {cohH0} ()
+    finiteDiscTranspose {cohG1} {cohHmid} ()
+    finiteDiscTranspose {cohG1} {cohH1} h11 = g11
+
+    finiteDiscUntranspose :
+      {A : FiniteGObject} {B : FiniteHObject} →
+      GArrow A (finiteGammaObject B) →
+      HArrow (finiteDiscObject A) B
+    finiteDiscUntranspose {cohG0} {cohH0} g00 = h00
+    finiteDiscUntranspose {cohG0} {cohHmid} g00 = h0m
+    finiteDiscUntranspose {cohG0} {cohH1} g01 = h01
+    finiteDiscUntranspose {cohG1} {cohH0} ()
+    finiteDiscUntranspose {cohG1} {cohHmid} ()
+    finiteDiscUntranspose {cohG1} {cohH1} g11 = h11
+
+    finiteGammaTranspose :
+      {A : FiniteHObject} {B : FiniteGObject} →
+      GArrow (finiteGammaObject A) B →
+      HArrow A (finiteCodiscObject B)
+    finiteGammaTranspose {cohH0} {cohG0} g00 = h0m
+    finiteGammaTranspose {cohH0} {cohG1} g01 = h01
+    finiteGammaTranspose {cohHmid} {cohG0} g00 = hmm
+    finiteGammaTranspose {cohHmid} {cohG1} g01 = hm1
+    finiteGammaTranspose {cohH1} {cohG0} ()
+    finiteGammaTranspose {cohH1} {cohG1} g11 = h11
+
+    finiteGammaUntranspose :
+      {A : FiniteHObject} {B : FiniteGObject} →
+      HArrow A (finiteCodiscObject B) →
+      GArrow (finiteGammaObject A) B
+    finiteGammaUntranspose {cohH0} {cohG0} h00 = g00
+    finiteGammaUntranspose {cohH0} {cohG0} h0m = g00
+    finiteGammaUntranspose {cohH0} {cohG1} h00 = g01
+    finiteGammaUntranspose {cohH0} {cohG1} h0m = g01
+    finiteGammaUntranspose {cohH0} {cohG1} h01 = g01
+    finiteGammaUntranspose {cohHmid} {cohG0} hmm = g00
+    finiteGammaUntranspose {cohHmid} {cohG1} hmm = g01
+    finiteGammaUntranspose {cohHmid} {cohG1} hm1 = g01
+    finiteGammaUntranspose {cohH1} {cohG0} ()
+    finiteGammaUntranspose {cohH1} {cohG1} h11 = g11
+
+    finitePiAdjunction :
+      Adjunction finitePiFunctor finiteDiscFunctor
+    finitePiAdjunction = record
+      { transpose = finitePiTranspose
+      ; untranspose = finitePiUntranspose
+      ; transpose-respects = λ _ → tt
+      ; untranspose-respects = λ _ → tt
+      ; transpose-untranspose = λ _ → tt
+      ; untranspose-transpose = λ _ → tt
+      ; transpose-natural-source = λ _ _ → tt
+      ; transpose-natural-target = λ _ _ → tt
+      }
+
+    finiteDiscAdjunction :
+      Adjunction finiteDiscFunctor finiteGammaFunctor
+    finiteDiscAdjunction = record
+      { transpose = finiteDiscTranspose
+      ; untranspose = finiteDiscUntranspose
+      ; transpose-respects = λ _ → tt
+      ; untranspose-respects = λ _ → tt
+      ; transpose-untranspose = λ _ → tt
+      ; untranspose-transpose = λ _ → tt
+      ; transpose-natural-source = λ _ _ → tt
+      ; transpose-natural-target = λ _ _ → tt
+      }
+
+    finiteGammaAdjunction :
+      Adjunction finiteGammaFunctor finiteCodiscFunctor
+    finiteGammaAdjunction = record
+      { transpose = finiteGammaTranspose
+      ; untranspose = finiteGammaUntranspose
+      ; transpose-respects = λ _ → tt
+      ; untranspose-respects = λ _ → tt
+      ; transpose-untranspose = λ _ → tt
+      ; untranspose-transpose = λ _ → tt
+      ; transpose-natural-source = λ _ _ → tt
+      ; transpose-natural-target = λ _ _ → tt
+      }
+
+    finiteDiscReflect :
+      {A B : FiniteGObject} →
+      HArrow (finiteDiscObject A) (finiteDiscObject B) →
+      GArrow A B
+    finiteDiscReflect {cohG0} {cohG0} h00 = g00
+    finiteDiscReflect {cohG0} {cohG1} h01 = g01
+    finiteDiscReflect {cohG1} {cohG0} ()
+    finiteDiscReflect {cohG1} {cohG1} h11 = g11
+
+    finiteDiscFullyFaithful :
+      FullyFaithful finiteDiscFunctor
+    finiteDiscFullyFaithful = record
+      { reflectArrow = finiteDiscReflect
+      ; reflectArrow-respects = λ _ → tt
+      ; reflect-map = λ _ → tt
+      ; map-reflect = λ _ → tt
+      }
+
+    finiteCodiscReflect :
+      {A B : FiniteGObject} →
+      HArrow (finiteCodiscObject A) (finiteCodiscObject B) →
+      GArrow A B
+    finiteCodiscReflect {cohG0} {cohG0} hmm = g00
+    finiteCodiscReflect {cohG0} {cohG1} hm1 = g01
+    finiteCodiscReflect {cohG1} {cohG0} ()
+    finiteCodiscReflect {cohG1} {cohG1} h11 = g11
+
+    finiteCodiscFullyFaithful :
+      FullyFaithful finiteCodiscFunctor
+    finiteCodiscFullyFaithful = record
+      { reflectArrow = finiteCodiscReflect
+      ; reflectArrow-respects = λ _ → tt
+      ; reflect-map = λ _ → tt
+      ; map-reflect = λ _ → tt
+      }
+
+    finiteHMeet : FiniteHObject → FiniteHObject → FiniteHObject
+    finiteHMeet cohH0 right = cohH0
+    finiteHMeet cohHmid cohH0 = cohH0
+    finiteHMeet cohHmid cohHmid = cohHmid
+    finiteHMeet cohHmid cohH1 = cohHmid
+    finiteHMeet cohH1 cohH0 = cohH0
+    finiteHMeet cohH1 cohHmid = cohHmid
+    finiteHMeet cohH1 cohH1 = cohH1
+
+    finiteGMeet : FiniteGObject → FiniteGObject → FiniteGObject
+    finiteGMeet cohG0 right = cohG0
+    finiteGMeet cohG1 cohG0 = cohG0
+    finiteGMeet cohG1 cohG1 = cohG1
+
+    finiteHMeetLeft :
+      (A B : FiniteHObject) → HArrow (finiteHMeet A B) A
+    finiteHMeetLeft cohH0 B = h00
+    finiteHMeetLeft cohHmid cohH0 = h0m
+    finiteHMeetLeft cohHmid cohHmid = hmm
+    finiteHMeetLeft cohHmid cohH1 = hmm
+    finiteHMeetLeft cohH1 cohH0 = h01
+    finiteHMeetLeft cohH1 cohHmid = hm1
+    finiteHMeetLeft cohH1 cohH1 = h11
+
+    finiteHMeetRight :
+      (A B : FiniteHObject) → HArrow (finiteHMeet A B) B
+    finiteHMeetRight cohH0 cohH0 = h00
+    finiteHMeetRight cohH0 cohHmid = h0m
+    finiteHMeetRight cohH0 cohH1 = h01
+    finiteHMeetRight cohHmid cohH0 = h00
+    finiteHMeetRight cohHmid cohHmid = hmm
+    finiteHMeetRight cohHmid cohH1 = hm1
+    finiteHMeetRight cohH1 cohH0 = h00
+    finiteHMeetRight cohH1 cohHmid = hmm
+    finiteHMeetRight cohH1 cohH1 = h11
+
+    finiteHMeetGreatest :
+      {X A B : FiniteHObject} →
+      HArrow X A → HArrow X B → HArrow X (finiteHMeet A B)
+    finiteHMeetGreatest {A = cohH0} xa xb = xa
+    finiteHMeetGreatest {A = cohHmid} {B = cohH0} xa xb = xb
+    finiteHMeetGreatest {A = cohHmid} {B = cohHmid} xa xb = xa
+    finiteHMeetGreatest {A = cohHmid} {B = cohH1} xa xb = xa
+    finiteHMeetGreatest {A = cohH1} {B = cohH0} xa xb = xb
+    finiteHMeetGreatest {A = cohH1} {B = cohHmid} xa xb = xb
+    finiteHMeetGreatest {A = cohH1} {B = cohH1} xa xb = xa
+
+    finiteGMeetLeft :
+      (A B : FiniteGObject) → GArrow (finiteGMeet A B) A
+    finiteGMeetLeft cohG0 B = g00
+    finiteGMeetLeft cohG1 cohG0 = g01
+    finiteGMeetLeft cohG1 cohG1 = g11
+
+    finiteGMeetRight :
+      (A B : FiniteGObject) → GArrow (finiteGMeet A B) B
+    finiteGMeetRight cohG0 cohG0 = g00
+    finiteGMeetRight cohG0 cohG1 = g01
+    finiteGMeetRight cohG1 cohG0 = g00
+    finiteGMeetRight cohG1 cohG1 = g11
+
+    finiteGMeetGreatest :
+      {X A B : FiniteGObject} →
+      GArrow X A → GArrow X B → GArrow X (finiteGMeet A B)
+    finiteGMeetGreatest {A = cohG0} xa xb = xa
+    finiteGMeetGreatest {A = cohG1} {B = cohG0} xa xb = xb
+    finiteGMeetGreatest {A = cohG1} {B = cohG1} xa xb = xa
+
+    finiteHTerminal : TerminalObject finiteHCategory
+    finiteHTerminal = record
+      { terminalObject = cohH1
+      ; terminalArrow = λ { {A = cohH0} → h01
+                          ; {A = cohHmid} → hm1
+                          ; {A = cohH1} → h11 }
+      ; terminalArrow-unique = λ _ → tt
+      }
+
+    finiteGTerminal : TerminalObject finiteGCategory
+    finiteGTerminal = record
+      { terminalObject = cohG1
+      ; terminalArrow = λ { {A = cohG0} → g01
+                          ; {A = cohG1} → g11 }
+      ; terminalArrow-unique = λ _ → tt
+      }
+
+    finiteHBinaryProduct :
+      (A B : FiniteHObject) → BinaryProduct finiteHCategory A B
+    finiteHBinaryProduct A B = record
+      { binaryProductObject = finiteHMeet A B
+      ; binaryProductLeft = finiteHMeetLeft A B
+      ; binaryProductRight = finiteHMeetRight A B
+      ; binaryProductPair = finiteHMeetGreatest
+      ; binaryProductPair-respects = λ _ _ → tt
+      ; binaryProductPair-left = λ _ _ → tt
+      ; binaryProductPair-right = λ _ _ → tt
+      ; binaryProduct-eta = λ _ → tt
+      }
+
+    finiteGBinaryProduct :
+      (A B : FiniteGObject) → BinaryProduct finiteGCategory A B
+    finiteGBinaryProduct A B = record
+      { binaryProductObject = finiteGMeet A B
+      ; binaryProductLeft = finiteGMeetLeft A B
+      ; binaryProductRight = finiteGMeetRight A B
+      ; binaryProductPair = finiteGMeetGreatest
+      ; binaryProductPair-respects = λ _ _ → tt
+      ; binaryProductPair-left = λ _ _ → tt
+      ; binaryProductPair-right = λ _ _ → tt
+      ; binaryProduct-eta = λ _ → tt
+      }
+
+    finiteHProducts : FiniteProducts finiteHCategory
+    finiteHProducts = record
+      { finiteTerminal = finiteHTerminal
+      ; finiteBinaryProduct = finiteHBinaryProduct
+      }
+
+    finiteGProducts : FiniteProducts finiteGCategory
+    finiteGProducts = record
+      { finiteTerminal = finiteGTerminal
+      ; finiteBinaryProduct = finiteGBinaryProduct
+      }
+
+    finitePiPreservesMeet :
+      (A B : FiniteHObject) →
+      finitePiObject (finiteHMeet A B) ≡
+      finiteGMeet (finitePiObject A) (finitePiObject B)
+    finitePiPreservesMeet cohH0 B = refl
+    finitePiPreservesMeet cohHmid cohH0 = refl
+    finitePiPreservesMeet cohHmid cohHmid = refl
+    finitePiPreservesMeet cohHmid cohH1 = refl
+    finitePiPreservesMeet cohH1 cohH0 = refl
+    finitePiPreservesMeet cohH1 cohHmid = refl
+    finitePiPreservesMeet cohH1 cohH1 = refl
+
+    finitePiPreservesFiniteProducts :
+      PreservesFiniteProducts
+        finitePiFunctor finiteHProducts finiteGProducts
+    finitePiPreservesFiniteProducts = record
+      { terminalComparison = g11
+      ; terminalComparisonInverse = g11
+      ; terminalComparison-left-inverse = tt
+      ; terminalComparison-right-inverse = tt
+      ; productComparison = λ {A} {B} →
+          subst
+            (λ target →
+              GArrow
+                (finitePiObject (finiteHMeet A B))
+                target)
+            (finitePiPreservesMeet A B)
+            (gArrowRefl (finitePiObject (finiteHMeet A B)))
+      ; productComparisonInverse = λ {A} {B} →
+          subst
+            (λ source →
+              GArrow source
+                (finitePiObject (finiteHMeet A B)))
+            (sym (finitePiPreservesMeet A B))
+            (gArrowRefl (finitePiObject (finiteHMeet A B)))
+      ; productComparison-left = λ _ → tt
+      ; productComparison-right = λ _ → tt
+      ; productComparison-left-inverse = λ _ → tt
+      ; productComparison-right-inverse = λ _ → tt
+      }
+
+    finitePosetalCohesion :
+      CohesiveAdjointQuadruple
+        finiteHCategory finiteGCategory finiteHProducts finiteGProducts
+    finitePosetalCohesion = record
+      { cohesivePi = finitePiFunctor
+      ; cohesiveDisc = finiteDiscFunctor
+      ; cohesiveGamma = finiteGammaFunctor
+      ; cohesiveCodisc = finiteCodiscFunctor
+      ; pi-adjoint-disc = finitePiAdjunction
+      ; disc-adjoint-gamma = finiteDiscAdjunction
+      ; gamma-adjoint-codisc = finiteGammaAdjunction
+      ; disc-fully-faithful = finiteDiscFullyFaithful
+      ; codisc-fully-faithful = finiteCodiscFullyFaithful
+      ; pi-preserves-finite-products = finitePiPreservesFiniteProducts
+      }
+
+    finiteGammaDisc-object :
+      (A : FiniteGObject) →
+      finiteGammaObject (finiteDiscObject A) ≡ A
+    finiteGammaDisc-object cohG0 = refl
+    finiteGammaDisc-object cohG1 = refl
+
+    finitePiDisc-object :
+      (A : FiniteGObject) →
+      finitePiObject (finiteDiscObject A) ≡ A
+    finitePiDisc-object cohG0 = refl
+    finitePiDisc-object cohG1 = refl
+
+    finiteGammaCodisc-object :
+      (A : FiniteGObject) →
+      finiteGammaObject (finiteCodiscObject A) ≡ A
+    finiteGammaCodisc-object cohG0 = refl
+    finiteGammaCodisc-object cohG1 = refl
+
+    finiteDiscCodisc-distinct :
+      finiteDiscObject cohG0 ≡ finiteCodiscObject cohG0 → ⊥
+    finiteDiscCodisc-distinct ()
+
+    finitePiGamma-distinct :
+      finitePiObject cohHmid ≡ finiteGammaObject cohHmid → ⊥
+    finitePiGamma-distinct ()
+
     Disc : Set → Set
     Disc X = functorObject
       (cohesiveDisc identitySetCohesion) X
