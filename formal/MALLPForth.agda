@@ -972,7 +972,7 @@ module Foundations where
     -- separate premise: arbitrary payoffs need not attain maxima.
     --------------------------------------------------------------------
 
-    Selection : Set → Set → Set
+    Selection : (X R : Set) → Set
     Selection X R = (X → R) → X
 
     selectedOutcome :
