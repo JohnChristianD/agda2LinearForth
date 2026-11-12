@@ -709,6 +709,9 @@ module Foundations where
     leastWitnessChoice-correct P double-negated i =
       arithmeticalCountableChoiceLeastWitness P double-negated i
 
+    -- Finite prefix evaluator. Fuel counts tested candidates: fuel zero
+    -- tests none, while fuel (suc n) tests exactly indices zero through n.
+    -- This evaluator is structurally recursive and independent of μ-search.
     boundedSearch : Nat → (Nat → Bool) → Maybe Nat
     boundedSearch zero P = nothing
     boundedSearch (suc fuel) P with P zero
@@ -751,6 +754,92 @@ module Foundations where
     ...   | just k =
       boundedSearch-sound fuel (λ i → P (suc i)) n
         (trans smaller (cong just (suc-injective (just-injective result))))
+
+    falseNotTrue : false ≡ true → ⊥
+    falseNotTrue ()
+
+    trueNotFalse : true ≡ false → ⊥
+    trueNotFalse ()
+
+    allFalseBefore-first :
+      {P : Nat → Bool} {n : Nat} →
+      AllFalseBefore P (suc n) → P zero ≡ false
+    allFalseBefore-first {n = zero} (before-suc before-zero first) = first
+    allFalseBefore-first {n = suc n}
+      (before-suc (before-suc earlier next) last) =
+      allFalseBefore-first (before-suc earlier next)
+
+    allFalseBefore-tail :
+      {P : Nat → Bool} {n : Nat} →
+      AllFalseBefore P (suc n) →
+      AllFalseBefore (λ i → P (suc i)) n
+    allFalseBefore-tail {n = zero} (before-suc before-zero first) =
+      before-zero
+    allFalseBefore-tail {n = suc n}
+      (before-suc (before-suc earlier next) last) =
+      before-suc (allFalseBefore-tail (before-suc earlier next)) last
+
+    allFalseBefore-lift :
+      {P : Nat → Bool} {n : Nat} →
+      P zero ≡ false →
+      AllFalseBefore (λ i → P (suc i)) n →
+      AllFalseBefore P (suc n)
+    allFalseBefore-lift first before-zero =
+      before-suc before-zero first
+    allFalseBefore-lift first (before-suc earlier next) =
+      before-suc (allFalseBefore-lift first earlier) next
+
+    leastWitness-tail :
+      {P : Nat → Bool} {n : Nat} →
+      LeastWitness P (suc n) →
+      LeastWitness (λ i → P (suc i)) n
+    leastWitness-tail witness = record
+      { witness-holds = witness-holds witness
+      ; all-earlier-false =
+          allFalseBefore-tail (all-earlier-false witness)
+      }
+
+    boundedSearch-minimal :
+      (fuel : Nat) (P : Nat → Bool) (n : Nat) →
+      boundedSearch fuel P ≡ just n → AllFalseBefore P n
+    boundedSearch-minimal zero P n ()
+    boundedSearch-minimal (suc fuel) P zero result with P zero
+    ... | true = before-zero
+    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
+    ...   | nothing = absurd (maybeNothingNotJust result)
+    ...   | just k = absurd (sucNotZero (just-injective result))
+    boundedSearch-minimal (suc fuel) P (suc n) result with P zero
+    ... | true = absurd (zeroNotSuc (just-injective result))
+    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
+    ...   | nothing = absurd (maybeNothingNotJust result)
+    ...   | just k =
+      allFalseBefore-lift refl
+        (boundedSearch-minimal fuel (λ i → P (suc i)) n
+          (trans smaller
+            (cong just (suc-injective (just-injective result))))
+
+    boundedSearch-least :
+      (fuel : Nat) (P : Nat → Bool) (n : Nat) →
+      boundedSearch fuel P ≡ just n → LeastWitness P n
+    boundedSearch-least fuel P n result = record
+      { witness-holds = boundedSearch-sound fuel P n result
+      ; all-earlier-false = boundedSearch-minimal fuel P n result
+      }
+
+    boundedSearch-complete :
+      (P : Nat → Bool) (n : Nat) →
+      LeastWitness P n →
+      boundedSearch (suc n) P ≡ just n
+    boundedSearch-complete P zero witness with P zero
+    ... | true = refl
+    ... | false = absurd (falseNotTrue (witness-holds witness))
+    boundedSearch-complete P (suc n) witness with P zero
+    ... | true =
+      absurd (trueNotFalse
+        (allFalseBefore-first (all-earlier-false witness)))
+    ... | false
+      rewrite boundedSearch-complete
+        (λ i → P (suc i)) n (leastWitness-tail witness) = refl
 
     MarkovPrinciple : Set
     MarkovPrinciple =
