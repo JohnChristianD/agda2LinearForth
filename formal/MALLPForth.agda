@@ -808,12 +808,12 @@ module Foundations where
     ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
     ...   | nothing = absurd (maybeNothingNotJust result)
     ...   | just k = absurd (sucNotZero (just-injective result))
-    boundedSearch-minimal (suc fuel) P (suc n) result with P zero
+    boundedSearch-minimal (suc fuel) P (suc n) result with P zero in first
     ... | true = absurd (zeroNotSuc (just-injective result))
     ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
     ...   | nothing = absurd (maybeNothingNotJust result)
     ...   | just k =
-      allFalseBefore-lift refl
+      allFalseBefore-lift first
         (boundedSearch-minimal fuel (λ i → P (suc i)) n
           (trans smaller
             (cong just (suc-injective (just-injective result)))))
@@ -830,13 +830,16 @@ module Foundations where
       (P : Nat → Bool) (n : Nat) →
       LeastWitness P n →
       boundedSearch (suc n) P ≡ just n
-    boundedSearch-complete P zero witness with P zero
+    boundedSearch-complete P zero witness with P zero in first
     ... | true = refl
-    ... | false = absurd (boundedSearch-falseNotTrue (witness-holds witness))
-    boundedSearch-complete P (suc n) witness with P zero
+    ... | false =
+      absurd (boundedSearch-falseNotTrue
+        (trans (sym first) (witness-holds witness)))
+    boundedSearch-complete P (suc n) witness with P zero in first
     ... | true =
       absurd (boundedSearch-trueNotFalse
-        (allFalseBefore-first (all-earlier-false witness)))
+        (trans (sym first)
+          (allFalseBefore-first (all-earlier-false witness))))
     ... | false
       rewrite boundedSearch-complete
         (λ i → P (suc i)) n (leastWitness-tail witness) = refl
