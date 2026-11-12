@@ -28,7 +28,7 @@ The root module publicly re-exports six `Foundations` packages and the separate 
 | --- | --- | --- |
 | `ForsterEnumerability` | A concrete register-machine interpreter; analytic enumerable families; a global positive `parametricEA : ParametricEA` postulate; uniform family compilation with the parameter supplied at runtime. Soundness and completeness preserve the enumerated range. | PEA is assumed, not derived for every family. Range equality does not require identical stage-by-stage output. Typed program syntax is not proved equivalent to numeric Gödel coding or Turing computability. |
 | `SymmetricBarRecursion` | A finite-partial-map interface for Spector-style symmetric bar recursion; positive stop/step equations; finite selection products, backward induction, Bellman equations, and conditional optimality proofs. | `symmetricBarRec` and its equations are postulated under `SymmetricBarCondition`. They do not provide a terminating evaluator by themselves. The full Escardó–Oliva equivalence is not formalized here. |
-| `DoubleNegation` | Double-negated excluded middle is proved intuitionistically. Double-negated DNE and Peirce follow from it. | The remaining negative assumptions are `¬¬FunctionExtensionality` and countable `¬¬DNS`; neither supplies a positive proof or a decision procedure. |
+| `DoubleNegation` | Double-negated DNE and Peirce are derived from the double-negated excluded-middle schema. | The negative assumptions are `¬¬ExcludedMiddle`, `¬¬FunctionExtensionality`, countable `¬¬DNS`, and `¬¬DependentChoice`; none supplies a positive decision procedure or witness. |
 | `MacLaneCoherence` | A thin free monoidal category on Nat-labelled generators, with executable tensor normal forms and coherence proofs. | The proof uses K/UIP. It has no direct compiler consumer and is not a general coherence theorem for arbitrary MALLP models. |
 | `CohesiveRetractions` | An abstract `Π ⊣ Disc ⊣ Γ ⊣ coDisc` record, full-faithfulness and finite-product preservation contracts, plus a concrete nonidentity finite-posetal model: three H-objects and two G-objects with distinct modalities. | The finite model is a pair of thin finite categories, not a cohesive topos or ∞-topos. It is not assembled with MALLP into the Hamano–Scott *-autonomous categorical model. |
 | `QuotientReflection` | Idempotent endomaps, fixed-point carriers, normalizer/kernel correspondence, a reflective subcategory and idempotent reflection monad; a raw-to-canonical semantic rewrite. | This is a proof-relevant type-theoretic quotient/reflection construction, not proof that arbitrary user data has a useful canonicalizer. |
@@ -124,12 +124,14 @@ Positive assumptions:
 
 Negative assumptions:
 
+- `¬¬ExcludedMiddle` at each stated universe level.
 - `¬¬FunctionExtensionality` at the stated universe levels.
 - Countable `¬¬DNS` for families `Nat → Set ℓ`.
+- `¬¬DependentChoice` for type-valued serial relations.
 
 Constructively derived rather than postulated:
 
-- `¬¬ExcludedMiddle`, double-negated DNE and Peirce, finite bounded-search correctness, finite Bellman equations, conditional finite optimality, finite cohesive-model laws, and quotient-reflection laws.
+- Double-negated DNE and Peirce derived from the `¬¬ExcludedMiddle` assumption; finite bounded-search correctness, finite Bellman equations, conditional finite optimality, finite cohesive-model laws, and quotient-reflection laws.
 
 ## CI and trust boundary
 
