@@ -1205,12 +1205,13 @@ module Foundations where
         (decideDomain entries (omega (streamOf (mapEntries entries) default)))
 
   -- --------------------------------------------------------------------
-  -- 3. Double-negated logical schemas.
+  -- 3. Double-negated logical and choice schemas.
   --
-  -- ¬¬excluded-middle is proved intuitionistically below. DNE and Peirce
-  -- in double-negated form follow from that theorem. The remaining negative
-  -- assumptions are ¬¬function-extensionality and ¬¬countable DNS; neither
-  -- supplies a positive witness or a classical decision procedure.
+  -- The postulates assert only double negations of excluded middle,
+  -- function extensionality, countable DNS, and dependent choice. They
+  -- supply no positive decision procedure, extensionality proof, or choice
+  -- sequence. Double-negated DNE and Peirce are derived from double-negated
+  -- excluded middle. Set : Set remains a typing judgement, not a proposition.
   --
   -- Set : Set is a universe-formation judgement, not a proposition or
   -- Agda term. Its double negation is therefore not expressible as a
@@ -1251,6 +1252,19 @@ module Foundations where
       ((n : Nat) → ¬ (¬ P n)) →
       ¬ (¬ ((n : Nat) → P n))
 
+    DependentChoiceAt : (ℓ : Level) → Set (lsuc ℓ)
+    DependentChoiceAt ℓ =
+      {A : Set ℓ} →
+      (R : A → A → Set ℓ) →
+      ((x : A) → Σ A (λ y → R x y)) →
+      (initial : A) →
+      Σ (Nat → A)
+        (λ sequence →
+          Σ (sequence zero ≡ initial)
+            (λ _ →
+              (n : Nat) → R (sequence n) (sequence (suc n))))
+
+
     mapDoubleNegation :
       {a b : Level} {P : Set a} {Q : Set b} →
       (P → Q) → ¬ (¬ P) → ¬ (¬ Q)
@@ -1276,24 +1290,21 @@ module Foundations where
     ... | rightᴺ refute =
       continuation (λ witness → ⊥-elim (refute witness))
 
-    -- ¬¬LEM is derivable intuitionistically: refuting both alternatives
-    -- yields a contradiction. It is a theorem, not a classical assumption.
-    doubleNegatedExcludedMiddle :
-      (ℓ : Level) → ¬ (¬ (ExcludedMiddleAt ℓ))
-    doubleNegatedExcludedMiddle ℓ refute =
-      refute
-        (rightᴺ (λ witness → refute (leftᴺ witness)))
-
-    -- The only negative assumptions in this module are ¬¬function
-    -- extensionality and ¬¬countable DNS. Neither supplies the corresponding
-    -- positive principle.
+    -- These are negative counterparts only. They supply no classical
+    -- decision, extensionality proof, enumerator, or choice sequence.
     postulate
+      doubleNegatedExcludedMiddle :
+        (ℓ : Level) → ¬ (¬ (ExcludedMiddleAt ℓ))
+
       doubleNegatedFunctionExtensionality :
         (a b : Level) →
         ¬ (¬ (FunctionExtensionalityAt a b))
 
       doubleNegatedDNS :
         (ℓ : Level) → ¬ (¬ (DoubleNegationShiftAt ℓ))
+
+      doubleNegatedDependentChoice :
+        (ℓ : Level) → ¬ (¬ (DependentChoiceAt ℓ))
 
     doubleNegatedDNE :
       (ℓ : Level) →
