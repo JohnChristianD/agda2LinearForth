@@ -2335,7 +2335,6 @@ module Foundations where
       HArrow A (finiteDiscObject B) →
       GArrow (finitePiObject A) B
     finitePiUntranspose {cohH0} {cohG0} h00 = g00
-    finitePiUntranspose {cohH0} {cohG1} h0m = g01
     finitePiUntranspose {cohH0} {cohG1} h01 = g01
     finitePiUntranspose {cohHmid} {cohG0} ()
     finitePiUntranspose {cohHmid} {cohG1} hm1 = g11
