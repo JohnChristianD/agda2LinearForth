@@ -770,13 +770,24 @@ module Foundations where
         ProgramCode
       parametricCodePEA F i = parametricCode parametricEA F i
 
+      parametricCodePEA-eval :
+        (F : ParametricallyEnumerable) →
+        (i stage : Nat) →
+        registerEnumeration
+          (codeProgram (parametricCodePEA F i))
+          (codeParameter (parametricCodePEA F i))
+          stage ≡
+        enumerate F i stage
+      parametricCodePEA-eval F i stage =
+        parametricCode-correct parametricEA F i stage
+
       parametricCodePEA-correct :
         (F : ParametricallyEnumerable) →
         (i stage : Nat) →
         universalEval (parametricCodePEA F i) stage ≡
         enumerate F i stage
       parametricCodePEA-correct F i stage =
-        parametricCode-correct parametricEA F i stage
+        parametricCodePEA-eval F i stage
 
     parametricEA-analytic-sound :
       (ea : ParametricEA) →
@@ -3792,12 +3803,11 @@ reflectedBoxArityWitness :
 reflectedBoxArityWitness = pair refl (pair refl refl)
 
 {-# REWRITE
-  parametricCodePEA-correct
+  parametricCodePEA-eval
   sBR-stop
   sBR-step
   quotient-raw-sound
   cutEliminate-idempotent
-  cutEliminate-cut-free
 #-}
 -- This reduction uses the active quotient rewrite rule.
 quotientReflectionRewriteSmoke :
@@ -3838,7 +3848,7 @@ cutEliminate-cut-free-client :
   {Γ : Context} {S : Stoup} →
   (proof : MALLP Γ S) →
   hasCut (cutEliminate proof) ≡ false
-cutEliminate-cut-free-client proof = refl
+cutEliminate-cut-free-client proof = cutEliminate-cut-free proof
 
 cutEliminate-idempotent-client :
   {Γ : Context} {S : Stoup} →
