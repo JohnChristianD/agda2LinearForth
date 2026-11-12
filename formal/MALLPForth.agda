@@ -2582,6 +2582,12 @@ module Foundations where
       ; finiteBinaryProduct = finiteGBinaryProduct
       }
 
+    -- Universe-polymorphic transport for arrows between Set₁ objects.
+    substFiniteObject :
+      {A : Set₁} {x y : A} →
+      (P : A → Set) → x ≡ y → P x → P y
+    substFiniteObject P refl proof = proof
+
     finitePiPreservesMeet :
       (A B : FiniteHObject) →
       finitePiObject (finiteHMeet A B) ≡
@@ -2603,7 +2609,7 @@ module Foundations where
       ; terminalComparison-left-inverse = tt
       ; terminalComparison-right-inverse = tt
       ; productComparison = λ {A} {B} →
-          subst
+          substFiniteObject
             (λ target →
               GArrow
                 (finitePiObject (finiteHMeet A B))
@@ -2611,7 +2617,7 @@ module Foundations where
             (finitePiPreservesMeet A B)
             (gArrowRefl (finitePiObject (finiteHMeet A B)))
       ; productComparisonInverse = λ {A} {B} →
-          subst
+          substFiniteObject
             (λ source →
               GArrow source
                 (finitePiObject (finiteHMeet A B)))
