@@ -984,7 +984,7 @@ module Foundations where
       Selection X R →
       (X → Selection Y R) →
       Selection (X × Y) R
-    productSelection chooseX chooseY payoff =
+    productSelection {X = X} {Y = Y} chooseX chooseY payoff =
       let
         response : X → Y
         response x = chooseY x (λ y → payoff (pair x y))
@@ -1055,7 +1055,7 @@ module Foundations where
       Selection X R →
       Selection (Play X horizon) R
     backwardInduction zero choose payoff = noMoves
-    backwardInduction (suc horizon) choose payoff =
+    backwardInduction {X = X} {R = R} (suc horizon) choose payoff =
       let
         suffix : X → Play X horizon
         suffix x =
