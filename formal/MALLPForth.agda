@@ -729,15 +729,26 @@ module Foundations where
 
     record ParametricEA : Set₁ where
       field
-        -- One program is compiled for the whole parameterized family.
-        -- The parameter is supplied as register zero at runtime.
+        -- One program is compiled for the whole parameterized family;
+        -- parameter i is supplied as register zero at runtime.
         compileFamily :
           ParametricallyEnumerable → RegisterProgram
-        compileFamily-correct :
+        -- PEA preserves the enumerated predicate by range inclusion in
+        -- both directions. It does not force stage-by-stage equality:
+        -- two enumerators may emit the same witnesses in different orders
+        -- or after different finite delays.
+        compileFamily-sound :
           (F : ParametricallyEnumerable) →
-          (i stage : Nat) →
-          universalEval (programCode (compileFamily F) i) stage ≡
-          enumerate F i stage
+          (i stage value : Nat) →
+          registerEnumeration (compileFamily F) i stage ≡ just value →
+          Predicate F i value
+        compileFamily-complete :
+          (F : ParametricallyEnumerable) →
+          (i value : Nat) →
+          Predicate F i value →
+          Σ Nat
+            (λ stage →
+              registerEnumeration (compileFamily F) i stage ≡ just value)
     open ParametricEA public
 
     -- The selector γ for a family F maps each parameter i to the
@@ -749,14 +760,25 @@ module Foundations where
       ProgramCode
     parametricCode ea F i = programCode (compileFamily ea F) i
 
-    parametricCode-correct :
+    parametricCode-sound :
       (ea : ParametricEA) →
       (F : ParametricallyEnumerable) →
-      (i stage : Nat) →
-      universalEval (parametricCode ea F i) stage ≡
-      enumerate F i stage
-    parametricCode-correct ea F i stage =
-      compileFamily-correct ea F i stage
+      (i stage value : Nat) →
+      universalEval (parametricCode ea F i) stage ≡ just value →
+      Predicate F i value
+    parametricCode-sound ea F i stage value computation =
+      compileFamily-sound ea F i stage value computation
+
+    parametricCode-complete :
+      (ea : ParametricEA) →
+      (F : ParametricallyEnumerable) →
+      (i value : Nat) →
+      Predicate F i value →
+      Σ Nat
+        (λ stage →
+          universalEval (parametricCode ea F i) stage ≡ just value)
+    parametricCode-complete ea F i value witness =
+      compileFamily-complete ea F i value witness
 
     -- Positive synthetic PEA assumption: one selector supplies codes
     -- uniformly for every parameter of every enumerable family.
@@ -770,24 +792,33 @@ module Foundations where
         ProgramCode
       parametricCodePEA F i = parametricCode parametricEA F i
 
-      parametricCodePEA-eval :
+      -- The registered positive rewrite exposes the selected code.
+      -- Correctness is the range-equivalence contract of parametricEA,
+      -- not a stage-preserving equality with the supplied enumerator.
+      parametricCodePEA-code :
         (F : ParametricallyEnumerable) →
-        (i stage : Nat) →
-        registerEnumeration
-          (codeProgram (parametricCodePEA F i))
-          (codeParameter (parametricCodePEA F i))
-          stage ≡
-        enumerate F i stage
-      parametricCodePEA-eval F i stage =
-        parametricCode-correct parametricEA F i stage
+        (i : Nat) →
+        parametricCodePEA F i ≡
+        programCode (compileFamily parametricEA F) i
+      parametricCodePEA-code F i = refl
 
-      parametricCodePEA-correct :
+      parametricCodePEA-sound :
         (F : ParametricallyEnumerable) →
-        (i stage : Nat) →
-        universalEval (parametricCodePEA F i) stage ≡
-        enumerate F i stage
-      parametricCodePEA-correct F i stage =
-        parametricCodePEA-eval F i stage
+        (i stage value : Nat) →
+        universalEval (parametricCodePEA F i) stage ≡ just value →
+        Predicate F i value
+      parametricCodePEA-sound F i stage value computation =
+        parametricCode-sound parametricEA F i stage value computation
+
+      parametricCodePEA-complete :
+        (F : ParametricallyEnumerable) →
+        (i value : Nat) →
+        Predicate F i value →
+        Σ Nat
+          (λ stage →
+            universalEval (parametricCodePEA F i) stage ≡ just value)
+      parametricCodePEA-complete F i value witness =
+        parametricCode-complete parametricEA F i value witness
 
     parametricEA-analytic-sound :
       (ea : ParametricEA) →
@@ -796,8 +827,7 @@ module Foundations where
       registerEnumeration (compileFamily ea F) i stage ≡ just value →
       Predicate F i value
     parametricEA-analytic-sound ea F i stage value computation =
-      enumerate-sound F i stage value
-        (trans (sym (compileFamily-correct ea F i stage)) computation)
+      compileFamily-sound ea F i stage value computation
 
     parametricEA-analytic-complete :
       (ea : ParametricEA) →
@@ -807,10 +837,8 @@ module Foundations where
       Σ Nat
         (λ stage →
           registerEnumeration (compileFamily ea F) i stage ≡ just value)
-    parametricEA-analytic-complete ea F i value witness
-      with enumerate-complete F i value witness
-    ... | stage , computation =
-      stage , trans (compileFamily-correct ea F i stage) computation
+    parametricEA-analytic-complete ea F i value witness =
+      compileFamily-complete ea F i value witness
 
     -- A witness of synthetic EA uniformly realizes every family in the
     -- analytic register-machine model, with correctness transported from
@@ -3803,7 +3831,7 @@ reflectedBoxArityWitness :
 reflectedBoxArityWitness = pair refl (pair refl refl)
 
 {-# REWRITE
-  parametricCodePEA-eval
+  parametricCodePEA-code
   sBR-stop
   sBR-step
   quotient-raw-sound
@@ -3840,9 +3868,11 @@ boundedSearch-successor-computes = refl
 
 parametricEA-rewrite-client :
   (F : ParametricallyEnumerable) →
-  (i stage : Nat) →
-  universalEval (parametricCodePEA F i) stage ≡ enumerate F i stage
-parametricEA-rewrite-client F i stage = refl
+  (i stage value : Nat) →
+  universalEval (parametricCodePEA F i) stage ≡ just value →
+  Predicate F i value
+parametricEA-rewrite-client F i stage value computation =
+  parametricCodePEA-sound F i stage value computation
 
 cutEliminate-cut-free-client :
   {Γ : Context} {S : Stoup} →
