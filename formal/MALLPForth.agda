@@ -2379,7 +2379,6 @@ module Foundations where
       HArrow A (finiteCodiscObject B) →
       GArrow (finiteGammaObject A) B
     finiteGammaUntranspose {cohH0} {cohG0} h0m = g00
-    finiteGammaUntranspose {cohH0} {cohG1} h0m = g01
     finiteGammaUntranspose {cohH0} {cohG1} h01 = g01
     finiteGammaUntranspose {cohHmid} {cohG0} hmm = g00
     finiteGammaUntranspose {cohHmid} {cohG1} hmm = g01
