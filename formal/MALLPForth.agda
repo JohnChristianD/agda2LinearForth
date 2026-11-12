@@ -1270,10 +1270,17 @@ module Foundations where
     ... | rightᴺ refute =
       continuation (λ witness → ⊥-elim (refute witness))
 
-    postulate
-      doubleNegatedExcludedMiddle :
-        (ℓ : Level) → ¬ (¬ (ExcludedMiddleAt ℓ))
+    -- Double-negated excluded middle is intuitionistically derivable.
+    -- Keep it as a theorem, not an extra classical assumption.
+    doubleNegatedExcludedMiddle :
+      (ℓ : Level) → ¬ (¬ (ExcludedMiddleAt ℓ))
+    doubleNegatedExcludedMiddle ℓ refute =
+      refute
+        (rightᴺ (λ witness → refute (leftᴺ witness)))
 
+    -- These schemas remain negative assumptions: they assert double
+    -- negation only and provide neither an extensionality proof nor DNS.
+    postulate
       doubleNegatedFunctionExtensionality :
         (a b : Level) →
         ¬ (¬ (FunctionExtensionalityAt a b))
