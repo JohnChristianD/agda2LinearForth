@@ -1599,9 +1599,9 @@ module Foundations where
     -- executable identity-Set instance is supplied as a degenerate model.
     --------------------------------------------------------------------
 
-    record Category : Set₁ where
+    record Category : Set₂ where
       field
-        categoryObjects : Set
+        categoryObjects : Set₁
         categoryHom :
           categoryObjects → categoryObjects → Set
         categoryHomEq :
@@ -1658,7 +1658,7 @@ module Foundations where
     -- Spell out object endpoints in the laws: categoryHom is a record
     -- family, so Agda cannot recover its indices by inverting categoryId
     -- or categoryCompose during elaboration.
-    record Functor (C D : Category) : Set₁ where
+    record Functor (C D : Category) : Set₂ where
       field
         functorObject : categoryObjects C → categoryObjects D
         functorArrow :
@@ -1720,7 +1720,7 @@ module Foundations where
     record Adjunction
       {C D : Category}
       (F : Functor C D)
-      (G : Functor D C) : Set₁ where
+      (G : Functor D C) : Set₂ where
       field
         transpose :
           {A : categoryObjects C} {B : categoryObjects D} →
@@ -1788,7 +1788,7 @@ module Foundations where
 
     record FullyFaithful
       {C D : Category}
-      (F : Functor C D) : Set₁ where
+      (F : Functor C D) : Set₂ where
       field
         reflectArrow :
           {A B : categoryObjects C} →
@@ -1824,7 +1824,7 @@ module Foundations where
     -- and binary products with the universal pairing law.
     --------------------------------------------------------------------
 
-    record TerminalObject (C : Category) : Set₁ where
+    record TerminalObject (C : Category) : Set₂ where
       field
         terminalObject : categoryObjects C
         terminalArrow :
@@ -1838,7 +1838,7 @@ module Foundations where
 
     record BinaryProduct
       (C : Category)
-      (A B : categoryObjects C) : Set₁ where
+      (A B : categoryObjects C) : Set₂ where
       field
         binaryProductObject : categoryObjects C
         binaryProductLeft : categoryHom C binaryProductObject A
@@ -1881,7 +1881,7 @@ module Foundations where
             h
     open BinaryProduct public
 
-    record FiniteProducts (C : Category) : Set₁ where
+    record FiniteProducts (C : Category) : Set₂ where
       field
         finiteTerminal : TerminalObject C
         finiteBinaryProduct :
@@ -1897,7 +1897,7 @@ module Foundations where
       {C D : Category}
       (F : Functor C D)
       (productsC : FiniteProducts C)
-      (productsD : FiniteProducts D) : Set₁ where
+      (productsD : FiniteProducts D) : Set₂ where
       field
         terminalComparison :
           categoryHom D
@@ -1973,7 +1973,7 @@ module Foundations where
     record CohesiveAdjointQuadruple
       (H G : Category)
       (productsH : FiniteProducts H)
-      (productsG : FiniteProducts G) : Set₁ where
+      (productsG : FiniteProducts G) : Set₃ where
       field
         cohesivePi : Functor H G
         cohesiveDisc : Functor G H
