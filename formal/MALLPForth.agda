@@ -755,11 +755,11 @@ module Foundations where
       boundedSearch-sound fuel (λ i → P (suc i)) n
         (trans smaller (cong just (suc-injective (just-injective result))))
 
-    falseNotTrue : false ≡ true → ⊥
-    falseNotTrue ()
+    boundedSearch-falseNotTrue : false ≡ true → ⊥
+    boundedSearch-falseNotTrue ()
 
-    trueNotFalse : true ≡ false → ⊥
-    trueNotFalse ()
+    boundedSearch-trueNotFalse : true ≡ false → ⊥
+    boundedSearch-trueNotFalse ()
 
     allFalseBefore-first :
       {P : Nat → Bool} {n : Nat} →
@@ -832,10 +832,10 @@ module Foundations where
       boundedSearch (suc n) P ≡ just n
     boundedSearch-complete P zero witness with P zero
     ... | true = refl
-    ... | false = absurd (falseNotTrue (witness-holds witness))
+    ... | false = absurd (boundedSearch-falseNotTrue (witness-holds witness))
     boundedSearch-complete P (suc n) witness with P zero
     ... | true =
-      absurd (trueNotFalse
+      absurd (boundedSearch-trueNotFalse
         (allFalseBefore-first (all-earlier-false witness)))
     ... | false
       rewrite boundedSearch-complete
