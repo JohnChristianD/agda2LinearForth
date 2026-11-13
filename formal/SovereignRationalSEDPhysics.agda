@@ -1,4 +1,4 @@
-{-# OPTIONS --with-K --rewriting --confluence-check --polarity --lossy-unification --guardedness --exact-split --no-fast-reduce --no-postfix-projections --no-projection-like --experimental-lazy-instances --backtracking-instance-search #-}
+{-# OPTIONS --with-K --rewriting --confluence-check --guardedness --exact-split #-}
 
 module SovereignRationalSEDPhysics where
 
