@@ -41,11 +41,12 @@ open import Agda.Builtin.Reflection.Properties
 data ⊥ : Set where
 
 postulate
-  Id : (Set → Set) → Set → Set → Set₁
-  ext : Set → Set → Set₁
-  refl↓ : (A : Set) → ext A A ≡ Set
-  Id-∙ : (A : Set → Set) (X Y : Set) → Id A X Y ≡ ext (A X) (A Y)
-{-# REWRITE refl↓ Id-∙ #-}
+  S : Set
+  F : Set → Set → Set
+  G : (Set → Set) → Set → Set → Set
+  rewF : (A : Set) → F A A ≡ S
+  rewG : (A : Set → Set) (X Y : Set) → G A X Y ≡ F (A X) (A Y)
+{-# REWRITE rewF rewG #-}
 
 -- Word64 equality is reflected exactly by its unsigned Nat interpretation.
 record Equivalence (A B : Set) : Set where
