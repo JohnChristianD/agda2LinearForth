@@ -5481,7 +5481,7 @@ module StrictNatCompiler where
         (natStackBoundedCons refl natStackBoundedNil))
       refl
 
-  boundedRollDepthOverflowExample :
+  boundedRollDepthOverflowAtThreeExample :
     BoundedTokenFailure 3 (rollWord 4) (0 ∷ 0 ∷ 0 ∷ 0 ∷ 0 ∷ [])
   boundedRollDepthOverflowExample =
     execBoundedToken-failure-classification
@@ -5493,7 +5493,7 @@ module StrictNatCompiler where
               (natStackBoundedCons refl natStackBoundedNil)))))
       refl
 
-  boundedRollDepthOverflow :
+  boundedRollDepthOverflowAtThree :
     execBoundedTokens 3 (rollWord 4 ∷ []) (0 ∷ 0 ∷ 0 ∷ 0 ∷ 0 ∷ []) ≡ nothing
   boundedRollDepthOverflow = refl
 
