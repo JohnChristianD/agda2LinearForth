@@ -19,7 +19,7 @@ module MALLPForth where
 -- Primitive universe levels for the predicative category and identity
 -- encodings below. The root module deliberately omits --type-in-type.
 open import Agda.Primitive using (Level; lsuc; _⊔_) public
-open import Agda.Builtin.Nat public renaming (_<_ to _natLessThan_)
+open import Agda.Builtin.Nat public
 open import Agda.Builtin.Bool public
 open import Agda.Builtin.List public
 open import Agda.Builtin.Maybe public
@@ -202,11 +202,9 @@ open Iso public
 -- Maybe, while lookupListOr supplies an explicit default for sparse tails.
 -- ----------------------------------------------------------------------
 
-infix 4 _<_
-
-data _<_ : Nat → Nat → Set where
-  zero<successor : {n : Nat} → zero < suc n
-  successor<successor : {m n : Nat} → m < n → suc m < suc n
+-- Bounds use Agda.Builtin.Nat's Boolean comparison directly.
+-- The equality witness keeps finite lookup constructive, without a second
+-- shadowing definition of natural-number order.
 
 mapList : {A B : Set} → (A → B) → List A → List B
 mapList f [] = []
@@ -221,11 +219,11 @@ tabulateList zero f = []
 tabulateList (suc n) f = f zero ∷ tabulateList n (λ i → f (suc i))
 
 lookupPrefix : {A : Set} → (n : Nat) → List A →
-               (i : Nat) → i < n → Maybe A
+               (i : Nat) → (i < n) ≡ true → Maybe A
 lookupPrefix zero xs i ()
 lookupPrefix (suc n) [] i bound = nothing
-lookupPrefix (suc n) (x ∷ xs) zero zero<successor = just x
-lookupPrefix (suc n) (x ∷ xs) (suc i) (successor<successor bound) =
+lookupPrefix (suc n) (x ∷ xs) zero refl = just x
+lookupPrefix (suc n) (x ∷ xs) (suc i) bound =
   lookupPrefix n xs i bound
 
 lookupListOr : {A : Set} → A → Nat → List A → A
@@ -248,8 +246,8 @@ module FiniteListComputation where
     (i : Nat) → (bound : i < n) →
     lookupPrefix n (tabulateList n f) i bound ≡ just (f i)
   lookup-tabulate zero f i ()
-  lookup-tabulate (suc n) f zero zero<successor = refl
-  lookup-tabulate (suc n) f (suc i) (successor<successor bound) =
+  lookup-tabulate (suc n) f zero refl = refl
+  lookup-tabulate (suc n) f (suc i) bound =
     lookup-tabulate n (λ j → f (suc j)) i bound
 
 
