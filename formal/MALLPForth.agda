@@ -243,7 +243,7 @@ module FiniteListComputation where
 
   lookup-tabulate :
     {A : Set} → (n : Nat) → (f : Nat → A) →
-    (i : Nat) → (bound : i < n) →
+    (i : Nat) → (bound : (i < n) ≡ true) →
     lookupPrefix n (tabulateList n f) i bound ≡ just (f i)
   lookup-tabulate zero f i ()
   lookup-tabulate (suc n) f zero refl = refl
