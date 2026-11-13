@@ -4135,6 +4135,7 @@ module SBRMALLPBellman (Atom : Nat → Set) where
   symmetricBarRecMALLP-step
     {X = X}
     {R = R}
+    {resultAtom = resultAtom}
     {encodeEntries = encodeEntries}
     {encodeContinuation = encodeContinuation}
     {encodeResult = encodeResult}
