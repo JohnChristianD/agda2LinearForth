@@ -46,6 +46,8 @@ data FormalToken
   | FormalRollWord Natural
   | FormalTrueWord
   | FormalFalseWord
+  | FormalCodyadShiftLeft
+  | FormalCodyadShiftRight
   | FormalIf [FormalToken] [FormalToken]
   deriving (Eq, Show)
 
@@ -55,6 +57,7 @@ data OtherWitness
   | BoolPairFunctionWitness QName QName BoolPairExpr
   | UnitWitness
   | Word64IdentityWitness
+  | CodyadExponentShiftWitness Bool
   deriving (Eq, Show)
 
 data CompiledDefinition = CompiledDefinition
@@ -567,6 +570,8 @@ validateForthNames definitions =
         , "MALLP-PARSE-NAT", "MALLP-NAT-LITERAL", "MALLP-NAT-ADD", "MALLP-NAT-MONUS"
         , "MALLP-NAT-MUL", "MALLP-SWAP", "MALLP-NAT-ROLL"
         , "MALLP-CHECK-BOOL", "MALLP-TRUE", "MALLP-FALSE", "MALLP-IF", "MALLP-ELSE", "MALLP-THEN", "TRUE", "FALSE"
+        , "MALLP-CODYAD-CHECK-EXPONENT", "MALLP-CODYAD-SHIFT-LEFT", "MALLP-CODYAD-SHIFT-RIGHT"
+        , "MALLP-CODYAD-CHECK-EXPONENT", "MALLP-CODYAD-SHIFT-LEFT", "MALLP-CODYAD-SHIFT-RIGHT"
         , "SWAP", "ROLL", "DEPTH", "THROW", "CATCH", "BYE"
         , "IF", "ELSE", "THEN", "BEGIN", "WHILE", "REPEAT"
         , "POSTPONE", "IMMEDIATE", "CONSTANT", "EXCEPTION", "PARSE-NAME", "LITERAL"
@@ -695,6 +700,8 @@ formalTokenForm (FormalRollWord depth) =
   RSList [renderNatExpr (NatLiteral depth), RSAtom "MALLP-NAT-ROLL"]
 formalTokenForm FormalTrueWord = RSAtom "MALLP-TRUE"
 formalTokenForm FormalFalseWord = RSAtom "MALLP-FALSE"
+formalTokenForm FormalCodyadShiftLeft = RSAtom "MALLP-CODYAD-SHIFT-LEFT"
+formalTokenForm FormalCodyadShiftRight = RSAtom "MALLP-CODYAD-SHIFT-RIGHT"
 formalTokenForm (FormalIf whenTrue whenFalse) =
   RSList
     [ RSAtom "MALLP-IF"
@@ -1114,6 +1121,53 @@ unitFunctionArity definition = do
           then Just (length (I.telToList telescope))
           else Nothing
 
+-- Only the checked exponent-shift primitives are admitted here.  This
+-- leaves arbitrary coinductive stream code outside the finite Forth stack
+-- representation until a producer-state ABI has a matching proof.
+isBinaryExponentType :: I.Type -> TCM Bool
+isBinaryExponentType ty = do
+  reduced <- reduce ty
+  pure $ case I.unEl reduced of
+    I.Def actual [] -> prettyShow actual == "MALLPForth.BinaryExponent"
+    _ -> False
+
+binaryExponentFunctionArity :: Definition -> TCM (Maybe Int)
+binaryExponentFunctionArity definition = do
+  TelV telescope resultType <- telView (defType definition)
+  resultIsExponent <- isBinaryExponentType resultType
+  argumentTypes <- traverse
+    (isBinaryExponentType . snd . I.unDom)
+    (I.telToList telescope)
+  pure $
+    if resultIsExponent && and argumentTypes
+      then Just (length argumentTypes)
+      else Nothing
+
+compileCodyadExponentShiftFunction
+  :: QName
+  -> Int
+  -> TTerm
+  -> TCM FormalToken
+compileCodyadExponentShiftFunction owner arity term = do
+  let (actualArity, body) = tLamView term
+  if arity /= 1 || actualArity /= 1
+    then unsupported
+      ("Codyad exponent shift requires one owned BinaryExponent: " ++ prettyShow owner)
+    else pure ()
+  decode body
+  where
+    decode expression = case tAppView expression of
+      (TDef actual, [TVar 0])
+        | prettyShow actual == "MALLPForth.shiftCodyadExponentLeft" ->
+            pure FormalCodyadShiftLeft
+        | prettyShow actual == "MALLPForth.shiftCodyadExponentRight" ->
+            pure FormalCodyadShiftRight
+      (TCoerce inner, []) -> decode inner
+      (headTerm, arguments) ->
+        unsupported
+          ("Codyad exponent function is outside the direct shift fragment: "
+            ++ show (headTerm, arguments))
+
 decodeUnitTerm :: TTerm -> TCM ()
 decodeUnitTerm term = do
   unitConstructor <- getBuiltinName builtinUnitUnit
@@ -1141,10 +1195,24 @@ compileDefinition definition
         boolArity <- boolFunctionArity definition
         boolPairConstructor <- boolPairFunctionConstructor definition
         word64Arity <- word64FunctionArity definition
+        exponentArity <- binaryExponentFunctionArity definition
         unitArity <- unitFunctionArity definition
         hasFloat <- hasFloatInSignature definition
         if hasFloat
           then unsupported "Agda builtin Float is explicitly outside the MALLP compiler contract"
+        else if exponentArity == Just 1 then do
+          body <- toTreeless EagerEvaluation (defName definition)
+          case body of
+            Nothing -> pure Nothing
+            Just term -> do
+              token <- compileCodyadExponentShiftFunction
+                (defName definition) 1 term
+              let direction = token == FormalCodyadShiftLeft
+              pure (Just (CompiledDefinition
+                (defName definition)
+                [token]
+                Nothing Nothing Nothing
+                (Just (CodyadExponentShiftWitness direction))))
         else if isNat then do
           body <- toTreeless EagerEvaluation (defName definition)
           case (natArity, body) of
@@ -1257,6 +1325,8 @@ formalTokenTerm (FormalRollWord depth) =
   "textRollWord " <> T.pack (show depth)
 formalTokenTerm FormalTrueWord = "textTrueWord"
 formalTokenTerm FormalFalseWord = "textFalseWord"
+formalTokenTerm FormalCodyadShiftLeft = "textCodyadShiftLeft"
+formalTokenTerm FormalCodyadShiftRight = "textCodyadShiftRight"
 formalTokenTerm (FormalIf whenTrue whenFalse) =
   "textIf (" <> formalTokenList whenTrue <> ") (" <>
     formalTokenList whenFalse <> ")"

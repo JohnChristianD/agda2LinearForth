@@ -7861,8 +7861,9 @@ decodeBinaryExponent (suc (suc zero)) (suc n) = just (exponentNegative n)
 decodeBinaryExponent _ _ = nothing
 
 binaryExponentStack : BinaryExponent → List Nat
-binaryExponentStack exponent with encodeBinaryExponent exponent
-... | pair sign magnitude = magnitude ∷ sign ∷ []
+binaryExponentStack exponentZero = zero ∷ zero ∷ []
+binaryExponentStack (exponentPositive n) = suc n ∷ suc zero ∷ []
+binaryExponentStack (exponentNegative n) = suc n ∷ suc (suc zero) ∷ []
 
 data CodyadForthToken : Set where
   codyadShiftLeftToken codyadShiftRightToken : CodyadForthToken
@@ -7893,14 +7894,20 @@ codyadShiftLeft-forth-sound :
   execCodyadTokens (codyadShiftLeftToken ∷ [])
     (binaryExponentStack exponent ++ᴳ residual) ≡
   just (binaryExponentStack (shiftCodyadExponentLeft exponent) ++ᴳ residual)
-codyadShiftLeft-forth-sound exponent residual = refl
+codyadShiftLeft-forth-sound exponentZero residual = refl
+codyadShiftLeft-forth-sound (exponentPositive n) residual = refl
+codyadShiftLeft-forth-sound (exponentNegative zero) residual = refl
+codyadShiftLeft-forth-sound (exponentNegative (suc n)) residual = refl
 
 codyadShiftRight-forth-sound :
   (exponent : BinaryExponent) (residual : List Nat) →
   execCodyadTokens (codyadShiftRightToken ∷ [])
     (binaryExponentStack exponent ++ᴳ residual) ≡
   just (binaryExponentStack (shiftCodyadExponentRight exponent) ++ᴳ residual)
-codyadShiftRight-forth-sound exponent residual = refl
+codyadShiftRight-forth-sound exponentZero residual = refl
+codyadShiftRight-forth-sound (exponentPositive zero) residual = refl
+codyadShiftRight-forth-sound (exponentPositive (suc n)) residual = refl
+codyadShiftRight-forth-sound (exponentNegative n) residual = refl
 
 codyadFormula : PolType posPolarity
 codyadFormula = atom⁺ 21
