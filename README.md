@@ -20,7 +20,7 @@ The generated renderer keeps one renderer-specific option:
 {-# OPTIONS --rewriting --confluence-check --lossy-unification --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
 ```
 
-All other options match the root pragma. `--with-K` is redundant because K is enabled by default; `--exact-split` is also enabled by default. `--lossy-unification` remains useful for the generated resource certificates: removing it leaves many unification metas unresolved in `MALLPEmittedRenderer.agda` under Agda 2.8.0.2. It is a sound but incomplete elaboration heuristic for equations headed by the same defined function, not a logical axiom or a runtime/Forth semantic rule. It may commit to an incomplete meta-variable solution and cause a type error; explicit annotations could eventually make it removable. `--type-in-type` is absent; no `--safe` claim is made.
+All other options match the root pragma. The separate physics specification explicitly carries `--with-K`, and CI passes `--with-K` when checking that file; the root pragma is unchanged. `--exact-split` is also enabled by default. `--lossy-unification` remains useful for the generated resource certificates: removing it leaves many unification metas unresolved in `MALLPEmittedRenderer.agda` under Agda 2.8.0.2. It is a sound but incomplete elaboration heuristic for equations headed by the same defined function, not a logical axiom or a runtime/Forth semantic rule. It may commit to an incomplete meta-variable solution and cause a type error; explicit annotations could eventually make it removable. `--type-in-type` is absent; no `--safe` claim is made.
 
 CI triggers on `push` and `pull_request`; there is no schedule. The public `agda2forth` entrypoint, CLI argument shape, existing compiler invocation, generated renderer filename, and remaining Agda options are compatibility boundaries.
 
@@ -47,6 +47,19 @@ The root module publicly re-exports six mathematical `Foundations` packages and 
 `SBRMALLPBellman` makes the non-PEA resource calculus an actual objective constraint. A Bellman objective is packaged with two MALLP derivations and relational-soundness obligations: the base derivation consumes one encoded partial-map state; the step derivation consumes that state and one encoded continuation, each exactly once, and produces the encoded objective value. The SBR stop and step equations transport those local certificates to the corresponding SBR branches.
 
 This is a proof obligation on the generalized Bellman algebra, independent of PEA. It lets an objective be rejected unless its base/step semantics have a resource-safe MALLP realization. It does **not** derive the SBR oracle, prove global recursion termination, or claim every arbitrary higher-order continuation has a MALLP encoding; the encoding and derivations are supplied as explicit data.
+
+## One constraint across all Foundations
+
+`UnifiedFoundationsOptimization Atom` exposes `SingleOptimizationConstraint`, a single record whose fields join the seven Foundations packages around one objective:
+
+- PEA candidate-family coverage and a runtime-parameterized uniform program.
+- A finite selection function, preorder, horizon, and backward-induction optimality.
+- One SBR operator with its stop/step laws, a symmetric-bar condition, and the same MALLP-certified Bellman base/step.
+- An idempotent quotient representative; base and step maps must respect normalization.
+- A cohesive `H → G` state/candidate view, and a Mac Lane-normalized tensor layout for entry, continuation, and result.
+- Explicit negative logical assumptions, identity rewrite postulates, and the MALLP cut-elimination assumption.
+
+The record is a conjunction of constraints, not an axiom that manufactures its fields. Its positive assumptions remain explicit, and MALLP cut normalization is not claimed to preserve the relational denotation. 
 
 ## Is MALLP needed for Bellman optimization?
 
@@ -101,6 +114,8 @@ The strongest end-to-end slice is the admitted Nat path:
 7. Renderer equalities connect the formal token renderer with the actual Forth string emitted by Haskell.
 
 The strict regression fixture pins 29 emitted Forth definitions. The generic Nat resource certificate manifest covers 20 Nat definitions. These are per-definition witnesses, not a theorem that the Haskell compiler is correct for all inputs.
+
+The strict Gforth boundary now lowers Agda's partial token operations through checked words: `MALLP-SWAP` checks stack depth, `MALLP-ROLL` validates its parsed Nat immediate and selected stack depth, and `MALLP-IF` accepts only canonical Agda Bool values (Gforth `FALSE = 0`, `TRUE = -1`). Nat parsing and arithmetic validate inputs and bounded results. Every failure uses one shared throw code, matching the single `nothing` case of the Agda `Maybe` interpreter. Exact correspondence is claimed for representable signed-cell values and available Gforth stack capacity; host exhaustion and arbitrary untyped calls remain outside the typed compiler contract.
 
 | Source family | Established link | Boundary |
 | --- | --- | --- |
