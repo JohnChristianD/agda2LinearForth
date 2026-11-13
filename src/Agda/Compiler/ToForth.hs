@@ -17,7 +17,7 @@ import Agda.TypeChecking.Reduce (reduce)
 import Agda.TypeChecking.Substitute (TelV(..))
 import Agda.TypeChecking.Telescope (telView)
 import Data.Char (isAlphaNum, isDigit)
-import Data.List (elemIndex, find, sort)
+import Data.List (elemIndex, find, group, sort)
 import qualified Data.List.NonEmpty as NE
 import Data.SCargot
 import Data.SCargot.Repr
@@ -561,6 +561,40 @@ strictWord :: QName -> FthForm -> FthForm
 strictWord name body =
   RSAtom $ T.concat [": ", safeForthName name, " ", formToText body, ";"]
 
+-- Forth dictionary lookup is case-insensitive. Reject collisions after
+-- identifier sanitization, including names that shadow runtime primitives.
+validateForthNames :: [CompiledDefinition] -> TCM ()
+validateForthNames definitions =
+  if null collisions
+    then pure ()
+    else unsupported
+      ("Forth identifier collision with runtime/builtin dictionary: "
+        ++ show (map T.unpack collisions))
+  where
+    names =
+      map (T.toCaseFold . safeForthName . compiledName) definitions
+    duplicateNames =
+      map head (filter ((> 1) . length) (group (sort names)))
+    reservedNames =
+      map T.toCaseFold
+        [ "AGDA2FORTH-MALLP-LOADED", "MALLP-MAX-NAT", "MALLP-ERR"
+        , "MALLP-ERR-NEGATIVE", "MALLP-ERR-OVERFLOW", "MALLP-ERR-LITERAL"
+        , "MALLP-ERR-STACK", "MALLP-REQUIRE-STACK", "MALLP-CHECK-NAT"
+        , "MALLP-PARSE-NAT", "MALLP-NAT-ADD", "MALLP-NAT-MONUS"
+        , "MALLP-NAT-MUL", "MALLP-SWAP", "MALLP-NAT-ROLL"
+        , "MALLP-CHECK-BOOL", "MALLP-IF", "TRUE", "FALSE"
+        , "SWAP", "ROLL", "DEPTH", "THROW", "CATCH", "BYE"
+        , "IF", "ELSE", "THEN", "BEGIN", "WHILE", "REPEAT"
+        , "POSTPONE", "IMMEDIATE", "CONSTANT", "EXCEPTION"
+        , "DUP", "?DUP", "2DUP", "3DUP", "OVER", "2OVER"
+        , "PICK", "DROP", "2DROP", "3DROP", "NIP", "2NIP", "TUCK"
+        , "+", "-", "*", "/", ">", "<", "<>", "0<", "0=", "0<>", "1+"
+        , "C@", "CHAR", "[CHAR]", "AND", "OR", "INVERT"
+        ]
+    collisions =
+      duplicateNames ++ filter (
+ame -> name `elem` reservedNames) names
+
 unsupported :: String -> TCM a
 unsupported message = fail ("agda2MALLPForth: " ++ message)
 
@@ -664,6 +698,31 @@ renderNatExpr (NatLiteral n) =
   RSAtom $ T.concat ["s\" ", T.pack (show n), "\" MALLP-PARSE-NAT"]
 renderNatExpr (NatBinary operation left right) =
   RSList [renderNatExpr left, renderNatExpr right, renderNatOp operation]
+
+-- Proof-carrying tokens are the single source of target instruction text.
+-- The emitted word body is derived from this AST, not assembled separately.
+formalTokenForm :: FormalToken -> FthForm
+formalTokenForm (FormalPushLiteral value) =
+  renderNatExpr (NatLiteral value)
+formalTokenForm FormalAddWord = renderNatOp NatAdd
+formalTokenForm FormalMonusWord = renderNatOp NatMonus
+formalTokenForm FormalMultiplyWord = renderNatOp NatMultiply
+formalTokenForm FormalSwapWord = RSAtom "MALLP-SWAP"
+formalTokenForm (FormalRollWord depth) =
+  RSList [renderNatExpr (NatLiteral depth), RSAtom "MALLP-NAT-ROLL"]
+formalTokenForm FormalTrueWord = RSAtom "TRUE"
+formalTokenForm FormalFalseWord = RSAtom "FALSE"
+formalTokenForm (FormalIf whenTrue whenFalse) =
+  RSList
+    [ RSAtom "MALLP-IF"
+    , formalTokensForm whenTrue
+    , RSAtom "ELSE"
+    , formalTokensForm whenFalse
+    , RSAtom "THEN"
+    ]
+
+formalTokensForm :: [FormalToken] -> FthForm
+formalTokensForm = RSList . map formalTokenForm
 
 renderNatLinearExpr :: NatLinearExpr -> FthForm
 renderNatLinearExpr NatArgument = RSList []
@@ -1087,10 +1146,11 @@ compileDefinition definition
           body <- toTreeless EagerEvaluation (defName definition)
           case (natArity, body) of
             (Just arity, Just term) -> do
-              (resourceWitness, code, tokens, linearWitness, binaryWitness) <-
+              (resourceWitness, _code, tokens, linearWitness, binaryWitness) <-
                 compileNatResourceFunction (defName definition) arity term
               pure (Just (CompiledDefinition
-                (defName definition) (strictWord (defName definition) code) tokens
+                (defName definition)
+                (strictWord (defName definition) (formalTokensForm tokens)) tokens
                 linearWitness binaryWitness (Just resourceWitness) Nothing))
             (Just _, Nothing) -> pure Nothing
             (Nothing, _) -> unsupported "Nat definition has a non-Nat argument or result"
@@ -1100,20 +1160,20 @@ compileDefinition definition
             Nothing -> pure Nothing
             Just term -> do
               value <- decodeBoolTerm [] [] term
-              let (forthBoolean, formalBoolean) =
-                    if value then ("TRUE", FormalTrueWord) else ("FALSE", FormalFalseWord)
+              let tokens = [if value then FormalTrueWord else FormalFalseWord]
               pure (Just (CompiledDefinition
                 (defName definition)
-                (strictWord (defName definition) (RSAtom forthBoolean))
-                [formalBoolean] Nothing Nothing Nothing (Just (ClosedBoolWitness value))))
+                (strictWord (defName definition) (formalTokensForm tokens))
+                tokens Nothing Nothing Nothing (Just (ClosedBoolWitness value))))
         else if maybe False (> 0) boolArity then do
           body <- toTreeless EagerEvaluation (defName definition)
           case (boolArity, body) of
             (Just arity, Just term) -> do
-              (code, tokens, expression) <-
+              (_code, tokens, expression) <-
                 compileBoolResourceFunction (defName definition) arity term
               pure (Just (CompiledDefinition
-                (defName definition) (strictWord (defName definition) code) tokens
+                (defName definition)
+                (strictWord (defName definition) (formalTokensForm tokens)) tokens
                 Nothing Nothing Nothing (Just (BoolFunctionWitness arity expression))))
             (Just _, Nothing) -> pure Nothing
             _ -> unsupported "Bool function arity classification changed during compilation"
@@ -1121,10 +1181,11 @@ compileDefinition definition
           body <- toTreeless EagerEvaluation (defName definition)
           case body of
             Just term -> do
-              (code, tokens) <-
+              (_code, tokens) <-
                 compileWord64IdentityFunction (defName definition) 1 term
               pure (Just (CompiledDefinition
-                (defName definition) (strictWord (defName definition) code) tokens
+                (defName definition)
+                (strictWord (defName definition) (formalTokensForm tokens)) tokens
                 Nothing Nothing Nothing (Just Word64IdentityWitness)))
             Nothing -> pure Nothing
         else case word64Arity of
@@ -1138,10 +1199,11 @@ compileDefinition definition
               case body of
                 Nothing -> pure Nothing
                 Just term -> do
-                  (code, tokens, expression) <-
+                  (_code, tokens, expression) <-
                     compileBoolPairFunction (defName definition) constructor term
                   pure (Just (CompiledDefinition
-                    (defName definition) (strictWord (defName definition) code) tokens
+                    (defName definition)
+                    (strictWord (defName definition) (formalTokensForm tokens)) tokens
                     Nothing Nothing Nothing (Just (BoolPairFunctionWitness pairType constructor expression))))
             Nothing ->
               if unitArity == Just 0 then do
@@ -1151,7 +1213,8 @@ compileDefinition definition
                   Just term -> do
                     decodeUnitTerm term
                     pure (Just (CompiledDefinition
-                      (defName definition) (strictWord (defName definition) (RSList [])) []
+                      (defName definition)
+                      (strictWord (defName definition) (formalTokensForm [])) []
                       Nothing Nothing Nothing (Just UnitWitness)))
               else pure Nothing
       _ -> pure Nothing
@@ -1999,9 +2062,10 @@ rendererCertificate sourceModule definitions
     ]
 emitForthModule :: () -> () -> IsMain -> TopLevelModuleName -> [Maybe CompiledDefinition] -> TCM ()
 emitForthModule _ _ _ moduleName maybeDefinitions = do
-  runtime <- IO.liftIO readStrictRuntime
   let definitions = catMaybes maybeDefinitions
-      body = T.intercalate "\n\n"
+  validateForthNames definitions
+  runtime <- IO.liftIO readStrictRuntime
+  let body = T.intercalate "\n\n"
         (map (renderForm . compiledForm) definitions)
       output = T.pack runtime <> "\n" <> body <> "\n"
       baseName = prettyShow (NE.last (moduleNameParts moduleName))
