@@ -1346,7 +1346,7 @@ rendererCertificate sourceModule definitions
   | any (not . compiledDefinitionHasCertificate) definitions =
       error "compiler emitted a definition without a matching Agda semantic certificate"
   | otherwise = T.unlines $
-  [ "{-# OPTIONS --with-K --rewriting --confluence-check --lossy-unification --exact-split --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}"
+  [ "{-# OPTIONS --rewriting --confluence-check --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}"
   , "module MALLPEmittedRenderer where"
   , ""
   , "import " <> T.pack (prettyShow sourceModule)
