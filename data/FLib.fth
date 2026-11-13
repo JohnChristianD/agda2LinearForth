@@ -1,8 +1,8 @@
 \ MALLP-STRICT-BEGIN
-\\ Checked Gforth boundary for MALLPForth.execBoundedToken.
-\\ Every semantic failure maps to Agda's single Maybe nothing case.
-\\ Target Nat values and ROLL immediates fit the positive signed-cell bound.
-\\ Boolean control accepts precisely Gforth FALSE (0) and TRUE (-1).
+\ Checked Gforth boundary for MALLPForth.execBoundedToken.
+\ Every semantic failure maps to Agda's single Maybe nothing case.
+\ Target Nat values and ROLL immediates fit the positive signed-cell bound.
+\ Boolean control accepts precisely Gforth FALSE (0) and TRUE (-1).
 
 [undefined] AGDA2FORTH-MALLP-LOADED [if]
 true constant AGDA2FORTH-MALLP-LOADED
