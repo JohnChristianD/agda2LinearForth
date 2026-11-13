@@ -4122,6 +4122,8 @@ module SBRMALLPBellman (Atom : Nat → Set) where
         (symmetricBarRec omega default condition base step
           entries key (outDomain absent)))
   symmetricBarRecMALLP-step
+    {X = X}
+    {R = R}
     {encodeEntries = encodeEntries}
     {encodeContinuation = encodeContinuation}
     {encodeResult = encodeResult}
