@@ -4,6 +4,8 @@
 --guardedness
 --no-projection-like
 --no-fast-reduce
+--no-eta-equality
+--erased-matches=unrestricted
 #-}
 -- ```Agda
 -- ----------------------------------------------------------------------
