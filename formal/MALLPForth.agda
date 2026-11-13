@@ -5623,7 +5623,7 @@ module StrictNatCompiler where
     execTokens tokens before ≡ just final
   boundedExecutionTrace-unbounded (boundedTraceDone stackBound) = refl
   boundedExecutionTrace-unbounded
-    (boundedTraceStep beforeBound step afterBound rest)
+    (boundedTraceStep beforeBound _ step afterBound rest)
     rewrite step = boundedExecutionTrace-unbounded rest
 
   boundedExecutionTrace-bounded :
