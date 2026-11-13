@@ -2,14 +2,12 @@
 --rewriting
 --confluence-check
 --guardedness
---no-fast-reduce
 --lossy-unification
 --no-eta-equality
 --prop
---erased-matches=empty
+--erased-matches=non-dependent
 --exact-split
---cubical=no-glue
---with-K
+--flat-split
 #-}
 -- ```Agda
 -- ----------------------------------------------------------------------
@@ -47,7 +45,6 @@ open import Agda.Builtin.Word.Properties using (primWord64ToNatInjective) public
 -- is the explicit project-owned pair, while Sigma supplies dependent pairs.
 open import Agda.Builtin.Unit public
 open import Agda.Builtin.Strict public
-open import Agda.Builtin.Coinduction public
 import Agda.Builtin.Reflection as Reflection
 open import Agda.Builtin.Reflection.Properties
   using (primMetaToNatInjective; primQNameToWord64sInjective) public
