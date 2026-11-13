@@ -5385,6 +5385,21 @@ module StrictNatCompiler where
   execBoundedToken-roll-within-bound bound depth stack depthBound
     rewrite depthBound = refl
 
+  classifyBoundedRollFailure :
+    (bound depth : Nat) (stack : List Nat) →
+    (withinBound : Bool) →
+    withinBound ≡ natWithinBound depth bound →
+    execBoundedToken bound (rollWord depth) stack ≡ nothing →
+    BoundedTokenFailure bound (rollWord depth) stack
+  classifyBoundedRollFailure bound depth stack true withinBoundProof failure =
+    boundedTokenStackError
+      (trans
+        (sym (execBoundedToken-roll-within-bound
+          bound depth stack (sym withinBoundProof)))
+        failure)
+  classifyBoundedRollFailure bound depth stack false withinBoundProof failure =
+    boundedTokenRollDepthOverflow (sym withinBoundProof)
+
   execBoundedToken-failure-classification :
     (bound : Nat) (token : ForthToken) (stack : List Nat) →
     NatStackBounded bound stack →
@@ -5471,15 +5486,9 @@ module StrictNatCompiler where
     bound swapWord stack inputBound failure =
     boundedTokenStackError failure
   execBoundedToken-failure-classification
-    bound (rollWord depth) stack inputBound failure
-    with natWithinBound depth bound in depthCheck
-  ... | true =
-    boundedTokenStackError
-      (trans
-        (sym (execBoundedToken-roll-within-bound
-          bound depth stack depthCheck))
-        failure)
-  ... | false = boundedTokenRollDepthOverflow depthCheck
+    bound (rollWord depth) stack inputBound failure =
+    classifyBoundedRollFailure bound depth stack
+      (natWithinBound depth bound) refl failure
 
   boundedLiteralOverflowExample :
     BoundedTokenFailure 3 (pushLiteral 4) []

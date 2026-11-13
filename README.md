@@ -179,7 +179,7 @@ Successful CI establishes that these checks pass under the declared options and 
 
 ## Exact numeric carrier for real-valued objectives
 
-The optimization record keeps its payoff carrier `R` abstract. The current Forth compiler admits Nat, Bool, selected Bool pairs, Unit, and unary Word64 identity; it has no Float lowering or floating-point runtime word. CI includes a `Float → Float` identity source definition and checks that no corresponding Forth definition is emitted. This is a compiler admission boundary, not a global Agda prohibition on mentioning the builtin Float type in unrelated source files.
+The optimization record keeps its payoff carrier `R` abstract. The current Forth compiler admits Nat, Bool, selected Bool pairs, Unit, and unary Word64 identity; it has no Float lowering or floating-point runtime word. CI includes a `Float → Float` identity source definition and checks that the compiler rejects the declaration before emitting any Forth definition. This is a compiler admission boundary, not a global Agda prohibition on mentioning the builtin Float type in unrelated source files.
 
 For future real-valued objectives, the intended default exact representation is a coinductive signed-digit stream over `{-1, 0, 1}`, paired with a **finite signed binary exponent**. The stream represents a bounded mantissa; the exponent supplies the unbounded finite scale needed for all real magnitudes. A conatural may index requested precision or observations, but an infinite conatural exponent is not a real scale and must not be used as an element of the field. Equality must identify streams with equal denotations rather than rely on structural stream equality.
 

@@ -113,9 +113,6 @@ jobs:
           
           open import Agda.Builtin.Int using (Int; pos)
           open import Agda.Builtin.Word using (Word64)
-          open import Agda.Builtin.Float using (Float)
-          answerFloatIdentity : Float → Float
-          answerFloatIdentity value = value
           answerWord64Identity : Word64 → Word64
           answerWord64Identity value = value
           answerInt : Int
@@ -367,6 +364,22 @@ jobs:
           fi
           cat renderer-certificate.log
 
+      - name: Reject builtin floating-point source definitions
+        id: reject_float
+        run: |
+          cat > test/MALLPFloat.agda <<'AGDA'
+          module MALLPFloat where
+          open import Agda.Builtin.Float using (Float)
+          floatIdentity : Float → Float
+          floatIdentity value = value
+          AGDA
+          if cabal run agda2forth -- -i test test/MALLPFloat.agda > forth-float.log 2>&1; then
+            echo "compiler accepted builtin Float"
+            exit 1
+          fi
+          grep -Fq 'Agda builtin Float is explicitly outside the MALLP compiler contract' forth-float.log
+          rm -f test/MALLPFloat.agda
+
       - name: Reject Forth dictionary collisions
         id: forth_name_collisions
         run: |
@@ -432,10 +445,6 @@ jobs:
           grep -Fq 'MALLP-NAT-LITERAL' MALLPStrict.fth
           if awk 'emit { print } /^\[then\]$/ { emit = 1; next }' MALLPStrict.fth | grep -Eiq '(^|[[:space:]])(TRUE|FALSE|SWAP|ROLL|IF|ELSE|THEN)([[:space:]]|$)'; then
             echo "generated compiler words contain a raw Forth primitive"
-            exit 1
-          fi
-          if grep -Eq '^: answerFloatIdentity ' MALLPStrict.fth; then
-            echo "compiler emitted an unsupported Float definition"
             exit 1
           fi
           if grep -Eq '^: answerInt ' MALLPStrict.fth; then

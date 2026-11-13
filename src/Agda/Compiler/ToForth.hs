@@ -975,6 +975,19 @@ hasNatResult definition = do
     Nothing -> pure False
     Just name -> isBuiltinType name resultType
 
+hasFloatInSignature :: Definition -> TCM Bool
+hasFloatInSignature definition = do
+  floatName <- getBuiltinName builtinFloat
+  TelV telescope resultType <- telView (defType definition)
+  case floatName of
+    Nothing -> pure False
+    Just name -> do
+      resultIsFloat <- isBuiltinType name resultType
+      argumentTypes <- traverse
+        (\domain -> isBuiltinType name (snd (I.unDom domain)))
+        (I.telToList telescope)
+      pure (resultIsFloat || or argumentTypes)
+
 natFunctionArity :: Definition -> TCM (Maybe Int)
 natFunctionArity definition = do
   natName <- getBuiltinName builtinNat
@@ -1125,7 +1138,10 @@ compileDefinition definition
         boolPairConstructor <- boolPairFunctionConstructor definition
         word64Arity <- word64FunctionArity definition
         unitArity <- unitFunctionArity definition
-        if isNat then do
+        hasFloat <- hasFloatInSignature definition
+        if hasFloat
+          then unsupported "Agda builtin Float is explicitly outside the MALLP compiler contract"
+        else if isNat then do
           body <- toTreeless EagerEvaluation (defName definition)
           case (natArity, body) of
             (Just arity, Just term) -> do
