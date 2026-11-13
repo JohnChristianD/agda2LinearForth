@@ -20,7 +20,7 @@ The generated renderer keeps one renderer-specific option:
 {-# OPTIONS --rewriting --confluence-check --lossy-unification --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
 ```
 
-All other options match the root pragma. The separate physics specification explicitly carries `--with-K`, and CI passes `--with-K` when checking that file; the root pragma is unchanged. `--exact-split` is also enabled by default. `--lossy-unification` remains useful for the generated resource certificates: removing it leaves many unification metas unresolved in `MALLPEmittedRenderer.agda` under Agda 2.8.0.2. It is a sound but incomplete elaboration heuristic for equations headed by the same defined function, not a logical axiom or a runtime/Forth semantic rule. It may commit to an incomplete meta-variable solution and cause a type error; explicit annotations could eventually make it removable. `--type-in-type` is absent; no `--safe` claim is made.
+The physics specification uses the same option list, replacing `--rewriting` with `--safe`; it contains no postulates or rewrite declarations. The MALLP root remains intentionally unsafe because it contains positive postulates and a registered rewrite system. `--exact-split` is enabled by default. `--lossy-unification` remains isolated to generated resource certificates: removing it leaves unification metas unresolved in `MALLPEmittedRenderer.agda` under Agda 2.8.0.2. It is a sound but incomplete elaboration heuristic, not a logical axiom or runtime rule. `--type-in-type` is absent.
 
 CI triggers on `push` and `pull_request`; there is no schedule. The public `agda2forth` entrypoint, CLI argument shape, existing compiler invocation, generated renderer filename, and remaining Agda options are compatibility boundaries.
 
@@ -50,16 +50,16 @@ This is a proof obligation on the generalized Bellman algebra, independent of PE
 
 ## One constraint across all Foundations
 
-`UnifiedFoundationsOptimization Atom` exposes `SingleOptimizationConstraint`, a single record whose fields join the seven Foundations packages around one objective:
+`UnifiedFoundationsOptimization Atom` exposes `DynamicProgrammingMALLPOptimization`, one dependent record joining all seven Foundations around one dynamic-programming objective:
 
 - PEA candidate-family coverage and a runtime-parameterized uniform program.
-- A finite selection function, preorder, horizon, and backward-induction optimality.
-- One SBR operator with its stop/step laws, a symmetric-bar condition, and the same MALLP-certified Bellman base/step.
+- A finite payoff, preorder, horizon, selection function, Bellman value, and backward-induction optimality.
+- The same SBR state/value is required to agree with the finite dynamic-programming value; stop/step equations and the MALLP-certified Bellman base/step are in that record.
 - An idempotent quotient representative; base and step maps must respect normalization.
 - A cohesive `H → G` state/candidate view, and a Mac Lane-normalized tensor layout for entry, continuation, and result.
-- Explicit negative logical assumptions, identity rewrite postulates, and the MALLP cut-elimination assumption.
+- Explicit negative logical assumptions, the identity rewrite equations, and the MALLP cut-elimination assumption.
 
-The record is a conjunction of constraints, not an axiom that manufactures its fields. Its positive assumptions remain explicit, and MALLP cut normalization is not claimed to preserve the relational denotation. 
+The record is a conjunction of proof obligations, not an axiom that manufactures fields. Positive PEA, SBR, identity, and cut-elimination assumptions remain explicit. The finite DP value is required to equal the SBR value on the normalized initial state, while the Bellman base/step are independently certified by MALLP. 
 
 ## Is MALLP needed for Bellman optimization?
 
@@ -115,12 +115,12 @@ The strongest end-to-end slice is the admitted Nat path:
 
 The strict regression fixture pins 29 emitted Forth definitions. The generic Nat resource certificate manifest covers 20 Nat definitions. These are per-definition witnesses, not a theorem that the Haskell compiler is correct for all inputs.
 
-The strict Gforth boundary now lowers Agda's partial token operations through checked words: `MALLP-SWAP` checks stack depth, `MALLP-ROLL` validates its parsed Nat immediate and selected stack depth, and `MALLP-IF` accepts only canonical Agda Bool values (Gforth `FALSE = 0`, `TRUE = -1`). Nat parsing and arithmetic validate inputs and bounded results. Every failure uses one shared throw code, matching the single `nothing` case of the Agda `Maybe` interpreter. Exact correspondence is claimed for representable signed-cell values and available Gforth stack capacity; host exhaustion and arbitrary untyped calls remain outside the typed compiler contract.
+The compiler emits checked `MALLP-SWAP`, `MALLP-ROLL`, and `MALLP-IF` words. The shared runtime checks stack depth, Nat immediates, arithmetic operands/results, and canonical Agda Bool values (`FALSE = 0`, `TRUE = -1`). Its failure paths share one Gforth throw code, corresponding to Agda's `nothing`. The correspondence covers representable signed-cell values and available Gforth stack capacity; host exhaustion and arbitrary untyped calls remain outside the typed compiler contract.
 
 | Source family | Established link | Boundary |
 | --- | --- | --- |
 | Nat | Resource derivation, exact Haskell token correspondence, formal token execution, source equality, residual-stack preservation. | Bounded-machine converse needs intermediate-state bounds; real Gforth remains external. |
-| Bool | Exact token decoding, formal Boolean-machine execution, MALLP derivations, source equalities for admitted shapes. | Decoder recognizes only the supported TRUE/FALSE/SWAP/IF grammar, not arbitrary Forth. |
+| Bool | Exact token decoding, formal Boolean-machine execution, MALLP derivations, source equalities for admitted shapes. | Decoder recognizes only the supported TRUE/FALSE/MALLP-SWAP/MALLP-IF grammar, not arbitrary Forth. |
 | BoolPair | Exact emitted-token decoding, tensor field-swap derivation, source/target composition. | Only the detected two-Bool field-swap shape is admitted. |
 | Unit | Nullary source result, empty-token correspondence, multiplicative-unit proof, stack identity. | Argument-bearing Unit functions are skipped. |
 | Word64 | Explicit high/low limb representation and unary identity correspondence. | Constructing representations for all words, arithmetic, and real Gforth limb semantics are outside this theorem. |
@@ -164,6 +164,6 @@ Constructively derived rather than postulated:
 
 ## CI and trust boundary
 
-The workflow installs Gforth and the current Haskell/Agda toolchain, type-checks `formal/MALLPForth.agda` with rewrite confluence checking, type-checks `formal/SovereignRationalSEDPhysics.agda`, builds the backend, compiles the strict source fixture, type-checks the generated renderer certificate, and runs the Gforth fixture. The source and Forth fixtures are materialized transiently by CI; no tracked test directory is required.
+The workflow installs Gforth and the current Haskell/Agda toolchain, type-checks `formal/MALLPForth.agda` with rewrite confluence checking, type-checks `formal/SovereignRationalSEDPhysics.agda` under its `--safe` pragma, builds the backend, compiles the strict source fixture, type-checks the generated renderer certificate, and runs the Gforth fixture. The source and Forth fixtures are materialized transiently by CI; no tracked test directory is required.
 
 Successful CI establishes that these checks pass under the declared options and assumptions. The Escardó–Coquand–Danielsson–Norell–Xu result preserves natural-number canonicity for jointly consistent negative postulates in intensional MLTT; it is not by itself a canonicity theorem for this entire Agda development, which also contains positive postulates and rewriting. The current checks do not discharge those positive postulates, prove PEA/SBR consistency, verify Gforth, establish general Haskell compiler correctness, or prove the MALLP cut-normalizer preserves the Rel denotation. The PR remains an isolated feature branch until reviewed and merged.
