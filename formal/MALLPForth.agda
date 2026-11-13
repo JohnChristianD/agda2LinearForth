@@ -109,13 +109,15 @@ mutual
   renderForthTokenText textAddWord = "MALLP-NAT-ADD "
   renderForthTokenText textMonusWord = "MALLP-NAT-MONUS "
   renderForthTokenText textMultiplyWord = "MALLP-NAT-MUL "
-  renderForthTokenText textSwapWord = "SWAP "
+  renderForthTokenText textSwapWord = "MALLP-SWAP "
   renderForthTokenText (textRollWord depth) =
-    primStringAppend (primShowNat depth) " ROLL "
+    primStringAppend
+      (renderForthTokenText (textPushLiteral depth))
+      "MALLP-ROLL "
   renderForthTokenText textTrueWord = "TRUE "
   renderForthTokenText textFalseWord = "FALSE "
   renderForthTokenText (textIf whenTrue whenFalse) =
-    primStringAppend "IF "
+    primStringAppend "MALLP-IF "
       (primStringAppend (renderForthTokensText whenTrue)
         (primStringAppend "ELSE "
           (primStringAppend (renderForthTokensText whenFalse) "THEN ")))
@@ -4880,6 +4882,13 @@ module StrictNatCompiler where
   -- A concrete target stack can contain only nonnegative values that
   -- fit the selected signed-cell bound. This is an explicit precondition
   -- for relating the abstract Nat machine to a real Forth process.
+  tokenImmediateBounded : Nat → ForthToken → Set
+  tokenImmediateBounded bound (pushLiteral value) =
+    natWithinBound value bound ≡ true
+  tokenImmediateBounded bound (rollWord depth) =
+    natWithinBound depth bound ≡ true
+  tokenImmediateBounded bound _ = ⊤
+
   data NatStackBounded (bound : Nat) : List Nat → Set where
     natStackBoundedNil : NatStackBounded bound []
     natStackBoundedCons :
@@ -4915,8 +4924,10 @@ module StrictNatCompiler where
   ... | _ | _ | _ = nothing
   execBoundedToken bound multiplyWord stack = nothing
   execBoundedToken bound swapWord stack = execToken swapWord stack
-  execBoundedToken bound (rollWord depth) stack =
-    execToken (rollWord depth) stack
+  execBoundedToken bound (rollWord depth) stack
+    with natWithinBound depth bound
+  ... | true = execToken (rollWord depth) stack
+  ... | false = nothing
 
   execBoundedTokens : Nat → List ForthToken → List Nat → Maybe (List Nat)
   execBoundedTokens bound [] stack = just stack
@@ -4965,7 +4976,10 @@ module StrictNatCompiler where
   ... | true | false | _ | ()
   ... | true | true | false | ()
   execBoundedToken-sound bound swapWord stack result proof = proof
-  execBoundedToken-sound bound (rollWord depth) stack result proof = proof
+  execBoundedToken-sound bound (rollWord depth) stack result proof
+    with natWithinBound depth bound | proof
+  ... | true | refl = refl
+  ... | false | ()
 
   execBoundedTokens-sound :
     (bound : Nat) (tokens : List ForthToken) (stack result : List Nat) →
@@ -5023,10 +5037,14 @@ module StrictNatCompiler where
       execToken token stack ≡ just result →
       NatStackOverflow bound result →
       BoundedTokenFailure bound token stack
+    boundedTokenRollDepthOverflow :
+      {depth : Nat} →
+      natWithinBound depth bound ≡ false →
+      BoundedTokenFailure bound (rollWord depth) stack
 
-  -- With a bounded input stack, each bounded-step failure is either the
-  -- same stack/roll failure as the unbounded token machine, or an unbounded
-  -- successful result whose new head exceeds the cell bound.
+  -- With a bounded input stack, failure is either an invalid stack
+  -- transition, an overflowing Nat result/literal, or an unrepresentable
+  -- ROLL depth. The latter matters because Gforth passes depth in a cell.
   execBoundedToken-failure-classification :
     (bound : Nat) (token : ForthToken) (stack : List Nat) →
     NatStackBounded bound stack →
@@ -5113,8 +5131,17 @@ module StrictNatCompiler where
     bound swapWord stack inputBound failure =
     boundedTokenStackError failure
   execBoundedToken-failure-classification
-    bound (rollWord depth) stack inputBound failure =
-    boundedTokenStackError failure
+    bound (rollWord depth) stack inputBound failure
+    with natWithinBound depth bound in depthCheck
+       | rollList depth stack
+       | failure
+  ... | false | nothing | refl =
+    boundedTokenStackError refl
+  ... | false | just result | refl =
+    boundedTokenRollDepthOverflow depthCheck
+  ... | true | nothing | refl =
+    boundedTokenStackError refl
+  ... | true | just result | ()
 
   boundedLiteralOverflowExample :
     BoundedTokenFailure 3 (pushLiteral 4) []
@@ -5142,22 +5169,23 @@ module StrictNatCompiler where
   -- conditions omitted by a final-result-only bound.
   execBoundedToken-complete :
     (bound : Nat) (token : ForthToken) (stack result : List Nat) →
+    tokenImmediateBounded bound token →
     NatStackBounded bound stack →
     execToken token stack ≡ just result →
     NatStackBounded bound result →
     execBoundedToken bound token stack ≡ just result
   execBoundedToken-complete bound (pushLiteral value) stack .(value ∷ stack)
-    inputBound refl (natStackBoundedCons valueBound restBound)
+    immediateBound inputBound refl (natStackBoundedCons valueBound restBound)
     with natWithinBound value bound in valueCheck
   ... | true = refl
   ... | false =
     ⊥-elim (natBoundFalseNotTrue valueBound)
-  execBoundedToken-complete bound addWord [] result natStackBoundedNil () resultBound
+  execBoundedToken-complete bound addWord [] result tt natStackBoundedNil () resultBound
   execBoundedToken-complete bound addWord (value ∷ []) result
-    (natStackBoundedCons _ natStackBoundedNil) () resultBound
+    tt (natStackBoundedCons _ natStackBoundedNil) () resultBound
   execBoundedToken-complete bound addWord (right ∷ left ∷ stack)
     .((left + right) ∷ stack)
-    (natStackBoundedCons rightBound (natStackBoundedCons leftBound stackBound))
+    tt (natStackBoundedCons rightBound (natStackBoundedCons leftBound stackBound))
     refl (natStackBoundedCons resultBound resultStackBound)
     with natWithinBound left bound in leftCheck
        | natWithinBound right bound in rightCheck
@@ -5169,12 +5197,12 @@ module StrictNatCompiler where
     ⊥-elim (natBoundFalseNotTrue rightBound)
   ... | true | true | false =
     ⊥-elim (natBoundFalseNotTrue resultBound)
-  execBoundedToken-complete bound monusWord [] result natStackBoundedNil () resultBound
+  execBoundedToken-complete bound monusWord [] result tt natStackBoundedNil () resultBound
   execBoundedToken-complete bound monusWord (value ∷ []) result
-    (natStackBoundedCons _ natStackBoundedNil) () resultBound
+    tt (natStackBoundedCons _ natStackBoundedNil) () resultBound
   execBoundedToken-complete bound monusWord (right ∷ left ∷ stack)
     .(applyNatOp monusOp left right ∷ stack)
-    (natStackBoundedCons rightBound (natStackBoundedCons leftBound stackBound))
+    tt (natStackBoundedCons rightBound (natStackBoundedCons leftBound stackBound))
     refl resultBound
     with natWithinBound left bound in leftCheck
        | natWithinBound right bound in rightCheck
@@ -5183,12 +5211,12 @@ module StrictNatCompiler where
     ⊥-elim (natBoundFalseNotTrue leftBound)
   ... | true | false =
     ⊥-elim (natBoundFalseNotTrue rightBound)
-  execBoundedToken-complete bound multiplyWord [] result natStackBoundedNil () resultBound
+  execBoundedToken-complete bound multiplyWord [] result tt natStackBoundedNil () resultBound
   execBoundedToken-complete bound multiplyWord (value ∷ []) result
-    (natStackBoundedCons _ natStackBoundedNil) () resultBound
+    tt (natStackBoundedCons _ natStackBoundedNil) () resultBound
   execBoundedToken-complete bound multiplyWord (right ∷ left ∷ stack)
     .((left * right) ∷ stack)
-    (natStackBoundedCons rightBound (natStackBoundedCons leftBound stackBound))
+    tt (natStackBoundedCons rightBound (natStackBoundedCons leftBound stackBound))
     refl (natStackBoundedCons resultBound resultStackBound)
     with natWithinBound left bound in leftCheck
        | natWithinBound right bound in rightCheck
@@ -5200,10 +5228,13 @@ module StrictNatCompiler where
     ⊥-elim (natBoundFalseNotTrue rightBound)
   ... | true | true | false =
     ⊥-elim (natBoundFalseNotTrue resultBound)
-  execBoundedToken-complete bound swapWord stack result inputBound stepBound resultBound =
+  execBoundedToken-complete bound swapWord stack result tt inputBound stepBound resultBound =
     stepBound
-  execBoundedToken-complete bound (rollWord depth) stack result inputBound stepBound resultBound =
-    stepBound
+  execBoundedToken-complete bound (rollWord depth) stack result depthBound inputBound stepBound resultBound
+    with natWithinBound depth bound in depthCheck
+  ... | true = stepBound
+  ... | false =
+    ⊥-elim (natBoundFalseNotTrue (trans (sym depthCheck) depthBound))
 
   -- A bounded execution trace records every intermediate abstract stack.
   -- It is exactly the side condition needed for the converse bounded-machine
@@ -5218,6 +5249,7 @@ module StrictNatCompiler where
     boundedTraceStep :
       {token : ForthToken} {tokens : List ForthToken}
       {before after final : List Nat} →
+      tokenImmediateBounded bound token →
       NatStackBounded bound before →
       execToken token before ≡ just after →
       NatStackBounded bound after →
@@ -5230,7 +5262,7 @@ module StrictNatCompiler where
     execTokens tokens before ≡ just final
   boundedExecutionTrace-unbounded (boundedTraceDone stackBound) = refl
   boundedExecutionTrace-unbounded
-    (boundedTraceStep beforeBound step afterBound rest)
+    (boundedTraceStep immediateBound beforeBound step afterBound rest)
     rewrite step = boundedExecutionTrace-unbounded rest
 
   boundedExecutionTrace-bounded :
@@ -5241,9 +5273,9 @@ module StrictNatCompiler where
   boundedExecutionTrace-bounded {bound = bound}
     (boundedTraceStep {token = token} {tokens = tokens}
       {before = before} {after = after}
-      beforeBound step afterBound rest)
+      immediateBound beforeBound step afterBound rest)
     rewrite execBoundedToken-complete bound token before after
-      beforeBound step afterBound =
+      immediateBound beforeBound step afterBound =
       boundedExecutionTrace-bounded rest
 
   -- Converse to successful bounded preservation, under an explicit proof
@@ -5283,6 +5315,16 @@ module StrictNatCompiler where
       (pushLiteral 5 ∷ pushLiteral 2 ∷ multiplyWord ∷ []) [] ≡
     nothing
   boundedMultiplyOverflow = refl
+
+  boundedRollDepthAtLimit :
+    execBoundedTokens 1
+      (rollWord 1 ∷ []) (0 ∷ 1 ∷ []) ≡ just (1 ∷ 0 ∷ [])
+  boundedRollDepthAtLimit = refl
+
+  boundedRollDepthOverflow :
+    execBoundedTokens 1
+      (rollWord 2 ∷ []) (1 ∷ 0 ∷ 1 ∷ []) ≡ nothing
+  boundedRollDepthOverflow = refl
 
   boundedLiteralOverflow :
     execBoundedTokens 9 (pushLiteral 10 ∷ []) [] ≡ nothing
