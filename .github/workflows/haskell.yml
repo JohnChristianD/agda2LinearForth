@@ -287,12 +287,12 @@ jobs:
       - name: Type-check MALLP, rewrite system, and integrated Forth renderer
         id: mallp_proof
         run: |
-          "$AGDA_BIN" --no-fast-reduce --no-projection-like --confluence-check -i formal formal/MALLPForth.agda
+          "$AGDA_BIN" -i formal formal/MALLPForth.agda
 
       - name: Type-check the separate RSED physics specification
         id: physics_proof
         run: |
-          "$AGDA_BIN" --no-fast-reduce --no-projection-like -i formal formal/SovereignRationalSEDPhysics.agda
+          "$AGDA_BIN" -i formal formal/SovereignRationalSEDPhysics.agda
 
       - name: Build the Haskell Forth backend
         id: forth_backend
