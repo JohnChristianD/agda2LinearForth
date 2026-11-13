@@ -1205,7 +1205,7 @@ module Foundations where
         (decideDomain entries (omega (streamOf (mapEntries entries) default)))
 
   -- --------------------------------------------------------------------
-  -- 3. Double-negated logical and choice schemas.
+  -- 3. Negative logical and choice schemas.
   --
   -- Excluded middle, function extensionality, and dependent choice are
   -- postulated only under double negation: each resulting axiom has the
