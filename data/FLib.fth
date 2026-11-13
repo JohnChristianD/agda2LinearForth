@@ -83,9 +83,10 @@ s" MALLP: token failure" exception constant MALLP-ERR
 
 : MALLP-NAT-ROLL ( ... depth -- ... )
     1 MALLP-REQUIRE-STACK
+    DEPTH 1- { available }
     { roll-index -- }
     roll-index MALLP-CHECK-NAT
-    roll-index DEPTH >= IF MALLP-ERR THROW THEN
+    roll-index available >= IF MALLP-ERR THROW THEN
     roll-index ROLL
 ;
 
