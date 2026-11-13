@@ -1351,6 +1351,28 @@ module Foundations where
         (excludedMiddle-implies-peirce ℓ)
         (doubleNegatedExcludedMiddle ℓ)
 
+    -- One explicit package for the negative boundary. Its fields remain
+    -- negative assumptions; bundling them creates no classical witness.
+    record NegativeLogicalBoundary (ℓ : Level) : Set (lsuc ℓ) where
+      field
+        excludedMiddleNegative :
+          ¬ (¬ (ExcludedMiddleAt ℓ))
+        functionExtensionalityNegative :
+          ¬ (¬ (FunctionExtensionalityAt ℓ ℓ))
+        dnsNegative :
+          ¬ (DNSCounterexampleAt ℓ)
+        dependentChoiceNegative :
+          ¬ (¬ (DependentChoiceAt ℓ))
+    open NegativeLogicalBoundary public
+
+    negativeLogicalBoundary : (ℓ : Level) → NegativeLogicalBoundary ℓ
+    negativeLogicalBoundary ℓ = record
+      { excludedMiddleNegative = doubleNegatedExcludedMiddle ℓ
+      ; functionExtensionalityNegative = doubleNegatedFunctionExtensionality ℓ
+      ; dnsNegative = negativeDNS ℓ
+      ; dependentChoiceNegative = doubleNegatedDependentChoice ℓ
+      }
+
   -- --------------------------------------------------------------------
   -- 4. Mac Lane coherence via the thin free monoidal category on
   -- Nat-labelled generators and a computational normal form.
@@ -4133,6 +4155,190 @@ module SBRMALLPBellman (Atom : Nat → Set) where
       (cong encodeResult
         (sym (sBR-step omega default condition base step entries key absent)))
       (stepRealizes objective entries continuation)
+
+
+-- ----------------------------------------------------------------------
+-- ONE JOINT FOUNDATIONS CONSTRAINT FOR A SINGLE OPTIMIZATION PROBLEM
+--
+-- One candidate family, one finite state, one SBR/Bellman objective, one
+-- MALLP resource certificate. The remaining foundations constrain the same
+-- candidate/state/value triple: negative logical boundary, cohesive
+-- representation, quotient invariance, and monoidal resource coherence.
+-- ----------------------------------------------------------------------
+
+module FoundationsOptimization (Atom : Nat → Set) where
+
+  open MALLPRelationalDenotation Atom
+
+  record UnifiedOptimizationConstraint
+      (ℓ : Level)
+      (H G : Category)
+      (productsH : FiniteProducts H)
+      (productsG : FiniteProducts G)
+      (cohesion : CohesiveAdjointQuadruple H G productsH productsG)
+      (R : Set) : Set (lsuc ℓ ⊔ lsuc (lsuc (lsuc lzero))) where
+    field
+      negativeBoundary : NegativeLogicalBoundary ℓ
+
+      -- PEA supplies the candidate from the same Nat domain used by SBR.
+      candidateFamily : ParametricallyEnumerable
+      candidateParameter candidate candidateStage : Nat
+      candidateEnumeration :
+        enumerate candidateFamily candidateParameter candidateStage ≡
+          just candidate
+
+      -- Bellman base/step maps share the same state, continuation, and value
+      -- encodings; MALLP proves both maps consume their resources exactly once.
+      entryAtom continuationAtom resultAtom : Nat
+      encodeEntries : PartialMap Nat → Atom entryAtom
+      encodeContinuation : (Nat → R) → Atom continuationAtom
+      encodeResult : R → Atom resultAtom
+      objectiveBase : PartialMap Nat → R
+      objectiveStep : PartialMap Nat → (Nat → R) → R
+      bellmanResourceProof :
+        MALLPSBRBellmanObjective Nat R
+          entryAtom continuationAtom resultAtom
+          encodeEntries encodeContinuation encodeResult
+          objectiveBase objectiveStep
+
+      -- SBR and finite Bellman optimization act on this very same candidate
+      -- space and value preorder.
+      barControl : (Nat → Nat) → Nat
+      barDefault : Nat
+      barCoverage :
+        SymmetricBarCondition barControl barDefault
+      objectiveState : PartialMap Nat
+      candidateInObjectiveState :
+        memberKey candidate (mapEntries objectiveState) ≡ true
+      valueOrder : Preorder R
+      chooseCandidate : Selection Nat R
+      chooseCandidate-optimal :
+        OptimalSelection valueOrder chooseCandidate
+      finiteHorizon : Nat
+
+      -- Quotient reflection makes objective value independent of which
+      -- representative of a finite state is supplied.
+      stateNormalizer : IdempotentEndomap (PartialMap Nat)
+      objectiveState-canonical :
+        canonicalize stateNormalizer objectiveState ≡ objectiveState
+      objectiveBase-invariant :
+        (entries : PartialMap Nat) →
+        objectiveBase (canonicalize stateNormalizer entries) ≡
+          objectiveBase entries
+      objectiveStep-invariant :
+        (entries : PartialMap Nat) (continuation : Nat → R) →
+        objectiveStep (canonicalize stateNormalizer entries) continuation ≡
+          objectiveStep entries continuation
+
+      -- The candidate is represented in both cohesive categories, with the
+      -- discrete embedding supplied by the same cohesive adjoint quadruple.
+      discreteCandidate : Nat → categoryObjects G
+      cohesiveCandidate : Nat → categoryObjects H
+      candidateEmbedding :
+        (n : Nat) →
+        categoryHom H
+          (functorObject (cohesiveDisc cohesion) (discreteCandidate n))
+          (cohesiveCandidate n)
+
+      -- The resource type has one canonical association; Mac Lane coherence
+      -- identifies every other association path with it.
+      resourceAssociation :
+        TensorHom
+          (tensor (tensor (atom entryAtom) (atom continuationAtom))
+            (atom resultAtom))
+          (tensor (atom entryAtom)
+            (tensor (atom continuationAtom) (atom resultAtom)))
+
+  open UnifiedOptimizationConstraint public
+
+  optimizationValue :
+    {ℓ : Level} {H G : Category}
+    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
+    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
+    {R : Set} →
+    (constraint :
+      UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    PartialMap Nat → R
+  optimizationValue constraint entries =
+    symmetricBarRecAt
+      (barControl constraint)
+      (barDefault constraint)
+      (barCoverage constraint)
+      (objectiveBase constraint)
+      (objectiveStep constraint)
+      entries
+
+  optimizationCandidateFeasible :
+    {ℓ : Level} {H G : Category}
+    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
+    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
+    {R : Set} →
+    (constraint :
+      UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    Predicate (candidateFamily constraint) (candidateParameter constraint)
+      (candidate constraint)
+  optimizationCandidateFeasible constraint =
+    enumerate-sound
+      (candidateFamily constraint)
+      (candidateParameter constraint)
+      (candidateStage constraint)
+      (candidate constraint)
+      (candidateEnumeration constraint)
+
+  -- The PEA-selected universal program enumerates the same feasible
+  -- candidate, possibly at another finite stage.
+  optimizationCandidateCompiled :
+    {ℓ : Level} {H G : Category}
+    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
+    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
+    {R : Set} →
+    (constraint :
+      UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    Σ Nat
+      (λ stage →
+        universalEval
+          (parametricCode parametricEA
+            (candidateFamily constraint)
+            (candidateParameter constraint))
+          stage ≡ just (candidate constraint))
+  optimizationCandidateCompiled constraint =
+    parametricCode-complete
+      parametricEA
+      (candidateFamily constraint)
+      (candidateParameter constraint)
+      (candidate constraint)
+      (optimizationCandidateFeasible constraint)
+
+  finiteOptimizationOptimal :
+    {ℓ : Level} {H G : Category}
+    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
+    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
+    {R : Set} →
+    (constraint :
+      UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    OptimalSelection
+      (valueOrder constraint)
+      (backwardInduction
+        (finiteHorizon constraint)
+        (chooseCandidate constraint))
+  finiteOptimizationOptimal constraint =
+    backwardInduction-optimal
+      (valueOrder constraint)
+      (chooseCandidate constraint)
+      (chooseCandidate-optimal constraint)
+      (finiteHorizon constraint)
+
+  optimizationResourceCoherence :
+    {ℓ : Level} {H G : Category}
+    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
+    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
+    {R : Set} →
+    (constraint :
+      UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    {A B : TensorExpr} →
+    (f g : TensorHom A B) → f ≡ g
+  optimizationResourceCoherence constraint =
+    macLaneCoherence
 
 
 -- ----------------------------------------------------------------------
