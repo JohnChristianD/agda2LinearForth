@@ -251,8 +251,7 @@ compileResourceUse errorPrefix active context index =
            then Right ([], remaining)
            else if depth == 1
              then Right ([FormalSwapWord], remaining)
-             else Right
-               ([FormalPushLiteral depth, FormalRollWord depth], remaining)
+             else Right ([FormalRollWord depth], remaining)
 
 compileNatResourceExpr
   :: Natural
