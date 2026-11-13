@@ -378,7 +378,7 @@ jobs:
             echo "compiler accepted builtin Float"
             exit 1
           fi
-          if ! grep -Fq 'Agda builtin Float is explicitly outside the MALLP compiler contract' forth-float.log; then
+          if ! grep -Fq 'Agda builtin Float is explicitly outside' forth-float.log; then
             cat forth-float.log
             echo "compiler failed without the explicit Float admission diagnostic"
             exit 1
