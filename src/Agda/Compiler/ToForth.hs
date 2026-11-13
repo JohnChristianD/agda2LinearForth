@@ -592,8 +592,7 @@ validateForthNames definitions =
         , "C@", "CHAR", "[CHAR]", "AND", "OR", "INVERT"
         ]
     collisions =
-      duplicateNames ++ filter (
-ame -> name `elem` reservedNames) names
+      duplicateNames ++ filter (flip elem reservedNames) names
 
 unsupported :: String -> TCM a
 unsupported message = fail ("agda2MALLPForth: " ++ message)
