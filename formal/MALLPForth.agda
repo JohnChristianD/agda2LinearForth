@@ -8,6 +8,7 @@
 --prop
 --erased-matches=non-dependent
 --cubical=no-glue
+--with-K
 #-}
 -- ```Agda
 -- ----------------------------------------------------------------------
