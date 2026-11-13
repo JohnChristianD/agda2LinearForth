@@ -184,24 +184,6 @@ module IntegerArithmetic where
 
 open IntegerArithmetic public
 
-module FiniteRationalSums where
-  sumFinite : (n : Nat) → (Nat → Rational) → Rational
-  sumFinite zero f = 0ℚ
-  sumFinite (suc n) f = f zero +ℚ sumFinite n (λ i → f (suc i))
-
-  sumFinite-cong :
-    (n : Nat) (f g : Nat → Rational) →
-    ((i : Nat) → f i ≡ g i) →
-    sumFinite n f ≡ sumFinite n g
-  sumFinite-cong zero f g pointwise = refl
-  sumFinite-cong (suc n) f g pointwise =
-    cong₂ _+ℚ_
-      (pointwise zero)
-      (sumFinite-cong n
-        (λ i → f (suc i))
-        (λ i → g (suc i))
-        (λ i → pointwise (suc i)))
-
 ------------------------------------------------------------------------
 -- FINITE LIST COMPUTATION
 --
@@ -391,6 +373,26 @@ record RationalRingInterface : Set₂ where
     *ℚ-zeroˡ : (a : Rational) → (0ℚ *ℚ a) ≡ 0ℚ
     *ℚ-distribˡ : (a b c : Rational) →
                   (a *ℚ (b +ℚ c)) ≡ ((a *ℚ b) +ℚ (a *ℚ c))
+
+module FiniteRationalSums (Q : RationalRingInterface) where
+  open RationalRingInterface Q
+
+  sumFinite : (n : Nat) → (Nat → Rational) → Rational
+  sumFinite zero f = 0ℚ
+  sumFinite (suc n) f = f zero +ℚ sumFinite n (λ i → f (suc i))
+
+  sumFinite-cong :
+    (n : Nat) (f g : Nat → Rational) →
+    ((i : Nat) → f i ≡ g i) →
+    sumFinite n f ≡ sumFinite n g
+  sumFinite-cong zero f g pointwise = refl
+  sumFinite-cong (suc n) f g pointwise =
+    cong₂ _+ℚ_
+      (pointwise zero)
+      (sumFinite-cong n
+        (λ i → f (suc i))
+        (λ i → g (suc i))
+        (λ i → pointwise (suc i)))
 
 module RationalSED (Q : RationalRingInterface) where
 
@@ -724,7 +726,8 @@ module SovereignRSEDMotive where
   module WithRationalRing (Q : RationalRingInterface) where
     open RationalRingInterface Q
     module P = RationalSED Q
-    open FiniteRationalSums public
+    module Sums = FiniteRationalSums Q
+    open Sums public
     open P
     module Closed = RSEDClosedExchange.WithRationalRing Q
     open Closed
@@ -961,7 +964,8 @@ module SovereignRSEDMotive where
 module RSEDPhysicalFoundations (Q : RationalRingInterface) where
 
   open RationalRingInterface Q
-  open FiniteRationalSums public
+  module Sums = FiniteRationalSums Q
+  open Sums public
   module Relativity = RationalSED Q
   module Exchange = RSEDClosedExchange.WithRationalRing Q
 
