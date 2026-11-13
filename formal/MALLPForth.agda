@@ -4352,8 +4352,8 @@ module FoundationsOptimization (Atom : Nat → Set) where
       UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
     {A B : TensorExpr} →
     (f g : TensorHom A B) → f ≡ g
-  optimizationResourceCoherence constraint =
-    macLaneCoherence
+  optimizationResourceCoherence constraint {A} {B} first second =
+    tensorHom-proposition {A = A} {B = B} first second
 
   candidateScoreOptimal :
     {ℓ : Level} {H G : Category}
@@ -5303,9 +5303,9 @@ module StrictNatCompiler where
   ... | true | true | false | ()
   execBoundedToken-sound bound swapWord stack result proof = proof
   execBoundedToken-sound bound (rollWord depth) stack result proof
-    with natWithinBound depth bound | proof
-  ... | true | refl = refl
-  ... | false | ()
+    with natWithinBound depth bound
+  ... | true = proof
+  ... | false = ()
 
   execBoundedTokens-sound :
     (bound : Nat) (tokens : List ForthToken) (stack result : List Nat) →
