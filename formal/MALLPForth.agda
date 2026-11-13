@@ -4154,23 +4154,23 @@ module SBRMALLPBellman (Atom : Nat → Set) where
 -- executable algorithms.
 -- ----------------------------------------------------------------------
 
-record NegativeFoundationsAt (\ell a b : Level)
-    : Set (lsuc (\ell ⊔ a ⊔ b)) where
+record NegativeFoundationsAt (ℓ a b : Level)
+    : Set (lsuc (ℓ ⊔ a ⊔ b)) where
   field
-    negativeExcludedMiddle : ¬ (¬ (ExcludedMiddleAt \ell))
+    negativeExcludedMiddle : ¬ (¬ (ExcludedMiddleAt ℓ))
     negativeFunctionExtensionality :
       ¬ (¬ (FunctionExtensionalityAt a b))
     negativeDoubleNegationShift :
-      ¬ (DNSCounterexampleAt \ell)
+      ¬ (DNSCounterexampleAt ℓ)
     negativeDependentChoice :
-      ¬ (¬ (DependentChoiceAt \ell))
+      ¬ (¬ (DependentChoiceAt ℓ))
 
-negativeFoundationsAt : (\ell a b : Level) → NegativeFoundationsAt \ell a b
-negativeFoundationsAt \ell a b = record
-  { negativeExcludedMiddle = doubleNegatedExcludedMiddle \ell
+negativeFoundationsAt : (ℓ a b : Level) → NegativeFoundationsAt ℓ a b
+negativeFoundationsAt ℓ a b = record
+  { negativeExcludedMiddle = doubleNegatedExcludedMiddle ℓ
   ; negativeFunctionExtensionality = doubleNegatedFunctionExtensionality a b
-  ; negativeDoubleNegationShift = negativeDNS \ell
-  ; negativeDependentChoice = doubleNegatedDependentChoice \ell
+  ; negativeDoubleNegationShift = negativeDNS ℓ
+  ; negativeDependentChoice = doubleNegatedDependentChoice ℓ
   }
 
 record IdentityRewriteAxioms : Set₃ where
@@ -4264,8 +4264,8 @@ module UnifiedFoundationsOptimization (Atom : Nat → Set) where
       (H G : Category)
       (productsH : FiniteProducts H)
       (productsG : FiniteProducts G)
-      (\ell a b : Level)
-      : Set (lsuc (\ell ⊔ a ⊔ b ⊔ lsuc (lsuc (lsuc lzero)))) where
+      (ℓ a b : Level)
+      : Set (lsuc (ℓ ⊔ a ⊔ b ⊔ lsuc (lsuc (lsuc lzero)))) where
     field
       -- Forster PEA supplies one uniform program for the candidate family.
       positiveEnumerability : ParametricEA
@@ -4358,7 +4358,7 @@ module UnifiedFoundationsOptimization (Atom : Nat → Set) where
 
       -- Negative assumptions, positive identity rewrites, positive SBR
       -- equations, and positive cut elimination stay separately visible.
-      negativeFoundations : NegativeFoundationsAt \ell a b
+      negativeFoundations : NegativeFoundationsAt ℓ a b
       identityFoundations : IdentityRewriteAxioms
       cutEliminationFoundation : MALLPCutElimination
 
