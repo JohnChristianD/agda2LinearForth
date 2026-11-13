@@ -60,6 +60,8 @@ jobs:
           cat > test/MALLPStrict.agda.src <<'AGDA'
           module MALLPStrict where
           
+          open import MALLPForth using
+            (BinaryExponent; shiftCodyadExponentLeft; shiftCodyadExponentRight)
           open import Agda.Builtin.Nat using (Nat; _+_; _*_; _-_)
           
           answerAdd : Nat
@@ -136,6 +138,11 @@ jobs:
           answerCallThree x y z = answerAddTwo x (y + z)
           answerCallNested : Nat → Nat → Nat → Nat
           answerCallNested x y z = answerMultiplyTwo (x + z) y
+          
+          codyadShiftLeft : BinaryExponent → BinaryExponent
+          codyadShiftLeft exponent = shiftCodyadExponentLeft exponent
+          codyadShiftRight : BinaryExponent → BinaryExponent
+          codyadShiftRight exponent = shiftCodyadExponentRight exponent
           AGDA
           cat > test/gforth/mallp-strict.fs <<'FORTH'
           : strict-assert-boolean { actual expected -- }
@@ -180,6 +187,16 @@ jobs:
               -4209 THROW
             THEN
           ;
+          : strict-assert-exponent { actual-sign actual-magnitude expected-sign expected-magnitude -- }
+            actual-sign expected-sign <> IF
+              ." strict Codyad exponent sign mismatch" cr
+              -4210 THROW
+            THEN
+            actual-magnitude expected-magnitude <> IF
+              ." strict Codyad exponent magnitude mismatch" cr
+              -4211 THROW
+            THEN
+          ;
           answerAdd 20 strict-assert-natural
           answerMonus 0 strict-assert-natural
           answerMultiply 20 strict-assert-natural
@@ -196,6 +213,34 @@ jobs:
           MALLP-FALSE MALLP-TRUE chooseBool MALLP-TRUE strict-assert-boolean
           MALLP-TRUE MALLP-FALSE swapBoolPair MALLP-FALSE MALLP-TRUE strict-assert-bool-pair
           answerUnit
+          0 0 MALLP-CODYAD-SHIFT-LEFT 1 1 strict-assert-exponent
+          1 4 MALLP-CODYAD-SHIFT-LEFT 1 5 strict-assert-exponent
+          2 1 MALLP-CODYAD-SHIFT-LEFT 0 0 strict-assert-exponent
+          2 3 MALLP-CODYAD-SHIFT-LEFT 2 2 strict-assert-exponent
+          0 0 MALLP-CODYAD-SHIFT-RIGHT 2 1 strict-assert-exponent
+          1 1 MALLP-CODYAD-SHIFT-RIGHT 0 0 strict-assert-exponent
+          1 4 MALLP-CODYAD-SHIFT-RIGHT 1 3 strict-assert-exponent
+          2 3 MALLP-CODYAD-SHIFT-RIGHT 2 4 strict-assert-exponent
+          : testCodyadNonCanonicalZero ( -- )
+            0 1 MALLP-CODYAD-SHIFT-LEFT
+          ;
+          ' testCodyadNonCanonicalZero CATCH MALLP-ERR strict-assert-natural
+          : testCodyadZeroMagnitude ( -- )
+            1 0 MALLP-CODYAD-SHIFT-LEFT
+          ;
+          ' testCodyadZeroMagnitude CATCH MALLP-ERR strict-assert-natural
+          : testCodyadBadSign ( -- )
+            3 1 MALLP-CODYAD-SHIFT-LEFT
+          ;
+          ' testCodyadBadSign CATCH MALLP-ERR strict-assert-natural
+          : testCodyadPositiveOverflow ( -- )
+            1 MALLP-MAX-NAT MALLP-CODYAD-SHIFT-LEFT
+          ;
+          ' testCodyadPositiveOverflow CATCH MALLP-ERR strict-assert-natural
+          : testCodyadNegativeOverflow ( -- )
+            2 MALLP-MAX-NAT MALLP-CODYAD-SHIFT-RIGHT
+          ;
+          ' testCodyadNegativeOverflow CATCH MALLP-ERR strict-assert-natural
           10 answerIdentity 10 strict-assert-natural
           10 answerAddFive 15 strict-assert-natural
           3 answerMonusFive 0 strict-assert-natural
@@ -350,7 +395,7 @@ jobs:
         id: forth_emit
         run: |
           cp test/MALLPStrict.agda.src test/MALLPStrict.agda
-          if ! cabal run agda2forth -- -i test test/MALLPStrict.agda > agda2forth.log 2>&1; then
+          if ! cabal run agda2forth -- -i formal -i test test/MALLPStrict.agda > agda2forth.log 2>&1; then
             cat agda2forth.log
             exit 1
           fi
@@ -418,9 +463,11 @@ jobs:
           grep -Fq ': swapBoolPair MALLP-SWAP ;' MALLPStrict.fth
           grep -Fq ': answerUnit ;' MALLPStrict.fth
           grep -Eq '^: answerIdentity[[:space:]]*;' MALLPStrict.fth
-          # Pin the complete 29-definition source fixture. Any addition,
+          grep -Fq ': codyadShiftLeft MALLP-CODYAD-SHIFT-LEFT ;' MALLPStrict.fth
+          grep -Fq ': codyadShiftRight MALLP-CODYAD-SHIFT-RIGHT ;' MALLPStrict.fth
+          # Pin the complete 31-definition source fixture. Any addition,
           # removal, or substitution requires a deliberate proof review.
-          for word in answerAdd answerMonus answerMultiply answerLet answerLetShared answerLetUnused answerTrue answerFalse invertBool chooseBool swapBoolPair answerMatchedTrue answerMatchedFalse answerUnit answerIdentity answerAddFive answerMonusFive answerFiveMonus answerMultiplyFive answerWord64Identity answerAddTwo answerMonusTwo answerReverseMonusTwo answerMultiplyTwo answerThree answerThreeLet answerFour answerCallThree answerCallNested; do
+          for word in answerAdd answerMonus answerMultiply answerLet answerLetShared answerLetUnused answerTrue answerFalse invertBool chooseBool swapBoolPair answerMatchedTrue answerMatchedFalse answerUnit answerIdentity answerAddFive answerMonusFive answerFiveMonus answerMultiplyFive answerWord64Identity answerAddTwo answerMonusTwo answerReverseMonusTwo answerMultiplyTwo answerThree answerThreeLet answerFour answerCallThree answerCallNested codyadShiftLeft codyadShiftRight; do
             grep -Eq "^: ${word}[[:space:]]" MALLPStrict.fth || {
               echo "compiler output manifest mismatch: $word"
               exit 1
@@ -428,8 +475,8 @@ jobs:
           done
           emitted_definitions="$(awk '/^\[then\]$/ { emitted = 1; next } emitted && /^: [[:alnum:]_]+[[:space:]]/ { count++ } END { print count + 0 }' MALLPStrict.fth)"
           echo "Compiler-emitted definitions: $emitted_definitions"
-          test "$emitted_definitions" -eq 29 || {
-            echo "expected 29 compiler-emitted definitions after FLib.fth [then]"
+          test "$emitted_definitions" -eq 31 || {
+            echo "expected 31 compiler-emitted definitions after FLib.fth [then]"
             exit 1
           }
           grep -Fq 'answerAddFive' MALLPStrict.fth
@@ -448,6 +495,8 @@ jobs:
           grep -Fq 'MALLP-NAT-ROLL' MALLPStrict.fth
           grep -Fq 'MALLP-SWAP' MALLPStrict.fth
           grep -Fq 'MALLP-NAT-LITERAL' MALLPStrict.fth
+          grep -Fq 'MALLP-CODYAD-SHIFT-LEFT' MALLPStrict.fth
+          grep -Fq 'MALLP-CODYAD-SHIFT-RIGHT' MALLPStrict.fth
           if awk 'emit { print } /^\[then\]$/ { emit = 1; next }' MALLPStrict.fth | grep -Eiq '(^|[[:space:]])(TRUE|FALSE|SWAP|ROLL|IF|ELSE|THEN)([[:space:]]|$)'; then
             echo "generated compiler words contain a raw Forth primitive"
             exit 1

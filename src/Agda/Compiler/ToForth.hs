@@ -1404,6 +1404,7 @@ compiledDefinitionHasCertificate definition =
       expression == BoolPairFields 0 1
     (Nothing, Just UnitWitness) -> True
     (Nothing, Just Word64IdentityWitness) -> True
+    (Nothing, Just (CodyadExponentShiftWitness _)) -> True
     _ -> False
 
 rendererCertificate :: TopLevelModuleName -> [CompiledDefinition] -> Text
@@ -1423,7 +1424,7 @@ rendererCertificate sourceModule definitions
   , "open import Agda.Builtin.Word using (Word64)"
   , "open import MALLPForth using"
   , "  (ForthTextToken; textPushLiteral; textAddWord; textMonusWord; textMultiplyWord;"
-  , "   textSwapWord; textRollWord; textTrueWord; textFalseWord; textIf; renderForthWordText;"
+  , "   textSwapWord; textRollWord; textTrueWord; textFalseWord; textCodyadShiftLeft; textCodyadShiftRight; textIf; renderForthWordText;"
   , "   mapBoolForthTokensAsText; renderBoolCode; compileBoolCaseWithResidual; compileBoolProof;"
   , "   BoolProof; boolTrueProof; boolFalseProof; boolProofDerivation; interpretBoolProof; boolProof-forth-sound-residual;"
   , "   MALLP; dualPos; boolFormula; boolPairFormula; boolPairAssumption; one⁺;"
@@ -1443,7 +1444,11 @@ rendererCertificate sourceModule definitions
   , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate; CutClass; classifyNatTheory; natTheoryCutCount; natResourceExprCutCount; natResourceClass; natResource-derivation-cut-count; natResource-derivation-class;"
   , "   NatStackBounded; natCell; execTokens; execBoundedTokens; execBoundedTokens-preserves;"
   , "   BoundedExecutionTrace; execBoundedTokens-complete; execBoundedTokens-complete-unbounded; cong; cong₂; trans; sym;"
-  , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm; _++ᴳ_)"
+  , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm; _++ᴳ_;"
+  , "   BinaryExponent; shiftCodyadExponentLeft; shiftCodyadExponentRight;"
+  , "   CodyadForthToken; codyadShiftLeftToken; codyadShiftRightToken; binaryExponentStack; execCodyadTokens;"
+  , "   codyadShiftLeft-forth-sound; codyadShiftRight-forth-sound;"
+  , "   MALLPProtocolTheory; codyadFormula; codyadShiftLeftMALLP; codyadShiftRightMALLP)"
   , ""
   ] ++ concat
     [ let index = T.pack (show position)
@@ -2060,6 +2065,57 @@ rendererCertificate sourceModule definitions
           [ (T.pack (show position), definition)
           | (position, definition) <- zip [0 :: Int ..] definitions
           , Just Word64IdentityWitness <- [compiledOtherWitness definition]
+          ]
+    ] ++ concat
+    [ let
+        { suffix = index
+        ; compilerTokensName = "codyadCompilerTokens" <> suffix
+        ; modelTokensName = "codyadModelTokens" <> suffix
+        ; tokenProofName = "codyadTokenCorrespondence" <> suffix
+        ; sourceProofName = "codyadSourceSemantics" <> suffix
+        ; machineProofName = "codyadMachineSound" <> suffix
+        ; derivationName = "codyadMALLPDerivation" <> suffix
+        ; sourceName =
+            T.pack (prettyShow sourceModule) <> "." <>
+              T.pack (prettyShow (qnameName (compiledName definition)))
+        ; isLeft = direction
+        ; tokenTerm = if isLeft then "textCodyadShiftLeft" else "textCodyadShiftRight"
+        ; tokenName = if isLeft then "codyadShiftLeftToken" else "codyadShiftRightToken"
+        ; shiftName = if isLeft then "shiftCodyadExponentLeft" else "shiftCodyadExponentRight"
+        ; soundName = if isLeft then "codyadShiftLeft-forth-sound" else "codyadShiftRight-forth-sound"
+        ; mallpName = if isLeft then "codyadShiftLeftMALLP" else "codyadShiftRightMALLP"
+        }
+      in
+        [ compilerTokensName <> " : List ForthTextToken"
+        , compilerTokensName <> " = " <> formalTokenList (compiledTokens definition)
+        , ""
+        , modelTokensName <> " : List ForthTextToken"
+        , modelTokensName <> " = " <> tokenTerm <> " ∷ []"
+        , ""
+        , tokenProofName <> " : " <> compilerTokensName <> " ≡ " <> modelTokensName
+        , tokenProofName <> " = refl"
+        , ""
+        , derivationName <> " : MALLPProtocolTheory (dualPos codyadFormula ∷ []) (just codyadFormula)"
+        , derivationName <> " = " <> mallpName
+        , ""
+        , sourceProofName <> " :"
+        , "  (exponent : BinaryExponent) → " <> sourceName
+            <> " exponent ≡ " <> shiftName <> " exponent"
+        , sourceProofName <> " exponent = refl"
+        , ""
+        , machineProofName <> " :"
+        , "  (exponent : BinaryExponent) → (residual : List Nat) →"
+        , "  execCodyadTokens (" <> tokenName <> " ∷ [])"
+        , "    (binaryExponentStack exponent ++ᴳ residual) ≡"
+        , "  just (binaryExponentStack (" <> shiftName <> " exponent) ++ᴳ residual)"
+        , machineProofName <> " exponent residual = " <> soundName <> " exponent residual"
+        , ""
+        ]
+      | (index, definition, direction) <-
+          [ (T.pack (show position), definition, direction)
+          | (position, definition) <- zip [0 :: Int ..] definitions
+          , Just (CodyadExponentShiftWitness direction) <-
+              [compiledOtherWitness definition]
           ]
     ]
 emitForthModule :: () -> () -> IsMain -> TopLevelModuleName -> [Maybe CompiledDefinition] -> TCM ()

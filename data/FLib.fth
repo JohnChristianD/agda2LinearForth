@@ -105,5 +105,60 @@ s" MALLP: token failure" exception constant MALLP-ERR
 : MALLP-ELSE POSTPONE ELSE ; IMMEDIATE
 : MALLP-THEN POSTPONE THEN ; IMMEDIATE
 
+\ Codyad exponent words operate on canonical signed exponents (sign, magnitude).
+\ The stream mantissa is a separate delayed resource and remains untouched.
+
+: MALLP-CODYAD-CHECK-EXPONENT ( sign magnitude -- sign magnitude )
+    2 MALLP-REQUIRE-STACK
+    { sign magnitude -- }
+    sign 0< IF MALLP-ERR THROW THEN
+    sign 2 > IF MALLP-ERR THROW THEN
+    magnitude MALLP-CHECK-NAT
+    sign 0= IF
+        magnitude 0<> IF MALLP-ERR THROW THEN
+    ELSE
+        magnitude 0= IF MALLP-ERR THROW THEN
+    THEN
+    sign magnitude
+;
+
+: MALLP-CODYAD-SHIFT-LEFT ( sign magnitude -- sign' magnitude' )
+    MALLP-CODYAD-CHECK-EXPONENT
+    { sign magnitude -- }
+    sign 0= IF
+        1 1
+    ELSE
+        sign 1 = IF
+            magnitude MALLP-MAX-NAT = IF MALLP-ERR THROW THEN
+            1 magnitude 1+
+        ELSE
+            magnitude 1 = IF
+                0 0
+            ELSE
+                2 magnitude 1-
+            THEN
+        THEN
+    THEN
+;
+
+: MALLP-CODYAD-SHIFT-RIGHT ( sign magnitude -- sign' magnitude' )
+    MALLP-CODYAD-CHECK-EXPONENT
+    { sign magnitude -- }
+    sign 0= IF
+        2 1
+    ELSE
+        sign 1 = IF
+            magnitude 1 = IF
+                0 0
+            ELSE
+                1 magnitude 1-
+            THEN
+        ELSE
+            magnitude MALLP-MAX-NAT = IF MALLP-ERR THROW THEN
+            2 magnitude 1+
+        THEN
+    THEN
+;
+
 [then]
 \ MALLP-STRICT-END
