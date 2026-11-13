@@ -4171,6 +4171,8 @@ module SBRMALLPBellman (Atom : Nat → Set) where
 module FoundationsOptimization (Atom : Nat → Set) where
 
   open MALLPRelationalDenotation Atom
+  module Bellman = SBRMALLPBellman Atom
+  open Bellman public
 
   record UnifiedOptimizationConstraint
       (ℓ : Level)
