@@ -1089,6 +1089,10 @@ module Foundations where
       noMoves : Play X zero
       prependMove : {n : Nat} → X → Play X n → Play X (suc n)
 
+    playHeadOr : {X : Set} {horizon : Nat} → X → Play X horizon → X
+    playHeadOr fallback noMoves = fallback
+    playHeadOr fallback (prependMove move rest) = move
+
     backwardInduction :
       {X R : Set} →
       (horizon : Nat) →
@@ -4299,11 +4303,14 @@ module UnifiedFoundationsOptimization (Atom : Nat → Set) where
       valueOrder : Preorder R
       finiteSelection : Selection Nat R
       finiteSelection-optimal : OptimalSelection valueOrder finiteSelection
-      candidatePayoff : Nat → R
-      candidateIsChosen :
-        finiteSelection candidatePayoff ≡ candidate
       finiteHorizon : Nat
       finitePayoff : PartialMap Nat → Play Nat finiteHorizon → R
+      -- The PEA candidate is precisely the initial move of the optimal
+      -- finite policy evaluated by this same payoff on the same quotient state.
+      candidateIsChosen :
+        playHeadOr barDefault
+          (backwardInduction finiteHorizon finiteSelection
+            (finitePayoff (qcoerce quotientInitialState))) ≡ candidate
       finiteDynamicProgrammingValue : R
       finiteDynamicProgrammingValueIsBackwardInduction :
         finiteDynamicProgrammingValue ≡
@@ -5200,16 +5207,8 @@ module StrictNatCompiler where
   natWithinBound : Nat → Nat → Bool
   natWithinBound value bound = value < suc bound
 
-  -- A concrete target stack can contain only nonnegative values that
-  -- fit the selected signed-cell bound. This is an explicit precondition
-  -- for relating the abstract Nat machine to a real Forth process.
-  tokenImmediateBounded : Nat → ForthToken → Set
-  tokenImmediateBounded bound (pushLiteral value) =
-    natWithinBound value bound ≡ true
-  tokenImmediateBounded bound (rollWord depth) =
-    natWithinBound depth bound ≡ true
-  tokenImmediateBounded bound _ = ⊤
-
+  -- A concrete target stack contains only values representable by the
+  -- positive signed-cell bound selected for the Gforth process.
   data NatStackBounded (bound : Nat) : List Nat → Set where
     natStackBoundedNil : NatStackBounded bound []
     natStackBoundedCons :
@@ -5532,7 +5531,6 @@ module StrictNatCompiler where
   -- conditions omitted by a final-result-only bound.
   execBoundedToken-complete :
     (bound : Nat) (token : ForthToken) (stack result : List Nat) →
-    tokenImmediateBounded bound token →
     NatStackBounded bound stack →
     BoundedTokenParameter bound token →
     execToken token stack ≡ just result →
@@ -5612,7 +5610,6 @@ module StrictNatCompiler where
     boundedTraceStep :
       {token : ForthToken} {tokens : List ForthToken}
       {before after final : List Nat} →
-      tokenImmediateBounded bound token →
       NatStackBounded bound before →
       BoundedTokenParameter bound token →
       execToken token before ≡ just after →
@@ -5626,7 +5623,7 @@ module StrictNatCompiler where
     execTokens tokens before ≡ just final
   boundedExecutionTrace-unbounded (boundedTraceDone stackBound) = refl
   boundedExecutionTrace-unbounded
-    (boundedTraceStep immediateBound beforeBound step afterBound rest)
+    (boundedTraceStep beforeBound step afterBound rest)
     rewrite step = boundedExecutionTrace-unbounded rest
 
   boundedExecutionTrace-bounded :

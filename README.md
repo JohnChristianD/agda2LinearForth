@@ -51,21 +51,11 @@ This is a proof obligation on the generalized Bellman algebra, independent of PE
 
 ## One constraint across all Foundations
 
-`UnifiedFoundationsOptimization Atom` exposes `DynamicProgrammingMALLPOptimization`, one dependent record joining all seven Foundations around one dynamic-programming objective:
+`UnifiedFoundationsOptimization.DynamicProgrammingMALLPOptimization` is the single dependent package for one PEA-enumerated Nat candidate, one quotient-normalized partial-map state, one payoff preorder, one finite-horizon dynamic program, one SBR recurrence, and one MALLP-certified Bellman base/step.
 
-- PEA candidate-family coverage and a runtime-parameterized uniform program.
-- A finite payoff, preorder, horizon, selection function, Bellman value, and backward-induction optimality.
-- The same SBR state/value is required to agree with the finite dynamic-programming value; stop/step equations and the MALLP-certified Bellman base/step are in that record.
-- An idempotent quotient representative; base and step maps must respect normalization.
-- A cohesive `H → G` state/candidate view, and a Mac Lane-normalized tensor layout for entry, continuation, and result.
-- Explicit negative logical assumptions, the identity rewrite equations, and the MALLP cut-elimination assumption.
+The record links the PEA candidate to the first move of the backward-induction policy computed by `finiteSelection` against `finitePayoff` on the same normalized initial state. The finite DP value is required to equal the SBR value at that state. The same Bellman maps carry proof-relevant MALLP resource certificates and SBR stop/step equations. Quotient invariance, cohesive candidate/state data, Mac Lane resource association, the negative logical boundary, identity rewrite equations, and the existing cut-elimination contract complete the joint constraint.
 
-The record is a conjunction of proof obligations, not an axiom that manufactures fields. Positive PEA, SBR, identity, and cut-elimination assumptions remain explicit. The finite DP value is tied to the SBR value on the same quotient-normalized initial state, while the exact same Bellman base/step maps carry MALLP resource certificates. 
-## The optimization constraint
-
-`UnifiedFoundationsOptimization.DynamicProgrammingMALLPOptimization` is the single dependent package for one Nat candidate family, quotient-normalized partial-map state, payoff preorder, finite-horizon dynamic program, SBR recurrence, and MALLP-certified Bellman base/step. It additionally carries the SBR stop/step equations, cohesive candidate/state data, the Mac Lane resource association, the negative logical boundary, the existing identity rewrite equations, and the existing cut-elimination contract. The finite DP payoff is indexed by the same normalized initial state used by SBR, and its value is required to agree with the SBR value.
-
-This record packages obligations and existing assumptions; it does not derive PEA, SBR, the identity rewrites, or cut elimination, and it does not prove every optimization problem has a solution or terminates.
+This is a dependent bundle of obligations and existing assumptions, not an axiom that manufactures witnesses. Positive PEA, SBR, identity rewriting, and cut elimination remain explicit. The record does not prove that every optimization problem has a solution or terminates.
 
 ## Is MALLP needed for Bellman optimization?
 
@@ -109,7 +99,7 @@ Recursion, arbitrary higher-order functions, general ADTs/lists, general heap/cl
 
 ## Compiler/proof correspondence
 
-A generated resource selection no longer emits an unchecked raw Forth `ROLL`. Haskell emits a parsed Nat literal followed by `MALLP-NAT-ROLL`; the Agda bounded machine checks that immediate depth against the same cell bound used for stack values, and `FLib.fth` checks both cell representability and stack availability before executing native `ROLL`. Stack underflow and oversized depth are distinct failures, matching the abstract `Maybe` result as observable Forth exceptions.
+A generated resource selection emits namespaced `MALLP-NAT-LITERAL` and `MALLP-NAT-ROLL` words. Haskell renders executable bodies from the proof-carrying `FormalToken` syntax; Agda owns the canonical token renderer and bounded transition semantics. `FLib.fth` implements the MALLP words and checks signed-cell representability and stack availability before invoking native Forth operations. Stack underflow and oversized depth both map to the abstract `Maybe nothing` result.
  
 The strongest end-to-end slice is the admitted Nat path:
 
@@ -123,12 +113,12 @@ The strongest end-to-end slice is the admitted Nat path:
 
 The strict regression fixture pins 29 emitted Forth definitions. The generic Nat resource certificate manifest covers 20 Nat definitions. These are per-definition witnesses, not a theorem that the Haskell compiler is correct for all inputs.
 
-The compiler emits checked `MALLP-SWAP`, `MALLP-NAT-ROLL`, and `MALLP-IF` words. The shared runtime checks stack depth, Nat immediates, arithmetic operands/results, and canonical Agda Bool values (`FALSE = 0`, `TRUE = -1`). Its failure paths share one Gforth throw code, corresponding to Agda's `nothing`. The correspondence covers representable signed-cell values and available Gforth stack capacity; host exhaustion and arbitrary untyped calls remain outside the typed compiler contract.
+The compiler emits only namespaced `MALLP-*` primitives: Nat literal parsing, checked Nat arithmetic, `MALLP-SWAP`, `MALLP-NAT-ROLL`, `MALLP-TRUE/FALSE`, and `MALLP-IF/ELSE/THEN`. Generic Forth primitives are confined to implementations inside `FLib.fth`; generated definitions call only the MALLP vocabulary. The runtime checks stack depth, Nat immediates, arithmetic operands/results, and canonical Agda Bool values (`MALLP-FALSE = 0`, `MALLP-TRUE = -1`). All token failures share one Gforth throw code, corresponding to Agda's single `nothing` result. The correspondence covers representable signed-cell values and available Gforth stack capacity; host exhaustion and arbitrary untyped calls remain outside the typed compiler contract.
 
 | Source family | Established link | Boundary |
 | --- | --- | --- |
 | Nat | Resource derivation, exact Haskell token correspondence, formal token execution, source equality, residual-stack preservation. | Bounded-machine converse needs intermediate-state bounds; real Gforth remains external. |
-| Bool | Exact token decoding, formal Boolean-machine execution, MALLP derivations, source equalities for admitted shapes. | Decoder recognizes only the supported TRUE/FALSE/MALLP-SWAP/MALLP-IF grammar, not arbitrary Forth. |
+| Bool | Exact token decoding, formal Boolean-machine execution, MALLP derivations, source equalities for admitted shapes. | Decoder recognizes only the supported MALLP-TRUE/MALLP-FALSE/MALLP-SWAP/MALLP-IF/MALLP-ELSE/MALLP-THEN grammar, not arbitrary Forth. |
 | BoolPair | Exact emitted-token decoding, tensor field-swap derivation, source/target composition. | Only the detected two-Bool field-swap shape is admitted. |
 | Unit | Nullary source result, empty-token correspondence, multiplicative-unit proof, stack identity. | Argument-bearing Unit functions are skipped. |
 | Word64 | Explicit high/low limb representation and unary identity correspondence. | Constructing representations for all words, arithmetic, and real Gforth limb semantics are outside this theorem. |
