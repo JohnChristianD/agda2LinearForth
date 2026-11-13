@@ -374,10 +374,15 @@ jobs:
           floatIdentity value = value
           AGDA
           if cabal run agda2forth -- -i test test/MALLPFloat.agda > forth-float.log 2>&1; then
+            cat forth-float.log
             echo "compiler accepted builtin Float"
             exit 1
           fi
-          grep -Fq 'Agda builtin Float is explicitly outside the MALLP compiler contract' forth-float.log
+          if ! grep -Fq 'Agda builtin Float is explicitly outside the MALLP compiler contract' forth-float.log; then
+            cat forth-float.log
+            echo "compiler failed without the explicit Float admission diagnostic"
+            exit 1
+          fi
           rm -f test/MALLPFloat.agda
 
       - name: Reject Forth dictionary collisions

@@ -979,14 +979,18 @@ hasFloatInSignature :: Definition -> TCM Bool
 hasFloatInSignature definition = do
   floatName <- getBuiltinName builtinFloat
   TelV telescope resultType <- telView (defType definition)
-  case floatName of
-    Nothing -> pure False
-    Just name -> do
-      resultIsFloat <- isBuiltinType name resultType
-      argumentTypes <- traverse
-        (\domain -> isBuiltinType name (snd (I.unDom domain)))
-        (I.telToList telescope)
-      pure (resultIsFloat || or argumentTypes)
+  let isFloatType ty = do
+        reduced <- reduce ty
+        pure $ case I.unEl reduced of
+          I.Def actual [] ->
+            Just actual == floatName
+              || prettyShow actual == "Agda.Builtin.Float.Float"
+          _ -> False
+  resultIsFloat <- isFloatType resultType
+  argumentTypes <- traverse
+    (\domain -> isFloatType (snd (I.unDom domain)))
+    (I.telToList telescope)
+  pure (resultIsFloat || or argumentTypes)
 
 natFunctionArity :: Definition -> TCM (Maybe Int)
 natFunctionArity definition = do
