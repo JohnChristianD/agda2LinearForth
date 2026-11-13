@@ -364,6 +364,22 @@ jobs:
           fi
           cat renderer-certificate.log
 
+      - name: Reject Forth dictionary collisions
+        id: forth_name_collisions
+        run: |
+          cat > test/MALLPCollision.agda <<'AGDA'
+          module MALLPCollision where
+          open import Agda.Builtin.Nat using (Nat)
+          swap : Nat → Nat
+          swap value = value
+          AGDA
+          if cabal run agda2forth -- -i test test/MALLPCollision.agda > forth-collision.log 2>&1; then
+            echo "compiler accepted a source word that shadows the Forth SWAP primitive"
+            exit 1
+          fi
+          grep -Fq 'Forth identifier collision' forth-collision.log
+          rm -f test/MALLPCollision.agda
+
       - name: Execute strict MALLP fixture under Gforth
         id: strict_fixture
         run: |
