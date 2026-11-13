@@ -4154,94 +4154,6 @@ module SBRMALLPBellman (Atom : Nat → Set) where
 -- executable algorithms.
 -- ----------------------------------------------------------------------
 
-record NegativeFoundationsAt (ℓ a b : Level)
-    : Set (lsuc (ℓ ⊔ a ⊔ b)) where
-  field
-    negativeExcludedMiddle : ¬ (¬ (ExcludedMiddleAt ℓ))
-    negativeFunctionExtensionality :
-      ¬ (¬ (FunctionExtensionalityAt a b))
-    negativeDoubleNegationShift :
-      ¬ (DNSCounterexampleAt ℓ)
-    negativeDependentChoice :
-      ¬ (¬ (DependentChoiceAt ℓ))
-
-negativeFoundationsAt : (ℓ a b : Level) → NegativeFoundationsAt ℓ a b
-negativeFoundationsAt ℓ a b = record
-  { negativeExcludedMiddle = doubleNegatedExcludedMiddle ℓ
-  ; negativeFunctionExtensionality = doubleNegatedFunctionExtensionality a b
-  ; negativeDoubleNegationShift = negativeDNS ℓ
-  ; negativeDependentChoice = doubleNegatedDependentChoice ℓ
-  }
-
-record IdentityRewriteAxioms : Set₃ where
-  field
-    identityTypePostulate : (Set → Set) → Set → Set → Set₁
-    extensionalityPostulate : Set → Set → Set₁
-    reflexiveIdentityRewrite :
-      (A : Set) → extensionalityPostulate A A ≡ Set
-    identityCompositionRewrite :
-      (A : Set → Set) (X Y : Set) →
-      identityTypePostulate A X Y ≡
-      extensionalityPostulate (A X) (A Y)
-
-identityRewriteAxioms : IdentityRewriteAxioms
-identityRewriteAxioms = record
-  { identityTypePostulate = Id
-  ; extensionalityPostulate = ext
-  ; reflexiveIdentityRewrite = refl↓
-  ; identityCompositionRewrite = Id-∙
-  }
-
-record SymmetricBarRecAxioms
-    (operator :
-      {X R : Set} →
-      (omega : (Nat → X) → Nat) →
-      (default : X) →
-      SymmetricBarCondition omega default →
-      (base : PartialMap X → R) →
-      (step : PartialMap X → (X → R) → R) →
-      (entries : PartialMap X) →
-      (key : Nat) →
-      DomainDecision entries key → R) : Set₂ where
-  field
-    stopLaw :
-      {X R : Set} →
-      (omega : (Nat → X) → Nat) →
-      (default : X) →
-      (condition : SymmetricBarCondition omega default) →
-      (base : PartialMap X → R) →
-      (step : PartialMap X → (X → R) → R) →
-      (entries : PartialMap X) →
-      (key : Nat) →
-      (present : memberKey key (mapEntries entries) ≡ true) →
-      operator omega default condition base step entries key
-        (inDomain present) ≡ base entries
-    stepLaw :
-      {X R : Set} →
-      (omega : (Nat → X) → Nat) →
-      (default : X) →
-      (condition : SymmetricBarCondition omega default) →
-      (base : PartialMap X → R) →
-      (step : PartialMap X → (X → R) → R) →
-      (entries : PartialMap X) →
-      (key : Nat) →
-      (absent : memberKey key (mapEntries entries) ≡ false) →
-      operator omega default condition base step entries key
-        (outDomain absent) ≡
-      step entries
-        (λ value →
-          let nextEntries = extendFresh entries key absent value
-              nextKey = omega (streamOf (mapEntries nextEntries) default)
-          in operator omega default condition base step
-               nextEntries nextKey (decideDomain nextEntries nextKey))
-
-symmetricBarRecAxioms :
-  SymmetricBarRecAxioms symmetricBarRec
-symmetricBarRecAxioms = record
-  { stopLaw = sBR-stop
-  ; stepLaw = sBR-step
-  }
-
 optimizationTensor : Nat → Nat → Nat → TensorExpr
 optimizationTensor entryAtom continuationAtom resultAtom =
   tensor (atom entryAtom)
@@ -4250,7 +4162,10 @@ optimizationTensor entryAtom continuationAtom resultAtom =
 module UnifiedFoundationsOptimization (Atom : Nat → Set) where
   module Bellman = SBRMALLPBellman Atom
 
-  record SingleOptimizationConstraint
+  -- One objective, one finite dynamic program, one SBR recurrence, one
+  -- resource certificate. Existing Foundations assumptions remain visible
+  -- as fields; this record adds no axioms or rewrite rules.
+  record DynamicProgrammingMALLPOptimization
       (X R : Set)
       (entryAtom continuationAtom resultAtom : Nat)
       (encodeEntries : PartialMap X → Atom entryAtom)
@@ -4265,9 +4180,9 @@ module UnifiedFoundationsOptimization (Atom : Nat → Set) where
       (productsH : FiniteProducts H)
       (productsG : FiniteProducts G)
       (ℓ a b : Level)
-      : Set (lsuc (ℓ ⊔ a ⊔ b ⊔ lsuc (lsuc (lsuc lzero)))) where
+      : Set (lsuc (lsuc (lsuc (ℓ ⊔ a ⊔ b)))) where
     field
-      -- Forster PEA supplies one uniform program for the candidate family.
+      -- PEA: one compiled program uniformly covers the candidate family.
       positiveEnumerability : ParametricEA
       candidateParameter : Nat
       candidateDecode : Nat → X
@@ -4283,18 +4198,7 @@ module UnifiedFoundationsOptimization (Atom : Nat → Set) where
                 (Predicate candidateFamily candidateParameter value ×
                   candidateDecode value ≡ candidate)))
 
-      -- Finite Bellman selection and optimality are in the same payoff order
-      -- used by the SBR base/step and their MALLP realization.
-      finiteOrder : Preorder R
-      finiteSelection : Selection X R
-      finiteSelectionOptimal : OptimalSelection finiteOrder finiteSelection
-      finiteHorizon : Nat
-      finiteBackwardInductionOptimal :
-        OptimalSelection finiteOrder
-          (backwardInduction finiteHorizon finiteSelection)
-
-      -- The state entering recursion is a genuine quotient representative.
-      -- Base and step maps respect the chosen idempotent normalization.
+      -- Quotient-normalized dynamic-programming state.
       initialEntries : PartialMap X
       entryNormalizer : IdempotentEndomap (PartialMap X)
       quotientInitialEntries :
@@ -4310,14 +4214,9 @@ module UnifiedFoundationsOptimization (Atom : Nat → Set) where
         step entries continuation ≡
         step (canonicalize entryNormalizer entries) continuation
 
-      -- The same base and step carry proof-relevant linear-resource
-      -- derivations. Stop/step equations are packaged against one operator.
-      symmetricBarAxioms : SymmetricBarRecAxioms symmetricBarRec
+      -- SBR: stop/step equations are the very equations used by the
+      -- Bellman objective below.
       barCondition : SymmetricBarCondition omega default
-      bellmanObjective :
-        Bellman.MALLPSBRBellmanObjective X R
-          entryAtom continuationAtom resultAtom
-          encodeEntries encodeContinuation encodeResult base step
       barKey : Nat
       barKeyIsSelected :
         barKey ≡
@@ -4326,13 +4225,53 @@ module UnifiedFoundationsOptimization (Atom : Nat → Set) where
             (mapEntries (qcoerce quotientInitialEntries)) default)
       barKeyDecision :
         DomainDecision (qcoerce quotientInitialEntries) barKey
+      barStopEquation :
+        (entries : PartialMap X) (key : Nat) →
+        (present : memberKey key (mapEntries entries) ≡ true) →
+        symmetricBarRec omega default barCondition base step
+          entries key (inDomain present) ≡ base entries
+      barStepEquation :
+        (entries : PartialMap X) (key : Nat) →
+        (absent : memberKey key (mapEntries entries) ≡ false) →
+        symmetricBarRec omega default barCondition base step
+          entries key (outDomain absent) ≡
+        step entries
+          (λ value →
+            let nextEntries = extendFresh entries key absent value
+                nextKey = omega (streamOf (mapEntries nextEntries) default)
+            in symmetricBarRec omega default barCondition base step
+                 nextEntries nextKey (decideDomain nextEntries nextKey))
       barValue : R
       barValueIsRecursor :
         symmetricBarRec omega default barCondition base step
           (qcoerce quotientInitialEntries) barKey barKeyDecision ≡ barValue
 
-      -- Cohesion links the H-valued optimization state and each G-valued
-      -- candidate view through the actual Π functor.
+      -- Laurent MALLP certifies the exact same base and continuation step.
+      bellmanObjective :
+        Bellman.MALLPSBRBellmanObjective X R
+          entryAtom continuationAtom resultAtom
+          encodeEntries encodeContinuation encodeResult base step
+      cutEliminationFoundation : MALLPCutElimination
+
+      -- Finite-horizon dynamic programming uses the same payoff order and
+      -- finite selector; the value agrees with the SBR result.
+      finiteOrder : Preorder R
+      finiteSelection : Selection X R
+      finiteSelectionOptimal : OptimalSelection finiteOrder finiteSelection
+      finiteHorizon : Nat
+      finitePayoff : Play X finiteHorizon → R
+      finiteDynamicProgrammingValue : R
+      finiteDynamicProgrammingValueIsBackwardInduction :
+        finiteDynamicProgrammingValue ≡
+        finitePayoff
+          (backwardInduction finiteHorizon finiteSelection finitePayoff)
+      finiteBackwardInductionOptimal :
+        OptimalSelection finiteOrder
+          (backwardInduction finiteHorizon finiteSelection)
+      finiteDynamicProgrammingAgreesWithSBR :
+        finiteDynamicProgrammingValue ≡ barValue
+
+      -- Cohesive Π relates the optimization state to each candidate view.
       cohesion : CohesiveAdjointQuadruple H G productsH productsG
       optimizationState : categoryObjects H
       candidateObject : X → categoryObjects G
@@ -4342,29 +4281,57 @@ module UnifiedFoundationsOptimization (Atom : Nat → Set) where
           (functorObject (cohesivePi cohesion) optimizationState)
           (candidateObject candidate)
 
-      -- Mac Lane normal form is the tensor layout for the three MALLP roles.
+      -- Mac Lane's normal form fixes the tensor layout for the three
+      -- resource-bearing roles: state, continuation, result.
       objectiveTensorPath :
         TensorHom
           (optimizationTensor entryAtom continuationAtom resultAtom)
           (normalForm
             (optimizationTensor entryAtom continuationAtom resultAtom))
-      objectiveTensorPathsCoherent :
-        (path :
-          TensorHom
-            (optimizationTensor entryAtom continuationAtom resultAtom)
-            (normalForm
-              (optimizationTensor entryAtom continuationAtom resultAtom))) →
-        path ≡ objectiveTensorPath
 
-      -- Negative assumptions, positive identity rewrites, positive SBR
-      -- equations, and positive cut elimination stay separately visible.
-      negativeFoundations : NegativeFoundationsAt ℓ a b
-      identityFoundations : IdentityRewriteAxioms
-      cutEliminationFoundation : MALLPCutElimination
+      -- Negative logical schemas, identity rewrites and cut elimination
+      -- remain separate assumptions in the single optimization contract.
+      negativeExcludedMiddle : ¬ (¬ (ExcludedMiddleAt ℓ))
+      negativeFunctionExtensionality :
+        ¬ (¬ (FunctionExtensionalityAt a b))
+      negativeDoubleNegationShift : ¬ (DNSCounterexampleAt ℓ)
+      negativeDependentChoice : ¬ (¬ (DependentChoiceAt ℓ))
+      reflexiveIdentityRewrite :
+        (A : Set) → ext A A ≡ Set
+      identityCompositionRewrite :
+        (A : Set → Set) (Y Z : Set) →
+        Id A Y Z ≡ ext (A Y) (A Z)
 
+  objectiveTensorCoherence :
+    {X R : Set}
+    {entryAtom continuationAtom resultAtom : Nat}
+    {encodeEntries : PartialMap X → Atom entryAtom}
+    {encodeContinuation : (X → R) → Atom continuationAtom}
+    {encodeResult : R → Atom resultAtom}
+    {base : PartialMap X → R}
+    {step : PartialMap X → (X → R) → R}
+    {omega : (Nat → X) → Nat}
+    {default : X}
+    {candidateFamily : ParametricallyEnumerable}
+    {H G : Category}
+    {productsH : FiniteProducts H}
+    {productsG : FiniteProducts G}
+    {ℓ a b : Level} →
+    (objective :
+      DynamicProgrammingMALLPOptimization
+        X R entryAtom continuationAtom resultAtom
+        encodeEntries encodeContinuation encodeResult base step
+        omega default candidateFamily H G productsH productsG ℓ a b) →
+    (path :
+      TensorHom
+        (optimizationTensor entryAtom continuationAtom resultAtom)
+        (normalForm
+          (optimizationTensor entryAtom continuationAtom resultAtom))) →
+    path ≡
+      objectiveTensorPath objective
+  objectiveTensorCoherence objective path =
+    macLaneCoherence path (objectiveTensorPath objective)
 
-
--- ----------------------------------------------------------------------
 -- GENERIC LINEAR SOURCE TERMS: STRUCTURAL MALLP DERIVATION
 --
 -- This small, reusable source core indexes every term by its exact live
@@ -5458,10 +5425,7 @@ module StrictNatCompiler where
   execBoundedToken-complete bound swapWord stack result tt inputBound stepBound resultBound =
     stepBound
   execBoundedToken-complete bound (rollWord depth) stack result depthBound inputBound stepBound resultBound
-    with natWithinBound depth bound in depthCheck
-  ... | true = stepBound
-  ... | false =
-    ⊥-elim (natBoundFalseNotTrue (trans (sym depthCheck) depthBound))
+    rewrite depthBound = stepBound
 
   -- A bounded execution trace records every intermediate abstract stack.
   -- It is exactly the side condition needed for the converse bounded-machine
