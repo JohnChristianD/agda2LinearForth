@@ -1371,7 +1371,7 @@ module Foundations where
     negativeLogicalBoundary : (ℓ : Level) → NegativeLogicalBoundary ℓ
     negativeLogicalBoundary ℓ = record
       { excludedMiddleNegative = doubleNegatedExcludedMiddle ℓ
-      ; functionExtensionalityNegative = doubleNegatedFunctionExtensionality ℓ
+      ; functionExtensionalityNegative = doubleNegatedFunctionExtensionality ℓ ℓ
       ; dnsNegative = negativeDNS ℓ
       ; dependentChoiceNegative = doubleNegatedDependentChoice ℓ
       }
