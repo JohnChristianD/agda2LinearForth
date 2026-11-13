@@ -320,7 +320,7 @@ jobs:
       - name: Type-check the separate RSED physics specification
         id: physics_proof
         run: |
-          "$AGDA_BIN" --with-K --no-fast-reduce --no-projection-like -i formal formal/SovereignRationalSEDPhysics.agda
+          "$AGDA_BIN" -i formal formal/SovereignRationalSEDPhysics.agda
 
       - name: Build the Haskell Forth backend
         id: forth_backend
