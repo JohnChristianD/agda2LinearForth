@@ -13,6 +13,7 @@ true constant AGDA2FORTH-MALLP-LOADED
 s" MALLP: negative natural" exception constant MALLP-ERR-NEGATIVE
 s" MALLP: natural overflow" exception constant MALLP-ERR-OVERFLOW
 s" MALLP: invalid natural literal" exception constant MALLP-ERR-LITERAL
+s" MALLP: ROLL stack underflow" exception constant MALLP-ERR-STACK
 
 : MALLP-CHECK-NAT { value -- }
     value 0< IF MALLP-ERR-NEGATIVE THROW THEN
@@ -65,6 +66,13 @@ s" MALLP: invalid natural literal" exception constant MALLP-ERR-LITERAL
     left right * { result }
     result MALLP-CHECK-NAT
     result
+;
+
+: MALLP-NAT-ROLL ( ... depth -- ... )
+    { depth }
+    depth MALLP-CHECK-NAT
+    depth DEPTH >= IF MALLP-ERR-STACK THROW THEN
+    depth ROLL
 ;
 
 
