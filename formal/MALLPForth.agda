@@ -5465,7 +5465,7 @@ module StrictNatCompiler where
   execBoundedToken-failure-classification
     bound (rollWord depth) stack inputBound failure
     with natWithinBound depth bound in depthCheck | failure
-  ... | true | _ = boundedTokenStackError failure
+  ... | true | refl = boundedTokenStackError refl
   ... | false | refl = boundedTokenRollDepthOverflow depthCheck
 
   boundedLiteralOverflowExample :
