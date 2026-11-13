@@ -4361,56 +4361,7 @@ module UnifiedFoundationsOptimization (Atom : Nat → Set) where
       negativeFoundations : NegativeFoundationsAt \ell a b
       identityFoundations : IdentityRewriteAxioms
       cutEliminationFoundation : MALLPCutElimination
-      normalizedBaseDerivation :
-        MALLP
-          (atom⁻ entryAtom ∷ [])
-          (just (atom⁺ resultAtom))
-      normalizedBaseIsCutFree :
-        hasCut normalizedBaseDerivation ≡ false
-      normalizedStepDerivation :
-        MALLP
-          (atom⁻ entryAtom ∷ atom⁻ continuationAtom ∷ [])
-          (just (atom⁺ resultAtom))
-      normalizedStepIsCutFree :
-        hasCut normalizedStepDerivation ≡ false
 
-    -- The uniform PEA code's outputs inhabit the requested family.
-    candidateProgramSound :
-      (stage value : Nat) →
-      universalEval
-        (parametricCode positiveEnumerability candidateFamily candidateParameter)
-        stage ≡ just value →
-      Predicate candidateFamily candidateParameter value
-    candidateProgramSound stage value =
-      parametricCode-sound positiveEnumerability candidateFamily
-        candidateParameter stage value
-
-    -- Applying the cut-elimination oracle yields certified cut-free forms.
-    normalizedBaseIsCutFree-correct :
-      hasCut
-        (normalizeCutProof cutEliminationFoundation
-          (Bellman.baseDerivation bellmanObjective)) ≡ false
-    normalizedBaseIsCutFree-correct =
-      normalizeCutProof-cutFree cutEliminationFoundation
-        (Bellman.baseDerivation bellmanObjective)
-
-    normalizedStepIsCutFree-correct :
-      hasCut
-        (normalizeCutProof cutEliminationFoundation
-          (Bellman.stepDerivation bellmanObjective)) ≡ false
-    normalizedStepIsCutFree-correct =
-      normalizeCutProof-cutFree cutEliminationFoundation
-        (Bellman.stepDerivation bellmanObjective)
-
-    objectiveTensorCoherence :
-      (path :
-        TensorHom
-          (optimizationTensor entryAtom continuationAtom resultAtom)
-          (normalForm
-            (optimizationTensor entryAtom continuationAtom resultAtom))) →
-      path ≡ objectiveTensorPath
-    objectiveTensorCoherence path =
-      macLaneCoherence path objectiveTensorPath
 
 
 -- ----------------------------------------------------------------------
