@@ -14,25 +14,39 @@ The root pragma is:
 {-# OPTIONS --rewriting --confluence-check --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
 ```
 
-The generated renderer pragma remains separate and retains `--with-K`, `--rewriting`, `--confluence-check`, `--lossy-unification`, `--exact-split`, and its existing remaining options. Root `--type-in-type` has been removed. K remains enabled by Agda's default in the root module. No `--safe` claim is made.
+The generated renderer uses the **same pragma** as the root Agda module:
+
+```agda
+{-# OPTIONS --rewriting --confluence-check --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
+```
+
+The previous renderer-only `--with-K`, `--lossy-unification`, and `--exact-split` flags are omitted. K is already enabled by default; lossy unification is an optional, sound-but-incomplete heuristic, not part of the formal semantics, and the generated certificate does not need it. The default exact-split behavior is retained. `--type-in-type` is absent; no `--safe` claim is made.
 
 CI triggers on `push` and `pull_request`; there is no schedule. The public `agda2forth` entrypoint, CLI argument shape, existing compiler invocation, generated renderer filename, and remaining Agda options are compatibility boundaries.
 
-`Set : Set` is a universe-formation judgement, not an Agda term or proposition. Its double negation is therefore not a well-typed postulate. The development uses the predicative universe hierarchy instead.
+`Set : Set` is a universe-formation judgement, not an Agda term or proposition, and type-in-type collapses the universe hierarchy rather than providing a sound impredicative universe. Removing `--type-in-type` does not remove universe polymorphism: `Level`, `Set ℓ`, and explicit level quantification remain available. The current Foundations are not all universe-uniform, however: several core packages (including PEA, SBR, and MALLP) are formulated at the base `Set` level, while the negative logical schemas quantify over universe levels.
+
+`--two-level` is not needed to recover synthetic uniformity or parametricity. It adds Agda's separate strict `SSet` hierarchy alongside the ordinary `Set` hierarchy; it is useful for two-level / cubical developments, not as a replacement for type-in-type or as a parametricity switch.
 
 ## Foundations: positive and negative sides
 
-The root module publicly re-exports six `Foundations` packages and the separate MALLP calculus. Their assumptions, constructive content, and non-claims are deliberately distinguished.
+The root module publicly re-exports six mathematical `Foundations` packages and Laurent MALLP. Their assumptions, constructive content, universe scope, and non-claims are deliberately distinguished.
 
 | Package | Positive or constructive content | Negative boundary / not claimed |
 | --- | --- | --- |
 | `ForsterEnumerability` | A concrete register-machine interpreter; analytic enumerable families; a global positive `parametricEA : ParametricEA` postulate; uniform family compilation with the parameter supplied at runtime. Soundness and completeness preserve the enumerated range. | PEA is assumed, not derived for every family. Range equality does not require identical stage-by-stage output. Typed program syntax is not proved equivalent to numeric Gödel coding or Turing computability. |
 | `SymmetricBarRecursion` | A finite-partial-map interface for Spector-style symmetric bar recursion; positive stop/step equations; finite selection products, backward induction, Bellman equations, and conditional optimality proofs. | `symmetricBarRec` and its equations are postulated under `SymmetricBarCondition`. They do not provide a terminating evaluator by themselves. The full Escardó–Oliva equivalence is not formalized here. |
-| `DoubleNegation` | Double-negated DNE and Peirce are derived from the double-negated excluded-middle schema. | The negative assumptions are `¬¬ExcludedMiddle`, `¬¬FunctionExtensionality`, countable `¬¬DNS`, and `¬¬DependentChoice`; none supplies a positive decision procedure or witness. |
+| `DoubleNegation` | Double-negated DNE and Peirce are derived from the double-negated excluded-middle schema. Ordinary DNS is derived from a negative no-counterexample postulate. | The negative assumptions are `¬¬ExcludedMiddle`, `¬¬FunctionExtensionality`, `¬DNSCounterexample`, and `¬¬DependentChoice`; none supplies a positive decision procedure, pointwise witness, or choice sequence. |
 | `MacLaneCoherence` | A thin free monoidal category on Nat-labelled generators, with executable tensor normal forms and coherence proofs. | The proof uses K/UIP. It has no direct compiler consumer and is not a general coherence theorem for arbitrary MALLP models. |
 | `CohesiveRetractions` | An abstract `Π ⊣ Disc ⊣ Γ ⊣ coDisc` record, full-faithfulness and finite-product preservation contracts, plus a concrete nonidentity finite-posetal model: three H-objects and two G-objects with distinct modalities. | The finite model is a pair of thin finite categories, not a cohesive topos or ∞-topos. It is not assembled with MALLP into the Hamano–Scott *-autonomous categorical model. |
 | `QuotientReflection` | Idempotent endomaps, fixed-point carriers, normalizer/kernel correspondence, a reflective subcategory and idempotent reflection monad; a raw-to-canonical semantic rewrite. | This is a proof-relevant type-theoretic quotient/reflection construction, not proof that arbitrary user data has a useful canonicalizer. |
 | `LaurentPolarizedMALLP` | Proof-relevant polarized MALLP syntax with tensor, par, additives, shifts, exchange, and cut. It is used by selected Nat and Bool resource derivations. | There are no weakening, contraction, or exponential rules. A positive cut-elimination normalizer record is postulated; it is not a derived Gentzen reduction procedure and has no relational-denotation preservation theorem yet. |
+
+## MALLP as a constraint on generalized SBR-Bellman objectives
+
+`SBRMALLPBellman` makes the non-PEA resource calculus an actual objective constraint. A Bellman objective is packaged with two MALLP derivations and relational-soundness obligations: the base derivation consumes one encoded partial-map state; the step derivation consumes that state and one encoded continuation, each exactly once, and produces the encoded objective value. The SBR stop and step equations transport those local certificates to the corresponding SBR branches.
+
+This is a proof obligation on the generalized Bellman algebra, independent of PEA. It lets an objective be rejected unless its base/step semantics have a resource-safe MALLP realization. It does **not** derive the SBR oracle, prove global recursion termination, or claim every arbitrary higher-order continuation has a MALLP encoding; the encoding and derivations are supplied as explicit data.
 
 ## Is MALLP needed for Bellman optimization?
 
@@ -40,7 +54,7 @@ The root module publicly re-exports six `Foundations` packages and the separate 
 
 **SBR matters beyond the finite horizon.** It is the intended general recursion interface for bar-recursive or infinite-horizon constructions. In this file, however, the SBR operator remains an assumption and the formal bridge from SBR to selection is only a one-step instance. The complete general bar-recursion/backward-induction equivalence is not yet proved.
 
-**MALLP matters when an optimizer must be represented as a resource-safe program.** It can certify concrete strategies whose inputs are used linearly. It is not needed to prove an abstract argmax law, and it cannot automatically represent arbitrary functions that duplicate or discard inputs. The current compiler proves selected Nat/Bool resource paths; it does not compile every strategy function.
+**MALLP now also constrains generalized SBR-Bellman objectives.** The `SBRMALLPBellman` contract requires proof-relevant MALLP certificates for the base and continuation-dependent step maps, with relational soundness and exact resource use. It remains a contract on those maps, not a proof that the postulated SBR oracle itself is implemented by MALLP. As a programming calculus, MALLP still cannot automatically represent arbitrary functions that duplicate or discard inputs. The compiler proves selected Nat/Bool resource paths; it does not compile every strategy function.
 
 **The other foundations are conditional infrastructure, not prerequisites for finite optimality:** PEA concerns uniform enumerability and effective codes; double-negation schemas concern logical strength; quotient reflection is relevant when states or payoffs are identified by an idempotent normalizer; cohesion matters when state spaces carry a genuine cohesive structure; Mac Lane coherence governs monoidal syntax. None independently establishes existence of an optimizer.
 
@@ -126,15 +140,15 @@ Negative assumptions:
 
 - `¬¬ExcludedMiddle` at each stated universe level.
 - `¬¬FunctionExtensionality` at the stated universe levels.
-- Countable `¬¬DNS` for families `Nat → Set ℓ`.
+- Countable DNS for families `Nat → Set ℓ`, represented by the negative axiom `negativeDNS : ¬ DNSCounterexampleAt`; ordinary DNS is derived constructively from that counterexample refutation.
 - `¬¬DependentChoice` for type-valued serial relations.
 
 Constructively derived rather than postulated:
 
-- Double-negated DNE and Peirce derived from the `¬¬ExcludedMiddle` assumption; finite bounded-search correctness, finite Bellman equations, conditional finite optimality, finite cohesive-model laws, and quotient-reflection laws.
+- Double-negated DNE and Peirce derived from the `¬¬ExcludedMiddle` assumption; ordinary DNS derived from `negativeDNS`; finite bounded-search correctness, finite Bellman equations, conditional finite optimality, finite cohesive-model laws, and quotient-reflection laws.
 
 ## CI and trust boundary
 
 The workflow installs Gforth and the current Haskell/Agda toolchain, type-checks `formal/MALLPForth.agda` with rewrite confluence checking, type-checks `formal/SovereignRationalSEDPhysics.agda`, builds the backend, compiles the strict source fixture, type-checks the generated renderer certificate, and runs the Gforth fixture. The source and Forth fixtures are materialized transiently by CI; no tracked test directory is required.
 
-Successful CI establishes that these checks pass under the declared options and assumptions. It does not discharge positive postulates, prove PEA/SBR consistency, verify Gforth, establish general Haskell compiler correctness, or prove the MALLP cut-normalizer preserves the Rel denotation. The PR remains an isolated feature branch until reviewed and merged.
+Successful CI establishes that these checks pass under the declared options and assumptions. The Escardó–Coquand–Danielsson–Norell–Xu result preserves natural-number canonicity for jointly consistent negative postulates in intensional MLTT; it is not by itself a canonicity theorem for this entire Agda development, which also contains positive postulates and rewriting. The current checks do not discharge those positive postulates, prove PEA/SBR consistency, verify Gforth, establish general Haskell compiler correctness, or prove the MALLP cut-normalizer preserves the Rel denotation. The PR remains an isolated feature branch until reviewed and merged.
