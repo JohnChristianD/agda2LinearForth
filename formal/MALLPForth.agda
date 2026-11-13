@@ -4282,21 +4282,21 @@ module UnifiedFoundationsOptimization (Atom : Nat → Set) where
           objectiveStep entries continuation
       candidateInObjectiveState :
         memberKey candidate
-          (mapEntries (qcoerce quotientInitialState)) ≡ true
+          (mapEntries (qcoerce {A = PartialMap Nat} {f = stateNormalizer} quotientInitialState)) ≡ true
 
       barKey : Nat
       barKeyIsSelected :
         barKey ≡
           barControl
             (streamOf
-              (mapEntries (qcoerce quotientInitialState)) barDefault)
+              (mapEntries (qcoerce {A = PartialMap Nat} {f = stateNormalizer} quotientInitialState)) barDefault)
       barKeyDecision :
-        DomainDecision (qcoerce quotientInitialState) barKey
+        DomainDecision (qcoerce {A = PartialMap Nat} {f = stateNormalizer} quotientInitialState) barKey
       barValue : R
       barValueIsRecursor :
         symmetricBarRec barControl barDefault barCoverage
           objectiveBase objectiveStep
-          (qcoerce quotientInitialState) barKey barKeyDecision ≡ barValue
+          (qcoerce {A = PartialMap Nat} {f = stateNormalizer} quotientInitialState) barKey barKeyDecision ≡ barValue
 
       -- Finite backward induction uses the same Nat move space and payoff
       -- order. Its payoff is indexed by this exact normalized initial state.
@@ -4310,13 +4310,13 @@ module UnifiedFoundationsOptimization (Atom : Nat → Set) where
       candidateIsChosen :
         playHeadOr barDefault
           (backwardInduction finiteHorizon finiteSelection
-            (finitePayoff (qcoerce quotientInitialState))) ≡ candidate
+            (finitePayoff (qcoerce {A = PartialMap Nat} {f = stateNormalizer} quotientInitialState))) ≡ candidate
       finiteDynamicProgrammingValue : R
       finiteDynamicProgrammingValueIsBackwardInduction :
         finiteDynamicProgrammingValue ≡
           selectedOutcome
             (backwardInduction finiteHorizon finiteSelection)
-            (finitePayoff (qcoerce quotientInitialState))
+            (finitePayoff (qcoerce {A = PartialMap Nat} {f = stateNormalizer} quotientInitialState))
       finiteDynamicProgrammingAgreesWithSBR :
         finiteDynamicProgrammingValue ≡ barValue
 
