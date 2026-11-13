@@ -5358,17 +5358,19 @@ module StrictNatCompiler where
       NatStackOverflow bound (value ∷ stack)
 
   data BoundedTokenFailure
-      (bound : Nat) (token : ForthToken) (stack : List Nat) : Set where
+      (bound : Nat) : ForthToken → List Nat → Set where
     boundedTokenStackError :
+      {token : ForthToken} {stack : List Nat} →
       execToken token stack ≡ nothing →
       BoundedTokenFailure bound token stack
     boundedTokenCellOverflow :
+      {token : ForthToken} {stack : List Nat} →
       (result : List Nat) →
       execToken token stack ≡ just result →
       NatStackOverflow bound result →
       BoundedTokenFailure bound token stack
     boundedTokenRollDepthOverflow :
-      {depth : Nat} →
+      {depth : Nat} {stack : List Nat} →
       natWithinBound depth bound ≡ false →
       BoundedTokenFailure bound (rollWord depth) stack
 
