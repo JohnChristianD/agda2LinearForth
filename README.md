@@ -20,7 +20,8 @@ The generated renderer keeps only its renderer-specific unification option:
 {-# OPTIONS --rewriting --confluence-check --lossy-unification --guardedness #-}
 ```
 
-The proof roots no longer carry diagnostic overrides such as `--no-fast-reduce`, `--no-projection-like`, or `--no-postfix-projections`; those disable Agda's ordinary reduction and syntax behavior and belong in minimized bug reproductions, not the normal proof run. Experimental lazy instances, backtracking search, and polarity analysis were also removed because the current sources do not use them. `--with-K` remains explicit in the separate RSED physics file, where equality elimination is used. `--exact-split` is retained there as a stricter pattern-splitting check. `--lossy-unification` remains only in generated renderer certificates: removing it left unification metas unresolved in `MALLPEmittedRenderer.agda` under Agda 2.8.0.2. It is an elaboration heuristic, not an axiom or runtime rule. `--type-in-type` is absent; no `--safe` claim is made.
+The physics specification uses `--safe --confluence-check --guardedness`; diagnostic reduction/projection overrides have been removed. The MALLP root remains intentionally unsafe because it contains positive postulates and a registered rewrite system. `--exact-split` is enabled by default. `--lossy-unification` remains isolated to generated resource certificates: removing it leaves unification metas unresolved in `MALLPEmittedRenderer.agda` under Agda 2.8.0.2. It is a sound but incomplete elaboration heuristic, not a logical axiom or runtime rule. `--type-in-type` is absent.
+The proof roots no longer carry diagnostic overrides such as `--no-fast-reduce`, `--no-projection-like`, or `--no-postfix-projections`; those disable Agda's ordinary reduction and syntax behavior and belong in minimized bug reproductions, not the normal proof run. Experimental lazy instances, backtracking search, and polarity analysis were also removed because the current sources do not use them. The MALLP root remains intentionally unsafe because it contains positive postulates and registered rewrite rules; the separate physics specification uses the safe profile shown above. `--lossy-unification` remains only in generated renderer certificates: removing it left unification metas unresolved in `MALLPEmittedRenderer.agda` under Agda 2.8.0.2. It is an elaboration heuristic, not an axiom or runtime rule. `--type-in-type` is absent.
 
 CI triggers on `push` and `pull_request`; there is no schedule. The public `agda2forth` entrypoint, CLI argument shape, existing compiler invocation, generated renderer filename, and remaining Agda options are compatibility boundaries.
 
@@ -48,11 +49,13 @@ The root module publicly re-exports six mathematical `Foundations` packages and 
 
 This is a proof obligation on the generalized Bellman algebra, independent of PEA. It lets an objective be rejected unless its base/step semantics have a resource-safe MALLP realization. It does **not** derive the SBR oracle, prove global recursion termination, or claim every arbitrary higher-order continuation has a MALLP encoding; the encoding and derivations are supplied as explicit data.
 
-## One shared Foundations optimization constraint
+## One constraint across all Foundations
 
-`FoundationsOptimization.UnifiedOptimizationConstraint` packages all seven Foundations around one candidate/state/value problem. The same Nat candidate is produced by the PEA family, admitted into the finite SBR partial-map state, and acted on by one Bellman base/step pair. A single MALLP resource proof certifies those base/step maps. The value preorder and finite selector supply finite-horizon optimality; SBR plus its bar condition supplies the general recursion value. Quotient reflection requires objective invariance under state normalization. Cohesion represents every candidate in both the discrete and cohesive categories. Mac Lane coherence supplies the canonical association of the exact entry/continuation/result resource tensor. The negative logical schemas are collected as a negative-only boundary record; bundling them does not derive positive witnesses or classical decision procedures.
+`UnifiedFoundationsOptimization.DynamicProgrammingMALLPOptimization` is the single dependent package for one PEA-enumerated Nat candidate, one quotient-normalized partial-map state, one payoff preorder, one finite-horizon dynamic program, one SBR recurrence, and one MALLP-certified Bellman base/step.
 
-The record is a joint constraint, not a theorem that every problem has an optimizer or terminates. Instantiation still requires concrete PEA family data, a selector with its optimality proof, the SBR bar condition, the MALLP derivations, the quotient invariance proofs, and the cohesive representation. Positive postulates remain visible and unchanged.
+The record links the PEA candidate to the first move of the backward-induction policy computed by `finiteSelection` against `finitePayoff` on the same normalized initial state. The finite DP value is required to equal the SBR value at that state. The same Bellman maps carry proof-relevant MALLP resource certificates and SBR stop/step equations. Quotient invariance, cohesive candidate/state data, Mac Lane resource association, the negative logical boundary, identity rewrite equations, and the existing cut-elimination contract complete the joint constraint.
+
+This is a dependent bundle of obligations and existing assumptions, not an axiom that manufactures witnesses. Positive PEA, SBR, identity rewriting, and cut elimination remain explicit. The record does not prove that every optimization problem has a solution or terminates.
 
 ## Is MALLP needed for Bellman optimization?
 
@@ -96,7 +99,7 @@ Recursion, arbitrary higher-order functions, general ADTs/lists, general heap/cl
 
 ## Compiler/proof correspondence
 
-A generated resource selection no longer emits an unchecked raw Forth `ROLL`. Haskell emits a parsed Nat literal followed by `MALLP-NAT-ROLL`; the Agda bounded machine checks that immediate depth against the same cell bound used for stack values, and `FLib.fth` checks both cell representability and stack availability before executing native `ROLL`. Stack underflow and oversized depth are distinct failures, matching the abstract `Maybe` result as observable Forth exceptions.
+A generated resource selection emits namespaced `MALLP-NAT-LITERAL` and `MALLP-NAT-ROLL` words. Haskell renders executable bodies from the proof-carrying `FormalToken` syntax; Agda owns the canonical token renderer and bounded transition semantics. `FLib.fth` implements the MALLP words and checks signed-cell representability and stack availability before invoking native Forth operations. Stack underflow and oversized depth both map to the abstract `Maybe nothing` result.
  
 The strongest end-to-end slice is the admitted Nat path:
 
@@ -110,10 +113,12 @@ The strongest end-to-end slice is the admitted Nat path:
 
 The strict regression fixture pins 29 emitted Forth definitions. The generic Nat resource certificate manifest covers 20 Nat definitions. These are per-definition witnesses, not a theorem that the Haskell compiler is correct for all inputs.
 
+The compiler emits only namespaced `MALLP-*` primitives: Nat literal parsing, checked Nat arithmetic, `MALLP-SWAP`, `MALLP-NAT-ROLL`, `MALLP-TRUE/FALSE`, and `MALLP-IF/ELSE/THEN`. Generic Forth primitives are confined to implementations inside `FLib.fth`; generated definitions call only the MALLP vocabulary. The runtime checks stack depth, Nat immediates, arithmetic operands/results, and canonical Agda Bool values (`MALLP-FALSE = 0`, `MALLP-TRUE = -1`). All token failures share one Gforth throw code, corresponding to Agda's single `nothing` result. The correspondence covers representable signed-cell values and available Gforth stack capacity; host exhaustion and arbitrary untyped calls remain outside the typed compiler contract.
+
 | Source family | Established link | Boundary |
 | --- | --- | --- |
 | Nat | Resource derivation, exact Haskell token correspondence, formal token execution, source equality, residual-stack preservation. | Bounded-machine converse needs intermediate-state bounds; real Gforth remains external. |
-| Bool | Exact token decoding, formal Boolean-machine execution, MALLP derivations, source equalities for admitted shapes. | Decoder recognizes only the supported TRUE/FALSE/SWAP/IF grammar, not arbitrary Forth. |
+| Bool | Exact token decoding, formal Boolean-machine execution, MALLP derivations, source equalities for admitted shapes. | Decoder recognizes only the supported MALLP-TRUE/MALLP-FALSE/MALLP-SWAP/MALLP-IF/MALLP-ELSE/MALLP-THEN grammar, not arbitrary Forth. |
 | BoolPair | Exact emitted-token decoding, tensor field-swap derivation, source/target composition. | Only the detected two-Bool field-swap shape is admitted. |
 | Unit | Nullary source result, empty-token correspondence, multiplicative-unit proof, stack identity. | Argument-bearing Unit functions are skipped. |
 | Word64 | Explicit high/low limb representation and unary identity correspondence. | Constructing representations for all words, arithmetic, and real Gforth limb semantics are outside this theorem. |
@@ -157,6 +162,21 @@ Constructively derived rather than postulated:
 
 ## CI and trust boundary
 
-The workflow installs Gforth and the current Haskell/Agda toolchain, type-checks `formal/MALLPForth.agda` with rewrite confluence checking, type-checks `formal/SovereignRationalSEDPhysics.agda`, builds the backend, compiles the strict source fixture, type-checks the generated renderer certificate, and runs the Gforth fixture. The source and Forth fixtures are materialized transiently by CI; no tracked test directory is required.
+The workflow installs Gforth and the current Haskell/Agda toolchain, type-checks `formal/MALLPForth.agda` with rewrite confluence checking, type-checks `formal/SovereignRationalSEDPhysics.agda` under its `--safe` pragma, builds the backend, compiles the strict source fixture, type-checks the generated renderer certificate, and runs the Gforth fixture. The source and Forth fixtures are materialized transiently by CI; no tracked test directory is required.
 
 Successful CI establishes that these checks pass under the declared options and assumptions. The Escardó–Coquand–Danielsson–Norell–Xu result preserves natural-number canonicity for jointly consistent negative postulates in intensional MLTT; it is not by itself a canonicity theorem for this entire Agda development, which also contains positive postulates and rewriting. The current checks do not discharge those positive postulates, prove PEA/SBR consistency, verify Gforth, establish general Haskell compiler correctness, or prove the MALLP cut-normalizer preserves the Rel denotation. The PR remains an isolated feature branch until reviewed and merged.
+
+
+## Exact numeric carrier for real-valued objectives
+
+The optimization record keeps its payoff carrier `R` abstract. The current Forth compiler admits Nat, Bool, selected Bool pairs, Unit, and unary Word64 identity; it has no Float lowering or floating-point runtime word. CI includes a `Float → Float` identity source definition and checks that the compiler rejects the declaration before emitting any Forth definition. This is a compiler admission boundary, not a global Agda prohibition on mentioning the builtin Float type in unrelated source files.
+
+For non-rational exact-real objectives, the default representation contract is now `Codyadic` in `SovereignRationalSEDPhysics.agda`: a finite signed `Int` binary shift paired with an **untruncated coinductive stream** over `{-1, 0, 1}`. Its mantissa denotes `Σ dₙ·2⁻⁽ⁿ⁺¹⁾`; the finite shift supplies arbitrary finite scale. `Conat` indexes observation prefixes, while the underlying digit stream remains infinite. No infinite conatural is used as a real exponent.
+
+`CodyadicFieldInterface` states the constructive algebraic contract: denotational setoid equality (rather than structural stream equality), commutative-ring laws, and an apartness relation. Reciprocal construction takes positive apartness evidence from zero, with both inverse laws. This preserves the field laws at the quotient/setoid level without assuming that a bare `¬ (x ≈ 0)` gives an effective denominator bound.
+
+The interface is a proof obligation, not a fabricated instance: productive digit arithmetic and a concrete implementation of its laws are still required. The current RSED model remains the exact rational specialization `RationalRingInterface` plus denominator witnesses; no floating-point fallback is present. The Forth compiler explicitly rejects Agda builtin `Float` in compiled function signatures, but this is a compiler admission boundary, not a global ban on Agda source files mentioning that type. The Codyadic digit arithmetic and corresponding MALLP/Gforth word family are not yet executable in this compiler fragment.
+
+For geometric objectives, the existing `RSEDPhysicalFoundations` already uses Wildberger-style algebraic quadrance and spread. Quadrance is computed from coordinate differences and dot products; spread is represented by an exact cross-product numerator, a quadrance-product denominator, and a nonzero proof. These formulas avoid evaluating sine, cosine, square roots, or other transcendental functions. A lookup table is useful only for a genuinely finite, fixed input domain; it does not replace the general algebraic formulas and is unnecessary for the current quadrance/spread definitions. The current MALLP Forth arithmetic remains Nat-only.
+
+References: [MAA review of Wildberger's rational trigonometry](https://old.maa.org/node/105441); [Wiesnet and Köpp on coinductive binary signed-digit reals](https://doi.org/10.46298/LMCS-18(3:24)2022); [Schwichtenberg and Wiesnet on exact real division from signed-digit streams](https://arxiv.org/abs/1904.12763).

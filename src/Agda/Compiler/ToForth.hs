@@ -17,7 +17,7 @@ import Agda.TypeChecking.Reduce (reduce)
 import Agda.TypeChecking.Substitute (TelV(..))
 import Agda.TypeChecking.Telescope (telView)
 import Data.Char (isAlphaNum, isDigit)
-import Data.List (elemIndex, find, sort)
+import Data.List (elemIndex, find, group, sort)
 import qualified Data.List.NonEmpty as NE
 import Data.SCargot
 import Data.SCargot.Repr
@@ -59,7 +59,6 @@ data OtherWitness
 
 data CompiledDefinition = CompiledDefinition
   { compiledName :: QName
-  , compiledForm :: FthForm
   , compiledTokens :: [FormalToken]
   , compiledNatLinearWitness :: Maybe NatLinearExpr
   , compiledNatBinaryWitness :: Maybe NatBinaryLinearExpr
@@ -240,7 +239,7 @@ compileResourceUse
   -> Natural
   -> [Int]
   -> Int
-  -> Either String (FthForm, [FormalToken], [Int])
+  -> Either String ([FormalToken], [Int])
 compileResourceUse errorPrefix active context index =
   case elemIndex index context of
     Nothing -> Left (errorPrefix ++ show index)
@@ -248,22 +247,18 @@ compileResourceUse errorPrefix active context index =
       let depth = active + fromIntegral position
           remaining = take position context ++ drop (position + 1) context
       in if depth == 0
-           then Right (RSList [], [], remaining)
+           then Right ([], remaining)
            else if depth == 1
-             then Right (RSAtom "SWAP", [FormalSwapWord], remaining)
-             else Right
-               ( RSList [renderNatExpr (NatLiteral depth), RSAtom "MALLP-NAT-ROLL"]
-               , [FormalRollWord depth]
-               , remaining
-               )
+             then Right ([FormalSwapWord], remaining)
+             else Right ([FormalRollWord depth], remaining)
 
 compileNatResourceExpr
   :: Natural
   -> [Int]
   -> NatResourceExpr
-  -> Either String (FthForm, [FormalToken], [Int])
+  -> Either String ([FormalToken], [Int])
 compileNatResourceExpr _ context (NatResourceLiteral value) =
-  Right (renderNatExpr (NatLiteral value), [FormalPushLiteral value], context)
+  Right ([FormalPushLiteral value], context)
 compileNatResourceExpr active context (NatResourceVariable index) =
   compileResourceUse
     "MALLP resource is missing, duplicated, or out of scope: "
@@ -279,16 +274,12 @@ compileNatResourceBinary
   -> NatOp
   -> NatResourceExpr
   -> NatResourceExpr
-  -> Either String (FthForm, [FormalToken], [Int])
+  -> Either String ([FormalToken], [Int])
 compileNatResourceBinary active context operation left right = do
-  (leftCode, leftTokens, afterLeft) <- compileNatResourceExpr active context left
-  (rightCode, rightTokens, afterRight) <-
+  (leftTokens, afterLeft) <- compileNatResourceExpr active context left
+  (rightTokens, afterRight) <-
     compileNatResourceExpr (active + 1) afterLeft right
-  pure
-    ( RSList [leftCode, rightCode, renderNatOp operation]
-    , leftTokens ++ rightTokens ++ [formalNatToken operation]
-    , afterRight
-    )
+  pure (leftTokens ++ rightTokens ++ [formalNatToken operation], afterRight)
 
 -- The generated Agda Bool machine currently has checked models for the
 -- unary complement and the two-argument additive chooser. Keep admission
@@ -304,37 +295,25 @@ supportedBoolResourceProgram _ _ = False
 compileBoolResourceExpr
   :: [Int]
   -> BoolExpr
-  -> Either String (FthForm, [FormalToken], [Int])
+  -> Either String ([FormalToken], [Int])
 compileBoolResourceExpr context (BoolLiteral value) =
-  let (forth, token) = if value
-        then ("TRUE", FormalTrueWord)
-        else ("FALSE", FormalFalseWord)
-  in Right (RSAtom forth, [token], context)
+  let token = if value then FormalTrueWord else FormalFalseWord
+  in Right ([token], context)
 compileBoolResourceExpr context (BoolVariable index) =
   compileResourceUse
     "MALLP Bool resource is missing, duplicated, or out of scope: "
     0 context index
 compileBoolResourceExpr context (BoolConditional condition whenTrue whenFalse) = do
-  (conditionCode, conditionTokens, afterCondition) <-
+  (conditionTokens, afterCondition) <-
     compileBoolResourceExpr context condition
-  (trueCode, trueTokens, afterTrue) <-
+  (trueTokens, afterTrue) <-
     compileBoolResourceExpr afterCondition whenTrue
-  (falseCode, falseTokens, afterFalse) <-
+  (falseTokens, afterFalse) <-
     compileBoolResourceExpr afterCondition whenFalse
   if afterTrue /= afterFalse
     then Left "MALLP additive case branches consume different resource contexts"
     else Right
-      ( RSList
-          [ conditionCode
-          , RSAtom "IF"
-          , trueCode
-          , RSAtom "ELSE"
-          , falseCode
-          , RSAtom "THEN"
-          ]
-      , conditionTokens ++ [FormalIf trueTokens falseTokens]
-      , afterTrue
-      )
+      (conditionTokens ++ [FormalIf trueTokens falseTokens], afterTrue)
 
 decodeBoolPairField :: TTerm -> TCM Int
 decodeBoolPairField term =
@@ -392,7 +371,7 @@ compileBoolPairResource
   :: Natural
   -> [Int]
   -> Int
-  -> Either String (FthForm, [FormalToken], [Int])
+  -> Either String ([FormalToken], [Int])
 compileBoolPairResource active context index =
   compileResourceUse
     "MALLP BoolPair field missing, duplicated, or out of scope: "
@@ -402,7 +381,7 @@ compileBoolPairFunction
   :: QName
   -> QName
   -> TTerm
-  -> TCM (FthForm, [FormalToken], BoolPairExpr)
+  -> TCM ([FormalToken], BoolPairExpr)
 compileBoolPairFunction owner constructor term = do
   expression <- decodeBoolPairFunction owner constructor term
   let (first, second) = case expression of
@@ -415,19 +394,19 @@ compileBoolPairFunction owner constructor term = do
   if expression /= BoolPairFields 0 1
     then unsupported "BoolPair field permutation is outside the Agda-certified tensor-swap fragment"
     else pure ()
-  (firstCode, firstTokens, afterFirst) <-
+  (firstTokens, afterFirst) <-
     either unsupported pure (compileBoolPairResource 0 expectedResources first)
-  (secondCode, secondTokens, remaining) <-
+  (secondTokens, remaining) <-
     either unsupported pure (compileBoolPairResource 1 afterFirst second)
   if null remaining
-    then pure (RSList [firstCode, secondCode], firstTokens ++ secondTokens, expression)
+    then pure (firstTokens ++ secondTokens, expression)
     else unsupported ("MALLP BoolPair resource leak: " ++ show remaining)
 
 compileBoolResourceFunction
   :: QName
   -> Int
   -> TTerm
-  -> TCM (FthForm, [FormalToken], BoolExpr)
+  -> TCM ([FormalToken], BoolExpr)
 compileBoolResourceFunction owner arity term = do
   let (actualArity, body) = tLamView term
       expectedResources = [0 .. arity - 1]
@@ -445,17 +424,17 @@ compileBoolResourceFunction owner arity term = do
   if not (supportedBoolResourceProgram arity expression)
     then unsupported "Bool resource tree is linear but outside the Agda-certified Bool complement/chooser fragment"
     else pure ()
-  (code, tokens, remaining) <-
+  (tokens, remaining) <-
     either unsupported pure (compileBoolResourceExpr expectedResources expression)
   if null remaining
-    then pure (code, tokens, expression)
+    then pure (tokens, expression)
     else unsupported ("MALLP Bool resource leak: unconsumed arguments " ++ show remaining)
 
 compileNatResourceFunction
   :: QName
   -> Int
   -> TTerm
-  -> TCM (NatResourceExpr, FthForm, [FormalToken], Maybe NatLinearExpr, Maybe NatBinaryLinearExpr)
+  -> TCM (NatResourceExpr, [FormalToken], Maybe NatLinearExpr, Maybe NatBinaryLinearExpr)
 compileNatResourceFunction owner arity term = do
   let (actualArity, body) = tLamView term
   if actualArity /= arity
@@ -469,7 +448,7 @@ compileNatResourceFunction owner arity term = do
   if actualResources /= expectedResources
     then unsupported "MALLP linearity violation: each live Nat argument must occur exactly once"
     else pure ()
-  (code, tokens, remaining) <- either unsupported pure
+  (tokens, remaining) <- either unsupported pure
     (compileNatResourceExpr 0 expectedResources expression)
   if null remaining
     then do
@@ -480,7 +459,7 @@ compileNatResourceFunction owner arity term = do
         _ -> pure Nothing
       let binaryWitness =
             if arity == 2 then natResourceBinaryLinearExpr expression else Nothing
-      pure (expression, code, tokens, linearWitness, binaryWitness)
+      pure (expression, tokens, linearWitness, binaryWitness)
     else unsupported ("MALLP resource leak: unconsumed arguments " ++ show remaining)
 
 natResourceClosedExpr :: NatResourceExpr -> Maybe NatExpr
@@ -560,6 +539,44 @@ safeForthName name =
 strictWord :: QName -> FthForm -> FthForm
 strictWord name body =
   RSAtom $ T.concat [": ", safeForthName name, " ", formToText body, ";"]
+
+compiledDefinitionForm :: CompiledDefinition -> FthForm
+compiledDefinitionForm definition =
+  strictWord (compiledName definition)
+    (formalTokensForm (compiledTokens definition))
+
+-- Forth dictionary lookup is case-insensitive. Reject collisions after
+-- identifier sanitization, including names that shadow runtime primitives.
+validateForthNames :: [CompiledDefinition] -> TCM ()
+validateForthNames definitions =
+  if null collisions
+    then pure ()
+    else unsupported
+      ("Forth identifier collision with runtime/builtin dictionary: "
+        ++ show (map T.unpack collisions))
+  where
+    names =
+      map (T.toCaseFold . safeForthName . compiledName) definitions
+    duplicateNames =
+      map head (filter ((> 1) . length) (group (sort names)))
+    reservedNames =
+      map T.toCaseFold
+        [ "AGDA2FORTH-MALLP-LOADED", "MALLP-MAX-NAT", "MALLP-ERR"
+        , "MALLP-ERR-NEGATIVE", "MALLP-ERR-OVERFLOW", "MALLP-ERR-LITERAL"
+        , "MALLP-ERR-STACK", "MALLP-REQUIRE-STACK", "MALLP-CHECK-NAT"
+        , "MALLP-PARSE-NAT", "MALLP-NAT-LITERAL", "MALLP-NAT-ADD", "MALLP-NAT-MONUS"
+        , "MALLP-NAT-MUL", "MALLP-SWAP", "MALLP-NAT-ROLL"
+        , "MALLP-CHECK-BOOL", "MALLP-TRUE", "MALLP-FALSE", "MALLP-IF", "MALLP-ELSE", "MALLP-THEN", "TRUE", "FALSE"
+        , "SWAP", "ROLL", "DEPTH", "THROW", "CATCH", "BYE"
+        , "IF", "ELSE", "THEN", "BEGIN", "WHILE", "REPEAT"
+        , "POSTPONE", "IMMEDIATE", "CONSTANT", "EXCEPTION", "PARSE-NAME", "LITERAL"
+        , "DUP", "?DUP", "2DUP", "3DUP", "OVER", "2OVER"
+        , "PICK", "DROP", "2DROP", "3DROP", "NIP", "2NIP", "TUCK"
+        , "+", "-", "*", "/", ">", "<", "<>", "0<", "0=", "0<>", "1+"
+        , "C@", "CHAR", "[CHAR]", "AND", "OR", "INVERT"
+        ]
+    collisions =
+      duplicateNames ++ filter (flip elem reservedNames) names
 
 unsupported :: String -> TCM a
 unsupported message = fail ("agda2MALLPForth: " ++ message)
@@ -661,16 +678,41 @@ renderNatOp operation = RSAtom $ case operation of
 
 renderNatExpr :: NatExpr -> FthForm
 renderNatExpr (NatLiteral n) =
-  RSAtom $ T.concat ["s\" ", T.pack (show n), "\" MALLP-PARSE-NAT"]
+  RSList [RSAtom "MALLP-NAT-LITERAL", RSAtom (T.pack (show n))]
 renderNatExpr (NatBinary operation left right) =
   RSList [renderNatExpr left, renderNatExpr right, renderNatOp operation]
+
+-- Proof-carrying tokens are the single source of target instruction text.
+-- The emitted word body is derived from this AST, not assembled separately.
+formalTokenForm :: FormalToken -> FthForm
+formalTokenForm (FormalPushLiteral value) =
+  renderNatExpr (NatLiteral value)
+formalTokenForm FormalAddWord = renderNatOp NatAdd
+formalTokenForm FormalMonusWord = renderNatOp NatMonus
+formalTokenForm FormalMultiplyWord = renderNatOp NatMultiply
+formalTokenForm FormalSwapWord = RSAtom "MALLP-SWAP"
+formalTokenForm (FormalRollWord depth) =
+  RSList [renderNatExpr (NatLiteral depth), RSAtom "MALLP-NAT-ROLL"]
+formalTokenForm FormalTrueWord = RSAtom "MALLP-TRUE"
+formalTokenForm FormalFalseWord = RSAtom "MALLP-FALSE"
+formalTokenForm (FormalIf whenTrue whenFalse) =
+  RSList
+    [ RSAtom "MALLP-IF"
+    , formalTokensForm whenTrue
+    , RSAtom "MALLP-ELSE"
+    , formalTokensForm whenFalse
+    , RSAtom "MALLP-THEN"
+    ]
+
+formalTokensForm :: [FormalToken] -> FthForm
+formalTokensForm = RSList . map formalTokenForm
 
 renderNatLinearExpr :: NatLinearExpr -> FthForm
 renderNatLinearExpr NatArgument = RSList []
 renderNatLinearExpr (NatLinearLeft operation input right) =
   RSList [renderNatLinearExpr input, renderNatExpr right, renderNatOp operation]
 renderNatLinearExpr (NatLinearRight operation left input) =
-  RSList [renderNatExpr left, RSAtom "SWAP", renderNatLinearExpr input, renderNatOp operation]
+  RSList [renderNatExpr left, RSAtom "MALLP-SWAP", renderNatLinearExpr input, renderNatOp operation]
 
 renderNatTerm :: NatTerm -> FthForm
 renderNatTerm (NatClosed expression) = renderNatExpr expression
@@ -709,7 +751,7 @@ renderNatBinaryLinearExpr :: NatBinaryLinearExpr -> FthForm
 renderNatBinaryLinearExpr (NatBinaryArguments operation) =
   renderNatOp operation
 renderNatBinaryLinearExpr (NatBinaryArgumentsExchanged operation) =
-  RSList [RSAtom "SWAP", renderNatOp operation]
+  RSList [RSAtom "MALLP-SWAP", renderNatOp operation]
 
 decodeBoolTerm :: [QName] -> [Bool] -> TTerm -> TCM Bool
 decodeBoolTerm callStack environment term = do
@@ -933,6 +975,23 @@ hasNatResult definition = do
     Nothing -> pure False
     Just name -> isBuiltinType name resultType
 
+hasFloatInSignature :: Definition -> TCM Bool
+hasFloatInSignature definition = do
+  floatName <- getBuiltinName builtinFloat
+  TelV telescope resultType <- telView (defType definition)
+  let isFloatType ty = do
+        reduced <- reduce ty
+        pure $ case I.unEl reduced of
+          I.Def actual [] ->
+            Just actual == floatName
+              || prettyShow actual == "Agda.Builtin.Float.Float"
+          _ -> False
+  resultIsFloat <- isFloatType resultType
+  argumentTypes <- traverse
+    (\domain -> isFloatType (snd (I.unDom domain)))
+    (I.telToList telescope)
+  pure (resultIsFloat || or argumentTypes)
+
 natFunctionArity :: Definition -> TCM (Maybe Int)
 natFunctionArity definition = do
   natName <- getBuiltinName builtinNat
@@ -991,7 +1050,7 @@ compileWord64IdentityFunction
   :: QName
   -> Int
   -> TTerm
-  -> TCM (FthForm, [FormalToken])
+  -> TCM [FormalToken]
 compileWord64IdentityFunction owner arity term = do
   let (actualArity, body) = tLamView term
   if arity /= 1 || actualArity /= 1
@@ -1002,7 +1061,7 @@ compileWord64IdentityFunction owner arity term = do
   decodeWord64Identity body
   -- Word64 is one source resource represented by (high low) cells. The
   -- identity function consumes and returns that pair unchanged.
-  pure (RSList [], [])
+  pure []
 
 
 -- Recognize a closed, non-indexed one-constructor product of exactly two
@@ -1083,14 +1142,18 @@ compileDefinition definition
         boolPairConstructor <- boolPairFunctionConstructor definition
         word64Arity <- word64FunctionArity definition
         unitArity <- unitFunctionArity definition
-        if isNat then do
+        hasFloat <- hasFloatInSignature definition
+        if hasFloat
+          then unsupported "Agda builtin Float is explicitly outside the MALLP compiler contract"
+        else if isNat then do
           body <- toTreeless EagerEvaluation (defName definition)
           case (natArity, body) of
             (Just arity, Just term) -> do
-              (resourceWitness, code, tokens, linearWitness, binaryWitness) <-
+              (resourceWitness, tokens, linearWitness, binaryWitness) <-
                 compileNatResourceFunction (defName definition) arity term
               pure (Just (CompiledDefinition
-                (defName definition) (strictWord (defName definition) code) tokens
+                (defName definition)
+                tokens
                 linearWitness binaryWitness (Just resourceWitness) Nothing))
             (Just _, Nothing) -> pure Nothing
             (Nothing, _) -> unsupported "Nat definition has a non-Nat argument or result"
@@ -1100,20 +1163,19 @@ compileDefinition definition
             Nothing -> pure Nothing
             Just term -> do
               value <- decodeBoolTerm [] [] term
-              let (forthBoolean, formalBoolean) =
-                    if value then ("TRUE", FormalTrueWord) else ("FALSE", FormalFalseWord)
+              let tokens = [if value then FormalTrueWord else FormalFalseWord]
               pure (Just (CompiledDefinition
                 (defName definition)
-                (strictWord (defName definition) (RSAtom forthBoolean))
-                [formalBoolean] Nothing Nothing Nothing (Just (ClosedBoolWitness value))))
+                tokens Nothing Nothing Nothing (Just (ClosedBoolWitness value))))
         else if maybe False (> 0) boolArity then do
           body <- toTreeless EagerEvaluation (defName definition)
           case (boolArity, body) of
             (Just arity, Just term) -> do
-              (code, tokens, expression) <-
+              (tokens, expression) <-
                 compileBoolResourceFunction (defName definition) arity term
               pure (Just (CompiledDefinition
-                (defName definition) (strictWord (defName definition) code) tokens
+                (defName definition)
+                tokens
                 Nothing Nothing Nothing (Just (BoolFunctionWitness arity expression))))
             (Just _, Nothing) -> pure Nothing
             _ -> unsupported "Bool function arity classification changed during compilation"
@@ -1121,10 +1183,11 @@ compileDefinition definition
           body <- toTreeless EagerEvaluation (defName definition)
           case body of
             Just term -> do
-              (code, tokens) <-
+              tokens <-
                 compileWord64IdentityFunction (defName definition) 1 term
               pure (Just (CompiledDefinition
-                (defName definition) (strictWord (defName definition) code) tokens
+                (defName definition)
+                tokens
                 Nothing Nothing Nothing (Just Word64IdentityWitness)))
             Nothing -> pure Nothing
         else case word64Arity of
@@ -1138,10 +1201,11 @@ compileDefinition definition
               case body of
                 Nothing -> pure Nothing
                 Just term -> do
-                  (code, tokens, expression) <-
+                  (tokens, expression) <-
                     compileBoolPairFunction (defName definition) constructor term
                   pure (Just (CompiledDefinition
-                    (defName definition) (strictWord (defName definition) code) tokens
+                    (defName definition)
+                    tokens
                     Nothing Nothing Nothing (Just (BoolPairFunctionWitness pairType constructor expression))))
             Nothing ->
               if unitArity == Just 0 then do
@@ -1151,7 +1215,8 @@ compileDefinition definition
                   Just term -> do
                     decodeUnitTerm term
                     pure (Just (CompiledDefinition
-                      (defName definition) (strictWord (defName definition) (RSList [])) []
+                      (defName definition)
+                      []
                       Nothing Nothing Nothing (Just UnitWitness)))
               else pure Nothing
       _ -> pure Nothing
@@ -1385,7 +1450,7 @@ rendererCertificate sourceModule definitions
           actualName = "actualWord" <> index
           formalName = "formalWord" <> index
           proofName = "wordRendererCorrect" <> index
-          actualText = renderForm (compiledForm definition)
+          actualText = renderForm (compiledDefinitionForm definition)
           expectedName = safeForthName (compiledName definition)
       in [ actualName <> " : String"
          , actualName <> " = " <> agdaStringLiteral actualText
@@ -1999,10 +2064,11 @@ rendererCertificate sourceModule definitions
     ]
 emitForthModule :: () -> () -> IsMain -> TopLevelModuleName -> [Maybe CompiledDefinition] -> TCM ()
 emitForthModule _ _ _ moduleName maybeDefinitions = do
-  runtime <- IO.liftIO readStrictRuntime
   let definitions = catMaybes maybeDefinitions
-      body = T.intercalate "\n\n"
-        (map (renderForm . compiledForm) definitions)
+  validateForthNames definitions
+  runtime <- IO.liftIO readStrictRuntime
+  let body = T.intercalate "\n\n"
+        (map (renderForm . compiledDefinitionForm) definitions)
       output = T.pack runtime <> "\n" <> body <> "\n"
       baseName = prettyShow (NE.last (moduleNameParts moduleName))
       filename = baseName ++ ".fth"

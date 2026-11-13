@@ -40,6 +40,10 @@ jobs:
           git fetch --no-tags --depth=1 https://github.com/LMMilliken/agda2Forth.git "$FORTH_UPSTREAM_SHA"
           test "$(git rev-parse FETCH_HEAD)" = "$FORTH_UPSTREAM_SHA"
           test "$(git rev-parse "$FORTH_UPSTREAM_SHA:data/FLib.fth")" = "$FLIB_UPSTREAM_BLOB"
+          git cat-file -e "$FORTH_UPSTREAM_SHA:data/FLib.fth"
+          grep -Fq ': MALLP-SWAP ' data/FLib.fth
+          grep -Fq ': MALLP-NAT-ROLL ' data/FLib.fth
+          grep -Fq ': MALLP-IF ' data/FLib.fth
           grep -Fq 'MALLP-CHECK-NAT { value -- }' data/FLib.fth
 
       - name: Install native linker and Gforth
@@ -182,15 +186,15 @@ jobs:
           answerLet 40 strict-assert-natural
           answerLetShared 169 strict-assert-natural
           answerLetUnused 7 strict-assert-natural
-          answerTrue TRUE strict-assert-boolean
-          answerFalse FALSE strict-assert-boolean
-          answerMatchedTrue FALSE strict-assert-boolean
-          answerMatchedFalse TRUE strict-assert-boolean
-          TRUE invertBool FALSE strict-assert-boolean
-          FALSE invertBool TRUE strict-assert-boolean
-          TRUE FALSE chooseBool FALSE strict-assert-boolean
-          FALSE TRUE chooseBool TRUE strict-assert-boolean
-          TRUE FALSE swapBoolPair FALSE TRUE strict-assert-bool-pair
+          answerTrue MALLP-TRUE strict-assert-boolean
+          answerFalse MALLP-FALSE strict-assert-boolean
+          answerMatchedTrue MALLP-FALSE strict-assert-boolean
+          answerMatchedFalse MALLP-TRUE strict-assert-boolean
+          MALLP-TRUE invertBool MALLP-FALSE strict-assert-boolean
+          MALLP-FALSE invertBool MALLP-TRUE strict-assert-boolean
+          MALLP-TRUE MALLP-FALSE chooseBool MALLP-FALSE strict-assert-boolean
+          MALLP-FALSE MALLP-TRUE chooseBool MALLP-TRUE strict-assert-boolean
+          MALLP-TRUE MALLP-FALSE swapBoolPair MALLP-FALSE MALLP-TRUE strict-assert-bool-pair
           answerUnit
           10 answerIdentity 10 strict-assert-natural
           10 answerAddFive 15 strict-assert-natural
@@ -210,7 +214,7 @@ jobs:
           : testStrictRollUnderflow ( -- )
             11 1 MALLP-NAT-ROLL { ignored }
           ;
-          ' testStrictRollUnderflow CATCH MALLP-ERR-STACK strict-assert-natural
+          ' testStrictRollUnderflow CATCH MALLP-ERR strict-assert-natural
           4294967295 4294967295 answerWord64Identity
           4294967295 4294967295 strict-assert-word64
           2 3 4 answerThree 18 strict-assert-natural
@@ -221,16 +225,16 @@ jobs:
           : testStrictOverflow ( -- )
             MALLP-MAX-NAT 1 MALLP-NAT-ADD { ignored }
           ;
-          ' testStrictOverflow CATCH MALLP-ERR-OVERFLOW strict-assert-natural
+          ' testStrictOverflow CATCH MALLP-ERR strict-assert-natural
           : testStrictNegative ( -- )
             -1 MALLP-CHECK-NAT
           ;
-          ' testStrictNegative CATCH MALLP-ERR-NEGATIVE strict-assert-natural
+          ' testStrictNegative CATCH MALLP-ERR strict-assert-natural
           MALLP-MAX-NAT 0 MALLP-NAT-ADD MALLP-MAX-NAT strict-assert-natural
           : testStrictMultiplyOverflow ( -- )
             MALLP-MAX-NAT 2 MALLP-NAT-MUL { ignored }
           ;
-          ' testStrictMultiplyOverflow CATCH MALLP-ERR-OVERFLOW strict-assert-natural
+          ' testStrictMultiplyOverflow CATCH MALLP-ERR strict-assert-natural
           : testStrictParseMax ( -- )
             MALLP-MAX-NAT 0 <# #S #> MALLP-PARSE-NAT
             MALLP-MAX-NAT strict-assert-natural
@@ -240,20 +244,44 @@ jobs:
           : testStrictLiteralEmpty ( -- )
             s" " MALLP-PARSE-NAT { ignored }
           ;
-          ' testStrictLiteralEmpty CATCH MALLP-ERR-LITERAL strict-assert-natural
+          ' testStrictLiteralEmpty CATCH MALLP-ERR strict-assert-natural
           : testStrictLiteralInvalid ( -- )
             s" 12x" MALLP-PARSE-NAT { ignored }
           ;
-          ' testStrictLiteralInvalid CATCH MALLP-ERR-LITERAL strict-assert-natural
+          ' testStrictLiteralInvalid CATCH MALLP-ERR strict-assert-natural
           : testStrictLiteralNegative ( -- )
             s" -1" MALLP-PARSE-NAT { ignored }
           ;
-          ' testStrictLiteralNegative CATCH MALLP-ERR-LITERAL strict-assert-natural
+          ' testStrictLiteralNegative CATCH MALLP-ERR strict-assert-natural
           : testStrictLiteralOverflow ( -- )
             s" 999999999999999999999999999999999999999999999999999999999999999999"
               MALLP-PARSE-NAT { ignored }
           ;
-          ' testStrictLiteralOverflow CATCH MALLP-ERR-OVERFLOW strict-assert-natural
+          ' testStrictLiteralOverflow CATCH MALLP-ERR strict-assert-natural
+          : testStrictAddUnderflow ( -- )
+            MALLP-NAT-ADD { ignored }
+          ;
+          ' testStrictAddUnderflow CATCH MALLP-ERR strict-assert-natural
+          : testStrictSwapUnderflow ( -- )
+            MALLP-SWAP
+          ;
+          ' testStrictSwapUnderflow CATCH MALLP-ERR strict-assert-natural
+          : testStrictRollUnderflow ( -- )
+            0 MALLP-NAT-ROLL
+          ;
+          ' testStrictRollUnderflow CATCH MALLP-ERR strict-assert-natural
+          : testStrictRollNegative ( -- )
+            -1 MALLP-NAT-ROLL
+          ;
+          ' testStrictRollNegative CATCH MALLP-ERR strict-assert-natural
+          : testStrictIfUnderflow ( -- )
+            MALLP-IF MALLP-TRUE MALLP-ELSE MALLP-FALSE MALLP-THEN
+          ;
+          ' testStrictIfUnderflow CATCH MALLP-ERR strict-assert-natural
+          : testStrictIfNonBoolean ( -- )
+            1 MALLP-IF MALLP-TRUE MALLP-ELSE MALLP-FALSE MALLP-THEN { ignored }
+          ;
+          ' testStrictIfNonBoolean CATCH MALLP-ERR strict-assert-natural
           : assert-empty-stack ( -- )
             depth 0<> IF -4203 THROW THEN
           ;
@@ -336,6 +364,43 @@ jobs:
           fi
           cat renderer-certificate.log
 
+      - name: Reject builtin floating-point source definitions
+        id: reject_float
+        run: |
+          cat > test/MALLPFloat.agda <<'AGDA'
+          module MALLPFloat where
+          open import Agda.Builtin.Float using (Float)
+          floatIdentity : Float → Float
+          floatIdentity value = value
+          AGDA
+          if cabal run agda2forth -- -i test test/MALLPFloat.agda > forth-float.log 2>&1; then
+            cat forth-float.log
+            echo "compiler accepted builtin Float"
+            exit 1
+          fi
+          if ! grep -Fq 'Agda builtin Float is explicitly outside' forth-float.log; then
+            cat forth-float.log
+            echo "compiler failed without the explicit Float admission diagnostic"
+            exit 1
+          fi
+          rm -f test/MALLPFloat.agda
+
+      - name: Reject Forth dictionary collisions
+        id: forth_name_collisions
+        run: |
+          cat > test/MALLPCollision.agda <<'AGDA'
+          module MALLPCollision where
+          open import Agda.Builtin.Nat using (Nat)
+          swap : Nat → Nat
+          swap value = value
+          AGDA
+          if cabal run agda2forth -- -i test test/MALLPCollision.agda > forth-collision.log 2>&1; then
+            echo "compiler accepted a source word that shadows the Forth SWAP primitive"
+            exit 1
+          fi
+          grep -Fq 'Forth identifier collision' forth-collision.log
+          rm -f test/MALLPCollision.agda
+
       - name: Execute strict MALLP fixture under Gforth
         id: strict_fixture
         run: |
@@ -345,12 +410,12 @@ jobs:
           grep -Fq 'MALLP-NAT-ADD' MALLPStrict.fth
           grep -Fq 'MALLP-NAT-ROLL' MALLPStrict.fth
           grep -Fq 'MALLP-PARSE-NAT' MALLPStrict.fth
-          grep -Fq ': answerTrue TRUE ;' MALLPStrict.fth
-          grep -Fq ': answerFalse FALSE ;' MALLPStrict.fth
-          grep -Fq ': answerMatchedTrue FALSE ;' MALLPStrict.fth
-          grep -Fq ': answerMatchedFalse TRUE ;' MALLPStrict.fth
-          grep -Fq ': invertBool IF FALSE ELSE TRUE THEN ;' MALLPStrict.fth
-          grep -Fq ': swapBoolPair SWAP ;' MALLPStrict.fth
+          grep -Fq ': answerTrue MALLP-TRUE ;' MALLPStrict.fth
+          grep -Fq ': answerFalse MALLP-FALSE ;' MALLPStrict.fth
+          grep -Fq ': answerMatchedTrue MALLP-FALSE ;' MALLPStrict.fth
+          grep -Fq ': answerMatchedFalse MALLP-TRUE ;' MALLPStrict.fth
+          grep -Fq ': invertBool MALLP-IF MALLP-FALSE MALLP-ELSE MALLP-TRUE MALLP-THEN ;' MALLPStrict.fth
+          grep -Fq ': swapBoolPair MALLP-SWAP ;' MALLPStrict.fth
           grep -Fq ': answerUnit ;' MALLPStrict.fth
           grep -Eq '^: answerIdentity[[:space:]]*;' MALLPStrict.fth
           # Pin the complete 29-definition source fixture. Any addition,
@@ -380,8 +445,13 @@ jobs:
           grep -Fq 'answerFour' MALLPStrict.fth
           grep -Fq 'answerCallThree' MALLPStrict.fth
           grep -Fq 'answerCallNested' MALLPStrict.fth
-          grep -Fq 'ROLL' MALLPStrict.fth
-          grep -Fq 'SWAP' MALLPStrict.fth
+          grep -Fq 'MALLP-NAT-ROLL' MALLPStrict.fth
+          grep -Fq 'MALLP-SWAP' MALLPStrict.fth
+          grep -Fq 'MALLP-NAT-LITERAL' MALLPStrict.fth
+          if awk 'emit { print } /^\[then\]$/ { emit = 1; next }' MALLPStrict.fth | grep -Eiq '(^|[[:space:]])(TRUE|FALSE|SWAP|ROLL|IF|ELSE|THEN)([[:space:]]|$)'; then
+            echo "generated compiler words contain a raw Forth primitive"
+            exit 1
+          fi
           if grep -Eq '^: answerInt ' MALLPStrict.fth; then
             echo "non-admitted Int definition escaped the result-type gate"
             exit 1
