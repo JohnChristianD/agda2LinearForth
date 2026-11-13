@@ -1030,7 +1030,7 @@ compileWord64IdentityFunction
   :: QName
   -> Int
   -> TTerm
-  -> TCM (FthForm, [FormalToken])
+  -> TCM [FormalToken]
 compileWord64IdentityFunction owner arity term = do
   let (actualArity, body) = tLamView term
   if arity /= 1 || actualArity /= 1
@@ -1041,7 +1041,7 @@ compileWord64IdentityFunction owner arity term = do
   decodeWord64Identity body
   -- Word64 is one source resource represented by (high low) cells. The
   -- identity function consumes and returns that pair unchanged.
-  pure (RSList [], [])
+  pure []
 
 
 -- Recognize a closed, non-indexed one-constructor product of exactly two
@@ -1161,7 +1161,7 @@ compileDefinition definition
           body <- toTreeless EagerEvaluation (defName definition)
           case body of
             Just term -> do
-              (_code, tokens) <-
+              tokens <-
                 compileWord64IdentityFunction (defName definition) 1 term
               pure (Just (CompiledDefinition
                 (defName definition)
