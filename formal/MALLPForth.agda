@@ -1205,18 +1205,17 @@ module Foundations where
         (decideDomain entries (omega (streamOf (mapEntries entries) default)))
 
   -- --------------------------------------------------------------------
-  -- 3. Double-negated logical and choice schemas.
+  -- 3. Negative logical and choice schemas.
   --
-  -- The postulates assert only double negations of excluded middle,
-  -- function extensionality, countable DNS, and dependent choice. They
-  -- supply no positive decision procedure, extensionality proof, or choice
-  -- sequence. Double-negated DNE and Peirce are derived from double-negated
-  -- excluded middle. Set : Set remains a typing judgement, not a proposition.
+  -- Excluded middle, function extensionality, and dependent choice are
+  -- postulated only under double negation: each resulting axiom has the
+  -- required outer form ¬ A. DNS is already equivalent to a negation of a
+  -- counterexample below, so no extra outer ¬¬ is added to DNS.
+  -- Double-negated DNE and Peirce remain derived from double-negated EM.
   --
-  -- Set : Set is a universe-formation judgement, not a proposition or
-  -- Agda term. Its double negation is therefore not expressible as a
-  -- well-typed postulate. The standard predicative universe hierarchy is
-  -- retained instead.
+  -- Set : Set is a universe-formation judgement, not a proposition or an
+  -- Agda term. It has no well-typed double negation. Predicative,
+  -- universe-polymorphic Set levels are retained instead.
   -- --------------------------------------------------------------------
 
   module DoubleNegation where
@@ -1246,11 +1245,38 @@ module Foundations where
       ((x : A) → f x ≡ g x) →
       f ≡ g
 
+    -- DNS is already a negative principle: it says that no family can
+    -- have pointwise double-negated witnesses together with a refutation of
+    -- every global witness. Postulating it with another outer ¬¬ would
+    -- weaken the principle unnecessarily.
+    DNSCounterexampleAt : (ℓ : Level) → Set (lsuc ℓ)
+    DNSCounterexampleAt ℓ =
+      Σ (Nat → Set ℓ)
+        (λ P →
+          Σ ((n : Nat) → ¬ (¬ (P n)))
+            (λ pointwise → ¬ ((n : Nat) → P n)))
+
     DoubleNegationShiftAt : (ℓ : Level) → Set (lsuc ℓ)
     DoubleNegationShiftAt ℓ =
       {P : Nat → Set ℓ} →
       ((n : Nat) → ¬ (¬ P n)) →
       ¬ (¬ ((n : Nat) → P n))
+
+    dns-to-negative-counterexample :
+      (ℓ : Level) →
+      DoubleNegationShiftAt ℓ →
+      ¬ (DNSCounterexampleAt ℓ)
+    dns-to-negative-counterexample ℓ dns
+      (P , (pointwise , noGlobalWitness)) =
+      dns pointwise noGlobalWitness
+
+    dns-from-negative-counterexample :
+      (ℓ : Level) →
+      ¬ (DNSCounterexampleAt ℓ) →
+      DoubleNegationShiftAt ℓ
+    dns-from-negative-counterexample ℓ noCounterexample
+      {P} pointwise noGlobalWitness =
+      noCounterexample (P , (pointwise , noGlobalWitness))
 
     DependentChoiceAt : (ℓ : Level) → Set (lsuc ℓ)
     DependentChoiceAt ℓ =
@@ -1300,11 +1326,23 @@ module Foundations where
         (a b : Level) →
         ¬ (¬ (FunctionExtensionalityAt a b))
 
-      doubleNegatedDNS :
-        (ℓ : Level) → ¬ (¬ (DoubleNegationShiftAt ℓ))
+      -- This is literally a negation, as required by the negative-
+      -- postulate canonicity theorem. It is equivalent to ordinary DNS.
+      negativeDNS :
+        (ℓ : Level) → ¬ (DNSCounterexampleAt ℓ)
 
       doubleNegatedDependentChoice :
         (ℓ : Level) → ¬ (¬ (DependentChoiceAt ℓ))
+
+    doubleNegationShift :
+      (ℓ : Level) → DoubleNegationShiftAt ℓ
+    doubleNegationShift ℓ =
+      dns-from-negative-counterexample ℓ (negativeDNS ℓ)
+
+    -- Compatibility theorem, now derived from the stronger negative form.
+    doubleNegatedDNS :
+      (ℓ : Level) → ¬ (¬ (DoubleNegationShiftAt ℓ))
+    doubleNegatedDNS ℓ notDNS = notDNS (doubleNegationShift ℓ)
 
     doubleNegatedDNE :
       (ℓ : Level) →
@@ -3967,6 +4005,148 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
 
   MALLPRelation (mallp-up proof) (pair result environment) tt =
     MALLPRelation proof environment result
+
+
+-- ----------------------------------------------------------------------
+-- MALLP-CONSTRAINED SBR / BELLMAN OBJECTIVES
+--
+-- An SBR objective is accepted only together with MALLP derivations for its
+-- base and step maps. The base consumes one encoded partial-map resource;
+-- the step consumes that state and one encoded continuation exactly once.
+-- Relational soundness certifies the two objective equations.
+--
+-- This constrains the generalized Bellman algebra independently of PEA.
+-- It does not claim that the postulated SBR oracle itself is implemented by
+-- MALLP, nor that the contract alone proves global SBR termination.
+-- ----------------------------------------------------------------------
+
+module SBRMALLPBellman (Atom : Nat → Set) where
+
+  open MALLPRelationalDenotation Atom
+
+  record MALLPSBRBellmanObjective
+      (X R : Set)
+      (entryAtom continuationAtom resultAtom : Nat)
+      (encodeEntries : PartialMap X → Atom entryAtom)
+      (encodeContinuation : (X → R) → Atom continuationAtom)
+      (encodeResult : R → Atom resultAtom)
+      (base : PartialMap X → R)
+      (step : PartialMap X → (X → R) → R) : Set₁ where
+    field
+      baseDerivation :
+        MALLP (atom⁻ entryAtom ∷ []) (just (atom⁺ resultAtom))
+      baseRealizes :
+        (entries : PartialMap X) →
+        MALLPRelation baseDerivation
+          (pair (encodeEntries entries) tt)
+          (encodeResult (base entries))
+
+      stepDerivation :
+        MALLP
+          (atom⁻ entryAtom ∷ atom⁻ continuationAtom ∷ [])
+          (just (atom⁺ resultAtom))
+      stepRealizes :
+        (entries : PartialMap X) →
+        (continuation : X → R) →
+        MALLPRelation stepDerivation
+          (pair (encodeEntries entries)
+            (pair (encodeContinuation continuation) tt))
+          (encodeResult (step entries continuation))
+
+  open MALLPSBRBellmanObjective public
+
+  symmetricBarRecMALLP-stop :
+    {X R : Set} →
+    {entryAtom continuationAtom resultAtom : Nat} →
+    {encodeEntries : PartialMap X → Atom entryAtom} →
+    {encodeContinuation : (X → R) → Atom continuationAtom} →
+    {encodeResult : R → Atom resultAtom} →
+    {base : PartialMap X → R} →
+    {step : PartialMap X → (X → R) → R} →
+    (objective : MALLPSBRBellmanObjective X R
+      entryAtom continuationAtom resultAtom
+      encodeEntries encodeContinuation encodeResult base step) →
+    (omega : (Nat → X) → Nat) →
+    (default : X) →
+    (condition : SymmetricBarCondition omega default) →
+    (entries : PartialMap X) →
+    (key : Nat) →
+    (present : memberKey key (mapEntries entries) ≡ true) →
+    MALLPRelation (baseDerivation objective)
+      (pair (encodeEntries entries) tt)
+      (encodeResult
+        (symmetricBarRec omega default condition base step
+          entries key (inDomain present)))
+  symmetricBarRecMALLP-stop
+    {encodeEntries = encodeEntries}
+    {encodeResult = encodeResult}
+    {base = base}
+    {step = step}
+    objective omega default condition entries key present =
+    subst
+      (λ output → MALLPRelation (baseDerivation objective)
+        (pair (encodeEntries entries) tt) output)
+      (cong encodeResult
+        (sym (sBR-stop omega default condition base step entries key present)))
+      (baseRealizes objective entries)
+
+  symmetricBarRecMALLP-step :
+    {X R : Set} →
+    {entryAtom continuationAtom resultAtom : Nat} →
+    {encodeEntries : PartialMap X → Atom entryAtom} →
+    {encodeContinuation : (X → R) → Atom continuationAtom} →
+    {encodeResult : R → Atom resultAtom} →
+    {base : PartialMap X → R} →
+    {step : PartialMap X → (X → R) → R} →
+    (objective : MALLPSBRBellmanObjective X R
+      entryAtom continuationAtom resultAtom
+      encodeEntries encodeContinuation encodeResult base step) →
+    (omega : (Nat → X) → Nat) →
+    (default : X) →
+    (condition : SymmetricBarCondition omega default) →
+    (entries : PartialMap X) →
+    (key : Nat) →
+    (absent : memberKey key (mapEntries entries) ≡ false) →
+    MALLPRelation (stepDerivation objective)
+      (pair (encodeEntries entries)
+        (pair
+          (encodeContinuation
+            (λ value →
+              let
+                nextEntries = extendFresh entries key absent value
+                nextKey = omega (streamOf (mapEntries nextEntries) default)
+              in symmetricBarRec omega default condition base step
+                   nextEntries nextKey (decideDomain nextEntries nextKey)))
+          tt))
+      (encodeResult
+        (symmetricBarRec omega default condition base step
+          entries key (outDomain absent)))
+  symmetricBarRecMALLP-step
+    {X = X}
+    {R = R}
+    {encodeEntries = encodeEntries}
+    {encodeContinuation = encodeContinuation}
+    {encodeResult = encodeResult}
+    {base = base}
+    {step = step}
+    objective omega default condition entries key absent =
+    let
+      continuation : X → R
+      continuation value =
+        let
+          nextEntries = extendFresh entries key absent value
+          nextKey = omega (streamOf (mapEntries nextEntries) default)
+        in symmetricBarRec omega default condition base step
+             nextEntries nextKey (decideDomain nextEntries nextKey)
+    in
+    subst
+      (λ output → MALLPRelation (stepDerivation objective)
+        (pair (encodeEntries entries)
+          (pair (encodeContinuation continuation) tt))
+        output)
+      (cong encodeResult
+        (sym (sBR-step omega default condition base step entries key absent)))
+      (stepRealizes objective entries continuation)
 
 
 -- ----------------------------------------------------------------------

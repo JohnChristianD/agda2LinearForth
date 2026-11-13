@@ -1,6 +1,10 @@
 \ MALLP-STRICT-BEGIN
-\ Strict Laurent-MALLP scalar runtime.
-\ Every arithmetic word consumes its two operands and returns one result.
+\ Strict Laurent-MALLP scalar runtime, matching MALLPForth.execBoundedToken.
+\ MALLP-MAX-NAT is the largest nonnegative signed Gforth cell, the bound
+\ supplied to Agda's bounded token interpreter.
+\ Agda's just stack is the same returned Forth stack; its collapsed nothing
+\ failure is represented by THROW (observable through CATCH).
+\ Arithmetic consumes both operands and checks the returned result.
 \ No descriptors, thunks, closures, arena allocation, or GC.
 [undefined] AGDA2FORTH-MALLP-LOADED [if]
 true constant AGDA2FORTH-MALLP-LOADED
@@ -28,6 +32,7 @@ s" MALLP: invalid natural literal" exception constant MALLP-ERR-LITERAL
         scaled digit + TO acc
         index 1+ TO index
     REPEAT
+    acc MALLP-CHECK-NAT
     acc
 ;
 
@@ -36,14 +41,18 @@ s" MALLP: invalid natural literal" exception constant MALLP-ERR-LITERAL
     left MALLP-CHECK-NAT
     right MALLP-CHECK-NAT
     left MALLP-MAX-NAT right - > IF MALLP-ERR-OVERFLOW THROW THEN
-    left right +
+    left right + { result }
+    result MALLP-CHECK-NAT
+    result
 ;
 
 : MALLP-NAT-MONUS ( left right -- result )
     { left right }
     left MALLP-CHECK-NAT
     right MALLP-CHECK-NAT
-    left right < IF 0 ELSE left right - THEN
+    left right < IF 0 ELSE left right - THEN { result }
+    result MALLP-CHECK-NAT
+    result
 ;
 
 : MALLP-NAT-MUL ( left right -- result )
@@ -53,7 +62,9 @@ s" MALLP: invalid natural literal" exception constant MALLP-ERR-LITERAL
     right 0<> IF
         left MALLP-MAX-NAT right / > IF MALLP-ERR-OVERFLOW THROW THEN
     THEN
-    left right *
+    left right * { result }
+    result MALLP-CHECK-NAT
+    result
 ;
 
 
