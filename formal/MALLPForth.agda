@@ -6,6 +6,7 @@
 --no-eta-equality
 --prop
 --with-K
+--cubical=no-glue
 --erased-quotients
 --erased-funext
 --erased-propext
@@ -38,7 +39,7 @@ open import Agda.Builtin.List public
 open import Agda.Builtin.Maybe public
 open import Agda.Builtin.Sigma public
 open import Agda.Builtin.Equality public
-open import Agda.Builtin.Erased public
+open import Agda.Builtin.Erase public
 open import Agda.Builtin.String public
 open import Agda.Builtin.Equality.Rewrite public
 open import Agda.Builtin.Equality.Erase public
