@@ -6,7 +6,8 @@
 --lossy-unification
 --no-eta-equality
 --prop
---erased-matches=non-dependent
+--erased-matches=empty
+--exact-split
 --cubical=no-glue
 --with-K
 #-}
