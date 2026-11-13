@@ -1,4 +1,4 @@
-{-# OPTIONS --rewriting --confluence-check --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
+{-# OPTIONS --rewriting --confluence-check --guardedness #-}
 -- ```Agda
 -- ----------------------------------------------------------------------
 -- SovereignRationalSED / MALLPForth
