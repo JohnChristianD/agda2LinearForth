@@ -4239,6 +4239,26 @@ module UnifiedFoundationsOptimization (Atom : Nat → Set) where
       barDefault : Nat
       barCoverage :
         SymmetricBarCondition barControl barDefault
+      barStopEquation :
+        (entries : PartialMap Nat) (key : Nat) →
+        (present : memberKey key (mapEntries entries) ≡ true) →
+        symmetricBarRec barControl barDefault barCoverage
+          objectiveBase objectiveStep entries key (inDomain present) ≡
+        objectiveBase entries
+      barStepEquation :
+        (entries : PartialMap Nat) (key : Nat) →
+        (absent : memberKey key (mapEntries entries) ≡ false) →
+        symmetricBarRec barControl barDefault barCoverage
+          objectiveBase objectiveStep entries key (outDomain absent) ≡
+        objectiveStep entries
+          (λ value →
+            let
+              nextEntries = extendFresh entries key absent value
+              nextKey =
+                barControl (streamOf (mapEntries nextEntries) barDefault)
+            in symmetricBarRec barControl barDefault barCoverage
+                 objectiveBase objectiveStep nextEntries nextKey
+                 (decideDomain nextEntries nextKey))
 
       -- Quotient reflection: the normalized state is the single DP/SBR
       -- input, and both Bellman maps respect that same normalization.

@@ -1,4 +1,4 @@
-{-# OPTIONS --safe --confluence-check --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
+{-# OPTIONS --safe --confluence-check --guardedness #-}
 
 module SovereignRationalSEDPhysics where
 

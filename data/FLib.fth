@@ -8,10 +8,6 @@ true constant AGDA2FORTH-MALLP-LOADED
 
 0 invert 1 rshift constant MALLP-MAX-NAT
 s" MALLP: token failure" exception constant MALLP-ERR
-MALLP-ERR constant MALLP-ERR-NEGATIVE
-MALLP-ERR constant MALLP-ERR-OVERFLOW
-MALLP-ERR constant MALLP-ERR-LITERAL
-MALLP-ERR constant MALLP-ERR-STACK
 
 : MALLP-REQUIRE-STACK { required -- }
     depth required < IF MALLP-ERR THROW THEN
@@ -82,7 +78,7 @@ MALLP-ERR constant MALLP-ERR-STACK
     1 MALLP-REQUIRE-STACK
     { depth -- }
     depth MALLP-CHECK-NAT
-    depth DEPTH >= IF MALLP-ERR-STACK THROW THEN
+    depth DEPTH >= IF MALLP-ERR THROW THEN
     depth ROLL
 ;
 
