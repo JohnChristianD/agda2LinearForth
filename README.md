@@ -14,13 +14,13 @@ The root pragma is:
 {-# OPTIONS --rewriting --confluence-check --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
 ```
 
-The generated renderer uses the **same pragma** as the root Agda module:
+The generated renderer keeps one renderer-specific option:
 
 ```agda
-{-# OPTIONS --rewriting --confluence-check --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
+{-# OPTIONS --rewriting --confluence-check --lossy-unification --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
 ```
 
-The previous renderer-only `--with-K`, `--lossy-unification`, and `--exact-split` flags are omitted. K is already enabled by default; lossy unification is an optional, sound-but-incomplete heuristic, not part of the formal semantics, and the generated certificate does not need it. The default exact-split behavior is retained. `--type-in-type` is absent; no `--safe` claim is made.
+All other options match the root pragma. `--with-K` is redundant because K is enabled by default; `--exact-split` is also enabled by default. `--lossy-unification` remains useful for the generated resource certificates: removing it leaves many unification metas unresolved in `MALLPEmittedRenderer.agda` under Agda 2.8.0.2. It is a sound but incomplete elaboration heuristic for equations headed by the same defined function, not a logical axiom or a runtime/Forth semantic rule. It may commit to an incomplete meta-variable solution and cause a type error; explicit annotations could eventually make it removable. `--type-in-type` is absent; no `--safe` claim is made.
 
 CI triggers on `push` and `pull_request`; there is no schedule. The public `agda2forth` entrypoint, CLI argument shape, existing compiler invocation, generated renderer filename, and remaining Agda options are compatibility boundaries.
 
