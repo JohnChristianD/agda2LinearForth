@@ -2,10 +2,12 @@
 --rewriting
 --confluence-check
 --guardedness
---no-projection-like
 --no-fast-reduce
+--lossy-unification
 --no-eta-equality
---erased-matches=unrestricted
+--prop
+--erased-matches=non-dependent
+--cubical=no-glue
 #-}
 -- ```Agda
 -- ----------------------------------------------------------------------
@@ -28,6 +30,7 @@ module MALLPForth where
 -- encodings below. The root module deliberately omits --type-in-type.
 open import Agda.Primitive using (Level; lzero; lsuc; _⊔_) public
 open import Agda.Builtin.Nat public
+open import Agda.Builtin.Int public
 open import Agda.Builtin.Bool public
 open import Agda.Builtin.List public
 open import Agda.Builtin.Maybe public
@@ -35,6 +38,7 @@ open import Agda.Builtin.Sigma public
 open import Agda.Builtin.Equality public
 open import Agda.Builtin.String public
 open import Agda.Builtin.Equality.Rewrite public
+open import Agda.Builtin.Equality.Erase public
 open import Agda.Builtin.Word using (Word64; primWord64ToNat; primWord64FromNat) public
 open import Agda.Builtin.Word.Properties using (primWord64ToNatInjective) public
 -- Agda has no Agda.Builtin.Tuple module; the product record _×_ below
