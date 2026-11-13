@@ -4138,6 +4138,282 @@ module SBRMALLPBellman (Atom : Nat → Set) where
 
 
 -- ----------------------------------------------------------------------
+-- ONE FOUNDATIONS-LEVEL OPTIMIZATION CONSTRAINT
+--
+-- The seven Foundations packages meet here as one typed optimization
+-- contract. Candidate generation is PEA-uniform; finite policies carry
+-- optimality; symmetric bar recursion shares the same Bellman base/step;
+-- MALLP certifies their resource use; quotient normalization is respected
+-- by both branches; the candidate space is viewed through the cohesive
+-- adjunction; Mac Lane coherence fixes the tensor layout; negative axioms,
+-- identity rewrites and cut elimination remain explicit assumptions.
+--
+-- This packages assumptions and proof obligations together. It does not
+-- claim that positive axioms follow from the negative-axiom canonicity
+-- theorem, nor that the postulated SBR or cut-elimination operators are
+-- executable algorithms.
+-- ----------------------------------------------------------------------
+
+record NegativeFoundationsAt (\ell a b : Level)
+    : Set (lsuc (\ell ⊔ a ⊔ b)) where
+  field
+    negativeExcludedMiddle : ¬ (¬ (ExcludedMiddleAt \ell))
+    negativeFunctionExtensionality :
+      ¬ (¬ (FunctionExtensionalityAt a b))
+    negativeDoubleNegationShift :
+      ¬ (DNSCounterexampleAt \ell)
+    negativeDependentChoice :
+      ¬ (¬ (DependentChoiceAt \ell))
+
+negativeFoundationsAt : (\ell a b : Level) → NegativeFoundationsAt \ell a b
+negativeFoundationsAt \ell a b = record
+  { negativeExcludedMiddle = doubleNegatedExcludedMiddle \ell
+  ; negativeFunctionExtensionality = doubleNegatedFunctionExtensionality a b
+  ; negativeDoubleNegationShift = negativeDNS \ell
+  ; negativeDependentChoice = doubleNegatedDependentChoice \ell
+  }
+
+record IdentityRewriteAxioms : Set₃ where
+  field
+    identityTypePostulate : (Set → Set) → Set → Set → Set₁
+    extensionalityPostulate : Set → Set → Set₁
+    reflexiveIdentityRewrite :
+      (A : Set) → extensionalityPostulate A A ≡ Set
+    identityCompositionRewrite :
+      (A : Set → Set) (X Y : Set) →
+      identityTypePostulate A X Y ≡
+      extensionalityPostulate (A X) (A Y)
+
+identityRewriteAxioms : IdentityRewriteAxioms
+identityRewriteAxioms = record
+  { identityTypePostulate = Id
+  ; extensionalityPostulate = ext
+  ; reflexiveIdentityRewrite = refl↓
+  ; identityCompositionRewrite = Id-∙
+  }
+
+record SymmetricBarRecAxioms
+    (operator :
+      {X R : Set} →
+      (omega : (Nat → X) → Nat) →
+      (default : X) →
+      SymmetricBarCondition omega default →
+      (base : PartialMap X → R) →
+      (step : PartialMap X → (X → R) → R) →
+      (entries : PartialMap X) →
+      (key : Nat) →
+      DomainDecision entries key → R) : Set₂ where
+  field
+    stopLaw :
+      {X R : Set} →
+      (omega : (Nat → X) → Nat) →
+      (default : X) →
+      (condition : SymmetricBarCondition omega default) →
+      (base : PartialMap X → R) →
+      (step : PartialMap X → (X → R) → R) →
+      (entries : PartialMap X) →
+      (key : Nat) →
+      (present : memberKey key (mapEntries entries) ≡ true) →
+      operator omega default condition base step entries key
+        (inDomain present) ≡ base entries
+    stepLaw :
+      {X R : Set} →
+      (omega : (Nat → X) → Nat) →
+      (default : X) →
+      (condition : SymmetricBarCondition omega default) →
+      (base : PartialMap X → R) →
+      (step : PartialMap X → (X → R) → R) →
+      (entries : PartialMap X) →
+      (key : Nat) →
+      (absent : memberKey key (mapEntries entries) ≡ false) →
+      operator omega default condition base step entries key
+        (outDomain absent) ≡
+      step entries
+        (λ value →
+          let nextEntries = extendFresh entries key absent value
+              nextKey = omega (streamOf (mapEntries nextEntries) default)
+          in operator omega default condition base step
+               nextEntries nextKey (decideDomain nextEntries nextKey))
+
+symmetricBarRecAxioms :
+  SymmetricBarRecAxioms symmetricBarRec
+symmetricBarRecAxioms = record
+  { stopLaw = sBR-stop
+  ; stepLaw = sBR-step
+  }
+
+optimizationTensor : Nat → Nat → Nat → TensorExpr
+optimizationTensor entryAtom continuationAtom resultAtom =
+  tensor (atom entryAtom)
+    (tensor (atom continuationAtom) (atom resultAtom))
+
+module UnifiedFoundationsOptimization (Atom : Nat → Set) where
+  module Bellman = SBRMALLPBellman Atom
+
+  record SingleOptimizationConstraint
+      (X R : Set)
+      (entryAtom continuationAtom resultAtom : Nat)
+      (encodeEntries : PartialMap X → Atom entryAtom)
+      (encodeContinuation : (X → R) → Atom continuationAtom)
+      (encodeResult : R → Atom resultAtom)
+      (base : PartialMap X → R)
+      (step : PartialMap X → (X → R) → R)
+      (omega : (Nat → X) → Nat)
+      (default : X)
+      (candidateFamily : ParametricallyEnumerable)
+      (H G : Category)
+      (productsH : FiniteProducts H)
+      (productsG : FiniteProducts G)
+      (\ell a b : Level)
+      : Set (lsuc (\ell ⊔ a ⊔ b ⊔ lsuc (lsuc (lsuc lzero)))) where
+    field
+      -- Forster PEA supplies one uniform program for the candidate family.
+      positiveEnumerability : ParametricEA
+      candidateParameter : Nat
+      candidateDecode : Nat → X
+      candidateCoverage :
+        (candidate : X) →
+        Σ Nat
+          (λ stage →
+            Σ Nat
+              (λ value →
+                (universalEval
+                  (parametricCode positiveEnumerability candidateFamily
+                    candidateParameter) stage ≡ just value) ×
+                (Predicate candidateFamily candidateParameter value ×
+                  candidateDecode value ≡ candidate)))
+
+      -- Finite Bellman selection and optimality are in the same payoff order
+      -- used by the SBR base/step and their MALLP realization.
+      finiteOrder : Preorder R
+      finiteSelection : Selection X R
+      finiteSelectionOptimal : OptimalSelection finiteOrder finiteSelection
+      finiteHorizon : Nat
+      finiteBackwardInductionOptimal :
+        OptimalSelection finiteOrder
+          (backwardInduction finiteHorizon finiteSelection)
+
+      -- The state entering recursion is a genuine quotient representative.
+      -- Base and step maps respect the chosen idempotent normalization.
+      initialEntries : PartialMap X
+      entryNormalizer : IdempotentEndomap (PartialMap X)
+      quotientInitialEntries :
+        Quotient (PartialMap X) entryNormalizer
+      quotientInitialEntriesIsCanonical :
+        quotientInitialEntries ≡ qcanon entryNormalizer initialEntries
+      baseNormalizationInvariant :
+        (entries : PartialMap X) →
+        base entries ≡
+        base (canonicalize entryNormalizer entries)
+      stepNormalizationInvariant :
+        (entries : PartialMap X) (continuation : X → R) →
+        step entries continuation ≡
+        step (canonicalize entryNormalizer entries) continuation
+
+      -- The same base and step carry proof-relevant linear-resource
+      -- derivations. Stop/step equations are packaged against one operator.
+      symmetricBarAxioms : SymmetricBarRecAxioms symmetricBarRec
+      barCondition : SymmetricBarCondition omega default
+      bellmanObjective :
+        Bellman.MALLPSBRBellmanObjective X R
+          entryAtom continuationAtom resultAtom
+          encodeEntries encodeContinuation encodeResult base step
+      barKey : Nat
+      barKeyIsSelected :
+        barKey ≡
+        omega
+          (streamOf
+            (mapEntries (qcoerce quotientInitialEntries)) default)
+      barKeyDecision :
+        DomainDecision (qcoerce quotientInitialEntries) barKey
+      barValue : R
+      barValueIsRecursor :
+        symmetricBarRec omega default barCondition base step
+          (qcoerce quotientInitialEntries) barKey barKeyDecision ≡ barValue
+
+      -- Cohesion links the H-valued optimization state and each G-valued
+      -- candidate view through the actual Π functor.
+      cohesion : CohesiveAdjointQuadruple H G productsH productsG
+      optimizationState : categoryObjects H
+      candidateObject : X → categoryObjects G
+      candidateReachability :
+        (candidate : X) →
+        categoryHom G
+          (functorObject (cohesivePi cohesion) optimizationState)
+          (candidateObject candidate)
+
+      -- Mac Lane normal form is the tensor layout for the three MALLP roles.
+      objectiveTensorPath :
+        TensorHom
+          (optimizationTensor entryAtom continuationAtom resultAtom)
+          (normalForm
+            (optimizationTensor entryAtom continuationAtom resultAtom))
+      objectiveTensorPathsCoherent :
+        (path :
+          TensorHom
+            (optimizationTensor entryAtom continuationAtom resultAtom)
+            (normalForm
+              (optimizationTensor entryAtom continuationAtom resultAtom))) →
+        path ≡ objectiveTensorPath
+
+      -- Negative assumptions, positive identity rewrites, positive SBR
+      -- equations, and positive cut elimination stay separately visible.
+      negativeFoundations : NegativeFoundationsAt \ell a b
+      identityFoundations : IdentityRewriteAxioms
+      cutEliminationFoundation : MALLPCutElimination
+      normalizedBaseDerivation :
+        MALLP
+          (atom⁻ entryAtom ∷ [])
+          (just (atom⁺ resultAtom))
+      normalizedBaseIsCutFree :
+        hasCut normalizedBaseDerivation ≡ false
+      normalizedStepDerivation :
+        MALLP
+          (atom⁻ entryAtom ∷ atom⁻ continuationAtom ∷ [])
+          (just (atom⁺ resultAtom))
+      normalizedStepIsCutFree :
+        hasCut normalizedStepDerivation ≡ false
+
+    -- The uniform PEA code's outputs inhabit the requested family.
+    candidateProgramSound :
+      (stage value : Nat) →
+      universalEval
+        (parametricCode positiveEnumerability candidateFamily candidateParameter)
+        stage ≡ just value →
+      Predicate candidateFamily candidateParameter value
+    candidateProgramSound stage value =
+      parametricCode-sound positiveEnumerability candidateFamily
+        candidateParameter stage value
+
+    -- Applying the cut-elimination oracle yields certified cut-free forms.
+    normalizedBaseIsCutFree-correct :
+      hasCut
+        (normalizeCutProof cutEliminationFoundation
+          (Bellman.baseDerivation bellmanObjective)) ≡ false
+    normalizedBaseIsCutFree-correct =
+      normalizeCutProof-cutFree cutEliminationFoundation
+        (Bellman.baseDerivation bellmanObjective)
+
+    normalizedStepIsCutFree-correct :
+      hasCut
+        (normalizeCutProof cutEliminationFoundation
+          (Bellman.stepDerivation bellmanObjective)) ≡ false
+    normalizedStepIsCutFree-correct =
+      normalizeCutProof-cutFree cutEliminationFoundation
+        (Bellman.stepDerivation bellmanObjective)
+
+    objectiveTensorCoherence :
+      (path :
+        TensorHom
+          (optimizationTensor entryAtom continuationAtom resultAtom)
+          (normalForm
+            (optimizationTensor entryAtom continuationAtom resultAtom))) →
+      path ≡ objectiveTensorPath
+    objectiveTensorCoherence path =
+      macLaneCoherence path objectiveTensorPath
+
+
+-- ----------------------------------------------------------------------
 -- GENERIC LINEAR SOURCE TERMS: STRUCTURAL MALLP DERIVATION
 --
 -- This small, reusable source core indexes every term by its exact live
