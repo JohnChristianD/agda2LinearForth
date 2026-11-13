@@ -1,4 +1,4 @@
-{-# OPTIONS --with-K --rewriting --confluence-check --guardedness --exact-split #-}
+{-# OPTIONS --safe --confluence-check --guardedness #-}
 
 module SovereignRationalSEDPhysics where
 
