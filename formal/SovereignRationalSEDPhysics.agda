@@ -3,7 +3,7 @@
 module SovereignRationalSEDPhysics where
 
 
-open import Agda.Builtin.Nat using (Nat; zero; suc)
+open import Agda.Builtin.Nat using (Nat; zero; suc; _<_)
 open import Agda.Builtin.Bool using (Bool; true; false)
 open import Agda.Builtin.List using (List; []; _∷_)
 open import Agda.Builtin.Maybe using (Maybe; just; nothing)
@@ -184,6 +184,24 @@ module IntegerArithmetic where
 
 open IntegerArithmetic public
 
+module FiniteRationalSums where
+  sumFinite : (n : Nat) → (Nat → Rational) → Rational
+  sumFinite zero f = 0ℚ
+  sumFinite (suc n) f = f zero +ℚ sumFinite n (λ i → f (suc i))
+
+  sumFinite-cong :
+    (n : Nat) (f g : Nat → Rational) →
+    ((i : Nat) → f i ≡ g i) →
+    sumFinite n f ≡ sumFinite n g
+  sumFinite-cong zero f g pointwise = refl
+  sumFinite-cong (suc n) f g pointwise =
+    cong₂ _+ℚ_
+      (pointwise zero)
+      (sumFinite-cong n
+        (λ i → f (suc i))
+        (λ i → g (suc i))
+        (λ i → pointwise (suc i)))
+
 ------------------------------------------------------------------------
 -- FINITE LIST COMPUTATION
 --
@@ -195,10 +213,6 @@ open IntegerArithmetic public
 -- Maybe, while lookupListOr supplies an explicit default for sparse tails.
 ------------------------------------------------------------------------
 
-
-data _<_ : Nat → Nat → Set where
-  zero<successor : {n : Nat} → zero < suc n
-  successor<successor : {m n : Nat} → m < n → suc m < suc n
 
 mapList : {A B : Set} → (A → B) → List A → List B
 mapList f [] = []
@@ -213,11 +227,11 @@ tabulateList zero f = []
 tabulateList (suc n) f = f zero ∷ tabulateList n (λ i → f (suc i))
 
 lookupPrefix : {A : Set} → (n : Nat) → List A →
-               (i : Nat) → i < n → Maybe A
+               (i : Nat) → (i < n) ≡ true → Maybe A
 lookupPrefix zero xs i ()
 lookupPrefix (suc n) [] i bound = nothing
-lookupPrefix (suc n) (x ∷ xs) zero zero<successor = just x
-lookupPrefix (suc n) (x ∷ xs) (suc i) (successor<successor bound) =
+lookupPrefix (suc n) (x ∷ xs) zero refl = just x
+lookupPrefix (suc n) (x ∷ xs) (suc i) bound =
   lookupPrefix n xs i bound
 
 lookupListOr : {A : Set} → A → Nat → List A → A
@@ -237,11 +251,11 @@ module FiniteListComputation where
 
   lookup-tabulate :
     {A : Set} → (n : Nat) → (f : Nat → A) →
-    (i : Nat) → (bound : i < n) →
+    (i : Nat) → (bound : (i < n) ≡ true) →
     lookupPrefix n (tabulateList n f) i bound ≡ just (f i)
   lookup-tabulate zero f i ()
-  lookup-tabulate (suc n) f zero zero<successor = refl
-  lookup-tabulate (suc n) f (suc i) (successor<successor bound) =
+  lookup-tabulate (suc n) f zero refl = refl
+  lookup-tabulate (suc n) f (suc i) bound =
     lookup-tabulate n (λ j → f (suc j)) i bound
 
 open FiniteListComputation public
@@ -710,6 +724,7 @@ module SovereignRSEDMotive where
   module WithRationalRing (Q : RationalRingInterface) where
     open RationalRingInterface Q
     module P = RationalSED Q
+    open FiniteRationalSums public
     open P
     module Closed = RSEDClosedExchange.WithRationalRing Q
     open Closed
@@ -769,24 +784,6 @@ module SovereignRSEDMotive where
     -- A single sample index selects one value at every time/mode, so temporal
     -- correlations are retained rather than resampling independently per time.
     ------------------------------------------------------------------------
-
-    sumFinite : (n : Nat) → (Nat → Rational) → Rational
-    sumFinite zero f = 0ℚ
-    sumFinite (suc n) f =
-      f zero +ℚ sumFinite n (λ i → f (suc i))
-
-    sumFinite-cong :
-      (n : Nat) (f g : Nat → Rational) →
-      ((i : Nat) → f i ≡ g i) →
-      sumFinite n f ≡ sumFinite n g
-    sumFinite-cong zero f g pointwise = refl
-    sumFinite-cong (suc n) f g pointwise =
-      cong₂ _+ℚ_
-        (pointwise zero)
-        (sumFinite-cong n
-          (λ i → f (suc i))
-          (λ i → g (suc i))
-          (λ i → pointwise (suc i)))
 
     record FiniteRationalTemporalNoise
       (Nonnegative : Rational → Set)
@@ -964,6 +961,7 @@ module SovereignRSEDMotive where
 module RSEDPhysicalFoundations (Q : RationalRingInterface) where
 
   open RationalRingInterface Q
+  open FiniteRationalSums public
   module Relativity = RationalSED Q
   module Exchange = RSEDClosedExchange.WithRationalRing Q
 
@@ -1185,24 +1183,6 @@ module RSEDPhysicalFoundations (Q : RationalRingInterface) where
   scaleCochain {n} r xs =
     tabulateVec n (λ i → r *ℚ lookupVecOr 0ℚ i xs)
 
-  sumFinite : (n : Nat) → (Nat → Rational) → Rational
-  sumFinite zero f = 0ℚ
-  sumFinite (suc n) f =
-    f zero +ℚ sumFinite n (λ i → f (suc i))
-
-  sumFinite-cong :
-    (n : Nat) (f g : Nat → Rational) →
-    ((i : Nat) → f i ≡ g i) →
-    sumFinite n f ≡ sumFinite n g
-  sumFinite-cong zero f g pointwise = refl
-  sumFinite-cong (suc n) f g pointwise =
-    cong₂ _+ℚ_
-      (pointwise zero)
-      (sumFinite-cong n
-        (λ i → f (suc i))
-        (λ i → g (suc i))
-        (λ i → pointwise (suc i)))
-
   ----------------------------------------------------------------------
   -- A finite embedded rational 3D cell complex.  Incidence coefficients
   -- are typed signs (−1,0,+1), not arbitrary floating weights.  Edge
@@ -1213,8 +1193,8 @@ module RSEDPhysicalFoundations (Q : RationalRingInterface) where
     constructor orientedEdge
     field
       edgeSource edgeTarget : Nat
-      edgeSourceBound : edgeSource < vertices
-      edgeTargetBound : edgeTarget < vertices
+      edgeSourceBound : (edgeSource < vertices) ≡ true
+      edgeTargetBound : (edgeTarget < vertices) ≡ true
   open OrientedEdge public
 
   data IncidenceSign : Set where
