@@ -4302,6 +4302,8 @@ module UnifiedFoundationsOptimization (Atom : Nat → Set) where
         (A : Set → Set) (Y Z : Set) →
         Id A Y Z ≡ ext (A Y) (A Z)
 
+  open DynamicProgrammingMALLPOptimization public
+
   objectiveTensorCoherence :
     {X R : Set}
     {entryAtom continuationAtom resultAtom : Nat}
