@@ -1,4 +1,4 @@
-{-# OPTIONS --rewriting --confluence-check --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
+{-# OPTIONS --rewriting --confluence-check --guardedness #-}
 -- ```Agda
 -- ----------------------------------------------------------------------
 -- SovereignRationalSED / MALLPForth
@@ -18,7 +18,7 @@ module MALLPForth where
 
 -- Primitive universe levels for the predicative category and identity
 -- encodings below. The root module deliberately omits --type-in-type.
-open import Agda.Primitive using (Level; lsuc; _⊔_) public
+open import Agda.Primitive using (Level; lzero; lsuc; _⊔_) public
 open import Agda.Builtin.Nat public
 open import Agda.Builtin.Bool public
 open import Agda.Builtin.List public
@@ -41,11 +41,12 @@ open import Agda.Builtin.Reflection.Properties
 data ⊥ : Set where
 
 postulate
-  Id : (Set → Set) → Set → Set → Set₁
-  ext : Set → Set → Set₁
-  refl↓ : (A : Set) → ext A A ≡ Set
-  Id-∙ : (A : Set → Set) (X Y : Set) → Id A X Y ≡ ext (A X) (A Y)
-{-# REWRITE refl↓ Id-∙ #-}
+  S : Set
+  F : Set → Set → Set
+  G : (Set → Set) → Set → Set → Set
+  rewF : (A : Set) → F A A ≡ S
+  rewG : (A : Set → Set) (X Y : Set) → G A X Y ≡ F (A X) (A Y)
+{-# REWRITE rewF rewG #-}
 
 -- Word64 equality is reflected exactly by its unsigned Nat interpretation.
 record Equivalence (A B : Set) : Set where
@@ -111,7 +112,9 @@ mutual
   renderForthTokenText textMultiplyWord = "MALLP-NAT-MUL "
   renderForthTokenText textSwapWord = "SWAP "
   renderForthTokenText (textRollWord depth) =
-    primStringAppend (primShowNat depth) " ROLL "
+    primStringAppend
+      (renderForthTokenText (textPushLiteral depth))
+      "MALLP-NAT-ROLL "
   renderForthTokenText textTrueWord = "TRUE "
   renderForthTokenText textFalseWord = "FALSE "
   renderForthTokenText (textIf whenTrue whenFalse) =
@@ -1350,6 +1353,28 @@ module Foundations where
       mapDoubleNegation
         (excludedMiddle-implies-peirce ℓ)
         (doubleNegatedExcludedMiddle ℓ)
+
+    -- One explicit package for the negative boundary. Its fields remain
+    -- negative assumptions; bundling them creates no classical witness.
+    record NegativeLogicalBoundary (ℓ : Level) : Set (lsuc ℓ) where
+      field
+        excludedMiddleNegative :
+          ¬ (¬ (ExcludedMiddleAt ℓ))
+        functionExtensionalityNegative :
+          ¬ (¬ (FunctionExtensionalityAt ℓ ℓ))
+        dnsNegative :
+          ¬ (DNSCounterexampleAt ℓ)
+        dependentChoiceNegative :
+          ¬ (¬ (DependentChoiceAt ℓ))
+    open NegativeLogicalBoundary public
+
+    negativeLogicalBoundary : (ℓ : Level) → NegativeLogicalBoundary ℓ
+    negativeLogicalBoundary ℓ = record
+      { excludedMiddleNegative = doubleNegatedExcludedMiddle ℓ
+      ; functionExtensionalityNegative = doubleNegatedFunctionExtensionality ℓ ℓ
+      ; dnsNegative = negativeDNS ℓ
+      ; dependentChoiceNegative = doubleNegatedDependentChoice ℓ
+      }
 
   -- --------------------------------------------------------------------
   -- 4. Mac Lane coherence via the thin free monoidal category on
@@ -4124,15 +4149,321 @@ module SBRMALLPBellman (Atom : Nat → Set) where
           nextKey = omega (streamOf (mapEntries nextEntries) default)
         in symmetricBarRec omega default condition base step
              nextEntries nextKey (decideDomain nextEntries nextKey)
+
+      relationAt : R → Set
+      relationAt output =
+        MALLPRelation (stepDerivation objective)
+          (pair (encodeEntries entries)
+            (pair (encodeContinuation continuation) tt))
+          output
     in
     subst
-      (λ output → MALLPRelation (stepDerivation objective)
-        (pair (encodeEntries entries)
-          (pair (encodeContinuation continuation) tt))
-        output)
+      relationAt
       (cong encodeResult
         (sym (sBR-step omega default condition base step entries key absent)))
       (stepRealizes objective entries continuation)
+
+
+-- ----------------------------------------------------------------------
+-- ONE JOINT FOUNDATIONS CONSTRAINT FOR A SINGLE OPTIMIZATION PROBLEM
+--
+-- One candidate family, one finite state, one SBR/Bellman objective, one
+-- MALLP resource certificate. The remaining foundations constrain the same
+-- candidate/state/value triple: negative logical boundary, cohesive
+-- representation, quotient invariance, and monoidal resource coherence.
+-- ----------------------------------------------------------------------
+
+module FoundationsOptimization (Atom : Nat → Set) where
+
+  open MALLPRelationalDenotation Atom
+  module Bellman = SBRMALLPBellman Atom
+  open Bellman public
+
+  record DynamicProgrammingMALLPAOptimizationConstraint
+      (ℓ : Level)
+      (H G : Category)
+      (productsH : FiniteProducts H)
+      (productsG : FiniteProducts G)
+      (cohesion : CohesiveAdjointQuadruple H G productsH productsG)
+      (R : Set) : Set (lsuc ℓ ⊔ lsuc (lsuc (lsuc lzero))) where
+    field
+      negativeBoundary : NegativeLogicalBoundary ℓ
+
+      -- PEA supplies the candidate from the same Nat domain used by SBR.
+      candidateFamily : ParametricallyEnumerable
+      candidateParameter candidate candidateStage : Nat
+      candidateEnumeration :
+        enumerate candidateFamily candidateParameter candidateStage ≡
+          just candidate
+
+      -- Bellman base/step maps share the same state, continuation, and value
+      -- encodings; MALLP proves both maps consume their resources exactly once.
+      entryAtom continuationAtom resultAtom : Nat
+      encodeEntries : PartialMap Nat → Atom entryAtom
+      encodeContinuation : (Nat → R) → Atom continuationAtom
+      encodeResult : R → Atom resultAtom
+      objectiveBase : PartialMap Nat → R
+      objectiveStep : PartialMap Nat → (Nat → R) → R
+      bellmanResourceProof :
+        MALLPSBRBellmanObjective Nat R
+          entryAtom continuationAtom resultAtom
+          encodeEntries encodeContinuation encodeResult
+          objectiveBase objectiveStep
+
+      -- SBR and finite Bellman optimization act on this very same candidate
+      -- space and value preorder.
+      barControl : (Nat → Nat) → Nat
+      barDefault : Nat
+      barCoverage :
+        SymmetricBarCondition barControl barDefault
+      objectiveState : PartialMap Nat
+      candidateInObjectiveState :
+        memberKey candidate (mapEntries objectiveState) ≡ true
+      valueOrder : Preorder R
+      chooseCandidate : Selection Nat R
+      chooseCandidate-optimal :
+        OptimalSelection valueOrder chooseCandidate
+      candidatePayoff : Nat → R
+      candidateIsChosen :
+        chooseCandidate candidatePayoff ≡ candidate
+      finiteHorizon : Nat
+      finitePayoff : Play Nat finiteHorizon → R
+      finiteSBRAgreement :
+        selectedOutcome
+          (backwardInduction finiteHorizon chooseCandidate)
+          finitePayoff ≡
+        symmetricBarRecAt barControl barDefault barCoverage
+          objectiveBase objectiveStep objectiveState
+
+      -- Quotient reflection makes objective value independent of which
+      -- representative of a finite state is supplied.
+      stateNormalizer : IdempotentEndomap (PartialMap Nat)
+      objectiveState-canonical :
+        canonicalize stateNormalizer objectiveState ≡ objectiveState
+      objectiveBase-invariant :
+        (entries : PartialMap Nat) →
+        objectiveBase (canonicalize stateNormalizer entries) ≡
+          objectiveBase entries
+      objectiveStep-invariant :
+        (entries : PartialMap Nat) (continuation : Nat → R) →
+        objectiveStep (canonicalize stateNormalizer entries) continuation ≡
+          objectiveStep entries continuation
+
+      -- The candidate is represented in both cohesive categories, with the
+      -- discrete embedding supplied by the same cohesive adjoint quadruple.
+      discreteCandidate : Nat → categoryObjects G
+      cohesiveCandidate : Nat → categoryObjects H
+      candidateEmbedding :
+        (n : Nat) →
+        categoryHom H
+          (functorObject (cohesiveDisc cohesion) (discreteCandidate n))
+          (cohesiveCandidate n)
+
+      -- The resource type has one canonical association; Mac Lane coherence
+      -- identifies every other association path with it.
+      resourceAssociation :
+        TensorHom
+          (tensor (tensor (atom entryAtom) (atom continuationAtom))
+            (atom resultAtom))
+          (tensor (atom entryAtom)
+            (tensor (atom continuationAtom) (atom resultAtom)))
+
+  open DynamicProgrammingMALLPAOptimizationConstraint public
+
+  optimizationValue :
+    {ℓ : Level} {H G : Category}
+    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
+    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
+    {R : Set} →
+    (constraint :
+      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    PartialMap Nat → R
+  optimizationValue constraint entries =
+    symmetricBarRecAt
+      (barControl constraint)
+      (barDefault constraint)
+      (barCoverage constraint)
+      (objectiveBase constraint)
+      (objectiveStep constraint)
+      entries
+
+  optimizationCandidateFeasible :
+    {ℓ : Level} {H G : Category}
+    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
+    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
+    {R : Set} →
+    (constraint :
+      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    Predicate (candidateFamily constraint) (candidateParameter constraint)
+      (candidate constraint)
+  optimizationCandidateFeasible constraint =
+    enumerate-sound
+      (candidateFamily constraint)
+      (candidateParameter constraint)
+      (candidateStage constraint)
+      (candidate constraint)
+      (candidateEnumeration constraint)
+
+  -- The PEA-selected universal program enumerates the same feasible
+  -- candidate, possibly at another finite stage.
+  optimizationCandidateCompiled :
+    {ℓ : Level} {H G : Category}
+    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
+    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
+    {R : Set} →
+    (constraint :
+      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    Σ Nat
+      (λ stage →
+        universalEval
+          (parametricCode parametricEA
+            (candidateFamily constraint)
+            (candidateParameter constraint))
+          stage ≡ just (candidate constraint))
+  optimizationCandidateCompiled constraint =
+    parametricCode-complete
+      parametricEA
+      (candidateFamily constraint)
+      (candidateParameter constraint)
+      (candidate constraint)
+      (optimizationCandidateFeasible constraint)
+
+  finiteOptimizationOptimal :
+    {ℓ : Level} {H G : Category}
+    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
+    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
+    {R : Set} →
+    (constraint :
+      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    OptimalSelection
+      (valueOrder constraint)
+      (backwardInduction
+        (finiteHorizon constraint)
+        (chooseCandidate constraint))
+  finiteOptimizationOptimal constraint =
+    backwardInduction-optimal
+      (valueOrder constraint)
+      (chooseCandidate constraint)
+      (chooseCandidate-optimal constraint)
+      (finiteHorizon constraint)
+
+  optimizationResourceCoherence :
+    {ℓ : Level} {H G : Category}
+    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
+    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
+    {R : Set} →
+    (constraint :
+      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    {A B : TensorExpr} →
+    (f g : TensorHom A B) → f ≡ g
+  optimizationResourceCoherence constraint {A} {B} first second =
+    Foundations.MacLaneCoherence.tensorHom-proposition
+      {A = A} {B = B} first second
+
+  candidateScoreOptimal :
+    {ℓ : Level} {H G : Category}
+    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
+    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
+    {R : Set} →
+    (constraint :
+      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    (alternative : Nat) →
+    below (valueOrder constraint)
+      (candidatePayoff constraint alternative)
+      (candidatePayoff constraint (candidate constraint))
+  candidateScoreOptimal constraint alternative =
+    subst
+      (λ selected →
+        below (valueOrder constraint)
+          (candidatePayoff constraint alternative)
+          (candidatePayoff constraint selected))
+      (candidateIsChosen constraint)
+      (chooseCandidate-optimal constraint
+        (candidatePayoff constraint) alternative)
+
+  optimizationValue-finite :
+    {ℓ : Level} {H G : Category}
+    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
+    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
+    {R : Set} →
+    (constraint :
+      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    optimizationValue constraint (objectiveState constraint) ≡
+      selectedOutcome
+        (backwardInduction (finiteHorizon constraint)
+          (chooseCandidate constraint))
+        (finitePayoff constraint)
+  optimizationValue-finite constraint =
+    sym (finiteSBRAgreement constraint)
+
+  optimizationStopCertificate :
+    {ℓ : Level} {H G : Category}
+    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
+    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
+    {R : Set} →
+    (constraint :
+      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    (key : Nat) →
+    (present :
+      memberKey key (mapEntries (objectiveState constraint)) ≡ true) →
+    MALLPRelation
+      (baseDerivation (bellmanResourceProof constraint))
+      (pair (encodeEntries constraint (objectiveState constraint)) tt)
+      (encodeResult constraint
+        (symmetricBarRec (barControl constraint) (barDefault constraint)
+          (barCoverage constraint) (objectiveBase constraint)
+          (objectiveStep constraint) (objectiveState constraint)
+          key (inDomain present)))
+  optimizationStopCertificate constraint key present =
+    symmetricBarRecMALLP-stop
+      (bellmanResourceProof constraint)
+      (barControl constraint)
+      (barDefault constraint)
+      (barCoverage constraint)
+      (objectiveState constraint)
+      key present
+
+  optimizationStepCertificate :
+    {ℓ : Level} {H G : Category}
+    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
+    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
+    {R : Set} →
+    (constraint :
+      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    (key : Nat) →
+    (absent :
+      memberKey key (mapEntries (objectiveState constraint)) ≡ false) →
+    MALLPRelation
+      (stepDerivation (bellmanResourceProof constraint))
+      (pair (encodeEntries constraint (objectiveState constraint))
+        (pair
+          (encodeContinuation constraint
+            (λ value →
+              let
+                nextEntries =
+                  extendFresh (objectiveState constraint) key absent value
+                nextKey =
+                  barControl constraint
+                    (streamOf (mapEntries nextEntries) (barDefault constraint))
+              in symmetricBarRec
+                   (barControl constraint) (barDefault constraint)
+                   (barCoverage constraint) (objectiveBase constraint)
+                   (objectiveStep constraint) nextEntries nextKey
+                   (decideDomain nextEntries nextKey)))
+          tt))
+      (encodeResult constraint
+        (symmetricBarRec (barControl constraint) (barDefault constraint)
+          (barCoverage constraint) (objectiveBase constraint)
+          (objectiveStep constraint) (objectiveState constraint)
+          key (outDomain absent)))
+  optimizationStepCertificate constraint key absent =
+    symmetricBarRecMALLP-step
+      (bellmanResourceProof constraint)
+      (barControl constraint)
+      (barDefault constraint)
+      (barCoverage constraint)
+      (objectiveState constraint)
+      key absent
 
 
 -- ----------------------------------------------------------------------
@@ -4888,6 +5219,15 @@ module StrictNatCompiler where
       NatStackBounded bound stack →
       NatStackBounded bound (value ∷ stack)
 
+  -- Immediate Nat operands are target-cell values too: literals and ROLL
+  -- depths must fit the same signed-cell bound as runtime stack values.
+  BoundedTokenParameter : Nat → ForthToken → Set
+  BoundedTokenParameter bound (pushLiteral value) =
+    natWithinBound value bound ≡ true
+  BoundedTokenParameter bound (rollWord depth) =
+    natWithinBound depth bound ≡ true
+  BoundedTokenParameter bound _ = ⊤
+
   execBoundedToken : Nat → ForthToken → List Nat → Maybe (List Nat)
   execBoundedToken bound (pushLiteral value) stack
     with natWithinBound value bound
@@ -4915,8 +5255,10 @@ module StrictNatCompiler where
   ... | _ | _ | _ = nothing
   execBoundedToken bound multiplyWord stack = nothing
   execBoundedToken bound swapWord stack = execToken swapWord stack
-  execBoundedToken bound (rollWord depth) stack =
-    execToken (rollWord depth) stack
+  execBoundedToken bound (rollWord depth) stack
+    with natWithinBound depth bound
+  ... | true = execToken (rollWord depth) stack
+  ... | false = nothing
 
   execBoundedTokens : Nat → List ForthToken → List Nat → Maybe (List Nat)
   execBoundedTokens bound [] stack = just stack
@@ -4965,7 +5307,10 @@ module StrictNatCompiler where
   ... | true | false | _ | ()
   ... | true | true | false | ()
   execBoundedToken-sound bound swapWord stack result proof = proof
-  execBoundedToken-sound bound (rollWord depth) stack result proof = proof
+  execBoundedToken-sound bound (rollWord depth) stack result proof
+    with natWithinBound depth bound | proof
+  ... | true | boundedProof = boundedProof
+  ... | false | ()
 
   execBoundedTokens-sound :
     (bound : Nat) (tokens : List ForthToken) (stack result : List Nat) →
@@ -5023,6 +5368,10 @@ module StrictNatCompiler where
       execToken token stack ≡ just result →
       NatStackOverflow bound result →
       BoundedTokenFailure bound token stack
+    boundedTokenRollDepthOverflow :
+      {depth : Nat} →
+      natWithinBound depth bound ≡ false →
+      BoundedTokenFailure bound (rollWord depth) stack
 
   -- With a bounded input stack, each bounded-step failure is either the
   -- same stack/roll failure as the unbounded token machine, or an unbounded
@@ -5113,8 +5462,10 @@ module StrictNatCompiler where
     bound swapWord stack inputBound failure =
     boundedTokenStackError failure
   execBoundedToken-failure-classification
-    bound (rollWord depth) stack inputBound failure =
-    boundedTokenStackError failure
+    bound (rollWord depth) stack inputBound failure
+    with natWithinBound depth bound in depthCheck | failure
+  ... | true | _ = boundedTokenStackError failure
+  ... | false | refl = boundedTokenRollDepthOverflow depthCheck
 
   boundedLiteralOverflowExample :
     BoundedTokenFailure 3 (pushLiteral 4) []
@@ -5131,6 +5482,22 @@ module StrictNatCompiler where
         (natStackBoundedCons refl natStackBoundedNil))
       refl
 
+  boundedRollDepthOverflowExample :
+    BoundedTokenFailure 3 (rollWord 4) (0 ∷ 0 ∷ 0 ∷ 0 ∷ 0 ∷ [])
+  boundedRollDepthOverflowExample =
+    execBoundedToken-failure-classification
+      3 (rollWord 4) (0 ∷ 0 ∷ 0 ∷ 0 ∷ 0 ∷ [])
+      (natStackBoundedCons refl
+        (natStackBoundedCons refl
+          (natStackBoundedCons refl
+            (natStackBoundedCons refl
+              (natStackBoundedCons refl natStackBoundedNil)))))
+      refl
+
+  boundedRollDepthOverflow :
+    execBoundedTokens 3 (rollWord 4 ∷ []) (0 ∷ 0 ∷ 0 ∷ 0 ∷ 0 ∷ []) ≡ nothing
+  boundedRollDepthOverflow = refl
+
   boundedAddUnderflowExample :
     BoundedTokenFailure 3 addWord []
   boundedAddUnderflowExample =
@@ -5143,22 +5510,23 @@ module StrictNatCompiler where
   execBoundedToken-complete :
     (bound : Nat) (token : ForthToken) (stack result : List Nat) →
     NatStackBounded bound stack →
+    BoundedTokenParameter bound token →
     execToken token stack ≡ just result →
     NatStackBounded bound result →
     execBoundedToken bound token stack ≡ just result
   execBoundedToken-complete bound (pushLiteral value) stack .(value ∷ stack)
-    inputBound refl (natStackBoundedCons valueBound restBound)
+    inputBound parameterBound refl (natStackBoundedCons valueBound restBound)
     with natWithinBound value bound in valueCheck
   ... | true = refl
   ... | false =
     ⊥-elim (natBoundFalseNotTrue valueBound)
-  execBoundedToken-complete bound addWord [] result natStackBoundedNil () resultBound
+  execBoundedToken-complete bound addWord [] result natStackBoundedNil _ () resultBound
   execBoundedToken-complete bound addWord (value ∷ []) result
-    (natStackBoundedCons _ natStackBoundedNil) () resultBound
+    (natStackBoundedCons _ natStackBoundedNil) _ () resultBound
   execBoundedToken-complete bound addWord (right ∷ left ∷ stack)
     .((left + right) ∷ stack)
     (natStackBoundedCons rightBound (natStackBoundedCons leftBound stackBound))
-    refl (natStackBoundedCons resultBound resultStackBound)
+    _ refl (natStackBoundedCons resultBound resultStackBound)
     with natWithinBound left bound in leftCheck
        | natWithinBound right bound in rightCheck
        | natWithinBound (left + right) bound in resultCheck
@@ -5169,13 +5537,13 @@ module StrictNatCompiler where
     ⊥-elim (natBoundFalseNotTrue rightBound)
   ... | true | true | false =
     ⊥-elim (natBoundFalseNotTrue resultBound)
-  execBoundedToken-complete bound monusWord [] result natStackBoundedNil () resultBound
+  execBoundedToken-complete bound monusWord [] result natStackBoundedNil _ () resultBound
   execBoundedToken-complete bound monusWord (value ∷ []) result
-    (natStackBoundedCons _ natStackBoundedNil) () resultBound
+    (natStackBoundedCons _ natStackBoundedNil) _ () resultBound
   execBoundedToken-complete bound monusWord (right ∷ left ∷ stack)
     .(applyNatOp monusOp left right ∷ stack)
     (natStackBoundedCons rightBound (natStackBoundedCons leftBound stackBound))
-    refl resultBound
+    _ refl resultBound
     with natWithinBound left bound in leftCheck
        | natWithinBound right bound in rightCheck
   ... | true | true = refl
@@ -5183,13 +5551,13 @@ module StrictNatCompiler where
     ⊥-elim (natBoundFalseNotTrue leftBound)
   ... | true | false =
     ⊥-elim (natBoundFalseNotTrue rightBound)
-  execBoundedToken-complete bound multiplyWord [] result natStackBoundedNil () resultBound
+  execBoundedToken-complete bound multiplyWord [] result natStackBoundedNil _ () resultBound
   execBoundedToken-complete bound multiplyWord (value ∷ []) result
-    (natStackBoundedCons _ natStackBoundedNil) () resultBound
+    (natStackBoundedCons _ natStackBoundedNil) _ () resultBound
   execBoundedToken-complete bound multiplyWord (right ∷ left ∷ stack)
     .((left * right) ∷ stack)
     (natStackBoundedCons rightBound (natStackBoundedCons leftBound stackBound))
-    refl (natStackBoundedCons resultBound resultStackBound)
+    _ refl (natStackBoundedCons resultBound resultStackBound)
     with natWithinBound left bound in leftCheck
        | natWithinBound right bound in rightCheck
        | natWithinBound (left * right) bound in resultCheck
@@ -5200,10 +5568,12 @@ module StrictNatCompiler where
     ⊥-elim (natBoundFalseNotTrue rightBound)
   ... | true | true | false =
     ⊥-elim (natBoundFalseNotTrue resultBound)
-  execBoundedToken-complete bound swapWord stack result inputBound stepBound resultBound =
+  execBoundedToken-complete bound swapWord stack result inputBound _ stepBound resultBound =
     stepBound
-  execBoundedToken-complete bound (rollWord depth) stack result inputBound stepBound resultBound =
-    stepBound
+  execBoundedToken-complete bound (rollWord depth) stack result inputBound depthBound stepBound resultBound
+    with natWithinBound depth bound
+  ... | true = stepBound
+  ... | false = ⊥-elim (natBoundFalseNotTrue depthBound)
 
   -- A bounded execution trace records every intermediate abstract stack.
   -- It is exactly the side condition needed for the converse bounded-machine
@@ -5219,6 +5589,7 @@ module StrictNatCompiler where
       {token : ForthToken} {tokens : List ForthToken}
       {before after final : List Nat} →
       NatStackBounded bound before →
+      BoundedTokenParameter bound token →
       execToken token before ≡ just after →
       NatStackBounded bound after →
       BoundedExecutionTrace bound tokens after final →
@@ -5241,9 +5612,9 @@ module StrictNatCompiler where
   boundedExecutionTrace-bounded {bound = bound}
     (boundedTraceStep {token = token} {tokens = tokens}
       {before = before} {after = after}
-      beforeBound step afterBound rest)
+      beforeBound parameterBound step afterBound rest)
     rewrite execBoundedToken-complete bound token before after
-      beforeBound step afterBound =
+      beforeBound parameterBound step afterBound =
       boundedExecutionTrace-bounded rest
 
   -- Converse to successful bounded preservation, under an explicit proof
