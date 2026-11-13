@@ -4216,7 +4216,17 @@ module FoundationsOptimization (Atom : Nat → Set) where
       chooseCandidate : Selection Nat R
       chooseCandidate-optimal :
         OptimalSelection valueOrder chooseCandidate
+      candidatePayoff : Nat → R
+      candidateIsChosen :
+        chooseCandidate candidatePayoff ≡ candidate
       finiteHorizon : Nat
+      finitePayoff : Play Nat finiteHorizon → R
+      finiteSBRAgreement :
+        selectedOutcome
+          (backwardInduction finiteHorizon chooseCandidate)
+          finitePayoff ≡
+        symmetricBarRecAt barControl barDefault barCoverage
+          objectiveBase objectiveStep objectiveState
 
       -- Quotient reflection makes objective value independent of which
       -- representative of a finite state is supplied.
@@ -4341,6 +4351,111 @@ module FoundationsOptimization (Atom : Nat → Set) where
     (f g : TensorHom A B) → f ≡ g
   optimizationResourceCoherence constraint =
     macLaneCoherence
+
+  candidateScoreOptimal :
+    {ℓ : Level} {H G : Category}
+    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
+    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
+    {R : Set} →
+    (constraint :
+      UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    (alternative : Nat) →
+    below (valueOrder constraint)
+      (candidatePayoff constraint alternative)
+      (candidatePayoff constraint (candidate constraint))
+  candidateScoreOptimal constraint alternative =
+    subst
+      (λ selected →
+        below (valueOrder constraint)
+          (candidatePayoff constraint alternative)
+          (candidatePayoff constraint selected))
+      (candidateIsChosen constraint)
+      (chooseCandidate-optimal constraint
+        (candidatePayoff constraint) alternative)
+
+  optimizationValue-finite :
+    {ℓ : Level} {H G : Category}
+    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
+    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
+    {R : Set} →
+    (constraint :
+      UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    optimizationValue constraint (objectiveState constraint) ≡
+      selectedOutcome
+        (backwardInduction (finiteHorizon constraint)
+          (chooseCandidate constraint))
+        (finitePayoff constraint)
+  optimizationValue-finite constraint =
+    sym (finiteSBRAgreement constraint)
+
+  optimizationStopCertificate :
+    {ℓ : Level} {H G : Category}
+    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
+    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
+    {R : Set} →
+    (constraint :
+      UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    (key : Nat) →
+    (present :
+      memberKey key (mapEntries (objectiveState constraint)) ≡ true) →
+    MALLPRelation
+      (baseDerivation (bellmanResourceProof constraint))
+      (pair (encodeEntries constraint (objectiveState constraint)) tt)
+      (encodeResult constraint
+        (symmetricBarRec (barControl constraint) (barDefault constraint)
+          (barCoverage constraint) (objectiveBase constraint)
+          (objectiveStep constraint) (objectiveState constraint)
+          key (inDomain present)))
+  optimizationStopCertificate constraint key present =
+    symmetricBarRecMALLP-stop
+      (bellmanResourceProof constraint)
+      (barControl constraint)
+      (barDefault constraint)
+      (barCoverage constraint)
+      (objectiveState constraint)
+      key present
+
+  optimizationStepCertificate :
+    {ℓ : Level} {H G : Category}
+    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
+    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
+    {R : Set} →
+    (constraint :
+      UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    (key : Nat) →
+    (absent :
+      memberKey key (mapEntries (objectiveState constraint)) ≡ false) →
+    MALLPRelation
+      (stepDerivation (bellmanResourceProof constraint))
+      (pair (encodeEntries constraint (objectiveState constraint))
+        (pair
+          (encodeContinuation constraint
+            (λ value →
+              let
+                nextEntries =
+                  extendFresh (objectiveState constraint) key absent value
+                nextKey =
+                  barControl constraint
+                    (streamOf (mapEntries nextEntries) (barDefault constraint))
+              in symmetricBarRec
+                   (barControl constraint) (barDefault constraint)
+                   (barCoverage constraint) (objectiveBase constraint)
+                   (objectiveStep constraint) nextEntries nextKey
+                   (decideDomain nextEntries nextKey)))
+          tt))
+      (encodeResult constraint
+        (symmetricBarRec (barControl constraint) (barDefault constraint)
+          (barCoverage constraint) (objectiveBase constraint)
+          (objectiveStep constraint) (objectiveState constraint)
+          key (outDomain absent)))
+  optimizationStepCertificate constraint key absent =
+    symmetricBarRecMALLP-step
+      (bellmanResourceProof constraint)
+      (barControl constraint)
+      (barDefault constraint)
+      (barCoverage constraint)
+      (objectiveState constraint)
+      key absent
 
 
 -- ----------------------------------------------------------------------
