@@ -1,4 +1,4 @@
-\\ MALLP-STRICT-BEGIN
+\ MALLP-STRICT-BEGIN
 \\ Checked Gforth boundary for MALLPForth.execBoundedToken.
 \\ Every semantic failure maps to Agda's single Maybe nothing case.
 \\ Target Nat values and ROLL immediates fit the positive signed-cell bound.
@@ -99,4 +99,4 @@ MALLP-ERR constant MALLP-ERR-LITERAL
 ; IMMEDIATE
 
 [then]
-\\ MALLP-STRICT-END
+\ MALLP-STRICT-END
