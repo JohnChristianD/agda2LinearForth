@@ -240,7 +240,7 @@ compileResourceUse
   -> Natural
   -> [Int]
   -> Int
-  -> Either String (FthForm, [FormalToken], [Int])
+  -> Either String ([FormalToken], [Int])
 compileResourceUse errorPrefix active context index =
   case elemIndex index context of
     Nothing -> Left (errorPrefix ++ show index)
@@ -248,22 +248,19 @@ compileResourceUse errorPrefix active context index =
       let depth = active + fromIntegral position
           remaining = take position context ++ drop (position + 1) context
       in if depth == 0
-           then Right (RSList [], [], remaining)
+           then Right ([], remaining)
            else if depth == 1
-             then Right (RSAtom "MALLP-SWAP", [FormalSwapWord], remaining)
+             then Right ([FormalSwapWord], remaining)
              else Right
-               ( RSList [renderNatExpr (NatLiteral depth), RSAtom "MALLP-NAT-ROLL"]
-               , [FormalRollWord depth]
-               , remaining
-               )
+               ([FormalPushLiteral depth, FormalRollWord depth], remaining)
 
 compileNatResourceExpr
   :: Natural
   -> [Int]
   -> NatResourceExpr
-  -> Either String (FthForm, [FormalToken], [Int])
+  -> Either String ([FormalToken], [Int])
 compileNatResourceExpr _ context (NatResourceLiteral value) =
-  Right (renderNatExpr (NatLiteral value), [FormalPushLiteral value], context)
+  Right ([FormalPushLiteral value], context)
 compileNatResourceExpr active context (NatResourceVariable index) =
   compileResourceUse
     "MALLP resource is missing, duplicated, or out of scope: "
@@ -279,16 +276,12 @@ compileNatResourceBinary
   -> NatOp
   -> NatResourceExpr
   -> NatResourceExpr
-  -> Either String (FthForm, [FormalToken], [Int])
+  -> Either String ([FormalToken], [Int])
 compileNatResourceBinary active context operation left right = do
-  (leftCode, leftTokens, afterLeft) <- compileNatResourceExpr active context left
-  (rightCode, rightTokens, afterRight) <-
+  (leftTokens, afterLeft) <- compileNatResourceExpr active context left
+  (rightTokens, afterRight) <-
     compileNatResourceExpr (active + 1) afterLeft right
-  pure
-    ( RSList [leftCode, rightCode, renderNatOp operation]
-    , leftTokens ++ rightTokens ++ [formalNatToken operation]
-    , afterRight
-    )
+  pure (leftTokens ++ rightTokens ++ [formalNatToken operation], afterRight)
 
 -- The generated Agda Bool machine currently has checked models for the
 -- unary complement and the two-argument additive chooser. Keep admission
@@ -304,37 +297,25 @@ supportedBoolResourceProgram _ _ = False
 compileBoolResourceExpr
   :: [Int]
   -> BoolExpr
-  -> Either String (FthForm, [FormalToken], [Int])
+  -> Either String ([FormalToken], [Int])
 compileBoolResourceExpr context (BoolLiteral value) =
-  let (forth, token) = if value
-        then ("TRUE", FormalTrueWord)
-        else ("FALSE", FormalFalseWord)
-  in Right (RSAtom forth, [token], context)
+  let token = if value then FormalTrueWord else FormalFalseWord
+  in Right ([token], context)
 compileBoolResourceExpr context (BoolVariable index) =
   compileResourceUse
     "MALLP Bool resource is missing, duplicated, or out of scope: "
     0 context index
 compileBoolResourceExpr context (BoolConditional condition whenTrue whenFalse) = do
-  (conditionCode, conditionTokens, afterCondition) <-
+  (conditionTokens, afterCondition) <-
     compileBoolResourceExpr context condition
-  (trueCode, trueTokens, afterTrue) <-
+  (trueTokens, afterTrue) <-
     compileBoolResourceExpr afterCondition whenTrue
-  (falseCode, falseTokens, afterFalse) <-
+  (falseTokens, afterFalse) <-
     compileBoolResourceExpr afterCondition whenFalse
   if afterTrue /= afterFalse
     then Left "MALLP additive case branches consume different resource contexts"
     else Right
-      ( RSList
-          [ conditionCode
-          , RSAtom "MALLP-IF"
-          , trueCode
-          , RSAtom "ELSE"
-          , falseCode
-          , RSAtom "THEN"
-          ]
-      , conditionTokens ++ [FormalIf trueTokens falseTokens]
-      , afterTrue
-      )
+      (conditionTokens ++ [FormalIf trueTokens falseTokens], afterTrue)
 
 decodeBoolPairField :: TTerm -> TCM Int
 decodeBoolPairField term =
@@ -392,7 +373,7 @@ compileBoolPairResource
   :: Natural
   -> [Int]
   -> Int
-  -> Either String (FthForm, [FormalToken], [Int])
+  -> Either String ([FormalToken], [Int])
 compileBoolPairResource active context index =
   compileResourceUse
     "MALLP BoolPair field missing, duplicated, or out of scope: "
@@ -402,7 +383,7 @@ compileBoolPairFunction
   :: QName
   -> QName
   -> TTerm
-  -> TCM (FthForm, [FormalToken], BoolPairExpr)
+  -> TCM ([FormalToken], BoolPairExpr)
 compileBoolPairFunction owner constructor term = do
   expression <- decodeBoolPairFunction owner constructor term
   let (first, second) = case expression of
@@ -415,19 +396,19 @@ compileBoolPairFunction owner constructor term = do
   if expression /= BoolPairFields 0 1
     then unsupported "BoolPair field permutation is outside the Agda-certified tensor-swap fragment"
     else pure ()
-  (firstCode, firstTokens, afterFirst) <-
+  (firstTokens, afterFirst) <-
     either unsupported pure (compileBoolPairResource 0 expectedResources first)
-  (secondCode, secondTokens, remaining) <-
+  (secondTokens, remaining) <-
     either unsupported pure (compileBoolPairResource 1 afterFirst second)
   if null remaining
-    then pure (RSList [firstCode, secondCode], firstTokens ++ secondTokens, expression)
+    then pure (firstTokens ++ secondTokens, expression)
     else unsupported ("MALLP BoolPair resource leak: " ++ show remaining)
 
 compileBoolResourceFunction
   :: QName
   -> Int
   -> TTerm
-  -> TCM (FthForm, [FormalToken], BoolExpr)
+  -> TCM ([FormalToken], BoolExpr)
 compileBoolResourceFunction owner arity term = do
   let (actualArity, body) = tLamView term
       expectedResources = [0 .. arity - 1]
@@ -445,17 +426,17 @@ compileBoolResourceFunction owner arity term = do
   if not (supportedBoolResourceProgram arity expression)
     then unsupported "Bool resource tree is linear but outside the Agda-certified Bool complement/chooser fragment"
     else pure ()
-  (code, tokens, remaining) <-
+  (tokens, remaining) <-
     either unsupported pure (compileBoolResourceExpr expectedResources expression)
   if null remaining
-    then pure (code, tokens, expression)
+    then pure (tokens, expression)
     else unsupported ("MALLP Bool resource leak: unconsumed arguments " ++ show remaining)
 
 compileNatResourceFunction
   :: QName
   -> Int
   -> TTerm
-  -> TCM (NatResourceExpr, FthForm, [FormalToken], Maybe NatLinearExpr, Maybe NatBinaryLinearExpr)
+  -> TCM (NatResourceExpr, [FormalToken], Maybe NatLinearExpr, Maybe NatBinaryLinearExpr)
 compileNatResourceFunction owner arity term = do
   let (actualArity, body) = tLamView term
   if actualArity /= arity
@@ -469,7 +450,7 @@ compileNatResourceFunction owner arity term = do
   if actualResources /= expectedResources
     then unsupported "MALLP linearity violation: each live Nat argument must occur exactly once"
     else pure ()
-  (code, tokens, remaining) <- either unsupported pure
+  (tokens, remaining) <- either unsupported pure
     (compileNatResourceExpr 0 expectedResources expression)
   if null remaining
     then do
@@ -480,7 +461,7 @@ compileNatResourceFunction owner arity term = do
         _ -> pure Nothing
       let binaryWitness =
             if arity == 2 then natResourceBinaryLinearExpr expression else Nothing
-      pure (expression, code, tokens, linearWitness, binaryWitness)
+      pure (expression, tokens, linearWitness, binaryWitness)
     else unsupported ("MALLP resource leak: unconsumed arguments " ++ show remaining)
 
 natResourceClosedExpr :: NatResourceExpr -> Maybe NatExpr
@@ -1145,7 +1126,7 @@ compileDefinition definition
           body <- toTreeless EagerEvaluation (defName definition)
           case (natArity, body) of
             (Just arity, Just term) -> do
-              (resourceWitness, _code, tokens, linearWitness, binaryWitness) <-
+              (resourceWitness, tokens, linearWitness, binaryWitness) <-
                 compileNatResourceFunction (defName definition) arity term
               pure (Just (CompiledDefinition
                 (defName definition)
@@ -1168,7 +1149,7 @@ compileDefinition definition
           body <- toTreeless EagerEvaluation (defName definition)
           case (boolArity, body) of
             (Just arity, Just term) -> do
-              (_code, tokens, expression) <-
+              (tokens, expression) <-
                 compileBoolResourceFunction (defName definition) arity term
               pure (Just (CompiledDefinition
                 (defName definition)
@@ -1198,7 +1179,7 @@ compileDefinition definition
               case body of
                 Nothing -> pure Nothing
                 Just term -> do
-                  (_code, tokens, expression) <-
+                  (tokens, expression) <-
                     compileBoolPairFunction (defName definition) constructor term
                   pure (Just (CompiledDefinition
                     (defName definition)
