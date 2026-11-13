@@ -5,9 +5,11 @@
 --lossy-unification
 --no-eta-equality
 --prop
---erased-matches=non-dependent
+--with-K
+--erased-quotients
+--erased-funext
+--erased-propext
 --exact-split
---flat-split
 #-}
 -- ```Agda
 -- ----------------------------------------------------------------------
@@ -36,6 +38,7 @@ open import Agda.Builtin.List public
 open import Agda.Builtin.Maybe public
 open import Agda.Builtin.Sigma public
 open import Agda.Builtin.Equality public
+open import Agda.Builtin.Erased public
 open import Agda.Builtin.String public
 open import Agda.Builtin.Equality.Rewrite public
 open import Agda.Builtin.Equality.Erase public
