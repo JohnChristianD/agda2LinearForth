@@ -4150,7 +4150,7 @@ module SBRMALLPBellman (Atom : Nat → Set) where
         in symmetricBarRec omega default condition base step
              nextEntries nextKey (decideDomain nextEntries nextKey)
 
-      relationAt : R → Set
+      relationAt : Atom resultAtom → Set
       relationAt output =
         MALLPRelation (stepDerivation objective)
           (pair (encodeEntries entries)
@@ -4165,39 +4165,63 @@ module SBRMALLPBellman (Atom : Nat → Set) where
 
 
 -- ----------------------------------------------------------------------
--- ONE JOINT FOUNDATIONS CONSTRAINT FOR A SINGLE OPTIMIZATION PROBLEM
+-- ONE DEPENDENT DYNAMIC-PROGRAMMING / MALLP OPTIMIZATION CONSTRAINT
 --
--- One candidate family, one finite state, one SBR/Bellman objective, one
--- MALLP resource certificate. The remaining foundations constrain the same
--- candidate/state/value triple: negative logical boundary, cohesive
--- representation, quotient invariance, and monoidal resource coherence.
+-- One Nat candidate family, one quotient-normalized partial-map state,
+-- one payoff preorder, one finite DP, one SBR recurrence, and one pair
+-- of MALLP-certified Bellman maps. Cohesion and Mac Lane coherence act on
+-- those same candidate and resource types. Existing logical assumptions
+-- remain explicit; this package introduces no postulates or rewrite rules.
 -- ----------------------------------------------------------------------
 
-module FoundationsOptimization (Atom : Nat → Set) where
+optimizationTensor : Nat → Nat → Nat → TensorExpr
+optimizationTensor entryAtom continuationAtom resultAtom =
+  tensor (atom entryAtom)
+    (tensor (atom continuationAtom) (atom resultAtom))
 
-  open MALLPRelationalDenotation Atom
+record IdentityRewriteFoundation : Set₁ where
+  field
+    identityReflexivityRewrite :
+      (A : Set) → F A A ≡ S
+    identityCompositionRewrite :
+      (A : Set → Set) (X Y : Set) →
+      G A X Y ≡ F (A X) (A Y)
+open IdentityRewriteFoundation public
+
+identityRewriteFoundation : IdentityRewriteFoundation
+identityRewriteFoundation = record
+  { identityReflexivityRewrite = rewF
+  ; identityCompositionRewrite = rewG
+  }
+
+module UnifiedFoundationsOptimization (Atom : Nat → Set) where
+
   module Bellman = SBRMALLPBellman Atom
   open Bellman public
 
-  record DynamicProgrammingMALLPAOptimizationConstraint
-      (ℓ : Level)
+  -- Family coverage, quotient state, finite selection, SBR and MALLP
+  -- all share exactly one Nat candidate and one payoff type.
+  record DynamicProgrammingMALLPOptimization
+      (candidateFamily : ParametricallyEnumerable)
       (H G : Category)
       (productsH : FiniteProducts H)
       (productsG : FiniteProducts G)
-      (cohesion : CohesiveAdjointQuadruple H G productsH productsG)
-      (R : Set) : Set (lsuc ℓ ⊔ lsuc (lsuc (lsuc lzero))) where
+      (ℓ : Level)
+      (R : Set)
+      : Set (lsuc (lsuc (lsuc ℓ))) where
     field
       negativeBoundary : NegativeLogicalBoundary ℓ
+      identityRewriting : IdentityRewriteFoundation
 
-      -- PEA supplies the candidate from the same Nat domain used by SBR.
-      candidateFamily : ParametricallyEnumerable
-      candidateParameter candidate candidateStage : Nat
+      positiveEnumerability : ParametricEA
+      candidateParameter : Nat
+      candidate : Nat
+      candidateStage : Nat
       candidateEnumeration :
-        enumerate candidateFamily candidateParameter candidateStage ≡
-          just candidate
+        universalEval
+          (parametricCode positiveEnumerability candidateFamily candidateParameter)
+          candidateStage ≡ just candidate
 
-      -- Bellman base/step maps share the same state, continuation, and value
-      -- encodings; MALLP proves both maps consume their resources exactly once.
       entryAtom continuationAtom resultAtom : Nat
       encodeEntries : PartialMap Nat → Atom entryAtom
       encodeContinuation : (Nat → R) → Atom continuationAtom
@@ -4209,37 +4233,20 @@ module FoundationsOptimization (Atom : Nat → Set) where
           entryAtom continuationAtom resultAtom
           encodeEntries encodeContinuation encodeResult
           objectiveBase objectiveStep
+      cutEliminationFoundation : MALLPCutElimination
 
-      -- SBR and finite Bellman optimization act on this very same candidate
-      -- space and value preorder.
       barControl : (Nat → Nat) → Nat
       barDefault : Nat
       barCoverage :
         SymmetricBarCondition barControl barDefault
-      objectiveState : PartialMap Nat
-      candidateInObjectiveState :
-        memberKey candidate (mapEntries objectiveState) ≡ true
-      valueOrder : Preorder R
-      chooseCandidate : Selection Nat R
-      chooseCandidate-optimal :
-        OptimalSelection valueOrder chooseCandidate
-      candidatePayoff : Nat → R
-      candidateIsChosen :
-        chooseCandidate candidatePayoff ≡ candidate
-      finiteHorizon : Nat
-      finitePayoff : Play Nat finiteHorizon → R
-      finiteSBRAgreement :
-        selectedOutcome
-          (backwardInduction finiteHorizon chooseCandidate)
-          finitePayoff ≡
-        symmetricBarRecAt barControl barDefault barCoverage
-          objectiveBase objectiveStep objectiveState
 
-      -- Quotient reflection makes objective value independent of which
-      -- representative of a finite state is supplied.
+      -- Quotient reflection: the normalized state is the single DP/SBR
+      -- input, and both Bellman maps respect that same normalization.
+      initialState : PartialMap Nat
       stateNormalizer : IdempotentEndomap (PartialMap Nat)
-      objectiveState-canonical :
-        canonicalize stateNormalizer objectiveState ≡ objectiveState
+      quotientInitialState : Quotient (PartialMap Nat) stateNormalizer
+      quotientInitialStateIsCanonical :
+        quotientInitialState ≡ qcanon stateNormalizer initialState
       objectiveBase-invariant :
         (entries : PartialMap Nat) →
         objectiveBase (canonicalize stateNormalizer entries) ≡
@@ -4248,19 +4255,56 @@ module FoundationsOptimization (Atom : Nat → Set) where
         (entries : PartialMap Nat) (continuation : Nat → R) →
         objectiveStep (canonicalize stateNormalizer entries) continuation ≡
           objectiveStep entries continuation
+      candidateInObjectiveState :
+        memberKey candidate
+          (mapEntries (qcoerce quotientInitialState)) ≡ true
 
-      -- The candidate is represented in both cohesive categories, with the
-      -- discrete embedding supplied by the same cohesive adjoint quadruple.
-      discreteCandidate : Nat → categoryObjects G
-      cohesiveCandidate : Nat → categoryObjects H
-      candidateEmbedding :
+      barKey : Nat
+      barKeyIsSelected :
+        barKey ≡
+          barControl
+            (streamOf
+              (mapEntries (qcoerce quotientInitialState)) barDefault)
+      barKeyDecision :
+        DomainDecision (qcoerce quotientInitialState) barKey
+      barValue : R
+      barValueIsRecursor :
+        symmetricBarRec barControl barDefault barCoverage
+          objectiveBase objectiveStep
+          (qcoerce quotientInitialState) barKey barKeyDecision ≡ barValue
+
+      -- Finite backward induction uses the same Nat move space and payoff
+      -- order. Its payoff is indexed by this exact normalized initial state.
+      valueOrder : Preorder R
+      finiteSelection : Selection Nat R
+      finiteSelection-optimal : OptimalSelection valueOrder finiteSelection
+      candidatePayoff : Nat → R
+      candidateIsChosen :
+        finiteSelection candidatePayoff ≡ candidate
+      finiteHorizon : Nat
+      finitePayoff : PartialMap Nat → Play Nat finiteHorizon → R
+      finiteDynamicProgrammingValue : R
+      finiteDynamicProgrammingValueIsBackwardInduction :
+        finiteDynamicProgrammingValue ≡
+          selectedOutcome
+            (backwardInduction finiteHorizon finiteSelection)
+            (finitePayoff (qcoerce quotientInitialState))
+      finiteDynamicProgrammingAgreesWithSBR :
+        finiteDynamicProgrammingValue ≡ barValue
+
+      -- Cohesive Π presents the same H-state in G and relates each Nat
+      -- candidate to it; the adjunction itself is supplied once.
+      cohesion : CohesiveAdjointQuadruple H G productsH productsG
+      optimizationState : categoryObjects H
+      candidateObject : Nat → categoryObjects G
+      candidateReachability :
         (n : Nat) →
-        categoryHom H
-          (functorObject (cohesiveDisc cohesion) (discreteCandidate n))
-          (cohesiveCandidate n)
+        categoryHom G
+          (functorObject (cohesivePi cohesion) optimizationState)
+          (candidateObject n)
 
-      -- The resource type has one canonical association; Mac Lane coherence
-      -- identifies every other association path with it.
+      -- Mac Lane normalizes the exact entry/continuation/result resource
+      -- tensor used by the Bellman MALLP derivations.
       resourceAssociation :
         TensorHom
           (tensor (tensor (atom entryAtom) (atom continuationAtom))
@@ -4268,202 +4312,129 @@ module FoundationsOptimization (Atom : Nat → Set) where
           (tensor (atom entryAtom)
             (tensor (atom continuationAtom) (atom resultAtom)))
 
-  open DynamicProgrammingMALLPAOptimizationConstraint public
-
-  optimizationValue :
-    {ℓ : Level} {H G : Category}
-    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
-    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
-    {R : Set} →
-    (constraint :
-      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
-    PartialMap Nat → R
-  optimizationValue constraint entries =
-    symmetricBarRecAt
-      (barControl constraint)
-      (barDefault constraint)
-      (barCoverage constraint)
-      (objectiveBase constraint)
-      (objectiveStep constraint)
-      entries
+  open DynamicProgrammingMALLPOptimization public
 
   optimizationCandidateFeasible :
-    {ℓ : Level} {H G : Category}
-    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
-    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
-    {R : Set} →
-    (constraint :
-      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
-    Predicate (candidateFamily constraint) (candidateParameter constraint)
-      (candidate constraint)
-  optimizationCandidateFeasible constraint =
-    enumerate-sound
-      (candidateFamily constraint)
-      (candidateParameter constraint)
-      (candidateStage constraint)
-      (candidate constraint)
-      (candidateEnumeration constraint)
-
-  -- The PEA-selected universal program enumerates the same feasible
-  -- candidate, possibly at another finite stage.
-  optimizationCandidateCompiled :
-    {ℓ : Level} {H G : Category}
-    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
-    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
-    {R : Set} →
-    (constraint :
-      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
-    Σ Nat
-      (λ stage →
-        universalEval
-          (parametricCode parametricEA
-            (candidateFamily constraint)
-            (candidateParameter constraint))
-          stage ≡ just (candidate constraint))
-  optimizationCandidateCompiled constraint =
-    parametricCode-complete
-      parametricEA
-      (candidateFamily constraint)
-      (candidateParameter constraint)
-      (candidate constraint)
-      (optimizationCandidateFeasible constraint)
+    {candidateFamily : ParametricallyEnumerable}
+    {H G : Category}
+    {productsH : FiniteProducts H}
+    {productsG : FiniteProducts G}
+    {ℓ : Level} {R : Set} →
+    (optimization :
+      DynamicProgrammingMALLPOptimization
+        candidateFamily H G productsH productsG ℓ R) →
+    Predicate candidateFamily
+      (candidateParameter optimization) (candidate optimization)
+  optimizationCandidateFeasible {candidateFamily = family} optimization =
+    parametricCode-sound
+      (positiveEnumerability optimization)
+      family
+      (candidateParameter optimization)
+      (candidateStage optimization)
+      (candidate optimization)
+      (candidateEnumeration optimization)
 
   finiteOptimizationOptimal :
-    {ℓ : Level} {H G : Category}
-    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
-    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
-    {R : Set} →
-    (constraint :
-      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    {candidateFamily : ParametricallyEnumerable}
+    {H G : Category}
+    {productsH : FiniteProducts H}
+    {productsG : FiniteProducts G}
+    {ℓ : Level} {R : Set} →
+    (optimization :
+      DynamicProgrammingMALLPOptimization
+        candidateFamily H G productsH productsG ℓ R) →
     OptimalSelection
-      (valueOrder constraint)
+      (valueOrder optimization)
       (backwardInduction
-        (finiteHorizon constraint)
-        (chooseCandidate constraint))
-  finiteOptimizationOptimal constraint =
+        (finiteHorizon optimization)
+        (finiteSelection optimization))
+  finiteOptimizationOptimal optimization =
     backwardInduction-optimal
-      (valueOrder constraint)
-      (chooseCandidate constraint)
-      (chooseCandidate-optimal constraint)
-      (finiteHorizon constraint)
+      (valueOrder optimization)
+      (finiteSelection optimization)
+      (finiteSelection-optimal optimization)
+      (finiteHorizon optimization)
+
+  normalizedBellmanBase :
+    {candidateFamily : ParametricallyEnumerable}
+    {H G : Category}
+    {productsH : FiniteProducts H}
+    {productsG : FiniteProducts G}
+    {ℓ : Level} {R : Set} →
+    (optimization :
+      DynamicProgrammingMALLPOptimization
+        candidateFamily H G productsH productsG ℓ R) →
+    MALLP
+      (atom⁻ (entryAtom optimization) ∷ [])
+      (just (atom⁺ (resultAtom optimization)))
+  normalizedBellmanBase optimization =
+    normalizeCutProof
+      (cutEliminationFoundation optimization)
+      (baseDerivation (bellmanResourceProof optimization))
+
+  normalizedBellmanBase-cutFree :
+    {candidateFamily : ParametricallyEnumerable}
+    {H G : Category}
+    {productsH : FiniteProducts H}
+    {productsG : FiniteProducts G}
+    {ℓ : Level} {R : Set} →
+    (optimization :
+      DynamicProgrammingMALLPOptimization
+        candidateFamily H G productsH productsG ℓ R) →
+    hasCut (normalizedBellmanBase optimization) ≡ false
+  normalizedBellmanBase-cutFree optimization =
+    normalizeCutProof-cutFree
+      (cutEliminationFoundation optimization)
+      (baseDerivation (bellmanResourceProof optimization))
+
+  normalizedBellmanStep :
+    {candidateFamily : ParametricallyEnumerable}
+    {H G : Category}
+    {productsH : FiniteProducts H}
+    {productsG : FiniteProducts G}
+    {ℓ : Level} {R : Set} →
+    (optimization :
+      DynamicProgrammingMALLPOptimization
+        candidateFamily H G productsH productsG ℓ R) →
+    MALLP
+      (atom⁻ (entryAtom optimization) ∷
+        atom⁻ (continuationAtom optimization) ∷ [])
+      (just (atom⁺ (resultAtom optimization)))
+  normalizedBellmanStep optimization =
+    normalizeCutProof
+      (cutEliminationFoundation optimization)
+      (stepDerivation (bellmanResourceProof optimization))
+
+  normalizedBellmanStep-cutFree :
+    {candidateFamily : ParametricallyEnumerable}
+    {H G : Category}
+    {productsH : FiniteProducts H}
+    {productsG : FiniteProducts G}
+    {ℓ : Level} {R : Set} →
+    (optimization :
+      DynamicProgrammingMALLPOptimization
+        candidateFamily H G productsH productsG ℓ R) →
+    hasCut (normalizedBellmanStep optimization) ≡ false
+  normalizedBellmanStep-cutFree optimization =
+    normalizeCutProof-cutFree
+      (cutEliminationFoundation optimization)
+      (stepDerivation (bellmanResourceProof optimization))
 
   optimizationResourceCoherence :
-    {ℓ : Level} {H G : Category}
-    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
-    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
-    {R : Set} →
-    (constraint :
-      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+    {candidateFamily : ParametricallyEnumerable}
+    {H G : Category}
+    {productsH : FiniteProducts H}
+    {productsG : FiniteProducts G}
+    {ℓ : Level} {R : Set} →
+    (optimization :
+      DynamicProgrammingMALLPOptimization
+        candidateFamily H G productsH productsG ℓ R) →
     {A B : TensorExpr} →
-    (f g : TensorHom A B) → f ≡ g
-  optimizationResourceCoherence constraint {A} {B} first second =
+    (first second : TensorHom A B) →
+    first ≡ second
+  optimizationResourceCoherence optimization {A} {B} first second =
     Foundations.MacLaneCoherence.tensorHom-proposition
       {A = A} {B = B} first second
-
-  candidateScoreOptimal :
-    {ℓ : Level} {H G : Category}
-    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
-    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
-    {R : Set} →
-    (constraint :
-      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
-    (alternative : Nat) →
-    below (valueOrder constraint)
-      (candidatePayoff constraint alternative)
-      (candidatePayoff constraint (candidate constraint))
-  candidateScoreOptimal constraint alternative =
-    subst
-      (λ selected →
-        below (valueOrder constraint)
-          (candidatePayoff constraint alternative)
-          (candidatePayoff constraint selected))
-      (candidateIsChosen constraint)
-      (chooseCandidate-optimal constraint
-        (candidatePayoff constraint) alternative)
-
-  optimizationValue-finite :
-    {ℓ : Level} {H G : Category}
-    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
-    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
-    {R : Set} →
-    (constraint :
-      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
-    optimizationValue constraint (objectiveState constraint) ≡
-      selectedOutcome
-        (backwardInduction (finiteHorizon constraint)
-          (chooseCandidate constraint))
-        (finitePayoff constraint)
-  optimizationValue-finite constraint =
-    sym (finiteSBRAgreement constraint)
-
-  optimizationStopCertificate :
-    {ℓ : Level} {H G : Category}
-    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
-    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
-    {R : Set} →
-    (constraint :
-      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
-    (key : Nat) →
-    (present :
-      memberKey key (mapEntries (objectiveState constraint)) ≡ true) →
-    MALLPRelation
-      (baseDerivation (bellmanResourceProof constraint))
-      (pair (encodeEntries constraint (objectiveState constraint)) tt)
-      (encodeResult constraint
-        (symmetricBarRec (barControl constraint) (barDefault constraint)
-          (barCoverage constraint) (objectiveBase constraint)
-          (objectiveStep constraint) (objectiveState constraint)
-          key (inDomain present)))
-  optimizationStopCertificate constraint key present =
-    symmetricBarRecMALLP-stop
-      (bellmanResourceProof constraint)
-      (barControl constraint)
-      (barDefault constraint)
-      (barCoverage constraint)
-      (objectiveState constraint)
-      key present
-
-  optimizationStepCertificate :
-    {ℓ : Level} {H G : Category}
-    {productsH : FiniteProducts H} {productsG : FiniteProducts G}
-    {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
-    {R : Set} →
-    (constraint :
-      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
-    (key : Nat) →
-    (absent :
-      memberKey key (mapEntries (objectiveState constraint)) ≡ false) →
-    MALLPRelation
-      (stepDerivation (bellmanResourceProof constraint))
-      (pair (encodeEntries constraint (objectiveState constraint))
-        (pair
-          (encodeContinuation constraint
-            (λ value →
-              let
-                nextEntries =
-                  extendFresh (objectiveState constraint) key absent value
-                nextKey =
-                  barControl constraint
-                    (streamOf (mapEntries nextEntries) (barDefault constraint))
-              in symmetricBarRec
-                   (barControl constraint) (barDefault constraint)
-                   (barCoverage constraint) (objectiveBase constraint)
-                   (objectiveStep constraint) nextEntries nextKey
-                   (decideDomain nextEntries nextKey)))
-          tt))
-      (encodeResult constraint
-        (symmetricBarRec (barControl constraint) (barDefault constraint)
-          (barCoverage constraint) (objectiveBase constraint)
-          (objectiveStep constraint) (objectiveState constraint)
-          key (outDomain absent)))
-  optimizationStepCertificate constraint key absent =
-    symmetricBarRecMALLP-step
-      (bellmanResourceProof constraint)
-      (barControl constraint)
-      (barDefault constraint)
-      (barCoverage constraint)
-      (objectiveState constraint)
-      key absent
 
 
 -- ----------------------------------------------------------------------
