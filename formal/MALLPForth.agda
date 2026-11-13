@@ -19,7 +19,7 @@ module MALLPForth where
 -- Primitive universe levels for the predicative category and identity
 -- encodings below. The root module deliberately omits --type-in-type.
 open import Agda.Primitive using (Level; lsuc; _⊔_) public
-open import Agda.Builtin.Nat public hiding (_<_)
+open import Agda.Builtin.Nat public renaming (_<_ to _natLessThan_)
 open import Agda.Builtin.Bool public
 open import Agda.Builtin.List public
 open import Agda.Builtin.Maybe public
