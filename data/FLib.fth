@@ -69,6 +69,13 @@ s" MALLP: token failure" exception constant MALLP-ERR
     result
 ;
 
+: MALLP-NAT-LITERAL ( "digits" -- )
+    PARSE-NAME MALLP-PARSE-NAT POSTPONE LITERAL
+; IMMEDIATE
+
+: MALLP-TRUE ( -- flag ) -1 ;
+: MALLP-FALSE ( -- flag ) 0 ;
+
 : MALLP-SWAP ( x y -- y x )
     2 MALLP-REQUIRE-STACK
     SWAP
@@ -93,6 +100,9 @@ s" MALLP: token failure" exception constant MALLP-ERR
     POSTPONE MALLP-CHECK-BOOL
     POSTPONE IF
 ; IMMEDIATE
+
+: MALLP-ELSE POSTPONE ELSE ; IMMEDIATE
+: MALLP-THEN POSTPONE THEN ; IMMEDIATE
 
 [then]
 \ MALLP-STRICT-END

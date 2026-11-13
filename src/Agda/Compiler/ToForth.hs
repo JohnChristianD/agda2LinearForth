@@ -59,7 +59,6 @@ data OtherWitness
 
 data CompiledDefinition = CompiledDefinition
   { compiledName :: QName
-  , compiledForm :: FthForm
   , compiledTokens :: [FormalToken]
   , compiledNatLinearWitness :: Maybe NatLinearExpr
   , compiledNatBinaryWitness :: Maybe NatBinaryLinearExpr
@@ -541,6 +540,11 @@ strictWord :: QName -> FthForm -> FthForm
 strictWord name body =
   RSAtom $ T.concat [": ", safeForthName name, " ", formToText body, ";"]
 
+compiledDefinitionForm :: CompiledDefinition -> FthForm
+compiledDefinitionForm definition =
+  strictWord (compiledName definition)
+    (formalTokensForm (compiledTokens definition))
+
 -- Forth dictionary lookup is case-insensitive. Reject collisions after
 -- identifier sanitization, including names that shadow runtime primitives.
 validateForthNames :: [CompiledDefinition] -> TCM ()
@@ -560,12 +564,12 @@ validateForthNames definitions =
         [ "AGDA2FORTH-MALLP-LOADED", "MALLP-MAX-NAT", "MALLP-ERR"
         , "MALLP-ERR-NEGATIVE", "MALLP-ERR-OVERFLOW", "MALLP-ERR-LITERAL"
         , "MALLP-ERR-STACK", "MALLP-REQUIRE-STACK", "MALLP-CHECK-NAT"
-        , "MALLP-PARSE-NAT", "MALLP-NAT-ADD", "MALLP-NAT-MONUS"
+        , "MALLP-PARSE-NAT", "MALLP-NAT-LITERAL", "MALLP-NAT-ADD", "MALLP-NAT-MONUS"
         , "MALLP-NAT-MUL", "MALLP-SWAP", "MALLP-NAT-ROLL"
-        , "MALLP-CHECK-BOOL", "MALLP-IF", "TRUE", "FALSE"
+        , "MALLP-CHECK-BOOL", "MALLP-TRUE", "MALLP-FALSE", "MALLP-IF", "MALLP-ELSE", "MALLP-THEN", "TRUE", "FALSE"
         , "SWAP", "ROLL", "DEPTH", "THROW", "CATCH", "BYE"
         , "IF", "ELSE", "THEN", "BEGIN", "WHILE", "REPEAT"
-        , "POSTPONE", "IMMEDIATE", "CONSTANT", "EXCEPTION"
+        , "POSTPONE", "IMMEDIATE", "CONSTANT", "EXCEPTION", "PARSE-NAME", "LITERAL"
         , "DUP", "?DUP", "2DUP", "3DUP", "OVER", "2OVER"
         , "PICK", "DROP", "2DROP", "3DROP", "NIP", "2NIP", "TUCK"
         , "+", "-", "*", "/", ">", "<", "<>", "0<", "0=", "0<>", "1+"
@@ -674,7 +678,7 @@ renderNatOp operation = RSAtom $ case operation of
 
 renderNatExpr :: NatExpr -> FthForm
 renderNatExpr (NatLiteral n) =
-  RSAtom $ T.concat ["s\" ", T.pack (show n), "\" MALLP-PARSE-NAT"]
+  RSList [RSAtom "MALLP-NAT-LITERAL", RSAtom (T.pack (show n))]
 renderNatExpr (NatBinary operation left right) =
   RSList [renderNatExpr left, renderNatExpr right, renderNatOp operation]
 
@@ -689,15 +693,15 @@ formalTokenForm FormalMultiplyWord = renderNatOp NatMultiply
 formalTokenForm FormalSwapWord = RSAtom "MALLP-SWAP"
 formalTokenForm (FormalRollWord depth) =
   RSList [renderNatExpr (NatLiteral depth), RSAtom "MALLP-NAT-ROLL"]
-formalTokenForm FormalTrueWord = RSAtom "TRUE"
-formalTokenForm FormalFalseWord = RSAtom "FALSE"
+formalTokenForm FormalTrueWord = RSAtom "MALLP-TRUE"
+formalTokenForm FormalFalseWord = RSAtom "MALLP-FALSE"
 formalTokenForm (FormalIf whenTrue whenFalse) =
   RSList
     [ RSAtom "MALLP-IF"
     , formalTokensForm whenTrue
-    , RSAtom "ELSE"
+    , RSAtom "MALLP-ELSE"
     , formalTokensForm whenFalse
-    , RSAtom "THEN"
+    , RSAtom "MALLP-THEN"
     ]
 
 formalTokensForm :: [FormalToken] -> FthForm
@@ -1129,7 +1133,7 @@ compileDefinition definition
                 compileNatResourceFunction (defName definition) arity term
               pure (Just (CompiledDefinition
                 (defName definition)
-                (strictWord (defName definition) (formalTokensForm tokens)) tokens
+                tokens
                 linearWitness binaryWitness (Just resourceWitness) Nothing))
             (Just _, Nothing) -> pure Nothing
             (Nothing, _) -> unsupported "Nat definition has a non-Nat argument or result"
@@ -1142,7 +1146,6 @@ compileDefinition definition
               let tokens = [if value then FormalTrueWord else FormalFalseWord]
               pure (Just (CompiledDefinition
                 (defName definition)
-                (strictWord (defName definition) (formalTokensForm tokens))
                 tokens Nothing Nothing Nothing (Just (ClosedBoolWitness value))))
         else if maybe False (> 0) boolArity then do
           body <- toTreeless EagerEvaluation (defName definition)
@@ -1152,7 +1155,7 @@ compileDefinition definition
                 compileBoolResourceFunction (defName definition) arity term
               pure (Just (CompiledDefinition
                 (defName definition)
-                (strictWord (defName definition) (formalTokensForm tokens)) tokens
+                tokens
                 Nothing Nothing Nothing (Just (BoolFunctionWitness arity expression))))
             (Just _, Nothing) -> pure Nothing
             _ -> unsupported "Bool function arity classification changed during compilation"
@@ -1164,7 +1167,7 @@ compileDefinition definition
                 compileWord64IdentityFunction (defName definition) 1 term
               pure (Just (CompiledDefinition
                 (defName definition)
-                (strictWord (defName definition) (formalTokensForm tokens)) tokens
+                tokens
                 Nothing Nothing Nothing (Just Word64IdentityWitness)))
             Nothing -> pure Nothing
         else case word64Arity of
@@ -1182,7 +1185,7 @@ compileDefinition definition
                     compileBoolPairFunction (defName definition) constructor term
                   pure (Just (CompiledDefinition
                     (defName definition)
-                    (strictWord (defName definition) (formalTokensForm tokens)) tokens
+                    tokens
                     Nothing Nothing Nothing (Just (BoolPairFunctionWitness pairType constructor expression))))
             Nothing ->
               if unitArity == Just 0 then do
@@ -1193,7 +1196,7 @@ compileDefinition definition
                     decodeUnitTerm term
                     pure (Just (CompiledDefinition
                       (defName definition)
-                      (strictWord (defName definition) (formalTokensForm [])) []
+                      []
                       Nothing Nothing Nothing (Just UnitWitness)))
               else pure Nothing
       _ -> pure Nothing
@@ -1427,7 +1430,7 @@ rendererCertificate sourceModule definitions
           actualName = "actualWord" <> index
           formalName = "formalWord" <> index
           proofName = "wordRendererCorrect" <> index
-          actualText = renderForm (compiledForm definition)
+          actualText = renderForm (compiledDefinitionForm definition)
           expectedName = safeForthName (compiledName definition)
       in [ actualName <> " : String"
          , actualName <> " = " <> agdaStringLiteral actualText
@@ -2045,7 +2048,7 @@ emitForthModule _ _ _ moduleName maybeDefinitions = do
   validateForthNames definitions
   runtime <- IO.liftIO readStrictRuntime
   let body = T.intercalate "\n\n"
-        (map (renderForm . compiledForm) definitions)
+        (map (renderForm . compiledDefinitionForm) definitions)
       output = T.pack runtime <> "\n" <> body <> "\n"
       baseName = prettyShow (NE.last (moduleNameParts moduleName))
       filename = baseName ++ ".fth"

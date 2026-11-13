@@ -101,8 +101,8 @@ data ForthTextToken : Set where
 mutual
   renderForthTokenText : ForthTextToken → String
   renderForthTokenText (textPushLiteral value) =
-    primStringAppend "s\" "
-      (primStringAppend (primShowNat value) "\" MALLP-PARSE-NAT ")
+    primStringAppend "MALLP-NAT-LITERAL "
+      (primStringAppend (primShowNat value) " ")
   renderForthTokenText (textPushWord64 high low) =
     primStringAppend
       (renderForthTokenText (textPushLiteral high))
@@ -115,13 +115,13 @@ mutual
     primStringAppend
       (renderForthTokenText (textPushLiteral depth))
       "MALLP-NAT-ROLL "
-  renderForthTokenText textTrueWord = "TRUE "
-  renderForthTokenText textFalseWord = "FALSE "
+  renderForthTokenText textTrueWord = "MALLP-TRUE "
+  renderForthTokenText textFalseWord = "MALLP-FALSE "
   renderForthTokenText (textIf whenTrue whenFalse) =
     primStringAppend "MALLP-IF "
       (primStringAppend (renderForthTokensText whenTrue)
-        (primStringAppend "ELSE "
-          (primStringAppend (renderForthTokensText whenFalse) "THEN ")))
+        (primStringAppend "MALLP-ELSE "
+          (primStringAppend (renderForthTokensText whenFalse) "MALLP-THEN ")))
 
   renderForthTokensText : List ForthTextToken → String
   renderForthTokensText [] = ""
@@ -5472,14 +5472,14 @@ module StrictNatCompiler where
     boundedTokenStackError failure
   execBoundedToken-failure-classification
     bound (rollWord depth) stack inputBound failure
-    with natWithinBound depth bound in depthCheck | failure
-  ... | true | boundedFailure =
+    with natWithinBound depth bound in depthCheck
+  ... | true =
     boundedTokenStackError
       (trans
         (sym (execBoundedToken-roll-within-bound
           bound depth stack depthCheck))
-        boundedFailure)
-  ... | false | refl = boundedTokenRollDepthOverflow depthCheck
+        failure)
+  ... | false = boundedTokenRollDepthOverflow depthCheck
 
   boundedLiteralOverflowExample :
     BoundedTokenFailure 3 (pushLiteral 4) []

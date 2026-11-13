@@ -113,6 +113,9 @@ jobs:
           
           open import Agda.Builtin.Int using (Int; pos)
           open import Agda.Builtin.Word using (Word64)
+          open import Agda.Builtin.Float using (Float)
+          answerFloatIdentity : Float → Float
+          answerFloatIdentity value = value
           answerWord64Identity : Word64 → Word64
           answerWord64Identity value = value
           answerInt : Int
@@ -186,15 +189,15 @@ jobs:
           answerLet 40 strict-assert-natural
           answerLetShared 169 strict-assert-natural
           answerLetUnused 7 strict-assert-natural
-          answerTrue TRUE strict-assert-boolean
-          answerFalse FALSE strict-assert-boolean
-          answerMatchedTrue FALSE strict-assert-boolean
-          answerMatchedFalse TRUE strict-assert-boolean
-          TRUE invertBool FALSE strict-assert-boolean
-          FALSE invertBool TRUE strict-assert-boolean
-          TRUE FALSE chooseBool FALSE strict-assert-boolean
-          FALSE TRUE chooseBool TRUE strict-assert-boolean
-          TRUE FALSE swapBoolPair FALSE TRUE strict-assert-bool-pair
+          answerTrue MALLP-TRUE strict-assert-boolean
+          answerFalse MALLP-FALSE strict-assert-boolean
+          answerMatchedTrue MALLP-FALSE strict-assert-boolean
+          answerMatchedFalse MALLP-TRUE strict-assert-boolean
+          MALLP-TRUE invertBool MALLP-FALSE strict-assert-boolean
+          MALLP-FALSE invertBool MALLP-TRUE strict-assert-boolean
+          MALLP-TRUE MALLP-FALSE chooseBool MALLP-FALSE strict-assert-boolean
+          MALLP-FALSE MALLP-TRUE chooseBool MALLP-TRUE strict-assert-boolean
+          MALLP-TRUE MALLP-FALSE swapBoolPair MALLP-FALSE MALLP-TRUE strict-assert-bool-pair
           answerUnit
           10 answerIdentity 10 strict-assert-natural
           10 answerAddFive 15 strict-assert-natural
@@ -275,11 +278,11 @@ jobs:
           ;
           ' testStrictRollNegative CATCH MALLP-ERR strict-assert-natural
           : testStrictIfUnderflow ( -- )
-            MALLP-IF TRUE ELSE FALSE THEN
+            MALLP-IF MALLP-TRUE MALLP-ELSE MALLP-FALSE MALLP-THEN
           ;
           ' testStrictIfUnderflow CATCH MALLP-ERR strict-assert-natural
           : testStrictIfNonBoolean ( -- )
-            1 MALLP-IF TRUE ELSE FALSE THEN { ignored }
+            1 MALLP-IF MALLP-TRUE MALLP-ELSE MALLP-FALSE MALLP-THEN { ignored }
           ;
           ' testStrictIfNonBoolean CATCH MALLP-ERR strict-assert-natural
           : assert-empty-stack ( -- )
@@ -389,11 +392,11 @@ jobs:
           grep -Fq 'MALLP-NAT-ADD' MALLPStrict.fth
           grep -Fq 'MALLP-NAT-ROLL' MALLPStrict.fth
           grep -Fq 'MALLP-PARSE-NAT' MALLPStrict.fth
-          grep -Fq ': answerTrue TRUE ;' MALLPStrict.fth
-          grep -Fq ': answerFalse FALSE ;' MALLPStrict.fth
-          grep -Fq ': answerMatchedTrue FALSE ;' MALLPStrict.fth
-          grep -Fq ': answerMatchedFalse TRUE ;' MALLPStrict.fth
-          grep -Fq ': invertBool MALLP-IF FALSE ELSE TRUE THEN ;' MALLPStrict.fth
+          grep -Fq ': answerTrue MALLP-TRUE ;' MALLPStrict.fth
+          grep -Fq ': answerFalse MALLP-FALSE ;' MALLPStrict.fth
+          grep -Fq ': answerMatchedTrue MALLP-FALSE ;' MALLPStrict.fth
+          grep -Fq ': answerMatchedFalse MALLP-TRUE ;' MALLPStrict.fth
+          grep -Fq ': invertBool MALLP-IF MALLP-FALSE MALLP-ELSE MALLP-TRUE MALLP-THEN ;' MALLPStrict.fth
           grep -Fq ': swapBoolPair MALLP-SWAP ;' MALLPStrict.fth
           grep -Fq ': answerUnit ;' MALLPStrict.fth
           grep -Eq '^: answerIdentity[[:space:]]*;' MALLPStrict.fth
@@ -426,6 +429,15 @@ jobs:
           grep -Fq 'answerCallNested' MALLPStrict.fth
           grep -Fq 'MALLP-NAT-ROLL' MALLPStrict.fth
           grep -Fq 'MALLP-SWAP' MALLPStrict.fth
+          grep -Fq 'MALLP-NAT-LITERAL' MALLPStrict.fth
+          if awk 'emit { print } /^\[then\]$/ { emit = 1; next }' MALLPStrict.fth | grep -Eiq '(^|[[:space:]])(TRUE|FALSE|SWAP|ROLL|IF|ELSE|THEN)([[:space:]]|$)'; then
+            echo "generated compiler words contain a raw Forth primitive"
+            exit 1
+          fi
+          if grep -Eq '^: answerFloatIdentity ' MALLPStrict.fth; then
+            echo "compiler emitted an unsupported Float definition"
+            exit 1
+          fi
           if grep -Eq '^: answerInt ' MALLPStrict.fth; then
             echo "non-admitted Int definition escaped the result-type gate"
             exit 1
