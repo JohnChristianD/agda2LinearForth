@@ -250,9 +250,12 @@ compileResourceUse errorPrefix active context index =
       in if depth == 0
            then Right (RSList [], [], remaining)
            else if depth == 1
-             then Right (RSAtom "SWAP", [FormalSwapWord], remaining)
+             then Right (RSAtom "MALLP-SWAP", [FormalSwapWord], remaining)
              else Right
-               ( RSList [RSAtom (T.pack (show depth)), RSAtom "ROLL"]
+               ( RSList
+                   [ renderNatExpr (NatLiteral (fromIntegral depth))
+                   , RSAtom "MALLP-ROLL"
+                   ]
                , [FormalRollWord (fromIntegral depth)]
                , remaining
                )
@@ -326,7 +329,7 @@ compileBoolResourceExpr context (BoolConditional condition whenTrue whenFalse) =
     else Right
       ( RSList
           [ conditionCode
-          , RSAtom "IF"
+          , RSAtom "MALLP-IF"
           , trueCode
           , RSAtom "ELSE"
           , falseCode
@@ -670,7 +673,7 @@ renderNatLinearExpr NatArgument = RSList []
 renderNatLinearExpr (NatLinearLeft operation input right) =
   RSList [renderNatLinearExpr input, renderNatExpr right, renderNatOp operation]
 renderNatLinearExpr (NatLinearRight operation left input) =
-  RSList [renderNatExpr left, RSAtom "SWAP", renderNatLinearExpr input, renderNatOp operation]
+  RSList [renderNatExpr left, RSAtom "MALLP-SWAP", renderNatLinearExpr input, renderNatOp operation]
 
 renderNatTerm :: NatTerm -> FthForm
 renderNatTerm (NatClosed expression) = renderNatExpr expression
@@ -709,7 +712,7 @@ renderNatBinaryLinearExpr :: NatBinaryLinearExpr -> FthForm
 renderNatBinaryLinearExpr (NatBinaryArguments operation) =
   renderNatOp operation
 renderNatBinaryLinearExpr (NatBinaryArgumentsExchanged operation) =
-  RSList [RSAtom "SWAP", renderNatOp operation]
+  RSList [RSAtom "MALLP-SWAP", renderNatOp operation]
 
 decodeBoolTerm :: [QName] -> [Bool] -> TTerm -> TCM Bool
 decodeBoolTerm callStack environment term = do
