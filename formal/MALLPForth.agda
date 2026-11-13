@@ -4,7 +4,6 @@
 --guardedness
 --no-projection-like
 --no-fast-reduce
---prop
 #-}
 -- ```Agda
 -- ----------------------------------------------------------------------
