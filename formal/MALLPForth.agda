@@ -111,7 +111,9 @@ mutual
   renderForthTokenText textMultiplyWord = "MALLP-NAT-MUL "
   renderForthTokenText textSwapWord = "SWAP "
   renderForthTokenText (textRollWord depth) =
-    primStringAppend (primShowNat depth) " ROLL "
+    primStringAppend
+      (renderForthTokenText (textPushLiteral depth))
+      "MALLP-NAT-ROLL "
   renderForthTokenText textTrueWord = "TRUE "
   renderForthTokenText textFalseWord = "FALSE "
   renderForthTokenText (textIf whenTrue whenFalse) =
