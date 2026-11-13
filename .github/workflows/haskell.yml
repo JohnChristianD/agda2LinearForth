@@ -58,6 +58,7 @@ jobs:
         run: |
           mkdir -p test/gforth
           cat > test/MALLPStrict.agda.src <<'AGDA'
+          {-# OPTIONS --no-eta-equality --erased-matches=unrestricted #-}
           module MALLPStrict where
           
           open import MALLPForth using
@@ -410,7 +411,7 @@ jobs:
           test -s MALLPStrict.fth
           test -s MALLPEmittedRenderer.agda
           # Type-check the source/resource/Forth certificates just emitted.
-          if ! "$AGDA_BIN" --no-prop --no-erasure -i formal -i . -i test MALLPEmittedRenderer.agda > renderer-certificate.log 2>&1; then
+          if ! "$AGDA_BIN" --no-prop -i formal -i . -i test MALLPEmittedRenderer.agda > renderer-certificate.log 2>&1; then
             cat renderer-certificate.log
             exit 1
           fi
