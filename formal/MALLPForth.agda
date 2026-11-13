@@ -202,9 +202,9 @@ open Iso public
 -- Maybe, while lookupListOr supplies an explicit default for sparse tails.
 -- ----------------------------------------------------------------------
 
--- Bounds use Agda.Builtin.Nat's Boolean comparison directly.
--- The equality witness keeps finite lookup constructive, without a second
--- shadowing definition of natural-number order.
+-- Agda.Builtin.Nat exports _<_ : Nat → Nat → Bool. Keep that primitive
+-- comparison public; proposition-level bounds use equality with true.
+-- Finite lookup and Word64 limb certificates share this representation.
 
 mapList : {A B : Set} → (A → B) → List A → List B
 mapList f [] = []
@@ -7293,8 +7293,8 @@ module StrictLinearDataCompiler where
     constructor word64Representation
     field
       highLimb lowLimb : Nat
-      highLimbBound : highLimb < word64Radix
-      lowLimbBound : lowLimb < word64Radix
+      highLimbBound : (highLimb < word64Radix) ≡ true
+      lowLimbBound : (lowLimb < word64Radix) ≡ true
       word64Denotation :
         primWord64ToNat word ≡ highLimb * word64Radix + lowLimb
   open Word64Representation public
