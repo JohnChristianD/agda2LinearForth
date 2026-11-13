@@ -4,6 +4,7 @@ module SovereignRationalSEDPhysics where
 
 
 open import Agda.Builtin.Nat using (Nat; zero; suc; _<_)
+open import Agda.Builtin.Int using (Int)
 open import Agda.Builtin.Bool using (Bool; true; false)
 open import Agda.Builtin.List using (List; []; _∷_)
 open import Agda.Builtin.Maybe using (Maybe; just; nothing)
@@ -322,6 +323,144 @@ foldConatPrefix step initial (suc n) stream with observeStream stream
 ... | nothing = initial
 ... | just (pair value rest) =
       step value (foldConatPrefix step initial n rest)
+
+------------------------------------------------------------------------
+-- CODYADIC EXACT REAL CODES
+------------------------------------------------------------------------
+
+-- A digit denotes -1, 0, or +1.  A code denotes
+--
+--   2 ^ binaryShift * Σ (digit[n] * 2 ^ (-(n + 1))).
+--
+-- The digit stream is genuinely infinite: its codata has a digit and a
+-- delayed tail, never an end marker.  binaryShift is a finite signed
+-- integer; Conat controls observation precision, never the real scale.
+data SignedBinaryDigit : Set where
+  negativeDigit zeroDigit positiveDigit : SignedBinaryDigit
+
+record CodyadicDigitStream : Set where
+  coinductive
+  field
+    codyadicHead : SignedBinaryDigit
+    codyadicTail : CodyadicDigitStream
+open CodyadicDigitStream public
+
+record Codyadic : Set where
+  constructor codyadic
+  field
+    codyadicBinaryShift : Int
+    codyadicMantissa : CodyadicDigitStream
+open Codyadic public
+
+-- The unbounded view is productive at every observation.
+codyadicDigitObservations :
+  CodyadicDigitStream → ConatStream SignedBinaryDigit
+observeStream (codyadicDigitObservations digits) =
+  just
+    (pair
+      (codyadicHead digits)
+      (codyadicDigitObservations (codyadicTail digits)))
+
+-- A Conat requests a finite or infinite prefix without truncating the
+-- underlying Codyadic value.
+codyadicDigitPrefix :
+  Conat → CodyadicDigitStream → ConatStream SignedBinaryDigit
+observeStream (codyadicDigitPrefix horizon digits)
+  with observeConat horizon
+... | nothing = nothing
+... | just rest =
+      just
+        (pair
+          (codyadicHead digits)
+          (codyadicDigitPrefix rest (codyadicTail digits)))
+
+codyadicObservations : Codyadic → ConatStream SignedBinaryDigit
+codyadicObservations value =
+  codyadicDigitObservations (codyadicMantissa value)
+
+------------------------------------------------------------------------
+-- CONSTRUCTIVE CODYADIC SETOID-FIELD CONTRACT
+------------------------------------------------------------------------
+
+infixr 3 _⊎ᶜ_
+data _⊎ᶜ_ (A B : Set) : Set where
+  codyadicLeft : A → A ⊎ᶜ B
+  codyadicRight : B → A ⊎ᶜ B
+
+infix 4 _≈ᶜ_ _#ᶜ_
+infixl 6 _+ᶜ_
+infixl 7 _*ᶜ_
+
+-- Signed-digit expansions are redundant, so structural stream equality
+-- is not the real equality.  A concrete implementation supplies semantic
+-- setoid equality, productive operations, and all ring/field laws.
+--
+-- Division is constructive only with an apartness witness from zero.
+-- A proof of mere negated equality does not supply a computable lower
+-- bound on the denominator's magnitude.
+record CodyadicFieldInterface : Set₁ where
+  field
+    _≈ᶜ_ : Codyadic → Codyadic → Set
+    _#ᶜ_ : Codyadic → Codyadic → Set
+
+    zeroᶜ oneᶜ : Codyadic
+    _+ᶜ_ _*ᶜ_ : Codyadic → Codyadic → Codyadic
+    negateᶜ : Codyadic → Codyadic
+    reciprocalᶜ : (value : Codyadic) → value #ᶜ zeroᶜ → Codyadic
+
+    ≈ᶜ-refl : (x : Codyadic) → x ≈ᶜ x
+    ≈ᶜ-sym : {x y : Codyadic} → x ≈ᶜ y → y ≈ᶜ x
+    ≈ᶜ-trans :
+      {x y z : Codyadic} → x ≈ᶜ y → y ≈ᶜ z → x ≈ᶜ z
+
+    +ᶜ-cong :
+      {x x′ y y′ : Codyadic} →
+      x ≈ᶜ x′ → y ≈ᶜ y′ → (x +ᶜ y) ≈ᶜ (x′ +ᶜ y′)
+    *ᶜ-cong :
+      {x x′ y y′ : Codyadic} →
+      x ≈ᶜ x′ → y ≈ᶜ y′ → (x *ᶜ y) ≈ᶜ (x′ *ᶜ y′)
+    negateᶜ-cong :
+      {x y : Codyadic} → x ≈ᶜ y → negateᶜ x ≈ᶜ negateᶜ y
+
+    +ᶜ-assoc :
+      (x y z : Codyadic) →
+      ((x +ᶜ y) +ᶜ z) ≈ᶜ (x +ᶜ (y +ᶜ z))
+    +ᶜ-comm :
+      (x y : Codyadic) → (x +ᶜ y) ≈ᶜ (y +ᶜ x)
+    +ᶜ-zeroˡ : (x : Codyadic) → (zeroᶜ +ᶜ x) ≈ᶜ x
+    +ᶜ-zeroʳ : (x : Codyadic) → (x +ᶜ zeroᶜ) ≈ᶜ x
+    +ᶜ-inverseʳ :
+      (x : Codyadic) → (x +ᶜ negateᶜ x) ≈ᶜ zeroᶜ
+
+    *ᶜ-assoc :
+      (x y z : Codyadic) →
+      ((x *ᶜ y) *ᶜ z) ≈ᶜ (x *ᶜ (y *ᶜ z))
+    *ᶜ-comm :
+      (x y : Codyadic) → (x *ᶜ y) ≈ᶜ (y *ᶜ x)
+    *ᶜ-oneˡ : (x : Codyadic) → (oneᶜ *ᶜ x) ≈ᶜ x
+    *ᶜ-oneʳ : (x : Codyadic) → (x *ᶜ oneᶜ) ≈ᶜ x
+    *ᶜ-zeroˡ : (x : Codyadic) → (zeroᶜ *ᶜ x) ≈ᶜ zeroᶜ
+    *ᶜ-distribˡ :
+      (x y z : Codyadic) →
+      (x *ᶜ (y +ᶜ z)) ≈ᶜ ((x *ᶜ y) +ᶜ (x *ᶜ z))
+
+    #ᶜ-irreflexive : (x : Codyadic) → ¬ (x #ᶜ x)
+    #ᶜ-symmetric :
+      {x y : Codyadic} → x #ᶜ y → y #ᶜ x
+    #ᶜ-cotransitive :
+      {x y z : Codyadic} →
+      x #ᶜ z → (x #ᶜ y) ⊎ᶜ (y #ᶜ z)
+    #ᶜ-separates :
+      {x y : Codyadic} → x #ᶜ y → ¬ (x ≈ᶜ y)
+
+    oneᶜ-apart-zeroᶜ : oneᶜ #ᶜ zeroᶜ
+    reciprocalᶜ-left :
+      (x : Codyadic) (apartFromZero : x #ᶜ zeroᶜ) →
+      (reciprocalᶜ x apartFromZero *ᶜ x) ≈ᶜ oneᶜ
+    reciprocalᶜ-right :
+      (x : Codyadic) (apartFromZero : x #ᶜ zeroᶜ) →
+      (x *ᶜ reciprocalᶜ x apartFromZero) ≈ᶜ oneᶜ
+open CodyadicFieldInterface public
 
 -- Continuation/negative view of one observation.  This is a polarized
 -- consumer interface, not a claim that the entire Conat type is a Laurent
