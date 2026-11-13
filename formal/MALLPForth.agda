@@ -5,7 +5,6 @@
 --no-projection-like
 --no-fast-reduce
 --prop
---erasure
 #-}
 -- ```Agda
 -- ----------------------------------------------------------------------
@@ -35,7 +34,6 @@ open import Agda.Builtin.Sigma public
 open import Agda.Builtin.Equality public
 open import Agda.Builtin.String public
 open import Agda.Builtin.Equality.Rewrite public
-open import Agda.Builtin.Equality.Erase public
 open import Agda.Builtin.Word using (Word64; primWord64ToNat; primWord64FromNat) public
 open import Agda.Builtin.Word.Properties using (primWord64ToNatInjective) public
 -- Agda has no Agda.Builtin.Tuple module; the product record _×_ below
