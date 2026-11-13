@@ -546,10 +546,7 @@ module Foundations where
     RegisterProgram = List RegisterInstruction
 
     natEqual : Nat → Nat → Bool
-    natEqual zero zero = true
-    natEqual zero (suc n) = false
-    natEqual (suc m) zero = false
-    natEqual (suc m) (suc n) = natEqual m n
+    natEqual = _==_
 
     updateRegister :
       (Nat → Nat) → Nat → Nat → Nat → Nat
@@ -1389,10 +1386,7 @@ module Foundations where
     tensorNF (tensor A B) = tensorNF A ++ tensorNF B
 
     tensorLabelEq : Nat → Nat → Bool
-    tensorLabelEq zero zero = true
-    tensorLabelEq zero (suc n) = false
-    tensorLabelEq (suc m) zero = false
-    tensorLabelEq (suc m) (suc n) = tensorLabelEq m n
+    tensorLabelEq = _==_
 
     andBool : Bool → Bool → Bool
     andBool true x = x
@@ -4887,10 +4881,7 @@ module StrictNatCompiler where
   -- --------------------------------------------------------------------
 
   natWithinBound : Nat → Nat → Bool
-  natWithinBound zero bound = true
-  natWithinBound (suc value) zero = false
-  natWithinBound (suc value) (suc bound) =
-    natWithinBound value bound
+  natWithinBound value bound = value < suc bound
 
   -- A concrete target stack can contain only nonnegative values that
   -- fit the selected signed-cell bound. This is an explicit precondition
