@@ -5245,6 +5245,10 @@ module StrictNatCompiler where
       execToken token stack ≡ just result →
       NatStackOverflow bound result →
       BoundedTokenFailure bound token stack
+    boundedTokenRollDepthOverflow :
+      {depth : Nat} →
+      natWithinBound depth bound ≡ false →
+      BoundedTokenFailure bound (rollWord depth) stack
 
   -- With a bounded input stack, each bounded-step failure is either the
   -- same stack/roll failure as the unbounded token machine, or an unbounded
@@ -5336,14 +5340,9 @@ module StrictNatCompiler where
     boundedTokenStackError failure
   execBoundedToken-failure-classification
     bound (rollWord depth) stack inputBound failure
-    with natWithinBound depth bound in depthCheck
-       | execToken (rollWord depth) stack in step
-       | failure
-  ... | true | nothing | refl = boundedTokenStackError step
-  ... | true | just result | ()
-  ... | false | nothing | refl = boundedTokenStackError step
-  ... | false | just result | refl =
-    boundedTokenCellOverflow result step (natStackOverflowHead depthCheck)
+    with natWithinBound depth bound in depthCheck | failure
+  ... | true | _ = boundedTokenStackError failure
+  ... | false | refl = boundedTokenRollDepthOverflow depthCheck
 
   boundedLiteralOverflowExample :
     BoundedTokenFailure 3 (pushLiteral 4) []
