@@ -1,17 +1,21 @@
 \ MALLP-STRICT-BEGIN
-\ Checked Gforth boundary for MALLPForth.execBoundedToken.
-\ Every semantic failure maps to Agda's single Maybe nothing case.
-\ Target Nat values and ROLL immediates fit the positive signed-cell bound.
-\ Boolean control accepts precisely Gforth FALSE (0) and TRUE (-1).
+\ Checked Gforth runtime for the Agda bounded token machine.
+\ All failed tokens raise one exception, matching Agda Maybe's single nothing.
+\ Nat cells and ROLL immediates use the same positive signed-cell bound.
 
 [undefined] AGDA2FORTH-MALLP-LOADED [if]
 true constant AGDA2FORTH-MALLP-LOADED
 
 0 invert 1 rshift constant MALLP-MAX-NAT
-s" MALLP: negative natural" exception constant MALLP-ERR-NEGATIVE
-s" MALLP: natural overflow" exception constant MALLP-ERR-OVERFLOW
-s" MALLP: invalid natural literal" exception constant MALLP-ERR-LITERAL
-s" MALLP: ROLL stack underflow" exception constant MALLP-ERR-STACK
+s" MALLP: token failure" exception constant MALLP-ERR
+MALLP-ERR constant MALLP-ERR-NEGATIVE
+MALLP-ERR constant MALLP-ERR-OVERFLOW
+MALLP-ERR constant MALLP-ERR-LITERAL
+MALLP-ERR constant MALLP-ERR-STACK
+
+: MALLP-REQUIRE-STACK { required -- }
+    depth required < IF MALLP-ERR THROW THEN
+;
 
 : MALLP-CHECK-NAT { value -- }
     value 0< IF MALLP-ERR THROW THEN
@@ -69,20 +73,17 @@ s" MALLP: ROLL stack underflow" exception constant MALLP-ERR-STACK
     result
 ;
 
+: MALLP-SWAP ( x y -- y x )
+    2 MALLP-REQUIRE-STACK
+    SWAP
+;
+
 : MALLP-NAT-ROLL ( ... depth -- ... )
-    { depth }
+    1 MALLP-REQUIRE-STACK
+    { depth -- }
     depth MALLP-CHECK-NAT
     depth DEPTH >= IF MALLP-ERR-STACK THROW THEN
     depth ROLL
-;
-
-
-: MALLP-ROLL ( ... depth -- ... )
-    1 MALLP-REQUIRE-STACK
-    { index -- }
-    index MALLP-CHECK-NAT
-    depth index <= IF MALLP-ERR THROW THEN
-    index ROLL
 ;
 
 : MALLP-CHECK-BOOL ( flag -- flag )
