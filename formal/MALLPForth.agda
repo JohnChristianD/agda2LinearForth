@@ -4149,12 +4149,16 @@ module SBRMALLPBellman (Atom : Nat → Set) where
           nextKey = omega (streamOf (mapEntries nextEntries) default)
         in symmetricBarRec omega default condition base step
              nextEntries nextKey (decideDomain nextEntries nextKey)
+
+      relationAt : R → Set
+      relationAt output =
+        MALLPRelation (stepDerivation objective)
+          (pair (encodeEntries entries)
+            (pair (encodeContinuation continuation) tt))
+          output
     in
     subst
-      (λ output → MALLPRelation (stepDerivation objective)
-        (pair (encodeEntries entries)
-          (pair (encodeContinuation continuation) tt))
-        output)
+      relationAt
       (cong encodeResult
         (sym (sBR-step omega default condition base step entries key absent)))
       (stepRealizes objective entries continuation)
@@ -4175,7 +4179,7 @@ module FoundationsOptimization (Atom : Nat → Set) where
   module Bellman = SBRMALLPBellman Atom
   open Bellman public
 
-  record UnifiedOptimizationConstraint
+  record DynamicProgrammingMALLPAOptimizationConstraint
       (ℓ : Level)
       (H G : Category)
       (productsH : FiniteProducts H)
@@ -4264,7 +4268,7 @@ module FoundationsOptimization (Atom : Nat → Set) where
           (tensor (atom entryAtom)
             (tensor (atom continuationAtom) (atom resultAtom)))
 
-  open UnifiedOptimizationConstraint public
+  open DynamicProgrammingMALLPAOptimizationConstraint public
 
   optimizationValue :
     {ℓ : Level} {H G : Category}
@@ -4272,7 +4276,7 @@ module FoundationsOptimization (Atom : Nat → Set) where
     {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
     {R : Set} →
     (constraint :
-      UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
     PartialMap Nat → R
   optimizationValue constraint entries =
     symmetricBarRecAt
@@ -4289,7 +4293,7 @@ module FoundationsOptimization (Atom : Nat → Set) where
     {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
     {R : Set} →
     (constraint :
-      UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
     Predicate (candidateFamily constraint) (candidateParameter constraint)
       (candidate constraint)
   optimizationCandidateFeasible constraint =
@@ -4308,7 +4312,7 @@ module FoundationsOptimization (Atom : Nat → Set) where
     {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
     {R : Set} →
     (constraint :
-      UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
     Σ Nat
       (λ stage →
         universalEval
@@ -4330,7 +4334,7 @@ module FoundationsOptimization (Atom : Nat → Set) where
     {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
     {R : Set} →
     (constraint :
-      UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
     OptimalSelection
       (valueOrder constraint)
       (backwardInduction
@@ -4349,11 +4353,12 @@ module FoundationsOptimization (Atom : Nat → Set) where
     {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
     {R : Set} →
     (constraint :
-      UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
     {A B : TensorExpr} →
     (f g : TensorHom A B) → f ≡ g
   optimizationResourceCoherence constraint {A} {B} first second =
-    tensorHom-proposition {A = A} {B = B} first second
+    Foundations.MacLaneCoherence.tensorHom-proposition
+      {A = A} {B = B} first second
 
   candidateScoreOptimal :
     {ℓ : Level} {H G : Category}
@@ -4361,7 +4366,7 @@ module FoundationsOptimization (Atom : Nat → Set) where
     {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
     {R : Set} →
     (constraint :
-      UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
     (alternative : Nat) →
     below (valueOrder constraint)
       (candidatePayoff constraint alternative)
@@ -4382,7 +4387,7 @@ module FoundationsOptimization (Atom : Nat → Set) where
     {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
     {R : Set} →
     (constraint :
-      UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
     optimizationValue constraint (objectiveState constraint) ≡
       selectedOutcome
         (backwardInduction (finiteHorizon constraint)
@@ -4397,7 +4402,7 @@ module FoundationsOptimization (Atom : Nat → Set) where
     {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
     {R : Set} →
     (constraint :
-      UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
     (key : Nat) →
     (present :
       memberKey key (mapEntries (objectiveState constraint)) ≡ true) →
@@ -4424,7 +4429,7 @@ module FoundationsOptimization (Atom : Nat → Set) where
     {cohesion : CohesiveAdjointQuadruple H G productsH productsG}
     {R : Set} →
     (constraint :
-      UnifiedOptimizationConstraint ℓ H G productsH productsG cohesion R) →
+      DynamicProgrammingMALLPAOptimizationConstraint ℓ H G productsH productsG cohesion R) →
     (key : Nat) →
     (absent :
       memberKey key (mapEntries (objectiveState constraint)) ≡ false) →
@@ -5303,9 +5308,9 @@ module StrictNatCompiler where
   ... | true | true | false | ()
   execBoundedToken-sound bound swapWord stack result proof = proof
   execBoundedToken-sound bound (rollWord depth) stack result proof
-    with natWithinBound depth bound
-  ... | true = proof
-  ... | false = ()
+    with natWithinBound depth bound | proof
+  ... | true | boundedProof = boundedProof
+  ... | false | ()
 
   execBoundedTokens-sound :
     (bound : Nat) (tokens : List ForthToken) (stack result : List Nat) →
