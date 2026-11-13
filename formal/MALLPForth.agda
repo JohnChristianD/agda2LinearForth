@@ -495,6 +495,14 @@ observeCodyadMantissa : CodyadMantissa → CodyadDigit × CodyadMantissa
 observeCodyadMantissa mantissa =
   pair (currentCodyadDigit mantissa) (♭ (nextCodyadDigits mantissa))
 
+-- Finite prefix observation is structurally recursive on the requested
+-- length; an infinite mantissa is never materialized.
+codyadPrefix : Nat → CodyadMantissa → List CodyadDigit
+codyadPrefix zero mantissa = []
+codyadPrefix (suc n) mantissa =
+  currentCodyadDigit mantissa ∷
+    codyadPrefix n (♭ (nextCodyadDigits mantissa))
+
 -- A normalized signed integer exponent: zero has one representation, and
 -- positive/negative constructors store strictly positive magnitudes.
 data BinaryExponent : Set where
@@ -7957,6 +7965,30 @@ module CanonicalFoundationsExtraction (Atom : Nat → Set) where
     ; canonicalExecution =
         renderForth-sound (compileNat (literal value)) emptyStack
     }
+
+  -- A bounded, executable extraction pipeline for arbitrary explicit-code
+  -- analytic families.  A miss at stage n yields nothing; a hit yields both
+  -- a feasibility proof and a canonical linear MALLP program for its result.
+  extractAnalyticCandidateAtStage :
+    (family : AnalyticEnumerableFamily) (parameter stage : Nat) →
+    Maybe
+      (Σ Nat
+        (λ candidate →
+          (analyticPredicate family parameter candidate) ×
+          CanonicalMALLPProgram candidate))
+  extractAnalyticCandidateAtStage family parameter stage
+    with universalEval (analyticCode family parameter) stage in evaluation
+  ... | nothing = nothing
+  ... | just candidate =
+    just
+      ( candidate
+      , pair
+          (analytic-sound family parameter stage candidate
+            (trans
+              (sym (analyticCode-correct family parameter stage))
+              evaluation))
+          (canonicalMALLPProgram candidate)
+      )
 
   extractOptimizationCandidate :
     {candidateFamily : ParametricallyEnumerable}

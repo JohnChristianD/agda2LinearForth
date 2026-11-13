@@ -221,6 +221,8 @@ jobs:
           1 1 MALLP-CODYAD-SHIFT-RIGHT 0 0 strict-assert-exponent
           1 4 MALLP-CODYAD-SHIFT-RIGHT 1 3 strict-assert-exponent
           2 3 MALLP-CODYAD-SHIFT-RIGHT 2 4 strict-assert-exponent
+          99 88 1 4 MALLP-CODYAD-SHIFT-LEFT 1 5 strict-assert-exponent
+          88 99 strict-assert-roll
           : testCodyadNonCanonicalZero ( -- )
             0 1 MALLP-CODYAD-SHIFT-LEFT
           ;
