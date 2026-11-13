@@ -298,19 +298,16 @@ module FiniteListComputation where
   suc-injective : {m n : Nat} → suc m ≡ suc n → m ≡ n
   suc-injective refl = refl
 
-  absurd : {A : Set} → ⊥ → A
-  absurd ()
-
   boundedSearch-sound zero P n ()
   boundedSearch-sound (suc fuel) P zero result with P zero
   ... | true = refl
   ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-  ...   | nothing = absurd (maybeNothingNotJust result)
-  ...   | just k = absurd (sucNotZero (just-injective result))
+  ...   | nothing = ⊥-elim (maybeNothingNotJust result)
+  ...   | just k = ⊥-elim (sucNotZero (just-injective result))
   boundedSearch-sound (suc fuel) P (suc n) result with P zero
-  ... | true = absurd (zeroNotSuc (just-injective result))
+  ... | true = ⊥-elim (zeroNotSuc (just-injective result))
   ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-  ...   | nothing = absurd (maybeNothingNotJust result)
+  ...   | nothing = ⊥-elim (maybeNothingNotJust result)
   ...   | just k =
     boundedSearch-sound fuel (λ i → P (suc i)) n
       (trans smaller (cong just (suc-injective (just-injective result))))
@@ -366,12 +363,12 @@ module FiniteListComputation where
   boundedSearch-minimal (suc fuel) P zero result with P zero
   ... | true = before-zero
   ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-  ...   | nothing = absurd (maybeNothingNotJust result)
-  ...   | just k = absurd (sucNotZero (just-injective result))
+  ...   | nothing = ⊥-elim (maybeNothingNotJust result)
+  ...   | just k = ⊥-elim (sucNotZero (just-injective result))
   boundedSearch-minimal (suc fuel) P (suc n) result with P zero in first
-  ... | true = absurd (zeroNotSuc (just-injective result))
+  ... | true = ⊥-elim (zeroNotSuc (just-injective result))
   ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-  ...   | nothing = absurd (maybeNothingNotJust result)
+  ...   | nothing = ⊥-elim (maybeNothingNotJust result)
   ...   | just k =
     allFalseBefore-lift first
       (boundedSearch-minimal fuel (λ i → P (suc i)) n
@@ -393,11 +390,11 @@ module FiniteListComputation where
   boundedSearch-complete P zero witness with P zero in first
   ... | true = refl
   ... | false =
-    absurd (boundedSearch-falseNotTrue
+    ⊥-elim (boundedSearch-falseNotTrue
       (trans (sym first) (witness-holds witness)))
   boundedSearch-complete P (suc n) witness with P zero in first
   ... | true =
-    absurd (boundedSearch-trueNotFalse
+    ⊥-elim (boundedSearch-trueNotFalse
       (trans (sym first)
         (allFalseBefore-first (all-earlier-false witness))))
   ... | false
@@ -1402,9 +1399,6 @@ module Foundations where
     falseNotTrue : false ≡ true → ⊥
     falseNotTrue ()
 
-    exfalso : {A : Set} → ⊥ → A
-    exfalso ()
-
     tensorLabelEq-refl : (n : Nat) → tensorLabelEq n n ≡ true
     tensorLabelEq-refl zero = refl
     tensorLabelEq-refl (suc n) = tensorLabelEq-refl n
@@ -1436,8 +1430,8 @@ module Foundations where
       cong₂ _∷_
         (tensorLabelEq-sound headEquality)
         (listEq-sound tailEquality)
-    ... | true | false = exfalso (falseNotTrue proof)
-    ... | false | tail = exfalso (falseNotTrue proof)
+    ... | true | false = ⊥-elim (falseNotTrue proof)
+    ... | false | tail = ⊥-elim (falseNotTrue proof)
 
     listEq-complete :
       {xs ys : List Nat} →
@@ -5063,9 +5057,9 @@ module StrictNatCompiler where
        | natWithinBound (left + right) bound in resultCheck
        | failure
   ... | false | _ | _ | _ =
-    absurd (natBoundFalseNotTrue leftBound)
+    ⊥-elim (natBoundFalseNotTrue leftBound)
   ... | true | false | _ | _ =
-    absurd (natBoundFalseNotTrue rightBound)
+    ⊥-elim (natBoundFalseNotTrue rightBound)
   ... | true | true | true | ()
   ... | true | true | false | refl =
     boundedTokenCellOverflow ((left + right) ∷ stack) refl
@@ -5086,9 +5080,9 @@ module StrictNatCompiler where
        | natWithinBound right bound in rightCheck
        | failure
   ... | false | _ | _ =
-    absurd (natBoundFalseNotTrue leftBound)
+    ⊥-elim (natBoundFalseNotTrue leftBound)
   ... | true | false | _ =
-    absurd (natBoundFalseNotTrue rightBound)
+    ⊥-elim (natBoundFalseNotTrue rightBound)
   ... | true | true | ()
 
   execBoundedToken-failure-classification
@@ -5107,9 +5101,9 @@ module StrictNatCompiler where
        | natWithinBound (left * right) bound in resultCheck
        | failure
   ... | false | _ | _ | _ =
-    absurd (natBoundFalseNotTrue leftBound)
+    ⊥-elim (natBoundFalseNotTrue leftBound)
   ... | true | false | _ | _ =
-    absurd (natBoundFalseNotTrue rightBound)
+    ⊥-elim (natBoundFalseNotTrue rightBound)
   ... | true | true | true | ()
   ... | true | true | false | refl =
     boundedTokenCellOverflow ((left * right) ∷ stack) refl
@@ -5157,7 +5151,7 @@ module StrictNatCompiler where
     with natWithinBound value bound in valueCheck
   ... | true = refl
   ... | false =
-    absurd (natBoundFalseNotTrue valueBound)
+    ⊥-elim (natBoundFalseNotTrue valueBound)
   execBoundedToken-complete bound addWord [] result natStackBoundedNil () resultBound
   execBoundedToken-complete bound addWord (value ∷ []) result
     (natStackBoundedCons _ natStackBoundedNil) () resultBound
@@ -5170,11 +5164,11 @@ module StrictNatCompiler where
        | natWithinBound (left + right) bound in resultCheck
   ... | true | true | true = refl
   ... | false | _ | _ =
-    absurd (natBoundFalseNotTrue leftBound)
+    ⊥-elim (natBoundFalseNotTrue leftBound)
   ... | true | false | _ =
-    absurd (natBoundFalseNotTrue rightBound)
+    ⊥-elim (natBoundFalseNotTrue rightBound)
   ... | true | true | false =
-    absurd (natBoundFalseNotTrue resultBound)
+    ⊥-elim (natBoundFalseNotTrue resultBound)
   execBoundedToken-complete bound monusWord [] result natStackBoundedNil () resultBound
   execBoundedToken-complete bound monusWord (value ∷ []) result
     (natStackBoundedCons _ natStackBoundedNil) () resultBound
@@ -5186,9 +5180,9 @@ module StrictNatCompiler where
        | natWithinBound right bound in rightCheck
   ... | true | true = refl
   ... | false | _ =
-    absurd (natBoundFalseNotTrue leftBound)
+    ⊥-elim (natBoundFalseNotTrue leftBound)
   ... | true | false =
-    absurd (natBoundFalseNotTrue rightBound)
+    ⊥-elim (natBoundFalseNotTrue rightBound)
   execBoundedToken-complete bound multiplyWord [] result natStackBoundedNil () resultBound
   execBoundedToken-complete bound multiplyWord (value ∷ []) result
     (natStackBoundedCons _ natStackBoundedNil) () resultBound
@@ -5201,11 +5195,11 @@ module StrictNatCompiler where
        | natWithinBound (left * right) bound in resultCheck
   ... | true | true | true = refl
   ... | false | _ | _ =
-    absurd (natBoundFalseNotTrue leftBound)
+    ⊥-elim (natBoundFalseNotTrue leftBound)
   ... | true | false | _ =
-    absurd (natBoundFalseNotTrue rightBound)
+    ⊥-elim (natBoundFalseNotTrue rightBound)
   ... | true | true | false =
-    absurd (natBoundFalseNotTrue resultBound)
+    ⊥-elim (natBoundFalseNotTrue resultBound)
   execBoundedToken-complete bound swapWord stack result inputBound stepBound resultBound =
     stepBound
   execBoundedToken-complete bound (rollWord depth) stack result inputBound stepBound resultBound =
