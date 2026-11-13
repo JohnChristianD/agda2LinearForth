@@ -11,16 +11,17 @@ CI installs the latest stable Agda package from Hackage. The latest observed run
 The root pragma is:
 
 ```agda
-{-# OPTIONS --rewriting --confluence-check --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
+{-# OPTIONS --rewriting --confluence-check --guardedness #-}
 ```
 
-The generated renderer keeps one renderer-specific option:
+The generated renderer keeps only its renderer-specific unification option:
 
 ```agda
-{-# OPTIONS --rewriting --confluence-check --lossy-unification --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
+{-# OPTIONS --rewriting --confluence-check --lossy-unification --guardedness #-}
 ```
 
 The physics specification uses the same option list, replacing `--rewriting` with `--safe`; it contains no postulates or rewrite declarations. The MALLP root remains intentionally unsafe because it contains positive postulates and a registered rewrite system. `--exact-split` is enabled by default. `--lossy-unification` remains isolated to generated resource certificates: removing it leaves unification metas unresolved in `MALLPEmittedRenderer.agda` under Agda 2.8.0.2. It is a sound but incomplete elaboration heuristic, not a logical axiom or runtime rule. `--type-in-type` is absent.
+The proof roots no longer carry diagnostic overrides such as `--no-fast-reduce`, `--no-projection-like`, or `--no-postfix-projections`; those disable Agda's ordinary reduction and syntax behavior and belong in minimized bug reproductions, not the normal proof run. Experimental lazy instances, backtracking search, and polarity analysis were also removed because the current sources do not use them. `--with-K` remains explicit in the separate RSED physics file, where equality elimination is used. `--exact-split` is retained there as a stricter pattern-splitting check. `--lossy-unification` remains only in generated renderer certificates: removing it left unification metas unresolved in `MALLPEmittedRenderer.agda` under Agda 2.8.0.2. It is an elaboration heuristic, not an axiom or runtime rule. `--type-in-type` is absent; no `--safe` claim is made.
 
 CI triggers on `push` and `pull_request`; there is no schedule. The public `agda2forth` entrypoint, CLI argument shape, existing compiler invocation, generated renderer filename, and remaining Agda options are compatibility boundaries.
 
@@ -60,6 +61,11 @@ This is a proof obligation on the generalized Bellman algebra, independent of PE
 - Explicit negative logical assumptions, the identity rewrite equations, and the MALLP cut-elimination assumption.
 
 The record is a conjunction of proof obligations, not an axiom that manufactures fields. Positive PEA, SBR, identity, and cut-elimination assumptions remain explicit. The finite DP value is required to equal the SBR value on the normalized initial state, while the Bellman base/step are independently certified by MALLP. 
+## One shared Foundations optimization constraint
+
+`FoundationsOptimization.UnifiedOptimizationConstraint` packages all seven Foundations around one candidate/state/value problem. The same Nat candidate is produced by the PEA family, admitted into the finite SBR partial-map state, and acted on by one Bellman base/step pair. A single MALLP resource proof certifies those base/step maps. The value preorder and finite selector supply finite-horizon optimality; SBR plus its bar condition supplies the general recursion value. Quotient reflection requires objective invariance under state normalization. Cohesion represents every candidate in both the discrete and cohesive categories. Mac Lane coherence supplies the canonical association of the exact entry/continuation/result resource tensor. The negative logical schemas are collected as a negative-only boundary record; bundling them does not derive positive witnesses or classical decision procedures.
+
+The record is a joint constraint, not a theorem that every problem has an optimizer or terminates. Instantiation still requires concrete PEA family data, a selector with its optimality proof, the SBR bar condition, the MALLP derivations, the quotient invariance proofs, and the cohesive representation. Positive postulates remain visible and unchanged.
 
 ## Is MALLP needed for Bellman optimization?
 
@@ -103,6 +109,8 @@ Recursion, arbitrary higher-order functions, general ADTs/lists, general heap/cl
 
 ## Compiler/proof correspondence
 
+A generated resource selection no longer emits an unchecked raw Forth `ROLL`. Haskell emits a parsed Nat literal followed by `MALLP-NAT-ROLL`; the Agda bounded machine checks that immediate depth against the same cell bound used for stack values, and `FLib.fth` checks both cell representability and stack availability before executing native `ROLL`. Stack underflow and oversized depth are distinct failures, matching the abstract `Maybe` result as observable Forth exceptions.
+ 
 The strongest end-to-end slice is the admitted Nat path:
 
 1. Haskell decodes a Treeless definition into a labelled Nat resource tree and checks exact-once use of every live input.

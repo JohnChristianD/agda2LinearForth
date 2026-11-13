@@ -237,7 +237,7 @@ formalNatToken NatMultiply = FormalMultiplyWord
 -- depth counts computed sibling results already stacked above live inputs.
 compileResourceUse
   :: String
-  -> Int
+  -> Natural
   -> [Int]
   -> Int
   -> Either String (FthForm, [FormalToken], [Int])
@@ -245,23 +245,20 @@ compileResourceUse errorPrefix active context index =
   case elemIndex index context of
     Nothing -> Left (errorPrefix ++ show index)
     Just position ->
-      let depth = active + position
+      let depth = active + fromIntegral position
           remaining = take position context ++ drop (position + 1) context
       in if depth == 0
            then Right (RSList [], [], remaining)
            else if depth == 1
              then Right (RSAtom "MALLP-SWAP", [FormalSwapWord], remaining)
              else Right
-               ( RSList
-                   [ renderNatExpr (NatLiteral (fromIntegral depth))
-                   , RSAtom "MALLP-ROLL"
-                   ]
-               , [FormalRollWord (fromIntegral depth)]
+               ( RSList [renderNatExpr (NatLiteral depth), RSAtom "MALLP-NAT-ROLL"]
+               , [FormalRollWord depth]
                , remaining
                )
 
 compileNatResourceExpr
-  :: Int
+  :: Natural
   -> [Int]
   -> NatResourceExpr
   -> Either String (FthForm, [FormalToken], [Int])
@@ -277,7 +274,7 @@ compileNatResourceExpr active context (NatResourceAddReversed left right) =
   compileNatResourceBinary active context NatAdd left right
 
 compileNatResourceBinary
-  :: Int
+  :: Natural
   -> [Int]
   -> NatOp
   -> NatResourceExpr
@@ -392,7 +389,7 @@ decodeBoolPairFunction owner constructor term = do
     matchesConstructor _ _ = False
 
 compileBoolPairResource
-  :: Int
+  :: Natural
   -> [Int]
   -> Int
   -> Either String (FthForm, [FormalToken], [Int])
@@ -1349,7 +1346,7 @@ rendererCertificate sourceModule definitions
   | any (not . compiledDefinitionHasCertificate) definitions =
       error "compiler emitted a definition without a matching Agda semantic certificate"
   | otherwise = T.unlines $
-  [ "{-# OPTIONS --rewriting --confluence-check --lossy-unification --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}"
+  [ "{-# OPTIONS --rewriting --confluence-check --lossy-unification --guardedness #-}"
   , "module MALLPEmittedRenderer where"
   , ""
   , "import " <> T.pack (prettyShow sourceModule)

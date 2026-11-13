@@ -170,6 +170,16 @@ jobs:
               -4201 THROW
             THEN
           ;
+          : strict-assert-roll { actual-top actual-second expected-top expected-second -- }
+            actual-top expected-top <> IF
+              ." strict MALLP ROLL top mismatch" cr
+              -4208 THROW
+            THEN
+            actual-second expected-second <> IF
+              ." strict MALLP ROLL residual mismatch" cr
+              -4209 THROW
+            THEN
+          ;
           answerAdd 20 strict-assert-natural
           answerMonus 0 strict-assert-natural
           answerMultiply 20 strict-assert-natural
@@ -196,6 +206,15 @@ jobs:
           5 2 answerMonusTwo 3 strict-assert-natural
           2 5 answerReverseMonusTwo 3 strict-assert-natural
           4 5 answerMultiplyTwo 20 strict-assert-natural
+          : testStrictRoll ( -- )
+            11 22 1 MALLP-NAT-ROLL
+            22 11 strict-assert-roll
+          ;
+          testStrictRoll
+          : testStrictRollUnderflow ( -- )
+            11 1 MALLP-NAT-ROLL { ignored }
+          ;
+          ' testStrictRollUnderflow CATCH MALLP-ERR-STACK strict-assert-natural
           4294967295 4294967295 answerWord64Identity
           4294967295 4294967295 strict-assert-word64
           2 3 4 answerThree 18 strict-assert-natural
@@ -315,7 +334,7 @@ jobs:
       - name: Type-check MALLP, rewrite system, and integrated Forth renderer
         id: mallp_proof
         run: |
-          "$AGDA_BIN" --no-fast-reduce --no-projection-like --confluence-check -i formal formal/MALLPForth.agda
+          "$AGDA_BIN" -i formal formal/MALLPForth.agda
 
       - name: Type-check the separate RSED physics specification
         id: physics_proof
@@ -352,6 +371,7 @@ jobs:
           echo "Generated Forth module:"
           cat MALLPStrict.fth
           grep -Fq 'MALLP-NAT-ADD' MALLPStrict.fth
+          grep -Fq 'MALLP-NAT-ROLL' MALLPStrict.fth
           grep -Fq 'MALLP-PARSE-NAT' MALLPStrict.fth
           grep -Fq ': answerTrue TRUE ;' MALLPStrict.fth
           grep -Fq ': answerFalse FALSE ;' MALLPStrict.fth
