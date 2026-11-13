@@ -1,19 +1,23 @@
-{-# OPTIONS --rewriting --confluence-check --type-in-type --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
+{-# OPTIONS --rewriting --confluence-check --guardedness --no-projection-like --experimental-lazy-instances --no-fast-reduce --no-postfix-projections #-}
 -- ```Agda
-------------------------------------------------------------------------
--- SovereignRationalSED
+-- ----------------------------------------------------------------------
+-- SovereignRationalSED / MALLPForth
 --
--- Six original foundational packages plus Laurent's constructive MALLP
--- calculus, without exponentials or Seely structure.  Finite-list computation
--- remains a separate helper witness.  Rewrite rules are registered once
--- at the outer module so Agda checks the combined rewrite system together.
--- The physical modules do not treat logical rewrite equations as physical
--- laws; they expose explicit finite data and proof obligations.
-------------------------------------------------------------------------
+-- Six Foundations packages are public: Forster PEA, symmetric bar recursion,
+-- negative logical schemas, Mac Lane coherence, cohesive adjunctions, and
+-- idempotent quotient reflection. Laurent MALLP is the separate resource
+-- calculus used by selected compiler proofs. Finite-list computation is an
+-- auxiliary constructive helper, not an axiom package.
+--
+-- The root rewrite pragma checks the combined registered system. A rewrite
+-- equation is a conversion law, not automatically a terminating evaluator.
+-- Physical specifications remain separate from logical assumptions.
+-- ----------------------------------------------------------------------
 
 module MALLPForth where
 
---Required for Polymorphism:
+-- Primitive universe levels for the predicative category and identity
+-- encodings below. The root module deliberately omits --type-in-type.
 open import Agda.Primitive using (Level; lsuc; _⊔_) public
 open import Agda.Builtin.Nat public hiding (_<_)
 open import Agda.Builtin.Bool public
@@ -37,8 +41,8 @@ open import Agda.Builtin.Reflection.Properties
 data ⊥ : Set where
 
 postulate
-  Id : (Set → Set) → Set → Set → Set
-  ext : Set → Set → Set
+  Id : (Set → Set) → Set → Set → Set₁
+  ext : Set → Set → Set₁
   refl↓ : (A : Set) → ext A A ≡ Set
   Id-∙ : (A : Set → Set) (X Y : Set) → Id A X Y ≡ ext (A X) (A Y)
 {-# REWRITE refl↓ Id-∙ #-}
@@ -130,15 +134,18 @@ renderForthWordText name tokens =
         (primStringAppend (renderForthTokensText tokens) ";")))
 
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- Small utilities
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 infixr 3 _×_
 infixr 9 _∘ᶠ_
 
-¬_ : Set → Set
+¬_ : ∀ {ℓ : Level} → Set ℓ → Set ℓ
 ¬ P = P → ⊥
+
+⊥-elim : ∀ {ℓ : Level} {A : Set ℓ} → ⊥ → A
+⊥-elim ()
 
 record _×_ (A B : Set) : Set where
   constructor pair
@@ -184,7 +191,7 @@ record Iso (A B : Set) : Set where
     to-from  : (y : B) → to (from y) ≡ y
 open Iso public
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- FINITE LIST COMPUTATION
 --
 -- Auxiliary constructive witness; separate from the six foundational
@@ -193,7 +200,7 @@ open Iso public
 -- No bounded-index container is introduced. Finite prefixes
 -- are enumerated by tabulateList; lookupPrefix records bounded lookup as
 -- Maybe, while lookupListOr supplies an explicit default for sparse tails.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 infix 4 _<_
 
@@ -227,12 +234,12 @@ lookupListOr fallback zero (x ∷ xs) = x
 lookupListOr fallback (suc i) [] = fallback
 lookupListOr fallback (suc i) (x ∷ xs) = lookupListOr fallback i xs
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- FINITE LIST COMPUTATION: AUXILIARY CONSTRUCTIVE WITNESS
 --
 -- This theorem remains available to finite-prefix code, separate from the
 -- six foundational packages and Laurent MALLP.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 module FiniteListComputation where
 
@@ -245,11 +252,165 @@ module FiniteListComputation where
   lookup-tabulate (suc n) f (suc i) (successor<successor bound) =
     lookup-tabulate n (λ j → f (suc j)) i bound
 
+
+  BooleanWitness : (Nat → Bool) → Set
+  BooleanWitness P = Σ Nat (λ n → P n ≡ true)
+
+  data AllFalseBefore (P : Nat → Bool) : Nat → Set where
+    before-zero : AllFalseBefore P zero
+    before-suc :
+      {n : Nat} →
+      AllFalseBefore P n →
+      P n ≡ false →
+      AllFalseBefore P (suc n)
+
+  record LeastWitness (P : Nat → Bool) (n : Nat) : Set where
+    field
+      witness-holds : P n ≡ true
+      all-earlier-false : AllFalseBefore P n
+
+  open LeastWitness public
+
+  -- Finite prefix evaluator. Fuel counts tested candidates: fuel zero
+  -- tests none, while fuel (suc n) tests exactly indices zero through n.
+  -- This evaluator is structurally recursive and independent of unbounded search.
+  boundedSearch : Nat → (Nat → Bool) → Maybe Nat
+  boundedSearch zero P = nothing
+  boundedSearch (suc fuel) P with P zero
+  ... | true = just zero
+  ... | false with boundedSearch fuel (λ n → P (suc n))
+  ...   | nothing = nothing
+  ...   | just n = just (suc n)
+
+  boundedSearch-sound :
+    (fuel : Nat) (P : Nat → Bool) (n : Nat) →
+    boundedSearch fuel P ≡ just n → P n ≡ true
+  maybeNothingNotJust : {A : Set} {x : A} → nothing ≡ just x → ⊥
+  maybeNothingNotJust ()
+
+  just-injective : {A : Set} {x y : A} → just x ≡ just y → x ≡ y
+  just-injective refl = refl
+
+  zeroNotSuc : {n : Nat} → zero ≡ suc n → ⊥
+  zeroNotSuc ()
+
+  sucNotZero : {n : Nat} → suc n ≡ zero → ⊥
+  sucNotZero ()
+
+  suc-injective : {m n : Nat} → suc m ≡ suc n → m ≡ n
+  suc-injective refl = refl
+
+  absurd : {A : Set} → ⊥ → A
+  absurd ()
+
+  boundedSearch-sound zero P n ()
+  boundedSearch-sound (suc fuel) P zero result with P zero
+  ... | true = refl
+  ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
+  ...   | nothing = absurd (maybeNothingNotJust result)
+  ...   | just k = absurd (sucNotZero (just-injective result))
+  boundedSearch-sound (suc fuel) P (suc n) result with P zero
+  ... | true = absurd (zeroNotSuc (just-injective result))
+  ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
+  ...   | nothing = absurd (maybeNothingNotJust result)
+  ...   | just k =
+    boundedSearch-sound fuel (λ i → P (suc i)) n
+      (trans smaller (cong just (suc-injective (just-injective result))))
+
+  boundedSearch-falseNotTrue : false ≡ true → ⊥
+  boundedSearch-falseNotTrue ()
+
+  boundedSearch-trueNotFalse : true ≡ false → ⊥
+  boundedSearch-trueNotFalse ()
+
+  allFalseBefore-first :
+    {P : Nat → Bool} {n : Nat} →
+    AllFalseBefore P (suc n) → P zero ≡ false
+  allFalseBefore-first {n = zero} (before-suc before-zero first) = first
+  allFalseBefore-first {n = suc n}
+    (before-suc (before-suc earlier next) last) =
+    allFalseBefore-first (before-suc earlier next)
+
+  allFalseBefore-tail :
+    {P : Nat → Bool} {n : Nat} →
+    AllFalseBefore P (suc n) →
+    AllFalseBefore (λ i → P (suc i)) n
+  allFalseBefore-tail {n = zero} (before-suc before-zero first) =
+    before-zero
+  allFalseBefore-tail {n = suc n}
+    (before-suc (before-suc earlier next) last) =
+    before-suc (allFalseBefore-tail (before-suc earlier next)) last
+
+  allFalseBefore-lift :
+    {P : Nat → Bool} {n : Nat} →
+    P zero ≡ false →
+    AllFalseBefore (λ i → P (suc i)) n →
+    AllFalseBefore P (suc n)
+  allFalseBefore-lift first before-zero =
+    before-suc before-zero first
+  allFalseBefore-lift first (before-suc earlier next) =
+    before-suc (allFalseBefore-lift first earlier) next
+
+  leastWitness-tail :
+    {P : Nat → Bool} {n : Nat} →
+    LeastWitness P (suc n) →
+    LeastWitness (λ i → P (suc i)) n
+  leastWitness-tail witness = record
+    { witness-holds = witness-holds witness
+    ; all-earlier-false =
+        allFalseBefore-tail (all-earlier-false witness)
+    }
+
+  boundedSearch-minimal :
+    (fuel : Nat) (P : Nat → Bool) (n : Nat) →
+    boundedSearch fuel P ≡ just n → AllFalseBefore P n
+  boundedSearch-minimal zero P n ()
+  boundedSearch-minimal (suc fuel) P zero result with P zero
+  ... | true = before-zero
+  ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
+  ...   | nothing = absurd (maybeNothingNotJust result)
+  ...   | just k = absurd (sucNotZero (just-injective result))
+  boundedSearch-minimal (suc fuel) P (suc n) result with P zero in first
+  ... | true = absurd (zeroNotSuc (just-injective result))
+  ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
+  ...   | nothing = absurd (maybeNothingNotJust result)
+  ...   | just k =
+    allFalseBefore-lift first
+      (boundedSearch-minimal fuel (λ i → P (suc i)) n
+        (trans smaller
+          (cong just (suc-injective (just-injective result)))))
+
+  boundedSearch-least :
+    (fuel : Nat) (P : Nat → Bool) (n : Nat) →
+    boundedSearch fuel P ≡ just n → LeastWitness P n
+  boundedSearch-least fuel P n result = record
+    { witness-holds = boundedSearch-sound fuel P n result
+    ; all-earlier-false = boundedSearch-minimal fuel P n result
+    }
+
+  boundedSearch-complete :
+    (P : Nat → Bool) (n : Nat) →
+    LeastWitness P n →
+    boundedSearch (suc n) P ≡ just n
+  boundedSearch-complete P zero witness with P zero in first
+  ... | true = refl
+  ... | false =
+    absurd (boundedSearch-falseNotTrue
+      (trans (sym first) (witness-holds witness)))
+  boundedSearch-complete P (suc n) witness with P zero in first
+  ... | true =
+    absurd (boundedSearch-trueNotFalse
+      (trans (sym first)
+        (allFalseBefore-first (all-earlier-false witness))))
+  ... | false
+    rewrite boundedSearch-complete
+      (λ i → P (suc i)) n (leastWitness-tail witness) = refl
+
 open FiniteListComputation public
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- CONATURALS: CONSTRUCTIVE COINDUCTIVE TIME HORIZONS
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 record Conat : Set where
   coinductive
@@ -271,7 +432,7 @@ fromNat zero = zero∞
 fromNat (suc n) = suc∞ (fromNat n)
 
 -- A bounded observation: after k observations, an infinite value is
--- represented by the cutoff k.  This always terminates by recursion on k.
+-- represented by the cutoff k. This always terminates by recursion on k.
 finiteApproximation : Nat → Conat → Nat
 finiteApproximation zero n = zero
 finiteApproximation (suc k) n with observeConat n
@@ -297,11 +458,11 @@ _+∞_ : Conat → Conat → Conat
 ... | nothing = observeConat b
 ... | just predecessor = just (predecessor +∞ b)
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- CONATURAL STREAMS AND A NEGATIVE OBSERVATION VIEW
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
--- A stream whose length is a conatural.  Its finite prefixes are always
+-- A stream whose length is a conatural. Its finite prefixes are always
 -- computable; an infinite horizon is observed one constructor at a time.
 record ConatStream (A : Set) : Set where
   coinductive
@@ -319,7 +480,7 @@ observeStream (mapConatStream f stream) with observeStream stream
 ... | nothing = nothing
 ... | just (pair value rest) = just (pair (f value) (mapConatStream f rest))
 
--- The bound, rather than the stream, controls recursion.  This evaluator is
+-- The bound, rather than the stream, controls recursion. This evaluator is
 -- total even for an infinite stream and is the executable observation API.
 foldConatPrefix : {A R : Set} → (A → R → R) → R → Nat → ConatStream A → R
 foldConatPrefix step initial zero stream = initial
@@ -328,9 +489,9 @@ foldConatPrefix step initial (suc n) stream with observeStream stream
 ... | just (pair value rest) =
       step value (foldConatPrefix step initial n rest)
 
--- Continuation/negative view of one observation.  This is a polarized
+-- Continuation/negative view of one observation. This is a polarized
 -- consumer interface, not a claim that the entire Conat type is a Laurent
--- MALLP formula.  Encoding and decoding the observation are definitionally
+-- MALLP formula. Encoding and decoding the observation are definitionally
 -- adequate and require no extensionality axiom.
 ConatObservationNegative : Set₁
 ConatObservationNegative = {R : Set} → (Maybe Conat → R) → R
@@ -351,31 +512,30 @@ negativeObservation-run-adequate : (n : Conat) {R : Set} →
   encodeConatObservationNegative n consume ≡ consume (observeConat n)
 negativeObservation-run-adequate n consume = refl
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- MODULE 1: SIX FOUNDATIONAL PACKAGES AND LAURENT MALLP
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 module Foundations where
 
-  ----------------------------------------------------------------------
-  -- 1. Forster parametric enumerability: analytic machine model and
-  --    explicit synthetic EA principle.
+  -- --------------------------------------------------------------------
+  -- 1. Forster parametric enumerability.
   --
-  -- ProgramCode is syntax for a concrete register machine, interpreted
-  -- step-by-step below. Analytic families carry actual programs and
-  -- soundness/completeness proofs. ParametricEA states the synthetic
-  -- parametric-universality principle as an explicit witness requirement;
-  -- no inhabitant and no numeric Gödel coding are assumed here.
-  ----------------------------------------------------------------------
+  -- ProgramCode is syntax for the concrete register machine below.
+  -- Analytic families supply executable programs. ParametricEA expresses
+  -- uniform family compilation as a positive global postulate. Its typed
+  -- code representation is not a theorem about numeric Gödel coding or
+  -- equivalence with Turing-machine computability.
+  -- --------------------------------------------------------------------
 
   module ForsterEnumerability where
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Analytic enumerability: a family is enumerated by one explicit
     -- register-machine program, with the family index supplied as input.
     -- The interpreter is step-indexed: one output event may occur per
     -- machine step, and absence at a step is represented by nothing.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     data RegisterInstruction : Set where
       assignRegister : Nat → Nat → Nat → RegisterInstruction
@@ -488,11 +648,11 @@ module Foundations where
         (stepRegisterMachine program
           (runRegisterState stage program (initialRegisterState input)))
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Functional presentation used by Forster's synthetic axiom.
     -- Predicates and enumerators are Set-valued because this module is
     -- compiled with --no-prop; this is an explicit encoding boundary.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     record ParametricallyEnumerable : Set₁ where
       field
@@ -508,12 +668,12 @@ module Foundations where
           Σ Nat (λ stage → enumerate i stage ≡ just value)
     open ParametricallyEnumerable public
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Analytic submodel: a family whose enumeration is realized by an
     -- explicit register program. The same program receives i in register
     -- zero, so specialization is literal input passing, not a postulated
     -- Gödel-numbering theorem.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     record AnalyticEnumerableFamily : Set₁ where
       field
@@ -563,25 +723,35 @@ module Foundations where
       enumerate (analyticFamily F) i stage
     analyticCode-correct F i stage = refl
 
-    --------------------------------------------------------------------
-    -- Forster's parametric enumerability principle (EA), represented as
-    -- an explicit assumption record rather than a global postulate.
-    -- It asks for a parametric code selector for every functionally given
-    -- enumerable family. An analytic model supplies such a selector only
-    -- for families accompanied by actual register programs.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
+    -- Forster's parametric enumerability principle (EA). The record is
+    -- the contract for a uniform code selector for every functionally
+    -- given enumerable family. A global positive axiom inhabitant is
+    -- supplied below; the analytic model remains the explicit-code submodel.
+    -- ------------------------------------------------------------------
 
     record ParametricEA : Set₁ where
       field
-        -- One program is compiled for the whole parameterized family.
-        -- The parameter is supplied as register zero at runtime.
+        -- One program is compiled for the whole parameterized family;
+        -- parameter i is supplied as register zero at runtime.
         compileFamily :
           ParametricallyEnumerable → RegisterProgram
-        compileFamily-correct :
+        -- PEA preserves the enumerated predicate by range inclusion in
+        -- both directions. It does not force stage-by-stage equality:
+        -- two enumerators may emit the same witnesses in different orders
+        -- or after different finite delays.
+        compileFamily-sound :
           (F : ParametricallyEnumerable) →
-          (i stage : Nat) →
-          universalEval (programCode (compileFamily F) i) stage ≡
-          enumerate F i stage
+          (i stage value : Nat) →
+          registerEnumeration (compileFamily F) i stage ≡ just value →
+          Predicate F i value
+        compileFamily-complete :
+          (F : ParametricallyEnumerable) →
+          (i value : Nat) →
+          Predicate F i value →
+          Σ Nat
+            (λ stage →
+              registerEnumeration (compileFamily F) i stage ≡ just value)
     open ParametricEA public
 
     -- The selector γ for a family F maps each parameter i to the
@@ -593,14 +763,65 @@ module Foundations where
       ProgramCode
     parametricCode ea F i = programCode (compileFamily ea F) i
 
-    parametricCode-correct :
+    parametricCode-sound :
       (ea : ParametricEA) →
       (F : ParametricallyEnumerable) →
-      (i stage : Nat) →
-      universalEval (parametricCode ea F i) stage ≡
-      enumerate F i stage
-    parametricCode-correct ea F i stage =
-      compileFamily-correct ea F i stage
+      (i stage value : Nat) →
+      universalEval (parametricCode ea F i) stage ≡ just value →
+      Predicate F i value
+    parametricCode-sound ea F i stage value computation =
+      compileFamily-sound ea F i stage value computation
+
+    parametricCode-complete :
+      (ea : ParametricEA) →
+      (F : ParametricallyEnumerable) →
+      (i value : Nat) →
+      Predicate F i value →
+      Σ Nat
+        (λ stage →
+          universalEval (parametricCode ea F i) stage ≡ just value)
+    parametricCode-complete ea F i value witness =
+      compileFamily-complete ea F i value witness
+
+    -- Positive synthetic PEA assumption: one selector supplies codes
+    -- uniformly for every parameter of every enumerable family.
+    postulate
+      parametricEA : ParametricEA
+
+    abstract
+      parametricCodePEA :
+        (F : ParametricallyEnumerable) →
+        Nat →
+        ProgramCode
+      parametricCodePEA F i = parametricCode parametricEA F i
+
+      -- The registered positive rewrite exposes the selected code.
+      -- Correctness is the range-equivalence contract of parametricEA,
+      -- not a stage-preserving equality with the supplied enumerator.
+      parametricCodePEA-code :
+        (F : ParametricallyEnumerable) →
+        (i : Nat) →
+        parametricCodePEA F i ≡
+        programCode (compileFamily parametricEA F) i
+      parametricCodePEA-code F i = refl
+
+      parametricCodePEA-sound :
+        (F : ParametricallyEnumerable) →
+        (i stage value : Nat) →
+        universalEval (parametricCodePEA F i) stage ≡ just value →
+        Predicate F i value
+      parametricCodePEA-sound F i stage value computation =
+        parametricCode-sound parametricEA F i stage value computation
+
+      parametricCodePEA-complete :
+        (F : ParametricallyEnumerable) →
+        (i value : Nat) →
+        Predicate F i value →
+        Σ Nat
+          (λ stage →
+            universalEval (parametricCodePEA F i) stage ≡ just value)
+      parametricCodePEA-complete F i value witness =
+        parametricCode-complete parametricEA F i value witness
 
     parametricEA-analytic-sound :
       (ea : ParametricEA) →
@@ -609,8 +830,7 @@ module Foundations where
       registerEnumeration (compileFamily ea F) i stage ≡ just value →
       Predicate F i value
     parametricEA-analytic-sound ea F i stage value computation =
-      enumerate-sound F i stage value
-        (trans (sym (compileFamily-correct ea F i stage)) computation)
+      compileFamily-sound ea F i stage value computation
 
     parametricEA-analytic-complete :
       (ea : ParametricEA) →
@@ -620,10 +840,8 @@ module Foundations where
       Σ Nat
         (λ stage →
           registerEnumeration (compileFamily ea F) i stage ≡ just value)
-    parametricEA-analytic-complete ea F i value witness
-      with enumerate-complete F i value witness
-    ... | stage , computation =
-      stage , trans (compileFamily-correct ea F i stage) computation
+    parametricEA-analytic-complete ea F i value witness =
+      compileFamily-complete ea F i value witness
 
     -- A witness of synthetic EA uniformly realizes every family in the
     -- analytic register-machine model, with correctness transported from
@@ -638,247 +856,479 @@ module Foundations where
       ; analytic-sound = parametricEA-analytic-sound ea F
       ; analytic-complete = parametricEA-analytic-complete ea F
       }
-  ----------------------------------------------------------------------
-  -- 2. Markov principle plus deterministic least-witness minimization.
+  -- --------------------------------------------------------------------
+  -- 2. Spector-style symmetric bar recursion over finite partial maps.
   --
-  -- μ-search is an intentionally unbounded rewrite computation.  For a
-  -- predicate with a witness it advances in natural order and returns the
-  -- first witness.  With no witness it keeps reducing forever.
-  -- ArithmeticalCountableChoiceLeastWitness is the stated logical choice
-  -- principle, tied to μ-search.  The step equations alone do not prove
-  -- Markov's principle or termination when no witness exists.
-  ----------------------------------------------------------------------
+  -- The control functional chooses the next key. A present key stops at
+  -- the base case; an absent key extends the finite partial map using the
+  -- step functional. SymmetricBarCondition is an explicit bar-coverage
+  -- premise. The operator and stop/step equations are positive assumptions,
+  -- not a derived terminating evaluator.
+  -- --------------------------------------------------------------------
 
-  module MarkovLeastWitness where
+  module SymmetricBarRecursion where
 
-    BooleanWitness : (Nat → Bool) → Set
-    BooleanWitness P = Σ Nat (λ n → P n ≡ true)
+    FiniteEntries : Set → Set
+    FiniteEntries X = List (Nat × X)
 
-    data AllFalseBefore (P : Nat → Bool) : Nat → Set where
-      before-zero : AllFalseBefore P zero
-      before-suc :
-        {n : Nat} →
-        AllFalseBefore P n →
-        P n ≡ false →
-        AllFalseBefore P (suc n)
+    natEq : Nat → Nat → Bool
+    natEq = _==_
 
-    record LeastWitness (P : Nat → Bool) (n : Nat) : Set where
+    memberKey : {X : Set} → Nat → FiniteEntries X → Bool
+    memberKey n [] = false
+    memberKey n ((pair k value) ∷ entries) with natEq n k
+    ... | true = true
+    ... | false = memberKey n entries
+
+    lookupKey : {X : Set} → Nat → FiniteEntries X → Maybe X
+    lookupKey n [] = nothing
+    lookupKey n ((pair k value) ∷ entries) with natEq n k
+    ... | true = just value
+    ... | false = lookupKey n entries
+
+    -- A finite partial map carries a proof that its key list has no
+    -- duplicates. This prevents the association-list representation from
+    -- silently making lookup order part of the mathematical object.
+    data UniqueKeys {X : Set} : FiniteEntries X → Set where
+      unique-empty : UniqueKeys []
+      unique-cons :
+        {key : Nat} {value : X} {entries : FiniteEntries X} →
+        memberKey key entries ≡ false →
+        UniqueKeys entries →
+        UniqueKeys (pair key value ∷ entries)
+
+    record PartialMap (X : Set) : Set where
+      constructor partialMap
       field
-        witness-holds : P n ≡ true
-        all-earlier-false : AllFalseBefore P n
+        mapEntries : FiniteEntries X
+        keys-unique : UniqueKeys mapEntries
+    open PartialMap public
 
-    open LeastWitness public
+    emptyMap : {X : Set} → PartialMap X
+    emptyMap = partialMap [] unique-empty
 
-    postulate
-      μ-search : (Nat → Bool) → Nat → Bool → Nat
-      μ-step-true :
-        (P : Nat → Bool) → (n : Nat) →
-        μ-search P n true ≡ n
-      μ-step-false :
-        (P : Nat → Bool) → (n : Nat) →
-        μ-search P n false ≡ μ-search P (suc n) (P (suc n))
+    streamOf : {X : Set} → FiniteEntries X → X → Nat → X
+    streamOf entries default n with lookupKey n entries
+    ... | just value = value
+    ... | nothing = default
 
-    leastSearch : (Nat → Bool) → Nat
-    leastSearch P = μ-search P zero (P zero)
+    extendFresh :
+      {X : Set} →
+      (entries : PartialMap X) →
+      (key : Nat) →
+      memberKey key (mapEntries entries) ≡ false →
+      X → PartialMap X
+    extendFresh entries key fresh value =
+      partialMap
+        (pair key value ∷ mapEntries entries)
+        (unique-cons fresh (keys-unique entries))
 
-    -- The intended arithmetical countable least-witness principle.
-    -- The choice function is not hidden behind an existential: it is
-    -- definitionally i ↦ leastSearch (P i).  The postulate says that, under
-    -- pointwise double-negated existence, each such search returns its
-    -- least witness.  This packages the countable family of Markov steps
-    -- with the deterministic μ-minimizer.  It is stronger than MP_B alone.
-    ArithmeticalCountableChoiceLeastWitness : Set
-    ArithmeticalCountableChoiceLeastWitness =
-      (P : Nat → Nat → Bool) →
-      ((i : Nat) → ¬ (¬ BooleanWitness (P i))) →
-      (i : Nat) → LeastWitness (P i) (leastSearch (P i))
+    data DomainDecision {X : Set}
+      (entries : PartialMap X) (key : Nat) : Set where
+      inDomain :
+        memberKey key (mapEntries entries) ≡ true → DomainDecision entries key
+      outDomain :
+        memberKey key (mapEntries entries) ≡ false → DomainDecision entries key
 
-    postulate
-      arithmeticalCountableChoiceLeastWitness :
-        ArithmeticalCountableChoiceLeastWitness
+    decideDomain :
+      {X : Set} →
+      (entries : PartialMap X) →
+      (key : Nat) →
+      DomainDecision entries key
+    decideDomain entries key
+      with memberKey key (mapEntries entries) in membership
+    ... | true = inDomain membership
+    ... | false = outDomain membership
 
-    leastWitnessChoice :
-      (P : Nat → Nat → Bool) →
-      ((i : Nat) → ¬ (¬ BooleanWitness (P i))) → Nat → Nat
-    leastWitnessChoice P double-negated i = leastSearch (P i)
+    threadEntries :
+      {X : Set} →
+      (entries : PartialMap X) →
+      (key : Nat) →
+      DomainDecision entries key →
+      X →
+      PartialMap X
+    threadEntries entries key (inDomain present) value = entries
+    threadEntries entries key (outDomain absent) value =
+      extendFresh entries key absent value
 
-    leastWitnessChoice-correct :
-      (P : Nat → Nat → Bool) →
-      (double-negated : (i : Nat) → ¬ (¬ BooleanWitness (P i))) →
-      (i : Nat) → LeastWitness (P i) (leastWitnessChoice P double-negated i)
-    leastWitnessChoice-correct P double-negated i =
-      arithmeticalCountableChoiceLeastWitness P double-negated i
+    threadEntries-contains-zero :
+      {X : Set} →
+      (entries : PartialMap X) →
+      (decision : DomainDecision entries zero) →
+      (value : X) →
+      memberKey zero
+        (mapEntries (threadEntries entries zero decision value)) ≡ true
+    threadEntries-contains-zero entries (inDomain present) value = present
+    threadEntries-contains-zero entries (outDomain absent) value = refl
 
-    -- Finite prefix evaluator. Fuel counts tested candidates: fuel zero
-    -- tests none, while fuel (suc n) tests exactly indices zero through n.
-    -- This evaluator is structurally recursive and independent of μ-search.
-    boundedSearch : Nat → (Nat → Bool) → Maybe Nat
-    boundedSearch zero P = nothing
-    boundedSearch (suc fuel) P with P zero
-    ... | true = just zero
-    ... | false with boundedSearch fuel (λ n → P (suc n))
-    ...   | nothing = nothing
-    ...   | just n = just (suc n)
+    omegaThread :
+      {X : Set} →
+      (omega : (Nat → X) → Nat) →
+      (default : X) →
+      (alpha : Nat → X) →
+      (initial : PartialMap X) →
+      Nat → PartialMap X
+    omegaThread omega default alpha initial zero = initial
+    omegaThread omega default alpha initial (suc n) =
+      let entries = omegaThread omega default alpha initial n
+          key = omega (streamOf (mapEntries entries) default)
+      in threadEntries entries key (decideDomain entries key) (alpha key)
 
-    boundedSearch-sound :
-      (fuel : Nat) (P : Nat → Bool) (n : Nat) →
-      boundedSearch fuel P ≡ just n → P n ≡ true
-    maybeNothingNotJust : {A : Set} {x : A} → nothing ≡ just x → ⊥
-    maybeNothingNotJust ()
-
-    just-injective : {A : Set} {x y : A} → just x ≡ just y → x ≡ y
-    just-injective refl = refl
-
-    zeroNotSuc : {n : Nat} → zero ≡ suc n → ⊥
-    zeroNotSuc ()
-
-    sucNotZero : {n : Nat} → suc n ≡ zero → ⊥
-    sucNotZero ()
-
-    suc-injective : {m n : Nat} → suc m ≡ suc n → m ≡ n
-    suc-injective refl = refl
-
-    absurd : {A : Set} → ⊥ → A
-    absurd ()
-
-    boundedSearch-sound zero P n ()
-    boundedSearch-sound (suc fuel) P zero result with P zero
-    ... | true = refl
-    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-    ...   | nothing = absurd (maybeNothingNotJust result)
-    ...   | just k = absurd (sucNotZero (just-injective result))
-    boundedSearch-sound (suc fuel) P (suc n) result with P zero
-    ... | true = absurd (zeroNotSuc (just-injective result))
-    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-    ...   | nothing = absurd (maybeNothingNotJust result)
-    ...   | just k =
-      boundedSearch-sound fuel (λ i → P (suc i)) n
-        (trans smaller (cong just (suc-injective (just-injective result))))
-
-    boundedSearch-falseNotTrue : false ≡ true → ⊥
-    boundedSearch-falseNotTrue ()
-
-    boundedSearch-trueNotFalse : true ≡ false → ⊥
-    boundedSearch-trueNotFalse ()
-
-    allFalseBefore-first :
-      {P : Nat → Bool} {n : Nat} →
-      AllFalseBefore P (suc n) → P zero ≡ false
-    allFalseBefore-first {n = zero} (before-suc before-zero first) = first
-    allFalseBefore-first {n = suc n}
-      (before-suc (before-suc earlier next) last) =
-      allFalseBefore-first (before-suc earlier next)
-
-    allFalseBefore-tail :
-      {P : Nat → Bool} {n : Nat} →
-      AllFalseBefore P (suc n) →
-      AllFalseBefore (λ i → P (suc i)) n
-    allFalseBefore-tail {n = zero} (before-suc before-zero first) =
-      before-zero
-    allFalseBefore-tail {n = suc n}
-      (before-suc (before-suc earlier next) last) =
-      before-suc (allFalseBefore-tail (before-suc earlier next)) last
-
-    allFalseBefore-lift :
-      {P : Nat → Bool} {n : Nat} →
-      P zero ≡ false →
-      AllFalseBefore (λ i → P (suc i)) n →
-      AllFalseBefore P (suc n)
-    allFalseBefore-lift first before-zero =
-      before-suc before-zero first
-    allFalseBefore-lift first (before-suc earlier next) =
-      before-suc (allFalseBefore-lift first earlier) next
-
-    leastWitness-tail :
-      {P : Nat → Bool} {n : Nat} →
-      LeastWitness P (suc n) →
-      LeastWitness (λ i → P (suc i)) n
-    leastWitness-tail witness = record
-      { witness-holds = witness-holds witness
-      ; all-earlier-false =
-          allFalseBefore-tail (all-earlier-false witness)
-      }
-
-    boundedSearch-minimal :
-      (fuel : Nat) (P : Nat → Bool) (n : Nat) →
-      boundedSearch fuel P ≡ just n → AllFalseBefore P n
-    boundedSearch-minimal zero P n ()
-    boundedSearch-minimal (suc fuel) P zero result with P zero
-    ... | true = before-zero
-    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-    ...   | nothing = absurd (maybeNothingNotJust result)
-    ...   | just k = absurd (sucNotZero (just-injective result))
-    boundedSearch-minimal (suc fuel) P (suc n) result with P zero in first
-    ... | true = absurd (zeroNotSuc (just-injective result))
-    ... | false with boundedSearch fuel (λ i → P (suc i)) in smaller
-    ...   | nothing = absurd (maybeNothingNotJust result)
-    ...   | just k =
-      allFalseBefore-lift first
-        (boundedSearch-minimal fuel (λ i → P (suc i)) n
-          (trans smaller
-            (cong just (suc-injective (just-injective result)))))
-
-    boundedSearch-least :
-      (fuel : Nat) (P : Nat → Bool) (n : Nat) →
-      boundedSearch fuel P ≡ just n → LeastWitness P n
-    boundedSearch-least fuel P n result = record
-      { witness-holds = boundedSearch-sound fuel P n result
-      ; all-earlier-false = boundedSearch-minimal fuel P n result
-      }
-
-    boundedSearch-complete :
-      (P : Nat → Bool) (n : Nat) →
-      LeastWitness P n →
-      boundedSearch (suc n) P ≡ just n
-    boundedSearch-complete P zero witness with P zero in first
-    ... | true = refl
-    ... | false =
-      absurd (boundedSearch-falseNotTrue
-        (trans (sym first) (witness-holds witness)))
-    boundedSearch-complete P (suc n) witness with P zero in first
-    ... | true =
-      absurd (boundedSearch-trueNotFalse
-        (trans (sym first)
-          (allFalseBefore-first (all-earlier-false witness))))
-    ... | false
-      rewrite boundedSearch-complete
-        (λ i → P (suc i)) n (leastWitness-tail witness) = refl
-
-    MarkovPrinciple : Set
-    MarkovPrinciple =
-      (P : Nat → Bool) →
-      ¬ (¬ BooleanWitness P) →
-      BooleanWitness P
-
-    markovPrinciple : MarkovPrinciple
-    markovPrinciple P double-negated =
-      leastSearch P ,
-      witness-holds
-        (leastWitnessChoice-correct
-          (λ i → P) (λ i → double-negated) zero)
-
-    -- Under the existing least-witness assumption, the terminating
-    -- bounded evaluator reproduces μ's least result when given enough fuel.
-    -- This does not establish termination of the unbounded μ-search itself.
-    leastSearch-bounded-computes :
-      (P : Nat → Bool) →
-      ¬ (¬ BooleanWitness P) →
-      boundedSearch (suc (leastSearch P)) P ≡ just (leastSearch P)
-    leastSearch-bounded-computes P double-negated =
-      boundedSearch-complete P (leastSearch P)
-        (leastWitnessChoice-correct
-          (λ i → P)
-          (λ i → double-negated)
+    omegaThread-step-zero :
+      {X : Set} →
+      (default : X) →
+      (alpha : Nat → X) →
+      (initial : PartialMap X) →
+      (fuel : Nat) →
+      memberKey zero
+        (mapEntries
+          (omegaThread (λ stream → zero) default alpha initial (suc fuel)))
+        ≡ true
+    omegaThread-step-zero default alpha initial fuel =
+      threadEntries-contains-zero
+        (omegaThread (λ stream → zero) default alpha initial fuel)
+        (decideDomain
+          (omegaThread (λ stream → zero) default alpha initial fuel)
           zero)
+        (alpha zero)
 
-  ----------------------------------------------------------------------
-  -- 3. Mac Lane coherence via the thin free monoidal category on
-  --    Nat-labelled generators and a computational normal form.
-  ----------------------------------------------------------------------
+    SymmetricBarCondition :
+      {X : Set} →
+      (omega : (Nat → X) → Nat) →
+      X → Set
+    SymmetricBarCondition {X} omega default =
+      (initial : PartialMap X) →
+      (alpha : Nat → X) →
+      Σ Nat
+        (λ n →
+          memberKey
+            (omega (streamOf
+              (mapEntries (omegaThread omega default alpha initial n)) default))
+            (mapEntries (omegaThread omega default alpha initial n)) ≡ true)
+
+
+
+    -- ------------------------------------------------------------------
+    -- Selection products and finite backward induction.
+    --
+    -- A selection function responds to a payoff with a chosen move.
+    -- Product selection composes these responses by Bellman's continuation
+    -- equation. Optimality is extra data: arbitrary payoffs need not attain
+    -- maxima, and this layer never manufactures an optimizer.
+    -- ------------------------------------------------------------------
+
+    Selection : (X R : Set) → Set
+    Selection X R = (X → R) → X
+
+    selectedOutcome :
+      {X R : Set} → Selection X R → (X → R) → R
+    selectedOutcome choose payoff = payoff (choose payoff)
+
+    productSelection :
+      {X Y R : Set} →
+      Selection X R →
+      (X → Selection Y R) →
+      Selection (X × Y) R
+    productSelection {X = X} {Y = Y} chooseX chooseY payoff =
+      let
+        response : X → Y
+        response x = chooseY x (λ y → payoff (pair x y))
+
+        first : X
+        first = chooseX (λ x → payoff (pair x (response x)))
+      in pair first (response first)
+
+    productSelection-bellman :
+      {X Y R : Set} →
+      (chooseX : Selection X R) →
+      (chooseY : X → Selection Y R) →
+      (payoff : X × Y → R) →
+      selectedOutcome (productSelection chooseX chooseY) payoff ≡
+      selectedOutcome chooseX
+        (λ x → selectedOutcome (chooseY x) (λ y → payoff (pair x y)))
+    productSelection-bellman chooseX chooseY payoff = refl
+
+    record Preorder (R : Set) : Set₁ where
+      field
+        below : R → R → Set
+        below-refl : (value : R) → below value value
+        below-trans :
+          {left middle right : R} →
+          below left middle →
+          below middle right →
+          below left right
+    open Preorder public
+
+    OptimalSelection :
+      {X R : Set} →
+      (order : Preorder R) →
+      Selection X R →
+      Set
+    OptimalSelection {X} {R} order choose =
+      (payoff : X → R) →
+      (candidate : X) →
+      below order (payoff candidate) (payoff (choose payoff))
+
+    productSelection-optimal :
+      {X Y R : Set} →
+      (order : Preorder R) →
+      (chooseX : Selection X R) →
+      (chooseY : X → Selection Y R) →
+      OptimalSelection order chooseX →
+      ((x : X) → OptimalSelection order (chooseY x)) →
+      (payoff : X × Y → R) →
+      (candidate : X × Y) →
+      below order
+        (payoff candidate)
+        (selectedOutcome (productSelection chooseX chooseY) payoff)
+    productSelection-optimal order chooseX chooseY optimalX optimalY
+      payoff (pair x y) =
+      below-trans order
+        (optimalY x (λ y′ → payoff (pair x y′)) y)
+        (optimalX
+          (λ x′ →
+            payoff (pair x′ (chooseY x′ (λ y′ → payoff (pair x′ y′)))))
+          x)
+
+    data Play (X : Set) : Nat → Set where
+      noMoves : Play X zero
+      prependMove : {n : Nat} → X → Play X n → Play X (suc n)
+
+    backwardInduction :
+      {X R : Set} →
+      (horizon : Nat) →
+      Selection X R →
+      Selection (Play X horizon) R
+    backwardInduction zero choose payoff = noMoves
+    backwardInduction {X = X} {R = R} (suc horizon) choose payoff =
+      let
+        suffix : X → Play X horizon
+        suffix x =
+          backwardInduction horizon choose
+            (λ rest → payoff (prependMove x rest))
+
+        first : X
+        first = choose (λ x → payoff (prependMove x (suffix x)))
+      in prependMove first (suffix first)
+
+    backwardInduction-bellman :
+      {X R : Set} →
+      (horizon : Nat) →
+      (choose : Selection X R) →
+      (payoff : Play X (suc horizon) → R) →
+      selectedOutcome (backwardInduction (suc horizon) choose) payoff ≡
+      selectedOutcome choose
+        (λ x →
+          selectedOutcome
+            (backwardInduction horizon choose)
+            (λ rest → payoff (prependMove x rest)))
+    backwardInduction-bellman horizon choose payoff = refl
+
+    backwardInduction-optimal :
+      {X R : Set} →
+      (order : Preorder R) →
+      (choose : Selection X R) →
+      OptimalSelection order choose →
+      (horizon : Nat) →
+      OptimalSelection order (backwardInduction horizon choose)
+    backwardInduction-optimal order choose optimal zero payoff noMoves =
+      below-refl order (payoff noMoves)
+    backwardInduction-optimal order choose optimal (suc horizon)
+      payoff (prependMove firstMove rest) =
+      below-trans order
+        (backwardInduction-optimal order choose optimal horizon
+          (λ suffix → payoff (prependMove firstMove suffix))
+          rest)
+        (optimal
+          (λ move →
+            payoff
+              (prependMove move
+                (backwardInduction horizon choose
+                  (λ suffix → payoff (prependMove move suffix)))))
+          firstMove)
+
+    postulate
+      symmetricBarRec :
+        {X R : Set} →
+        (omega : (Nat → X) → Nat) →
+        (default : X) →
+        SymmetricBarCondition omega default →
+        (base : PartialMap X → R) →
+        (step : PartialMap X → (X → R) → R) →
+        (entries : PartialMap X) →
+        (key : Nat) →
+        DomainDecision entries key → R
+
+      sBR-stop :
+        {X R : Set} →
+        (omega : (Nat → X) → Nat) →
+        (default : X) →
+        (condition : SymmetricBarCondition omega default) →
+        (base : PartialMap X → R) →
+        (step : PartialMap X → (X → R) → R) →
+        (entries : PartialMap X) →
+        (key : Nat) →
+        (present : memberKey key (mapEntries entries) ≡ true) →
+        symmetricBarRec omega default condition base step entries key
+          (inDomain present) ≡ base entries
+
+      sBR-step :
+        {X R : Set} →
+        (omega : (Nat → X) → Nat) →
+        (default : X) →
+        (condition : SymmetricBarCondition omega default) →
+        (base : PartialMap X → R) →
+        (step : PartialMap X → (X → R) → R) →
+        (entries : PartialMap X) →
+        (key : Nat) →
+        (absent : memberKey key (mapEntries entries) ≡ false) →
+        symmetricBarRec omega default condition base step entries key
+          (outDomain absent) ≡
+        step entries
+          (λ value →
+            let nextEntries = extendFresh entries key absent value
+                nextKey = omega (streamOf (mapEntries nextEntries) default)
+            in symmetricBarRec omega default condition base step
+                 nextEntries nextKey (decideDomain nextEntries nextKey))
+
+    symmetricBarRecAt :
+      {X R : Set} →
+      (omega : (Nat → X) → Nat) →
+      (default : X) →
+      SymmetricBarCondition omega default →
+      (base : PartialMap X → R) →
+      (step : PartialMap X → (X → R) → R) →
+      PartialMap X → R
+    symmetricBarRecAt omega default condition base step entries =
+      symmetricBarRec omega default condition base step entries
+        (omega (streamOf (mapEntries entries) default))
+        (decideDomain entries (omega (streamOf (mapEntries entries) default)))
+
+  -- --------------------------------------------------------------------
+  -- 3. Double-negated logical and choice schemas.
+  --
+  -- The postulates assert only double negations of excluded middle,
+  -- function extensionality, countable DNS, and dependent choice. They
+  -- supply no positive decision procedure, extensionality proof, or choice
+  -- sequence. Double-negated DNE and Peirce are derived from double-negated
+  -- excluded middle. Set : Set remains a typing judgement, not a proposition.
+  --
+  -- Set : Set is a universe-formation judgement, not a proposition or
+  -- Agda term. Its double negation is therefore not expressible as a
+  -- well-typed postulate. The standard predicative universe hierarchy is
+  -- retained instead.
+  -- --------------------------------------------------------------------
+
+  module DoubleNegation where
+
+    infixr 4 _⊎ᴺ_
+
+    data _⊎ᴺ_ {a b : Level} (A : Set a) (B : Set b) : Set (a ⊔ b) where
+      leftᴺ : A → A ⊎ᴺ B
+      rightᴺ : B → A ⊎ᴺ B
+
+    ExcludedMiddleAt : (ℓ : Level) → Set (lsuc ℓ)
+    ExcludedMiddleAt ℓ = (P : Set ℓ) → P ⊎ᴺ (¬ P)
+
+    DoubleNegationEliminationAt : (ℓ : Level) → Set (lsuc ℓ)
+    DoubleNegationEliminationAt ℓ =
+      (P : Set ℓ) → ¬ (¬ P) → P
+
+    PeirceAt : (ℓ : Level) → Set (lsuc ℓ)
+    PeirceAt ℓ =
+      (P Q : Set ℓ) → ((P → Q) → P) → P
+
+    FunctionExtensionalityAt :
+      (a b : Level) → Set (lsuc (a ⊔ b))
+    FunctionExtensionalityAt a b =
+      {A : Set a} {B : Set b} →
+      (f g : A → B) →
+      ((x : A) → f x ≡ g x) →
+      f ≡ g
+
+    DoubleNegationShiftAt : (ℓ : Level) → Set (lsuc ℓ)
+    DoubleNegationShiftAt ℓ =
+      {P : Nat → Set ℓ} →
+      ((n : Nat) → ¬ (¬ P n)) →
+      ¬ (¬ ((n : Nat) → P n))
+
+    DependentChoiceAt : (ℓ : Level) → Set (lsuc ℓ)
+    DependentChoiceAt ℓ =
+      {A : Set ℓ} →
+      (R : A → A → Set ℓ) →
+      ((x : A) → Σ A (λ y → R x y)) →
+      (initial : A) →
+      Σ (Nat → A)
+        (λ sequence →
+          Σ (sequence zero ≡ initial)
+            (λ _ →
+              (n : Nat) → R (sequence n) (sequence (suc n))))
+
+
+    mapDoubleNegation :
+      {a b : Level} {P : Set a} {Q : Set b} →
+      (P → Q) → ¬ (¬ P) → ¬ (¬ Q)
+    mapDoubleNegation f notNotP notQ =
+      notNotP (λ p → notQ (f p))
+
+    excludedMiddle-implies-dne :
+      (ℓ : Level) →
+      ExcludedMiddleAt ℓ →
+      DoubleNegationEliminationAt ℓ
+    excludedMiddle-implies-dne ℓ excluded P notNotP
+      with excluded P
+    ... | leftᴺ witness = witness
+    ... | rightᴺ refute = ⊥-elim (notNotP refute)
+
+    excludedMiddle-implies-peirce :
+      (ℓ : Level) →
+      ExcludedMiddleAt ℓ →
+      PeirceAt ℓ
+    excludedMiddle-implies-peirce ℓ excluded P Q continuation
+      with excluded P
+    ... | leftᴺ witness = witness
+    ... | rightᴺ refute =
+      continuation (λ witness → ⊥-elim (refute witness))
+
+    -- These are negative counterparts only. They supply no classical
+    -- decision, extensionality proof, enumerator, or choice sequence.
+    postulate
+      doubleNegatedExcludedMiddle :
+        (ℓ : Level) → ¬ (¬ (ExcludedMiddleAt ℓ))
+
+      doubleNegatedFunctionExtensionality :
+        (a b : Level) →
+        ¬ (¬ (FunctionExtensionalityAt a b))
+
+      doubleNegatedDNS :
+        (ℓ : Level) → ¬ (¬ (DoubleNegationShiftAt ℓ))
+
+      doubleNegatedDependentChoice :
+        (ℓ : Level) → ¬ (¬ (DependentChoiceAt ℓ))
+
+    doubleNegatedDNE :
+      (ℓ : Level) →
+      ¬ (¬ (DoubleNegationEliminationAt ℓ))
+    doubleNegatedDNE ℓ =
+      mapDoubleNegation
+        (excludedMiddle-implies-dne ℓ)
+        (doubleNegatedExcludedMiddle ℓ)
+
+    doubleNegatedPeirce :
+      (ℓ : Level) → ¬ (¬ (PeirceAt ℓ))
+    doubleNegatedPeirce ℓ =
+      mapDoubleNegation
+        (excludedMiddle-implies-peirce ℓ)
+        (doubleNegatedExcludedMiddle ℓ)
+
+  -- --------------------------------------------------------------------
+  -- 4. Mac Lane coherence via the thin free monoidal category on
+  -- Nat-labelled generators and a computational normal form.
+  -- --------------------------------------------------------------------
 
   module MacLaneCoherence where
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Thin free monoidal category on Nat-labelled generators.
     --
     -- Objects are parenthesized tensor expressions. A morphism is an
@@ -886,7 +1336,7 @@ module Foundations where
     -- executable, hom existence is decidable, and UIP makes every hom-set
     -- a proposition. Associators/unitors and all their coherence diagrams
     -- are represented by these canonical normal-form paths.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     data TensorExpr : Set where
       atom : Nat → TensorExpr
@@ -968,7 +1418,7 @@ module Foundations where
     TensorHom : TensorExpr → TensorExpr → Set
     TensorHom A B = tensorNF A ≡ tensorNF B
 
-    -- A terminating decision procedure for the hom relation.  The
+    -- A terminating decision procedure for the hom relation. The
     -- negative branch contains a proof that distinct normal forms cannot
     -- be joined by a structural morphism.
     data TensorHomDecision (A B : TensorExpr) : Set where
@@ -1198,24 +1648,24 @@ module Foundations where
     tensor-product A B = refl
   module CohesiveRetractions where
 
-    --------------------------------------------------------------------
-    -- The Lawvere-Schreiber cohesive core is a quadruple of functors
+    -- ------------------------------------------------------------------
+    -- Lawvere–Schreiber cohesive structure is the adjoint quadruple
     --
-    --   Π : H → G       Disc : G → H
-    --   Γ : H → G       coDisc : G → H
+    -- Π : H → G Disc : G → H
+    -- Γ : H → G coDisc : G → H
     --
-    -- with Π ⊣ Disc ⊣ Γ ⊣ coDisc, Disc and coDisc fully faithful,
-    -- and Π preserving finite products.
+    -- satisfying Π ⊣ Disc ⊣ Γ ⊣ coDisc, full faithfulness of Disc/coDisc,
+    -- and finite-product preservation by Π.
     --
-    -- H and G are distinct category parameters.  The record below does
-    -- not pretend that an arbitrary category is a topos: it formalizes
-    -- the adjoint-quadruple axioms and their categorical laws.  An
-    -- executable identity-Set instance is supplied as a degenerate model.
-    --------------------------------------------------------------------
+    -- H and G remain distinct categories. This record states the categorical
+    -- laws only; a cohesive topos also needs topos structure on H and
+    -- ∞-groupoid structure on G. A concrete nonidentity three-element/
+    -- two-element finite-poset model is supplied below, not a cohesive topos.
+    -- ------------------------------------------------------------------
 
-    record Category : Set₁ where
+    record Category : Set₂ where
       field
-        categoryObjects : Set
+        categoryObjects : Set₁
         categoryHom :
           categoryObjects → categoryObjects → Set
         categoryHomEq :
@@ -1263,16 +1713,16 @@ module Foundations where
           categoryHomEq (categoryCompose f categoryId) f
     open Category public
 
-    --------------------------------------------------------------------
-    -- A functor preserves identities and composition up to the chosen
-    -- equality on hom-sets.  Hom equality is explicit, so the Set model
-    -- uses pointwise equality and requires no function-extensionality axiom.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
+    -- A functor preserves identities and composition up to the target
+    -- category's chosen hom equality. That equality is explicit in each
+    -- model, so no global function-extensionality assumption is needed.
+    -- ------------------------------------------------------------------
 
     -- Spell out object endpoints in the laws: categoryHom is a record
     -- family, so Agda cannot recover its indices by inverting categoryId
     -- or categoryCompose during elaboration.
-    record Functor (C D : Category) : Set₁ where
+    record Functor (C D : Category) : Set₂ where
       field
         functorObject : categoryObjects C → categoryObjects D
         functorArrow :
@@ -1326,15 +1776,15 @@ module Foundations where
                 {A = A} {B = B} {C = C′} g f)
       }
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- An adjunction is a natural isomorphism of hom-functors, represented
     -- by transpose/untranspose and both inverse and naturality laws.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     record Adjunction
       {C D : Category}
       (F : Functor C D)
-      (G : Functor D C) : Set₁ where
+      (G : Functor D C) : Set₂ where
       field
         transpose :
           {A : categoryObjects C} {B : categoryObjects D} →
@@ -1396,13 +1846,13 @@ module Foundations where
           λ g f → categoryHomEq-refl C (categoryCompose C g f)
       }
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Full faithfulness is the hom-set map being an isomorphism.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     record FullyFaithful
       {C D : Category}
-      (F : Functor C D) : Set₁ where
+      (F : Functor C D) : Set₂ where
       field
         reflectArrow :
           {A B : categoryObjects C} →
@@ -1433,12 +1883,12 @@ module Foundations where
       ; map-reflect = λ f → categoryHomEq-refl C f
       }
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Finite products are expressed categorically by a terminal object
     -- and binary products with the universal pairing law.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
-    record TerminalObject (C : Category) : Set₁ where
+    record TerminalObject (C : Category) : Set₂ where
       field
         terminalObject : categoryObjects C
         terminalArrow :
@@ -1452,7 +1902,7 @@ module Foundations where
 
     record BinaryProduct
       (C : Category)
-      (A B : categoryObjects C) : Set₁ where
+      (A B : categoryObjects C) : Set₂ where
       field
         binaryProductObject : categoryObjects C
         binaryProductLeft : categoryHom C binaryProductObject A
@@ -1495,23 +1945,23 @@ module Foundations where
             h
     open BinaryProduct public
 
-    record FiniteProducts (C : Category) : Set₁ where
+    record FiniteProducts (C : Category) : Set₂ where
       field
         finiteTerminal : TerminalObject C
         finiteBinaryProduct :
           (A B : categoryObjects C) → BinaryProduct C A B
     open FiniteProducts public
 
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
     -- Π preserves finite products when its canonical comparison maps
     -- (and the terminal comparison) are isomorphisms.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
 
     record PreservesFiniteProducts
       {C D : Category}
       (F : Functor C D)
       (productsC : FiniteProducts C)
-      (productsD : FiniteProducts D) : Set₁ where
+      (productsD : FiniteProducts D) : Set₂ where
       field
         terminalComparison :
           categoryHom D
@@ -1576,18 +2026,17 @@ module Foundations where
             (categoryId D)
     open PreservesFiniteProducts public
 
-    --------------------------------------------------------------------
-    -- Abstract cohesive adjunction core. H is the cohesive category and
-    -- G is the category of discrete homotopy types. A full cohesive topos
-    -- additionally supplies topos structure on H and the intended
-    -- ∞-groupoid structure on G; those structures are intentionally not
-    -- postulated or conflated with this adjoint-quadruple interface.
-    --------------------------------------------------------------------
+    -- ------------------------------------------------------------------
+    -- Abstract cohesive adjunction core. H is the cohesive category and G
+    -- the category of discrete homotopy types. A full cohesive topos also
+    -- needs topos structure on H and ∞-groupoid structure on G. Those
+    -- structures remain outside this adjoint-quadruple interface.
+    -- ------------------------------------------------------------------
 
     record CohesiveAdjointQuadruple
       (H G : Category)
       (productsH : FiniteProducts H)
-      (productsG : FiniteProducts G) : Set₁ where
+      (productsG : FiniteProducts G) : Set₃ where
       field
         cohesivePi : Functor H G
         cohesiveDisc : Functor G H
@@ -1607,198 +2056,698 @@ module Foundations where
           PreservesFiniteProducts cohesivePi productsH productsG
     open CohesiveAdjointQuadruple public
 
-    --------------------------------------------------------------------
-    -- Set with its ordinary terminal object and binary products.
-    --------------------------------------------------------------------
+    data FiniteHObject : Set₁ where
+      cohH0 cohHmid cohH1 : FiniteHObject
 
-    setCategory : Category
-    setCategory = record
-      { categoryObjects = Set
-      ; categoryHom = λ A B → A → B
-      ; categoryHomEq = λ f g → (x : _) → f x ≡ g x
-      ; categoryHomEq-refl = λ f x → refl
-      ; categoryHomEq-sym = λ proof x → sym (proof x)
-      ; categoryHomEq-trans = λ first second x → trans (first x) (second x)
-      ; categoryId = idᶠ
-      ; categoryCompose = _∘ᶠ_
-      ; categoryCompose-respects =
-          λ {g = g₁} {g′ = g₂} {f = f₁} {f′ = f₂} eqG eqF x →
-            trans (cong g₁ (eqF x)) (eqG (f₂ x))
-      ; categoryCompose-assoc = λ h g f x → refl
-      ; categoryCompose-id-left = λ f x → refl
-      ; categoryCompose-id-right = λ f x → refl
+    data FiniteGObject : Set₁ where
+      cohG0 cohG1 : FiniteGObject
+
+    data HArrow : FiniteHObject → FiniteHObject → Set where
+      h00 : HArrow cohH0 cohH0
+      h0m : HArrow cohH0 cohHmid
+      h01 : HArrow cohH0 cohH1
+      hmm : HArrow cohHmid cohHmid
+      hm1 : HArrow cohHmid cohH1
+      h11 : HArrow cohH1 cohH1
+
+    data GArrow : FiniteGObject → FiniteGObject → Set where
+      g00 : GArrow cohG0 cohG0
+      g01 : GArrow cohG0 cohG1
+      g11 : GArrow cohG1 cohG1
+
+    hArrowRefl : (A : FiniteHObject) → HArrow A A
+    hArrowRefl cohH0 = h00
+    hArrowRefl cohHmid = hmm
+    hArrowRefl cohH1 = h11
+
+    gArrowRefl : (A : FiniteGObject) → GArrow A A
+    gArrowRefl cohG0 = g00
+    gArrowRefl cohG1 = g11
+
+    hArrowCompose :
+      {A B C : FiniteHObject} →
+      HArrow B C → HArrow A B → HArrow A C
+    hArrowCompose h00 q = q
+    hArrowCompose h0m h00 = h0m
+    hArrowCompose h01 h00 = h01
+    hArrowCompose hmm q = q
+    hArrowCompose hm1 h0m = h01
+    hArrowCompose hm1 hmm = hm1
+    hArrowCompose h11 q = q
+
+    gArrowCompose :
+      {A B C : FiniteGObject} →
+      GArrow B C → GArrow A B → GArrow A C
+    gArrowCompose g00 q = q
+    gArrowCompose g01 g00 = g01
+    gArrowCompose g11 q = q
+
+    finiteHCategory : Category
+    finiteHCategory = record
+      { categoryObjects = FiniteHObject
+      ; categoryHom = HArrow
+      ; categoryHomEq = λ _ _ → ⊤
+      ; categoryHomEq-refl = λ _ → tt
+      ; categoryHomEq-sym = λ _ → tt
+      ; categoryHomEq-trans = λ _ _ → tt
+      ; categoryId = hArrowRefl _
+      ; categoryCompose = hArrowCompose
+      ; categoryCompose-respects = λ _ _ → tt
+      ; categoryCompose-assoc = λ _ _ _ → tt
+      ; categoryCompose-id-left = λ _ → tt
+      ; categoryCompose-id-right = λ _ → tt
       }
 
-    setTerminalMap : {A : Set} → A → ⊤
-    setTerminalMap value = tt
-
-    setTerminalMap-unique :
-      {A : Set} (f : A → ⊤) (x : A) → f x ≡ tt
-    setTerminalMap-unique f x with f x
-    ... | tt = refl
-
-    setTerminalObject : TerminalObject setCategory
-    setTerminalObject = record
-      { terminalObject = ⊤
-      ; terminalArrow = setTerminalMap
-      ; terminalArrow-unique = λ f x → setTerminalMap-unique f x
+    finiteGCategory : Category
+    finiteGCategory = record
+      { categoryObjects = FiniteGObject
+      ; categoryHom = GArrow
+      ; categoryHomEq = λ _ _ → ⊤
+      ; categoryHomEq-refl = λ _ → tt
+      ; categoryHomEq-sym = λ _ → tt
+      ; categoryHomEq-trans = λ _ _ → tt
+      ; categoryId = gArrowRefl _
+      ; categoryCompose = gArrowCompose
+      ; categoryCompose-respects = λ _ _ → tt
+      ; categoryCompose-assoc = λ _ _ _ → tt
+      ; categoryCompose-id-left = λ _ → tt
+      ; categoryCompose-id-right = λ _ → tt
       }
 
-    setProductEta :
-      {A B : Set} (value : A × B) →
-      pair (fst value) (snd value) ≡ value
-    setProductEta (pair first second) = refl
+    finitePiObject : FiniteHObject → FiniteGObject
+    finitePiObject cohH0 = cohG0
+    finitePiObject cohHmid = cohG1
+    finitePiObject cohH1 = cohG1
 
-    setBinaryProduct :
-      (A B : Set) → BinaryProduct setCategory A B
-    setBinaryProduct A B = record
-      { binaryProductObject = A × B
-      ; binaryProductLeft = fst
-      ; binaryProductRight = snd
-      ; binaryProductPair = λ f g x → pair (f x) (g x)
-      ; binaryProductPair-respects =
-          λ first second x → cong₂ pair (first x) (second x)
-      ; binaryProductPair-left = λ f g x → refl
-      ; binaryProductPair-right = λ f g x → refl
-      ; binaryProduct-eta = λ h x → setProductEta (h x)
+    finiteDiscObject : FiniteGObject → FiniteHObject
+    finiteDiscObject cohG0 = cohH0
+    finiteDiscObject cohG1 = cohH1
+
+    finiteGammaObject : FiniteHObject → FiniteGObject
+    finiteGammaObject cohH0 = cohG0
+    finiteGammaObject cohHmid = cohG0
+    finiteGammaObject cohH1 = cohG1
+
+    finiteCodiscObject : FiniteGObject → FiniteHObject
+    finiteCodiscObject cohG0 = cohHmid
+    finiteCodiscObject cohG1 = cohH1
+
+    finitePiArrow :
+      {A B : FiniteHObject} →
+      HArrow A B →
+      GArrow (finitePiObject A) (finitePiObject B)
+    finitePiArrow h00 = g00
+    finitePiArrow h0m = g01
+    finitePiArrow h01 = g01
+    finitePiArrow hmm = g11
+    finitePiArrow hm1 = g11
+    finitePiArrow h11 = g11
+
+    finiteDiscArrow :
+      {A B : FiniteGObject} →
+      GArrow A B →
+      HArrow (finiteDiscObject A) (finiteDiscObject B)
+    finiteDiscArrow g00 = h00
+    finiteDiscArrow g01 = h01
+    finiteDiscArrow g11 = h11
+
+    finiteGammaArrow :
+      {A B : FiniteHObject} →
+      HArrow A B →
+      GArrow (finiteGammaObject A) (finiteGammaObject B)
+    finiteGammaArrow h00 = g00
+    finiteGammaArrow h0m = g00
+    finiteGammaArrow h01 = g01
+    finiteGammaArrow hmm = g00
+    finiteGammaArrow hm1 = g01
+    finiteGammaArrow h11 = g11
+
+    finiteCodiscArrow :
+      {A B : FiniteGObject} →
+      GArrow A B →
+      HArrow (finiteCodiscObject A) (finiteCodiscObject B)
+    finiteCodiscArrow g00 = hmm
+    finiteCodiscArrow g01 = hm1
+    finiteCodiscArrow g11 = h11
+
+    finitePiFunctor : Functor finiteHCategory finiteGCategory
+    finitePiFunctor = record
+      { functorObject = finitePiObject
+      ; functorArrow = finitePiArrow
+      ; functorArrow-respects = λ _ → tt
+      ; functorIdentity = tt
+      ; functorComposition = λ _ _ → tt
       }
 
-    setFiniteProducts : FiniteProducts setCategory
-    setFiniteProducts = record
-      { finiteTerminal = setTerminalObject
-      ; finiteBinaryProduct = setBinaryProduct
+    finiteDiscFunctor : Functor finiteGCategory finiteHCategory
+    finiteDiscFunctor = record
+      { functorObject = finiteDiscObject
+      ; functorArrow = finiteDiscArrow
+      ; functorArrow-respects = λ _ → tt
+      ; functorIdentity = tt
+      ; functorComposition = λ _ _ → tt
       }
 
-    --------------------------------------------------------------------
-    -- The identity functor preserves finite products by the canonical
-    -- comparison A×B → A×B, whose inverse is the identity.
-    --------------------------------------------------------------------
+    finiteGammaFunctor : Functor finiteHCategory finiteGCategory
+    finiteGammaFunctor = record
+      { functorObject = finiteGammaObject
+      ; functorArrow = finiteGammaArrow
+      ; functorArrow-respects = λ _ → tt
+      ; functorIdentity = tt
+      ; functorComposition = λ _ _ → tt
+      }
 
-    setIdentityPreservesFiniteProducts :
+    finiteCodiscFunctor : Functor finiteGCategory finiteHCategory
+    finiteCodiscFunctor = record
+      { functorObject = finiteCodiscObject
+      ; functorArrow = finiteCodiscArrow
+      ; functorArrow-respects = λ _ → tt
+      ; functorIdentity = tt
+      ; functorComposition = λ _ _ → tt
+      }
+
+    finitePiTranspose :
+      {A : FiniteHObject} {B : FiniteGObject} →
+      GArrow (finitePiObject A) B →
+      HArrow A (finiteDiscObject B)
+    finitePiTranspose {cohH0} {cohG0} g00 = h00
+    finitePiTranspose {cohH0} {cohG1} g01 = h01
+    finitePiTranspose {cohHmid} {cohG0} ()
+    finitePiTranspose {cohHmid} {cohG1} g11 = hm1
+    finitePiTranspose {cohH1} {cohG0} ()
+    finitePiTranspose {cohH1} {cohG1} g11 = h11
+
+    finitePiUntranspose :
+      {A : FiniteHObject} {B : FiniteGObject} →
+      HArrow A (finiteDiscObject B) →
+      GArrow (finitePiObject A) B
+    finitePiUntranspose {cohH0} {cohG0} h00 = g00
+    finitePiUntranspose {cohH0} {cohG1} h01 = g01
+    finitePiUntranspose {cohHmid} {cohG0} ()
+    finitePiUntranspose {cohHmid} {cohG1} hm1 = g11
+    finitePiUntranspose {cohH1} {cohG0} ()
+    finitePiUntranspose {cohH1} {cohG1} h11 = g11
+
+    finiteDiscTranspose :
+      {A : FiniteGObject} {B : FiniteHObject} →
+      HArrow (finiteDiscObject A) B →
+      GArrow A (finiteGammaObject B)
+    finiteDiscTranspose {cohG0} {cohH0} h00 = g00
+    finiteDiscTranspose {cohG0} {cohHmid} h0m = g00
+    finiteDiscTranspose {cohG0} {cohH1} h01 = g01
+    finiteDiscTranspose {cohG1} {cohH0} ()
+    finiteDiscTranspose {cohG1} {cohHmid} ()
+    finiteDiscTranspose {cohG1} {cohH1} h11 = g11
+
+    finiteDiscUntranspose :
+      {A : FiniteGObject} {B : FiniteHObject} →
+      GArrow A (finiteGammaObject B) →
+      HArrow (finiteDiscObject A) B
+    finiteDiscUntranspose {cohG0} {cohH0} g00 = h00
+    finiteDiscUntranspose {cohG0} {cohHmid} g00 = h0m
+    finiteDiscUntranspose {cohG0} {cohH1} g01 = h01
+    finiteDiscUntranspose {cohG1} {cohH0} ()
+    finiteDiscUntranspose {cohG1} {cohHmid} ()
+    finiteDiscUntranspose {cohG1} {cohH1} g11 = h11
+
+    finiteGammaTranspose :
+      {A : FiniteHObject} {B : FiniteGObject} →
+      GArrow (finiteGammaObject A) B →
+      HArrow A (finiteCodiscObject B)
+    finiteGammaTranspose {cohH0} {cohG0} g00 = h0m
+    finiteGammaTranspose {cohH0} {cohG1} g01 = h01
+    finiteGammaTranspose {cohHmid} {cohG0} g00 = hmm
+    finiteGammaTranspose {cohHmid} {cohG1} g01 = hm1
+    finiteGammaTranspose {cohH1} {cohG0} ()
+    finiteGammaTranspose {cohH1} {cohG1} g11 = h11
+
+    finiteGammaUntranspose :
+      {A : FiniteHObject} {B : FiniteGObject} →
+      HArrow A (finiteCodiscObject B) →
+      GArrow (finiteGammaObject A) B
+    finiteGammaUntranspose {cohH0} {cohG0} h0m = g00
+    finiteGammaUntranspose {cohH0} {cohG1} h01 = g01
+    finiteGammaUntranspose {cohHmid} {cohG0} hmm = g00
+    finiteGammaUntranspose {cohHmid} {cohG1} hm1 = g01
+    finiteGammaUntranspose {cohH1} {cohG0} ()
+    finiteGammaUntranspose {cohH1} {cohG1} h11 = g11
+
+    finitePiAdjunction :
+      Adjunction finitePiFunctor finiteDiscFunctor
+    finitePiAdjunction = record
+      { transpose = finitePiTranspose
+      ; untranspose = finitePiUntranspose
+      ; transpose-respects = λ _ → tt
+      ; untranspose-respects = λ _ → tt
+      ; transpose-untranspose = λ _ → tt
+      ; untranspose-transpose = λ _ → tt
+      ; transpose-natural-source = λ _ _ → tt
+      ; transpose-natural-target = λ _ _ → tt
+      }
+
+    finiteDiscAdjunction :
+      Adjunction finiteDiscFunctor finiteGammaFunctor
+    finiteDiscAdjunction = record
+      { transpose = finiteDiscTranspose
+      ; untranspose = finiteDiscUntranspose
+      ; transpose-respects = λ _ → tt
+      ; untranspose-respects = λ _ → tt
+      ; transpose-untranspose = λ _ → tt
+      ; untranspose-transpose = λ _ → tt
+      ; transpose-natural-source = λ _ _ → tt
+      ; transpose-natural-target = λ _ _ → tt
+      }
+
+    finiteGammaAdjunction :
+      Adjunction finiteGammaFunctor finiteCodiscFunctor
+    finiteGammaAdjunction = record
+      { transpose = finiteGammaTranspose
+      ; untranspose = finiteGammaUntranspose
+      ; transpose-respects = λ _ → tt
+      ; untranspose-respects = λ _ → tt
+      ; transpose-untranspose = λ _ → tt
+      ; untranspose-transpose = λ _ → tt
+      ; transpose-natural-source = λ _ _ → tt
+      ; transpose-natural-target = λ _ _ → tt
+      }
+
+    finiteDiscReflect :
+      {A B : FiniteGObject} →
+      HArrow (finiteDiscObject A) (finiteDiscObject B) →
+      GArrow A B
+    finiteDiscReflect {cohG0} {cohG0} h00 = g00
+    finiteDiscReflect {cohG0} {cohG1} h01 = g01
+    finiteDiscReflect {cohG1} {cohG0} ()
+    finiteDiscReflect {cohG1} {cohG1} h11 = g11
+
+    finiteDiscFullyFaithful :
+      FullyFaithful finiteDiscFunctor
+    finiteDiscFullyFaithful = record
+      { reflectArrow = finiteDiscReflect
+      ; reflectArrow-respects = λ _ → tt
+      ; reflect-map = λ _ → tt
+      ; map-reflect = λ _ → tt
+      }
+
+    finiteCodiscReflect :
+      {A B : FiniteGObject} →
+      HArrow (finiteCodiscObject A) (finiteCodiscObject B) →
+      GArrow A B
+    finiteCodiscReflect {cohG0} {cohG0} hmm = g00
+    finiteCodiscReflect {cohG0} {cohG1} hm1 = g01
+    finiteCodiscReflect {cohG1} {cohG0} ()
+    finiteCodiscReflect {cohG1} {cohG1} h11 = g11
+
+    finiteCodiscFullyFaithful :
+      FullyFaithful finiteCodiscFunctor
+    finiteCodiscFullyFaithful = record
+      { reflectArrow = finiteCodiscReflect
+      ; reflectArrow-respects = λ _ → tt
+      ; reflect-map = λ _ → tt
+      ; map-reflect = λ _ → tt
+      }
+
+    finiteHMeet : FiniteHObject → FiniteHObject → FiniteHObject
+    finiteHMeet cohH0 right = cohH0
+    finiteHMeet cohHmid cohH0 = cohH0
+    finiteHMeet cohHmid cohHmid = cohHmid
+    finiteHMeet cohHmid cohH1 = cohHmid
+    finiteHMeet cohH1 cohH0 = cohH0
+    finiteHMeet cohH1 cohHmid = cohHmid
+    finiteHMeet cohH1 cohH1 = cohH1
+
+    finiteGMeet : FiniteGObject → FiniteGObject → FiniteGObject
+    finiteGMeet cohG0 right = cohG0
+    finiteGMeet cohG1 cohG0 = cohG0
+    finiteGMeet cohG1 cohG1 = cohG1
+
+    finiteHMeetLeft :
+      (A B : FiniteHObject) → HArrow (finiteHMeet A B) A
+    finiteHMeetLeft cohH0 B = h00
+    finiteHMeetLeft cohHmid cohH0 = h0m
+    finiteHMeetLeft cohHmid cohHmid = hmm
+    finiteHMeetLeft cohHmid cohH1 = hmm
+    finiteHMeetLeft cohH1 cohH0 = h01
+    finiteHMeetLeft cohH1 cohHmid = hm1
+    finiteHMeetLeft cohH1 cohH1 = h11
+
+    finiteHMeetRight :
+      (A B : FiniteHObject) → HArrow (finiteHMeet A B) B
+    finiteHMeetRight cohH0 cohH0 = h00
+    finiteHMeetRight cohH0 cohHmid = h0m
+    finiteHMeetRight cohH0 cohH1 = h01
+    finiteHMeetRight cohHmid cohH0 = h00
+    finiteHMeetRight cohHmid cohHmid = hmm
+    finiteHMeetRight cohHmid cohH1 = hm1
+    finiteHMeetRight cohH1 cohH0 = h00
+    finiteHMeetRight cohH1 cohHmid = hmm
+    finiteHMeetRight cohH1 cohH1 = h11
+
+    finiteHMeetGreatest :
+      {X A B : FiniteHObject} →
+      HArrow X A → HArrow X B → HArrow X (finiteHMeet A B)
+    finiteHMeetGreatest {A = cohH0} xa xb = xa
+    finiteHMeetGreatest {A = cohHmid} {B = cohH0} xa xb = xb
+    finiteHMeetGreatest {A = cohHmid} {B = cohHmid} xa xb = xa
+    finiteHMeetGreatest {A = cohHmid} {B = cohH1} xa xb = xa
+    finiteHMeetGreatest {A = cohH1} {B = cohH0} xa xb = xb
+    finiteHMeetGreatest {A = cohH1} {B = cohHmid} xa xb = xb
+    finiteHMeetGreatest {A = cohH1} {B = cohH1} xa xb = xa
+
+    finiteGMeetLeft :
+      (A B : FiniteGObject) → GArrow (finiteGMeet A B) A
+    finiteGMeetLeft cohG0 B = g00
+    finiteGMeetLeft cohG1 cohG0 = g01
+    finiteGMeetLeft cohG1 cohG1 = g11
+
+    finiteGMeetRight :
+      (A B : FiniteGObject) → GArrow (finiteGMeet A B) B
+    finiteGMeetRight cohG0 cohG0 = g00
+    finiteGMeetRight cohG0 cohG1 = g01
+    finiteGMeetRight cohG1 cohG0 = g00
+    finiteGMeetRight cohG1 cohG1 = g11
+
+    finiteGMeetGreatest :
+      {X A B : FiniteGObject} →
+      GArrow X A → GArrow X B → GArrow X (finiteGMeet A B)
+    finiteGMeetGreatest {A = cohG0} xa xb = xa
+    finiteGMeetGreatest {A = cohG1} {B = cohG0} xa xb = xb
+    finiteGMeetGreatest {A = cohG1} {B = cohG1} xa xb = xa
+
+    finiteHTerminal : TerminalObject finiteHCategory
+    finiteHTerminal = record
+      { terminalObject = cohH1
+      ; terminalArrow = λ { {A = cohH0} → h01
+                          ; {A = cohHmid} → hm1
+                          ; {A = cohH1} → h11 }
+      ; terminalArrow-unique = λ _ → tt
+      }
+
+    finiteGTerminal : TerminalObject finiteGCategory
+    finiteGTerminal = record
+      { terminalObject = cohG1
+      ; terminalArrow = λ { {A = cohG0} → g01
+                          ; {A = cohG1} → g11 }
+      ; terminalArrow-unique = λ _ → tt
+      }
+
+    finiteHBinaryProduct :
+      (A B : FiniteHObject) → BinaryProduct finiteHCategory A B
+    finiteHBinaryProduct A B = record
+      { binaryProductObject = finiteHMeet A B
+      ; binaryProductLeft = finiteHMeetLeft A B
+      ; binaryProductRight = finiteHMeetRight A B
+      ; binaryProductPair = finiteHMeetGreatest
+      ; binaryProductPair-respects = λ _ _ → tt
+      ; binaryProductPair-left = λ _ _ → tt
+      ; binaryProductPair-right = λ _ _ → tt
+      ; binaryProduct-eta = λ _ → tt
+      }
+
+    finiteGBinaryProduct :
+      (A B : FiniteGObject) → BinaryProduct finiteGCategory A B
+    finiteGBinaryProduct A B = record
+      { binaryProductObject = finiteGMeet A B
+      ; binaryProductLeft = finiteGMeetLeft A B
+      ; binaryProductRight = finiteGMeetRight A B
+      ; binaryProductPair = finiteGMeetGreatest
+      ; binaryProductPair-respects = λ _ _ → tt
+      ; binaryProductPair-left = λ _ _ → tt
+      ; binaryProductPair-right = λ _ _ → tt
+      ; binaryProduct-eta = λ _ → tt
+      }
+
+    finiteHProducts : FiniteProducts finiteHCategory
+    finiteHProducts = record
+      { finiteTerminal = finiteHTerminal
+      ; finiteBinaryProduct = finiteHBinaryProduct
+      }
+
+    finiteGProducts : FiniteProducts finiteGCategory
+    finiteGProducts = record
+      { finiteTerminal = finiteGTerminal
+      ; finiteBinaryProduct = finiteGBinaryProduct
+      }
+
+    -- Universe-polymorphic transport for arrows between Set₁ objects.
+    substFiniteObject :
+      {A : Set₁} {x y : A} →
+      (P : A → Set) → x ≡ y → P x → P y
+    substFiniteObject P refl proof = proof
+
+    finitePiPreservesMeet :
+      (A B : FiniteHObject) →
+      finitePiObject (finiteHMeet A B) ≡
+      finiteGMeet (finitePiObject A) (finitePiObject B)
+    finitePiPreservesMeet cohH0 B = refl
+    finitePiPreservesMeet cohHmid cohH0 = refl
+    finitePiPreservesMeet cohHmid cohHmid = refl
+    finitePiPreservesMeet cohHmid cohH1 = refl
+    finitePiPreservesMeet cohH1 cohH0 = refl
+    finitePiPreservesMeet cohH1 cohHmid = refl
+    finitePiPreservesMeet cohH1 cohH1 = refl
+
+    finitePiPreservesFiniteProducts :
       PreservesFiniteProducts
-        (identityFunctor setCategory)
-        setFiniteProducts
-        setFiniteProducts
-    setIdentityPreservesFiniteProducts = record
-      { terminalComparison = setTerminalMap
-      ; terminalComparisonInverse = setTerminalMap
-      ; terminalComparison-left-inverse = λ { tt → refl }
-      ; terminalComparison-right-inverse = λ { tt → refl }
-      ; productComparison = λ value → pair (fst value) (snd value)
-      ; productComparisonInverse = λ value → value
-      ; productComparison-left = λ value → refl
-      ; productComparison-right = λ value → refl
-      ; productComparison-left-inverse = λ value → setProductEta value
-      ; productComparison-right-inverse = λ value → setProductEta value
+        finitePiFunctor finiteHProducts finiteGProducts
+    finitePiPreservesFiniteProducts = record
+      { terminalComparison = g11
+      ; terminalComparisonInverse = g11
+      ; terminalComparison-left-inverse = tt
+      ; terminalComparison-right-inverse = tt
+      ; productComparison = λ {A} {B} →
+          substFiniteObject
+            (λ target →
+              GArrow
+                (finitePiObject (finiteHMeet A B))
+                target)
+            (finitePiPreservesMeet A B)
+            (gArrowRefl (finitePiObject (finiteHMeet A B)))
+      ; productComparisonInverse = λ {A} {B} →
+          substFiniteObject
+            (λ source →
+              GArrow source
+                (finitePiObject (finiteHMeet A B)))
+            (finitePiPreservesMeet A B)
+            (gArrowRefl (finitePiObject (finiteHMeet A B)))
+      ; productComparison-left = tt
+      ; productComparison-right = tt
+      ; productComparison-left-inverse = tt
+      ; productComparison-right-inverse = tt
       }
 
-    identitySetCohesion :
+    finitePosetalCohesion :
       CohesiveAdjointQuadruple
-        setCategory setCategory setFiniteProducts setFiniteProducts
-    identitySetCohesion = record
-      { cohesivePi = identityFunctor setCategory
-      ; cohesiveDisc = identityFunctor setCategory
-      ; cohesiveGamma = identityFunctor setCategory
-      ; cohesiveCodisc = identityFunctor setCategory
-      ; pi-adjoint-disc = identityAdjunction setCategory
-      ; disc-adjoint-gamma = identityAdjunction setCategory
-      ; gamma-adjoint-codisc = identityAdjunction setCategory
-      ; disc-fully-faithful = identityFullyFaithful setCategory
-      ; codisc-fully-faithful = identityFullyFaithful setCategory
-      ; pi-preserves-finite-products = setIdentityPreservesFiniteProducts
+        finiteHCategory finiteGCategory finiteHProducts finiteGProducts
+    finitePosetalCohesion = record
+      { cohesivePi = finitePiFunctor
+      ; cohesiveDisc = finiteDiscFunctor
+      ; cohesiveGamma = finiteGammaFunctor
+      ; cohesiveCodisc = finiteCodiscFunctor
+      ; pi-adjoint-disc = finitePiAdjunction
+      ; disc-adjoint-gamma = finiteDiscAdjunction
+      ; gamma-adjoint-codisc = finiteGammaAdjunction
+      ; disc-fully-faithful = finiteDiscFullyFaithful
+      ; codisc-fully-faithful = finiteCodiscFullyFaithful
+      ; pi-preserves-finite-products = finitePiPreservesFiniteProducts
       }
 
-    Disc : Set → Set
-    Disc X = functorObject
-      (cohesiveDisc identitySetCohesion) X
+    finiteGammaDisc-object :
+      (A : FiniteGObject) →
+      finiteGammaObject (finiteDiscObject A) ≡ A
+    finiteGammaDisc-object cohG0 = refl
+    finiteGammaDisc-object cohG1 = refl
 
-    Π : Set → Set
-    Π X = functorObject (cohesivePi identitySetCohesion) X
+    finitePiDisc-object :
+      (A : FiniteGObject) →
+      finitePiObject (finiteDiscObject A) ≡ A
+    finitePiDisc-object cohG0 = refl
+    finitePiDisc-object cohG1 = refl
 
-    Γ : Set → Set
-    Γ X = functorObject (cohesiveGamma identitySetCohesion) X
+    finiteGammaCodisc-object :
+      (A : FiniteGObject) →
+      finiteGammaObject (finiteCodiscObject A) ≡ A
+    finiteGammaCodisc-object cohG0 = refl
+    finiteGammaCodisc-object cohG1 = refl
 
-    coDisc : Set → Set
-    coDisc X = functorObject
-      (cohesiveCodisc identitySetCohesion) X
+    finiteDiscCodisc-distinct :
+      finiteDiscObject cohG0 ≡ finiteCodiscObject cohG0 → ⊥
+    finiteDiscCodisc-distinct ()
 
-    gammaDiscIso : (X : Set) → Iso (Γ (Disc X)) X
-    gammaDiscIso X = iso idᶠ idᶠ (λ x → refl) (λ x → refl)
+    finitePiGamma-distinct :
+      finitePiObject cohHmid ≡ finiteGammaObject cohHmid → ⊥
+    finitePiGamma-distinct ()
 
-    piDiscIso : (X : Set) → Iso (Π (Disc X)) X
-    piDiscIso X = iso idᶠ idᶠ (λ x → refl) (λ x → refl)
 
-    gammaCodiscIso : (X : Set) → Iso (Γ (coDisc X)) X
-    gammaCodiscIso X = iso idᶠ idᶠ (λ x → refl) (λ x → refl)
 
-    data CohesiveExpr : Set₁ where
-      objectₑ : Set → CohesiveExpr
-      discₑ : CohesiveExpr → CohesiveExpr
-      piₑ : CohesiveExpr → CohesiveExpr
-      gammaₑ : CohesiveExpr → CohesiveExpr
-      codiscₑ : CohesiveExpr → CohesiveExpr
+    -- ------------------------------------------------------------------
+    -- Typed syntax over the finite nonidentity model.
+    --
+    -- H-objects and G-objects are different sorts. Disc/coDisc move G→H;
+    -- Pi/Gamma move H→G. This prevents ill-typed modality compositions.
+    -- ------------------------------------------------------------------
 
-    denoteCohesive : CohesiveExpr → Set
-    denoteCohesive (objectₑ X) = X
-    denoteCohesive (discₑ X) = Disc (denoteCohesive X)
-    denoteCohesive (piₑ X) = Π (denoteCohesive X)
-    denoteCohesive (gammaₑ X) = Γ (denoteCohesive X)
-    denoteCohesive (codiscₑ X) = coDisc (denoteCohesive X)
+    cohesiveSym :
+      {a : Level} {A : Set a} {x y : A} →
+      x ≡ y → y ≡ x
+    cohesiveSym refl = refl
 
-    gamma-disc-semantics : (X : CohesiveExpr) →
-      Iso
-        (denoteCohesive (gammaₑ (discₑ X)))
-        (denoteCohesive X)
-    gamma-disc-semantics X = gammaDiscIso (denoteCohesive X)
+    cohesiveTrans :
+      {a : Level} {A : Set a} {x y z : A} →
+      x ≡ y → y ≡ z → x ≡ z
+    cohesiveTrans refl second = second
 
-    pi-disc-semantics : (X : CohesiveExpr) →
-      Iso
-        (denoteCohesive (piₑ (discₑ X)))
-        (denoteCohesive X)
-    pi-disc-semantics X = piDiscIso (denoteCohesive X)
+    cohesiveCong :
+      {a b : Level} {A : Set a} {B : Set b} →
+      (f : A → B) {x y : A} →
+      x ≡ y → f x ≡ f y
+    cohesiveCong f refl = refl
 
-    gamma-codisc-semantics : (X : CohesiveExpr) →
-      Iso
-        (denoteCohesive (gammaₑ (codiscₑ X)))
-        (denoteCohesive X)
-    gamma-codisc-semantics X = gammaCodiscIso (denoteCohesive X)
+    mutual
+      data CohesiveHExpr : Set₁ where
+        hAtom : FiniteHObject → CohesiveHExpr
+        discExpr : CohesiveGExpr → CohesiveHExpr
+        codiscExpr : CohesiveGExpr → CohesiveHExpr
 
-    normalizeCohesive : CohesiveExpr → CohesiveExpr
-    normalizeCohesive (objectₑ X) = objectₑ X
-    normalizeCohesive (discₑ X) = discₑ (normalizeCohesive X)
-    normalizeCohesive (piₑ X) with X
-    ... | objectₑ A = piₑ (objectₑ A)
-    ... | discₑ Y = normalizeCohesive Y
-    ... | piₑ Y = piₑ (normalizeCohesive (piₑ Y))
-    ... | gammaₑ Y = piₑ (normalizeCohesive (gammaₑ Y))
-    ... | codiscₑ Y = piₑ (normalizeCohesive (codiscₑ Y))
-    normalizeCohesive (gammaₑ X) with X
-    ... | objectₑ A = gammaₑ (objectₑ A)
-    ... | discₑ Y = normalizeCohesive Y
-    ... | piₑ Y = gammaₑ (normalizeCohesive (piₑ Y))
-    ... | gammaₑ Y = gammaₑ (normalizeCohesive (gammaₑ Y))
-    ... | codiscₑ Y = normalizeCohesive Y
-    normalizeCohesive (codiscₑ X) = codiscₑ (normalizeCohesive X)
+      data CohesiveGExpr : Set₁ where
+        gAtom : FiniteGObject → CohesiveGExpr
+        piExpr : CohesiveHExpr → CohesiveGExpr
+        gammaExpr : CohesiveHExpr → CohesiveGExpr
 
-    gamma-disc : (X : CohesiveExpr) →
-      normalizeCohesive (gammaₑ (discₑ X)) ≡ normalizeCohesive X
-    gamma-disc X = refl
+    mutual
+      denoteH : CohesiveHExpr → FiniteHObject
+      denoteH (hAtom object) = object
+      denoteH (discExpr expression) =
+        finiteDiscObject (denoteG expression)
+      denoteH (codiscExpr expression) =
+        finiteCodiscObject (denoteG expression)
 
-    pi-disc : (X : CohesiveExpr) →
-      normalizeCohesive (piₑ (discₑ X)) ≡ normalizeCohesive X
-    pi-disc X = refl
+      denoteG : CohesiveGExpr → FiniteGObject
+      denoteG (gAtom object) = object
+      denoteG (piExpr expression) =
+        finitePiObject (denoteH expression)
+      denoteG (gammaExpr expression) =
+        finiteGammaObject (denoteH expression)
 
-    gamma-codisc : (X : CohesiveExpr) →
-      normalizeCohesive (gammaₑ (codiscₑ X)) ≡ normalizeCohesive X
-    gamma-codisc X = refl
-  ----------------------------------------------------------------------
-  -- 5. Quotients induced by idempotent endomaps.
+    gammaDiscSemantics :
+      (expression : CohesiveGExpr) →
+      denoteG (gammaExpr (discExpr expression)) ≡ denoteG expression
+    gammaDiscSemantics expression =
+      finiteGammaDisc-object (denoteG expression)
+
+    piDiscSemantics :
+      (expression : CohesiveGExpr) →
+      denoteG (piExpr (discExpr expression)) ≡ denoteG expression
+    piDiscSemantics expression =
+      finitePiDisc-object (denoteG expression)
+
+    gammaCodiscSemantics :
+      (expression : CohesiveGExpr) →
+      denoteG (gammaExpr (codiscExpr expression)) ≡ denoteG expression
+    gammaCodiscSemantics expression =
+      finiteGammaCodisc-object (denoteG expression)
+
+    -- ------------------------------------------------------------------
+    -- Structural normal forms. The three composite modality laws reduce
+    -- in G; H syntax retains the two embedding modalities.
+    -- ------------------------------------------------------------------
+
+    mutual
+      normalizeH : CohesiveHExpr → CohesiveHExpr
+      normalizeH (hAtom object) = hAtom object
+      normalizeH (discExpr expression) =
+        discExpr (normalizeG expression)
+      normalizeH (codiscExpr expression) =
+        codiscExpr (normalizeG expression)
+
+      normalizeG : CohesiveGExpr → CohesiveGExpr
+      normalizeG (gAtom object) = gAtom object
+      normalizeG (piExpr (discExpr expression)) =
+        normalizeG expression
+      normalizeG (piExpr expression) =
+        piExpr (normalizeH expression)
+      normalizeG (gammaExpr (discExpr expression)) =
+        normalizeG expression
+      normalizeG (gammaExpr (codiscExpr expression)) =
+        normalizeG expression
+      normalizeG (gammaExpr expression) =
+        gammaExpr (normalizeH expression)
+
+    mutual
+      normalizeH-sound :
+        (expression : CohesiveHExpr) →
+        denoteH (normalizeH expression) ≡ denoteH expression
+      normalizeH-sound (hAtom object) = refl
+      normalizeH-sound (discExpr expression) =
+        cohesiveCong finiteDiscObject (normalizeG-sound expression)
+      normalizeH-sound (codiscExpr expression) =
+        cohesiveCong finiteCodiscObject (normalizeG-sound expression)
+
+      normalizeG-sound :
+        (expression : CohesiveGExpr) →
+        denoteG (normalizeG expression) ≡ denoteG expression
+      normalizeG-sound (gAtom object) = refl
+      normalizeG-sound (piExpr (discExpr expression)) =
+        cohesiveTrans
+          (normalizeG-sound expression)
+          (cohesiveSym (piDiscSemantics expression))
+      normalizeG-sound (piExpr (hAtom object)) = refl
+      normalizeG-sound (piExpr (codiscExpr expression)) =
+        cohesiveCong finitePiObject
+          (normalizeH-sound (codiscExpr expression))
+      normalizeG-sound (gammaExpr (discExpr expression)) =
+        cohesiveTrans
+          (normalizeG-sound expression)
+          (cohesiveSym (gammaDiscSemantics expression))
+      normalizeG-sound (gammaExpr (codiscExpr expression)) =
+        cohesiveTrans
+          (normalizeG-sound expression)
+          (cohesiveSym (gammaCodiscSemantics expression))
+      normalizeG-sound (gammaExpr (hAtom object)) =
+        cohesiveCong finiteGammaObject (normalizeH-sound (hAtom object))
+
+    mutual
+      normalizeH-idempotent :
+        (expression : CohesiveHExpr) →
+        normalizeH (normalizeH expression) ≡ normalizeH expression
+      normalizeH-idempotent (hAtom object) = refl
+      normalizeH-idempotent (discExpr expression) =
+        cohesiveCong discExpr (normalizeG-idempotent expression)
+      normalizeH-idempotent (codiscExpr expression) =
+        cohesiveCong codiscExpr (normalizeG-idempotent expression)
+
+      normalizeG-idempotent :
+        (expression : CohesiveGExpr) →
+        normalizeG (normalizeG expression) ≡ normalizeG expression
+      normalizeG-idempotent (gAtom object) = refl
+      normalizeG-idempotent (piExpr (hAtom object)) = refl
+      normalizeG-idempotent (piExpr (discExpr expression)) =
+        normalizeG-idempotent expression
+      normalizeG-idempotent (piExpr (codiscExpr expression)) =
+        cohesiveCong piExpr
+          (cohesiveCong codiscExpr (normalizeG-idempotent expression))
+      normalizeG-idempotent (gammaExpr (hAtom object)) = refl
+      normalizeG-idempotent (gammaExpr (discExpr expression)) =
+        normalizeG-idempotent expression
+      normalizeG-idempotent (gammaExpr (codiscExpr expression)) =
+        normalizeG-idempotent expression
+
+    finitePosetalCohesion-nonidentity :
+      finiteDiscObject cohG0 ≡ finiteCodiscObject cohG0 → ⊥
+    finitePosetalCohesion-nonidentity = finiteDiscCodisc-distinct
+
+    finitePosetalCohesion-Pi-Gamma-distinct :
+      finitePiObject cohHmid ≡ finiteGammaObject cohHmid → ⊥
+    finitePosetalCohesion-Pi-Gamma-distinct = finitePiGamma-distinct
+
+  -- --------------------------------------------------------------------
+  -- 6. Quotients induced by idempotent endomaps.
   --
   -- This is an Agda, proof-relevant encoding of the Cedille-style
   -- idempotent-function construction. Nuo Li's normalizer laws are
   -- recorded separately and shown equivalent to the induced kernel
   -- relation. A non-setoid idempotent reflection monad is built below.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   module QuotientReflection where
 
@@ -1892,7 +2841,7 @@ module Foundations where
         (normalization-idempotent N)
 
     -- Conversely, each idempotent map supplies a normalizer for its
-    -- kernel relation.  No second quotient carrier is introduced.
+    -- kernel relation. No second quotient carrier is introduced.
     kernelNormalizer :
       {A : Set} (f : IdempotentEndomap A) →
       NormalizerFor A (QuotientRelation f)
@@ -1905,19 +2854,19 @@ module Foundations where
         (λ related → related)
         (canonicalize-idempotent f)
 
-    ------------------------------------------------------------------
+    -- ----------------------------------------------------------------
     -- A non-setoid categorical reflection on idempotent endomaps.
     --
-    -- Objects are types equipped with an idempotent normalizer.  No
+    -- Objects are types equipped with an idempotent normalizer. No
     -- equivalence relation is stored on the carrier, and quotient values
     -- are ordinary Agda types: the fixed points of the normalizer.
     --
-    -- Morphisms commute with the chosen normalizers.  Equality of
+    -- Morphisms commute with the chosen normalizers. Equality of
     -- morphisms is pointwise equality; this avoids assuming function
     -- extensionality for the category laws.
-    ------------------------------------------------------------------
+    -- ----------------------------------------------------------------
 
-    -- The project is compiled with --with-K.  This proof uses K to identify
+    -- The project is compiled with --with-K. This proof uses K to identify
     -- equality witnesses when constructing paths in the fixed-point Sigma.
     -- It does not use --prop, proof erasure, or an erasure axiom.
     identityProofUnique :
@@ -2381,7 +3330,7 @@ module Foundations where
         (idempotentIdentity (reflectObject X))
     reflectMultiplication-inverse-right X q = refl
 
-    -- This monad is induced by the fixed-point reflection.  Its unit sends
+    -- This monad is induced by the fixed-point reflection. Its unit sends
     -- each input to its canonical representative; its multiplication is an
     -- isomorphism, witnessed by the two inverse laws above.
     quotientReflectionMonad : IdempotentMonad idempotentObjectCategory
@@ -2434,232 +3383,30 @@ module Foundations where
       quotient-raw-sound f x =
         sym (canonicalize-idempotent f x)
 
-  ----------------------------------------------------------------------
-  -- 6. Spector-style symmetric bar recursion over finite partial maps.
-  --
-  -- The control functional chooses the next key.  A present key hits the
-  -- bar; an absent key is extended with a value supplied by the step
-  -- functional.  SymmetricBarCondition supplies branchwise bar coverage.
-  ----------------------------------------------------------------------
-
-  module SymmetricBarRecursion where
-
-    FiniteEntries : Set → Set
-    FiniteEntries X = List (Nat × X)
-
-    natEq : Nat → Nat → Bool
-    natEq = _==_
-
-    memberKey : {X : Set} → Nat → FiniteEntries X → Bool
-    memberKey n [] = false
-    memberKey n ((pair k value) ∷ entries) with natEq n k
-    ... | true = true
-    ... | false = memberKey n entries
-
-    lookupKey : {X : Set} → Nat → FiniteEntries X → Maybe X
-    lookupKey n [] = nothing
-    lookupKey n ((pair k value) ∷ entries) with natEq n k
-    ... | true = just value
-    ... | false = lookupKey n entries
-
-    -- A finite partial map carries a proof that its key list has no
-    -- duplicates.  This prevents the association-list representation from
-    -- silently making lookup order part of the mathematical object.
-    data UniqueKeys {X : Set} : FiniteEntries X → Set where
-      unique-empty : UniqueKeys []
-      unique-cons :
-        {key : Nat} {value : X} {entries : FiniteEntries X} →
-        memberKey key entries ≡ false →
-        UniqueKeys entries →
-        UniqueKeys (pair key value ∷ entries)
-
-    record PartialMap (X : Set) : Set where
-      constructor partialMap
-      field
-        mapEntries : FiniteEntries X
-        keys-unique : UniqueKeys mapEntries
-    open PartialMap public
-
-    emptyMap : {X : Set} → PartialMap X
-    emptyMap = partialMap [] unique-empty
-
-    streamOf : {X : Set} → FiniteEntries X → X → Nat → X
-    streamOf entries default n with lookupKey n entries
-    ... | just value = value
-    ... | nothing = default
-
-    extendFresh :
-      {X : Set} →
-      (entries : PartialMap X) →
-      (key : Nat) →
-      memberKey key (mapEntries entries) ≡ false →
-      X → PartialMap X
-    extendFresh entries key fresh value =
-      partialMap
-        (pair key value ∷ mapEntries entries)
-        (unique-cons fresh (keys-unique entries))
-
-    data DomainDecision {X : Set}
-      (entries : PartialMap X) (key : Nat) : Set where
-      inDomain :
-        memberKey key (mapEntries entries) ≡ true → DomainDecision entries key
-      outDomain :
-        memberKey key (mapEntries entries) ≡ false → DomainDecision entries key
-
-    decideDomain :
-      {X : Set} →
-      (entries : PartialMap X) →
-      (key : Nat) →
-      DomainDecision entries key
-    decideDomain entries key
-      with memberKey key (mapEntries entries) in membership
-    ... | true = inDomain membership
-    ... | false = outDomain membership
-
-    threadEntries :
-      {X : Set} →
-      (entries : PartialMap X) →
-      (key : Nat) →
-      DomainDecision entries key →
-      X →
-      PartialMap X
-    threadEntries entries key (inDomain present) value = entries
-    threadEntries entries key (outDomain absent) value =
-      extendFresh entries key absent value
-
-    threadEntries-contains-zero :
-      {X : Set} →
-      (entries : PartialMap X) →
-      (decision : DomainDecision entries zero) →
-      (value : X) →
-      memberKey zero
-        (mapEntries (threadEntries entries zero decision value)) ≡ true
-    threadEntries-contains-zero entries (inDomain present) value = present
-    threadEntries-contains-zero entries (outDomain absent) value = refl
-
-    omegaThread :
-      {X : Set} →
-      (omega : (Nat → X) → Nat) →
-      (default : X) →
-      (alpha : Nat → X) →
-      (initial : PartialMap X) →
-      Nat → PartialMap X
-    omegaThread omega default alpha initial zero = initial
-    omegaThread omega default alpha initial (suc n) =
-      let entries = omegaThread omega default alpha initial n
-          key = omega (streamOf (mapEntries entries) default)
-      in threadEntries entries key (decideDomain entries key) (alpha key)
-
-    omegaThread-step-zero :
-      {X : Set} →
-      (default : X) →
-      (alpha : Nat → X) →
-      (initial : PartialMap X) →
-      (fuel : Nat) →
-      memberKey zero
-        (mapEntries
-          (omegaThread (λ stream → zero) default alpha initial (suc fuel)))
-        ≡ true
-    omegaThread-step-zero default alpha initial fuel =
-      threadEntries-contains-zero
-        (omegaThread (λ stream → zero) default alpha initial fuel)
-        (decideDomain
-          (omegaThread (λ stream → zero) default alpha initial fuel)
-          zero)
-        (alpha zero)
-
-    SymmetricBarCondition :
-      {X : Set} →
-      (omega : (Nat → X) → Nat) →
-      X → Set
-    SymmetricBarCondition {X} omega default =
-      (initial : PartialMap X) →
-      (alpha : Nat → X) →
-      Σ Nat
-        (λ n →
-          memberKey
-            (omega (streamOf
-              (mapEntries (omegaThread omega default alpha initial n)) default))
-            (mapEntries (omegaThread omega default alpha initial n)) ≡ true)
-
-    postulate
-      symmetricBarRec :
-        {X R : Set} →
-        (omega : (Nat → X) → Nat) →
-        (default : X) →
-        SymmetricBarCondition omega default →
-        (base : PartialMap X → R) →
-        (step : PartialMap X → (X → R) → R) →
-        (entries : PartialMap X) →
-        (key : Nat) →
-        DomainDecision entries key → R
-
-      sBR-stop :
-        {X R : Set} →
-        (omega : (Nat → X) → Nat) →
-        (default : X) →
-        (condition : SymmetricBarCondition omega default) →
-        (base : PartialMap X → R) →
-        (step : PartialMap X → (X → R) → R) →
-        (entries : PartialMap X) →
-        (key : Nat) →
-        (present : memberKey key (mapEntries entries) ≡ true) →
-        symmetricBarRec omega default condition base step entries key
-          (inDomain present) ≡ base entries
-
-      sBR-step :
-        {X R : Set} →
-        (omega : (Nat → X) → Nat) →
-        (default : X) →
-        (condition : SymmetricBarCondition omega default) →
-        (base : PartialMap X → R) →
-        (step : PartialMap X → (X → R) → R) →
-        (entries : PartialMap X) →
-        (key : Nat) →
-        (absent : memberKey key (mapEntries entries) ≡ false) →
-        symmetricBarRec omega default condition base step entries key
-          (outDomain absent) ≡
-        step entries
-          (λ value →
-            let nextEntries = extendFresh entries key absent value
-                nextKey = omega (streamOf (mapEntries nextEntries) default)
-            in symmetricBarRec omega default condition base step
-                 nextEntries nextKey (decideDomain nextEntries nextKey))
-
-    symmetricBarRecAt :
-      {X R : Set} →
-      (omega : (Nat → X) → Nat) →
-      (default : X) →
-      SymmetricBarCondition omega default →
-      (base : PartialMap X → R) →
-      (step : PartialMap X → (X → R) → R) →
-      PartialMap X → R
-    symmetricBarRecAt omega default condition base step entries =
-      symmetricBarRec omega default condition base step entries
-        (omega (streamOf (mapEntries entries) default))
-        (decideDomain entries (omega (streamOf (mapEntries entries) default)))
-
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- 7. LAURENT'S MULTIPLICATIVE-ADDITIVE POLARIZED LINEAR LOGIC (MALLP)
   --
   -- This is Laurent's polarized linear fragment WITHOUT exponentials.
   -- Positive and negative formulas are separated by polarity; down/up
   -- are polarity shifts, not Seely modalities and not an adjoint pair
-  -- asserted to be inverse.  Contexts contain only negative formulas and
+  -- asserted to be inverse. Contexts contain only negative formulas and
   -- a stoup contains at most one positive formula.
   --
-  -- No weakening or contraction constructors occur here.  Tensor splits
+  -- No weakening or contraction constructors occur here. Tensor splits
   -- resources between premises; with has the usual additive shared-context
   -- rule (one branch is selected by additive observation), not contraction.
-  -- Cut is included as a derivation rule; cut elimination is not asserted.
+  -- Cut is included as a derivation rule. A positive cut-elimination
+  -- oracle is supplied below: it preserves the sequent and returns an
+  -- idempotent cut-free normal form. This is assumed, not derived by
+  -- Gentzen reductions, and its denotational preservation remains open.
   --
-  -- Categorical semantics is intentionally not smuggled in via a Seely
-  -- comonad.  Hamano-Scott's MALLP model uses an adjunction between
-  -- reflective/coreflective full subcategories of a *-autonomous category
-  -- with products.  That categorical model is a separate obligation; this
-  -- module specifies formulas, duality, and proof-relevant rules only.
+  -- Categorical semantics is not inferred from a Seely comonad. The
+  -- Hamano–Scott model requires reflective/coreflective full subcategories
+  -- inside a *-autonomous category with products. The finite cohesive
+  -- preorder above does not supply that category or connect its modalities
+  -- to MALLP. This module specifies formulas, duality, and proof rules.
   -- Rule reference: Laurent, "Polarized games", section 3.1 (MALLP).
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   module LaurentPolarizedMALLP where
 
@@ -2670,8 +3417,8 @@ module Foundations where
     infixr 6 _⊕⁺_ _&⁻_
 
     -- Laurent's MALLP grammar:
-    --   P ::= X⊥ | 1 | 0 | P ⊗ P | P ⊕ P | ↓N
-    --   N ::= X  | ⊥ | ⊤ | N ⅋ N | N & N | ↑P
+    -- P ::= X⊥ | 1 | 0 | P ⊗ P | P ⊕ P | ↓N
+    -- N ::= X | ⊥ | ⊤ | N ⅋ N | N & N | ↑P
     data PolType : Polarity → Set where
       atom⁺ : Nat → PolType posPolarity
       atom⁻ : Nat → PolType negPolarity
@@ -2746,7 +3493,7 @@ module Foundations where
     (x ∷ xs) ++ᴸ ys = x ∷ (xs ++ᴸ ys)
 
     -- Lists are a concrete presentation of finite contexts; exchange is
-    -- witnessed explicitly, without quotient equality or setoids.  The
+    -- witnessed explicitly, without quotient equality or setoids. The
     -- negative context plus optional positive stoup enforces Laurent's
     -- at-most-one-positive-formula invariant by construction.
     data ContextPermutation {A : Set} : List A → List A → Set where
@@ -2839,7 +3586,7 @@ module Foundations where
         {Γ : Context} {S : Stoup} →
         MALLP (top⁻ ∷ Γ) S
 
-      -- Polarity shifts.  Down moves a negative formula into the positive
+      -- Polarity shifts. Down moves a negative formula into the positive
       -- stoup, with the remaining context negative; up moves the positive
       -- stoup into the negative context.
       mallp-down :
@@ -2916,28 +3663,73 @@ module Foundations where
     ... | false = cutFree
     ... | true = cutContaining
 
-  ----------------------------------------------------------------------
+    -- The oracle's result has exactly the same indexed sequent as its input;
+    -- cut-free and idempotent laws are part of the axiom's contract.
+    record MALLPCutElimination : Set₁ where
+      field
+        normalizeCutProof :
+          {Γ : Context} {S : Stoup} →
+          MALLP Γ S →
+          MALLP Γ S
+        normalizeCutProof-cutFree :
+          {Γ : Context} {S : Stoup} →
+          (proof : MALLP Γ S) →
+          hasCut (normalizeCutProof proof) ≡ false
+        normalizeCutProof-idempotent :
+          {Γ : Context} {S : Stoup} →
+          (proof : MALLP Γ S) →
+          normalizeCutProof (normalizeCutProof proof) ≡
+          normalizeCutProof proof
+    open MALLPCutElimination public
+
+    postulate
+      mallpCutElimination : MALLPCutElimination
+
+    abstract
+      cutEliminate :
+        {Γ : Context} {S : Stoup} →
+        MALLP Γ S →
+        MALLP Γ S
+      cutEliminate proof =
+        normalizeCutProof mallpCutElimination proof
+
+      cutEliminate-idempotent :
+        {Γ : Context} {S : Stoup} →
+        (proof : MALLP Γ S) →
+        cutEliminate (cutEliminate proof) ≡ cutEliminate proof
+      cutEliminate-idempotent proof =
+        normalizeCutProof-idempotent mallpCutElimination proof
+
+      cutEliminate-cut-free :
+        {Γ : Context} {S : Stoup} →
+        (proof : MALLP Γ S) →
+        hasCut (cutEliminate proof) ≡ false
+      cutEliminate-cut-free proof =
+        normalizeCutProof-cutFree mallpCutElimination proof
+
+
+  -- --------------------------------------------------------------------
   -- Publicly expose all seven Foundations.* modules: six foundational
   -- packages and Laurent's MALLP calculus. No Seely structure is included.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   open ForsterEnumerability public
-  open MarkovLeastWitness public
+  open SymmetricBarRecursion public
+  open DoubleNegation public
   open MacLaneCoherence public
   open CohesiveRetractions public
   open QuotientReflection public
-  open SymmetricBarRecursion public
   open LaurentPolarizedMALLP public
 
 open Foundations.ForsterEnumerability public
-open Foundations.MarkovLeastWitness public
+open Foundations.SymmetricBarRecursion public
+open Foundations.DoubleNegation public
 open Foundations.MacLaneCoherence public
 open Foundations.CohesiveRetractions public
 open Foundations.QuotientReflection public
-open Foundations.SymmetricBarRecursion public
 open Foundations.LaurentPolarizedMALLP public
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- A relational denotation for every Laurent MALLP proof constructor.
 --
 -- Atoms are interpreted parametrically. Positive/negative tensor and
@@ -2951,7 +3743,7 @@ open Foundations.LaurentPolarizedMALLP public
 -- It is deliberately not labelled as the full Hamano-Scott categorical
 -- model: that stronger result needs the reflective/coreflective adjunction
 -- and its *-autonomous coherence data as explicit Agda structures.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 module MALLPRelationalDenotation (Atom : Nat → Set) where
 
@@ -3177,7 +3969,7 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
     MALLPRelation proof environment result
 
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- GENERIC LINEAR SOURCE TERMS: STRUCTURAL MALLP DERIVATION
 --
 -- This small, reusable source core indexes every term by its exact live
@@ -3189,7 +3981,7 @@ module MALLPRelationalDenotation (Atom : Nat → Set) where
 -- A closure stores its environment once and its code expects that same
 -- environment paired with its explicit argument. No captured resource is
 -- copied into code or silently discarded at closure creation.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 data LinearSourceType : Set where
   linearNatType linearIntType linearWord64Type linearBoolType linearUnitType : LinearSourceType
@@ -3444,14 +4236,14 @@ linearMaybeIdentityMALLP :
     (just (linearSourceFormula (linearMaybeType A)))
 linearMaybeIdentityMALLP = deriveMALLP linearMaybeIdentity
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- REFLECTION-GENERATED ADT SHAPES
 --
 -- Reflection inspects the kernel-resolved datatype declaration and its
 -- constructor Pi telescopes, then emits a quoted description. This is
 -- compile-time metadata only: it does not decide linearity, runtime layout,
 -- or a MALLP derivation. Those are checked by the typed source core above.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 record ReflectedConstructorShape : Set where
   constructor reflectedConstructorShape
@@ -3563,11 +4355,11 @@ reflectedBoxArityWitness :
 reflectedBoxArityWitness = pair refl (pair refl refl)
 
 {-# REWRITE
-  μ-step-true
-  μ-step-false
+  parametricCodePEA-code
   sBR-stop
   sBR-step
   quotient-raw-sound
+  cutEliminate-idempotent
 #-}
 -- This reduction uses the active quotient rewrite rule.
 quotientReflectionRewriteSmoke :
@@ -3579,9 +4371,9 @@ quotientReflectionRewriteSmoke :
 quotientReflectionRewriteSmoke A f x = refl
 
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- Rewrite computation smoke witnesses
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 alwaysTrue : Nat → Bool
 alwaysTrue n = true
@@ -3590,22 +4382,42 @@ falseThenTrue : Nat → Bool
 falseThenTrue zero = false
 falseThenTrue (suc n) = true
 
-leastSearch-zero-computes :
-  Foundations.MarkovLeastWitness.leastSearch alwaysTrue ≡ zero
-leastSearch-zero-computes = refl
+boundedSearch-zero-computes :
+  boundedSearch (suc zero) alwaysTrue ≡ just zero
+boundedSearch-zero-computes = refl
 
-leastSearch-successor-computes :
-  Foundations.MarkovLeastWitness.leastSearch falseThenTrue ≡ suc zero
-leastSearch-successor-computes = refl
+boundedSearch-successor-computes :
+  boundedSearch (suc (suc zero)) falseThenTrue ≡ just (suc zero)
+boundedSearch-successor-computes = refl
 
-------------------------------------------------------------------------
+parametricEA-rewrite-client :
+  (F : ParametricallyEnumerable) →
+  (i stage value : Nat) →
+  universalEval (parametricCodePEA F i) stage ≡ just value →
+  Predicate F i value
+parametricEA-rewrite-client F i stage value computation =
+  parametricCodePEA-sound F i stage value computation
+
+cutEliminate-cut-free-client :
+  {Γ : Context} {S : Stoup} →
+  (proof : MALLP Γ S) →
+  hasCut (cutEliminate proof) ≡ false
+cutEliminate-cut-free-client proof = cutEliminate-cut-free proof
+
+cutEliminate-idempotent-client :
+  {Γ : Context} {S : Stoup} →
+  (proof : MALLP Γ S) →
+  cutEliminate (cutEliminate proof) ≡ cutEliminate proof
+cutEliminate-idempotent-client proof = refl
+
+-- ----------------------------------------------------------------------
 -- Strict closed-Nat Forth combinator semantics
 --
 -- This compiler fragment has no variables, closures, heap, implicit copy,
--- implicit drop, exponentials, or garbage collector.  Each syntax child is
+-- implicit drop, exponentials, or garbage collector. Each syntax child is
 -- visited once; each combinator returns exactly one Nat and preserves the
 -- caller's residual stack.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 module StrictNatCompiler where
 
@@ -3886,7 +4698,7 @@ module StrictNatCompiler where
   ... | nothing = nothing
   ... | just nextStack = execTokens tokens nextStack
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- Bounded Gforth Nat machine.
   --
   -- FLib.fth represents source Nats in a signed Forth cell. Its runtime
@@ -3894,7 +4706,7 @@ module StrictNatCompiler where
   -- cell bound. This interpreter gives those partial-success semantics to
   -- the same emitted token algebra. The bound is a parameter because
   -- Gforth's CELL-BITS is platform-dependent.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   natWithinBound : Nat → Nat → Bool
   natWithinBound zero bound = true
@@ -4369,14 +5181,14 @@ module StrictNatCompiler where
           | renderForth-sound first stack
           | renderForth-sound second (execForthCode first stack) = refl
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- A closed, proof-carrying MALLP theory for the implemented Nat slice.
   --
   -- Numerals are nullary constants. Each arithmetic primitive is a linear
   -- axiom Nat- ⊗ Nat- ⊢ Nat+, and composition is MALLP cut. Thus every
   -- source subterm is consumed once; this is a theory over MALLP, with an
   -- explicit primitive signature, rather than bare proof-tree syntax.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   natFormula : PolType posPolarity
   natFormula = atom⁺ zero
@@ -4734,14 +5546,14 @@ module StrictNatCompiler where
     rewrite natExprProof-adequate left
           | natExprProof-adequate right = refl
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- General finite linear Nat trees.
   --
   -- The index n counts live Nat assumptions. Literal leaves consume zero
   -- resources; an argument leaf consumes exactly one; binary composition
   -- partitions n+m assumptions between its two premises. This makes
   -- duplication and discard unrepresentable in this source core.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   data NatResourceExpr : Nat → Set where
     resourceLiteral :
@@ -4944,13 +5756,13 @@ module StrictNatCompiler where
         (λ value → just (value ∷ forgetStack stack))
         (sym (natLinearProof-adequate expression argument)))
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- Binary linear Nat primitives.
   --
-  -- The two source arguments are each consumed once.  The incoming stack
+  -- The two source arguments are each consumed once. The incoming stack
   -- has the second argument at its head, matching the environment order
-  -- used by the MALLP primitive signature.  Exchange is explicit.
-  ----------------------------------------------------------------------
+  -- used by the MALLP primitive signature. Exchange is explicit.
+  -- --------------------------------------------------------------------
 
   data NatBinaryLinearExpr : Set where
     natBinaryArguments : NatOp → NatBinaryLinearExpr
@@ -5112,16 +5924,16 @@ module StrictNatCompiler where
     natBinaryMALLP-forth-sound
       (natBinaryArgumentsExchanged operation) first second stack
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- Closed PureLang lets: substitution without weakening or contraction.
   --
-  -- A closed binding owns no MALLP assumptions.  A zero-use binding may be
+  -- A closed binding owns no MALLP assumptions. A zero-use binding may be
   -- skipped, and a multi-use binding may be inlined into independent copies
-  -- of its closed proof.  This is distinct from copying or discarding a live
-  -- linear resource.  The theorem is intentionally restricted to a closed
+  -- of its closed proof. This is distinct from copying or discarding a live
+  -- linear resource. The theorem is intentionally restricted to a closed
   -- Nat term; open environments need the resource-indexed judgement below
   -- this compiler layer before analogous transformations are admitted.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   data NatLocalIndex : Nat → Set where
     local-zero : {n : Nat} → NatLocalIndex (suc n)
@@ -5332,13 +6144,13 @@ module StrictNatCompiler where
     resultCells (stackContractOf e) ≡ suc zero
   compiledNat-result e = refl
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- Pure Boolean values as additive MALLP proofs
 --
--- Bool = 1 ⊕ 1.  True and False are the two additive introductions; their
--- proofs consume no linear assumptions.  The target uses Forth's canonical
+-- Bool = 1 ⊕ 1. True and False are the two additive introductions; their
+-- proofs consume no linear assumptions. The target uses Forth's canonical
 -- TRUE/FALSE values and preserves any caller-owned residual stack.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 module StrictBoolCompiler where
 
@@ -5805,13 +6617,13 @@ open StrictBoolCompiler public
 
 open StrictNatCompiler public
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- Pure Unit as the MALLP multiplicative unit
 --
--- Unit is the formula 1.  Its unique source value carries no target cell;
+-- Unit is the formula 1. Its unique source value carries no target cell;
 -- compiling its proof is the identity stack transition, with no emitted
 -- Forth tokens and no consumption of the caller's residual stack.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 module StrictUnitCompiler where
 
@@ -5839,13 +6651,13 @@ open StrictUnitCompiler public
 
 
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- Linear call-by-need state and explicit effect protocols
 --
 -- These are primitive *signatures over unchanged MALLP*, not additions to
--- Laurent's logical rules.  A store/effect token is an ordinary linear
+-- Laurent's logical rules. A store/effect token is an ordinary linear
 -- resource: every operation consumes one token and returns exactly one.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 module StrictStatefulProtocol where
 
@@ -5875,7 +6687,7 @@ module StrictStatefulProtocol where
   linearClosureFormula domain codomain =
     down⁺ (dualPos domain ⅋⁻ up⁻ codomain)
 
-  -- Computation signatures are layered over MALLP.  The only extra axioms
+  -- Computation signatures are layered over MALLP. The only extra axioms
   -- below are declared operations with explicit resource/stack contracts.
   data MALLPProtocolTheory : Context → Stoup → Set where
     protocol-logical :
@@ -5920,7 +6732,7 @@ module StrictStatefulProtocol where
         (just (natFormula ⊗⁺ thunkStoreFormula))
 
     -- Emission consumes exactly one event payload and one effect capability,
-    -- returning the updated capability.  No ambient unrestricted effect is
+    -- returning the updated capability. No ambient unrestricted effect is
     -- available in this signature.
     primitive-effect-emit :
       MALLPProtocolTheory
@@ -5952,9 +6764,9 @@ module StrictStatefulProtocol where
         (dualPos listNatFormula ∷ dualPos natFormula ∷ [])
         (just natFormula)
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- A total PureLang thunk fragment with explicit call-by-need update.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   data ThunkExpr : Set where
     thunkLiteral : Nat → ThunkExpr
@@ -6027,9 +6839,9 @@ module StrictStatefulProtocol where
   forceThunk-caches stateToken =
     sym (cacheThunkState-idempotent _)
 
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
   -- An explicit linear event protocol.
-  ----------------------------------------------------------------------
+  -- --------------------------------------------------------------------
 
   appendEvent : List Nat → Nat → List Nat
   appendEvent [] event = event ∷ []
@@ -6073,14 +6885,14 @@ module StrictStatefulProtocol where
 open StrictStatefulProtocol public
 
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- Linear closures, tensor/sum data, and finite list recursors
 --
 -- The proof terms below use existing MALLP introduction/elimination rules.
 -- Primitive application and list runtime operations are isolated in explicit
--- MALLPProtocolTheory signatures.  This does not add a recursive connective
+-- MALLPProtocolTheory signatures. This does not add a recursive connective
 -- to MALLP: list recursion is structural over finite Agda values.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 module StrictLinearDataCompiler where
 
@@ -6116,7 +6928,7 @@ module StrictLinearDataCompiler where
     MALLP (dualPos (A ⊕⁺ B) ∷ Γ) S
   linearSumElim = mallp-with
 
-  -- Γ remains present while the domain resource is abstracted.  The closure
+  -- Γ remains present while the domain resource is abstracted. The closure
   -- introduction consumes the argument resource once and preserves captures.
   linearClosureIntro :
     {Γ : Context} {A B : PolType posPolarity} →
@@ -6364,14 +7176,14 @@ module StrictLinearDataCompiler where
 
 open StrictLinearDataCompiler public
 
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 -- Executable witnesses for the assumed symmetric bar-recursion equations.
 --
 -- A constant-zero control functional reaches its bar after at most one
 -- extension: an initial map either contains key zero already, or the first
--- extension inserts it.  These examples force both registered rewrite rules
+-- extension inserts it. These examples force both registered rewrite rules
 -- to participate in Agda conversion, including step followed by stop.
-------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 
 constantZeroOmega : {X : Set} → (Nat → X) → Nat
 constantZeroOmega stream = zero
@@ -6421,6 +7233,24 @@ symmetricBarRec-step-then-stop-computes :
   step emptyMap
     (λ value → base (zeroKeyMap value))
 symmetricBarRec-step-then-stop-computes default base step = refl
+
+
+-- A one-step selection is an instance of the SBR step/stop equations.
+-- The continuation records the payoff of each newly threaded value, and
+-- the step algebra selects exactly the value chosen by the selection map.
+symmetricBarRec-selection-one-step :
+  {X R : Set} →
+  (default : X) →
+  (choose : Selection X R) →
+  (payoff : X → R) →
+  symmetricBarRec constantZeroOmega default
+    (constantZeroBarCondition default)
+    (λ entries → payoff (streamOf (mapEntries entries) default zero))
+    (λ entries continuation → selectedOutcome choose continuation)
+    emptyMap zero (outDomain refl)
+  ≡ selectedOutcome choose payoff
+symmetricBarRec-selection-one-step default choose payoff = refl
+
 
 
 -- ```
