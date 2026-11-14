@@ -398,9 +398,14 @@ record CodyadicFieldInterface : Set₁ where
   field
     _≈ᶜ_ : Codyadic → Codyadic → Set
     _#ᶜ_ : Codyadic → Codyadic → Set
-
-    zeroᶜ oneᶜ : Codyadic
     _+ᶜ_ _*ᶜ_ : Codyadic → Codyadic → Codyadic
+
+  infix 4 _≈ᶜ_ _#ᶜ_
+  infixl 6 _+ᶜ_
+  infixl 7 _*ᶜ_
+
+  field
+    zeroᶜ oneᶜ : Codyadic
     negateᶜ : Codyadic → Codyadic
     reciprocalᶜ : (value : Codyadic) → value #ᶜ zeroᶜ → Codyadic
 
@@ -457,33 +462,6 @@ record CodyadicFieldInterface : Set₁ where
       (x : Codyadic) (apartFromZero : x #ᶜ zeroᶜ) →
       (x *ᶜ reciprocalᶜ x apartFromZero) ≈ᶜ oneᶜ
 open CodyadicFieldInterface public
-
-infix 4 _≈ᶜ_ _#ᶜ_
-infixl 6 _+ᶜ_
-infixl 7 _*ᶜ_
-
--- Continuation/negative view of one observation.  This is a polarized
--- consumer interface, not a claim that the entire Conat type is a Laurent
--- MALLP formula.  Encoding and decoding the observation are definitionally
--- adequate and require no extensionality axiom.
-ConatObservationNegative : Set₁
-ConatObservationNegative = {R : Set} → (Maybe Conat → R) → R
-
-encodeConatObservationNegative : Conat → ConatObservationNegative
-encodeConatObservationNegative n consume = consume (observeConat n)
-
-decodeConatObservationNegative : ConatObservationNegative → Maybe Conat
-decodeConatObservationNegative observation = observation (λ value → value)
-
-negativeObservation-decode-encode : (n : Conat) →
-  decodeConatObservationNegative (encodeConatObservationNegative n) ≡
-  observeConat n
-negativeObservation-decode-encode n = refl
-
-negativeObservation-run-adequate : (n : Conat) {R : Set} →
-  (consume : Maybe Conat → R) →
-  encodeConatObservationNegative n consume ≡ consume (observeConat n)
-negativeObservation-run-adequate n consume = refl
 
 ------------------------------------------------------------------------
 -- MODULE 1: SIX FOUNDATIONAL PACKAGES AND LAURENT MALLP
