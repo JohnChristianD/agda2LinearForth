@@ -4,13 +4,11 @@
 --guardedness
 --lossy-unification
 --no-eta-equality
---prop
 --with-K
 --cubical=no-glue
 --erased-quotients
 --erased-funext
 --erased-propext
---auto-inline
 --exact-split
 #-}
 -- ```Agda
@@ -68,67 +66,6 @@ postulate
 
 variable A B : Set
 
-data List (A : Set) : Set where
-  [] : List A
-  _::_ : A → List A → List A
-
-infixr 5 _::_
-
-if_then_else_ : Bool → A → A → A
-if true  then x else y = x
-if false then x else y = y
-
-id : A → A
-id x = x
-
-_++_ : List A → List A → List A
-[]        ++ ys = ys
-(x :: xs) ++ ys = x :: (xs ++ ys)
-
-range : Nat → Nat → List Nat
-range x y = go (suc y - x) x
-  where
-    go : Nat → Nat → List Nat
-    go zero    _ = []
-    go (suc m) n = n :: go m (suc n)
-
-record Triple : Set where
-  constructor triple
-  field fst snd trd : Nat
-
-bind1 : Nat → Nat → List Nat → List Triple
-bind1 y z [] = []
-bind1 y z (x :: xs) = triple x y z :: bind1 y z xs
-
-bind2 : Nat → List Nat → List Triple
-bind2 z [] = []
-bind2 z (y :: ys) = bind1 y z (range 1 y) ++ bind2 z ys
-
-bind3 : List Nat → List Triple
-bind3 [] = []
-bind3 (z :: zs) = bind2 z (range 1 z) ++ bind3 zs
-
-alltriples : Nat → List Triple
-alltriples top = bind3 (range 1 top)
-
-pythagorean : Triple → Bool
-pythagorean (triple x y z) = x * x + y * y == z * z
-
-
-filterP : List Triple → List Triple
-filterP [] = []
-filterP (x :: xs) = (if pythagorean x then (x ::_) else id) (filterP xs)
-
-
-triples : Nat → List Triple
-triples top = filterP (alltriples top)
-
-sumall : List Triple → Nat
-sumall [] = 0
-sumall (triple x y z :: xs) = x + y + z + sumall xs
-
-test1 = sumall (triples 200) -- evaluates to 33638
-
 -- Word64 equality is reflected exactly by its unsigned Nat interpretation.
 record Equivalence (A B : Set) : Set where
   constructor equivalence
@@ -177,6 +114,7 @@ data ForthTextToken : Set where
   textAddWord textMonusWord textMultiplyWord textSwapWord : ForthTextToken
   textRollWord : Nat → ForthTextToken
   textTrueWord textFalseWord : ForthTextToken
+  textCodyadShiftLeft textCodyadShiftRight : ForthTextToken
   textIf : List ForthTextToken → List ForthTextToken → ForthTextToken
 
 mutual
@@ -198,6 +136,8 @@ mutual
       "MALLP-NAT-ROLL "
   renderForthTokenText textTrueWord = "MALLP-TRUE "
   renderForthTokenText textFalseWord = "MALLP-FALSE "
+  renderForthTokenText textCodyadShiftLeft = "MALLP-CODYAD-SHIFT-LEFT "
+  renderForthTokenText textCodyadShiftRight = "MALLP-CODYAD-SHIFT-RIGHT "
   renderForthTokenText (textIf whenTrue whenFalse) =
     primStringAppend "MALLP-IF "
       (primStringAppend (renderForthTokensText whenTrue)
@@ -538,7 +478,7 @@ _+∞_ : Conat → Conat → Conat
 ... | just predecessor = just (predecessor +∞ b)
 
 -- ----------------------------------------------------------------------
--- CONATURAL STREAMS AND A NEGATIVE OBSERVATION VIEW
+-- PRODUCTIVE CONATURAL AND SIGNED-DIGIT STREAMS
 -- ----------------------------------------------------------------------
 
 -- A stream whose length is a conatural. Its finite prefixes are always
@@ -568,28 +508,101 @@ foldConatPrefix step initial (suc n) stream with observeStream stream
 ... | just (pair value rest) =
       step value (foldConatPrefix step initial n rest)
 
--- Continuation/negative view of one observation. This is a polarized
--- consumer interface, not a claim that the entire Conat type is a Laurent
--- MALLP formula. Encoding and decoding the observation are definitionally
--- adequate and require no extensionality axiom.
-ConatObservationNegative : Set₁
-ConatObservationNegative = {R : Set} → (Maybe Conat → R) → R
+data CodyadDigit : Set where
+  codyadNegativeDigit codyadZeroDigit codyadPositiveDigit : CodyadDigit
 
-encodeConatObservationNegative : Conat → ConatObservationNegative
-encodeConatObservationNegative n consume = consume (observeConat n)
+record CodyadMantissa : Set where
+  coinductive
+  field
+    codyadHead : CodyadDigit
+    codyadTail : CodyadMantissa
+open CodyadMantissa public
 
-decodeConatObservationNegative : ConatObservationNegative → Maybe Conat
-decodeConatObservationNegative observation = observation (λ value → value)
+repeatCodyadDigit : CodyadDigit → CodyadMantissa
+codyadHead (repeatCodyadDigit digit) = digit
+codyadTail (repeatCodyadDigit digit) = repeatCodyadDigit digit
 
-negativeObservation-decode-encode : (n : Conat) →
-  decodeConatObservationNegative (encodeConatObservationNegative n) ≡
-  observeConat n
-negativeObservation-decode-encode n = refl
+mapCodyadMantissa :
+  (CodyadDigit → CodyadDigit) → CodyadMantissa → CodyadMantissa
+codyadHead (mapCodyadMantissa f mantissa) = f (codyadHead mantissa)
+codyadTail (mapCodyadMantissa f mantissa) =
+  mapCodyadMantissa f (codyadTail mantissa)
 
-negativeObservation-run-adequate : (n : Conat) {R : Set} →
-  (consume : Maybe Conat → R) →
-  encodeConatObservationNegative n consume ≡ consume (observeConat n)
-negativeObservation-run-adequate n consume = refl
+-- Each finite observation terminates by recursion on the requested prefix.
+-- The stream itself remains untruncated and is never materialized.
+codyadPrefix : Nat → CodyadMantissa → List CodyadDigit
+codyadPrefix zero mantissa = []
+codyadPrefix (suc n) mantissa =
+  codyadHead mantissa ∷ codyadPrefix n (codyadTail mantissa)
+
+repeatCodyadPrefix : Nat → CodyadDigit → List CodyadDigit
+repeatCodyadPrefix zero digit = []
+repeatCodyadPrefix (suc n) digit = digit ∷ repeatCodyadPrefix n digit
+
+codyadPrefix-repeat :
+  (n : Nat) (digit : CodyadDigit) →
+  codyadPrefix n (repeatCodyadDigit digit) ≡ repeatCodyadPrefix n digit
+codyadPrefix-repeat zero digit = refl
+codyadPrefix-repeat (suc n) digit =
+  cong (λ prefix → digit ∷ prefix) (codyadPrefix-repeat n digit)
+
+-- exponentPositive n / exponentNegative n represent magnitudes suc n.
+-- Hence exponentZero is the unique zero exponent representation.
+data BinaryExponent : Set where
+  exponentZero : BinaryExponent
+  exponentPositive : Nat → BinaryExponent
+  exponentNegative : Nat → BinaryExponent
+
+shiftCodyadExponentLeft : BinaryExponent → BinaryExponent
+shiftCodyadExponentLeft exponentZero = exponentPositive zero
+shiftCodyadExponentLeft (exponentPositive n) = exponentPositive (suc n)
+shiftCodyadExponentLeft (exponentNegative zero) = exponentZero
+shiftCodyadExponentLeft (exponentNegative (suc n)) = exponentNegative n
+
+shiftCodyadExponentRight : BinaryExponent → BinaryExponent
+shiftCodyadExponentRight exponentZero = exponentNegative zero
+shiftCodyadExponentRight (exponentPositive zero) = exponentZero
+shiftCodyadExponentRight (exponentPositive (suc n)) = exponentPositive n
+shiftCodyadExponentRight (exponentNegative n) = exponentNegative (suc n)
+
+shiftCodyadExponentRightAfterLeft :
+  (exponent : BinaryExponent) →
+  shiftCodyadExponentRight (shiftCodyadExponentLeft exponent) ≡ exponent
+shiftCodyadExponentRightAfterLeft exponentZero = refl
+shiftCodyadExponentRightAfterLeft (exponentPositive n) = refl
+shiftCodyadExponentRightAfterLeft (exponentNegative zero) = refl
+shiftCodyadExponentRightAfterLeft (exponentNegative (suc n)) = refl
+
+shiftCodyadExponentLeftAfterRight :
+  (exponent : BinaryExponent) →
+  shiftCodyadExponentLeft (shiftCodyadExponentRight exponent) ≡ exponent
+shiftCodyadExponentLeftAfterRight exponentZero = refl
+shiftCodyadExponentLeftAfterRight (exponentPositive zero) = refl
+shiftCodyadExponentLeftAfterRight (exponentPositive (suc n)) = refl
+shiftCodyadExponentLeftAfterRight (exponentNegative n) = refl
+
+record Codyad : Set where
+  constructor codyad
+  field
+    codyadMantissa : CodyadMantissa
+    codyadExponent : BinaryExponent
+open Codyad public
+
+shiftCodyadLeft shiftCodyadRight : Codyad → Codyad
+shiftCodyadLeft (codyad mantissa exponent) =
+  codyad mantissa (shiftCodyadExponentLeft exponent)
+shiftCodyadRight (codyad mantissa exponent) =
+  codyad mantissa (shiftCodyadExponentRight exponent)
+
+shiftCodyadRightAfterLeft :
+  (value : Codyad) → shiftCodyadRight (shiftCodyadLeft value) ≡ value
+shiftCodyadRightAfterLeft (codyad mantissa exponent) =
+  cong (codyad mantissa) (shiftCodyadExponentRightAfterLeft exponent)
+
+shiftCodyadLeftAfterRight :
+  (value : Codyad) → shiftCodyadLeft (shiftCodyadRight value) ≡ value
+shiftCodyadLeftAfterRight (codyad mantissa exponent) =
+  cong (codyad mantissa) (shiftCodyadExponentLeftAfterRight exponent)
 
 -- ----------------------------------------------------------------------
 -- MODULE 1: SIX FOUNDATIONAL PACKAGES AND LAURENT MALLP
@@ -1287,10 +1300,9 @@ module Foundations where
   -- --------------------------------------------------------------------
   -- 3. Negative logical and choice schemas.
   --
-  -- Excluded middle, function extensionality, and dependent choice are
-  -- postulated only under double negation: each resulting axiom has the
-  -- required outer form ¬ A. DNS is already equivalent to a negation of a
-  -- counterexample below, so no extra outer ¬¬ is added to DNS.
+  -- Excluded middle and function extensionality are postulated only under
+  -- double negation. DNS is represented directly by its negative
+  -- counterexample principle. No dependent/countable-choice schema occurs.
   -- Double-negated DNE and Peirce remain derived from double-negated EM.
   --
   -- Set : Set is a universe-formation judgement, not a proposition or an
@@ -1358,18 +1370,6 @@ module Foundations where
       {P} pointwise noGlobalWitness =
       noCounterexample (P , (pointwise , noGlobalWitness))
 
-    DependentChoiceAt : (ℓ : Level) → Set (lsuc ℓ)
-    DependentChoiceAt ℓ =
-      {A : Set ℓ} →
-      (R : A → A → Set ℓ) →
-      ((x : A) → Σ A (λ y → R x y)) →
-      (initial : A) →
-      Σ (Nat → A)
-        (λ sequence →
-          Σ (sequence zero ≡ initial)
-            (λ _ →
-              (n : Nat) → R (sequence n) (sequence (suc n))))
-
 
     mapDoubleNegation :
       {a b : Level} {P : Set a} {Q : Set b} →
@@ -1411,9 +1411,6 @@ module Foundations where
       negativeDNS :
         (ℓ : Level) → ¬ (DNSCounterexampleAt ℓ)
 
-      doubleNegatedDependentChoice :
-        (ℓ : Level) → ¬ (¬ (DependentChoiceAt ℓ))
-
     doubleNegationShift :
       (ℓ : Level) → DoubleNegationShiftAt ℓ
     doubleNegationShift ℓ =
@@ -1449,8 +1446,6 @@ module Foundations where
           ¬ (¬ (FunctionExtensionalityAt ℓ ℓ))
         dnsNegative :
           ¬ (DNSCounterexampleAt ℓ)
-        dependentChoiceNegative :
-          ¬ (¬ (DependentChoiceAt ℓ))
     open NegativeLogicalBoundary public
 
     negativeLogicalBoundary : (ℓ : Level) → NegativeLogicalBoundary ℓ
@@ -1458,7 +1453,6 @@ module Foundations where
       { excludedMiddleNegative = doubleNegatedExcludedMiddle ℓ
       ; functionExtensionalityNegative = doubleNegatedFunctionExtensionality ℓ ℓ
       ; dnsNegative = negativeDNS ℓ
-      ; dependentChoiceNegative = doubleNegatedDependentChoice ℓ
       }
 
   -- --------------------------------------------------------------------
@@ -7832,6 +7826,231 @@ module StrictLinearDataCompiler where
   listFoldSignature = primitive-list-fold
 
 open StrictLinearDataCompiler public
+
+
+-- ----------------------------------------------------------------------
+-- PRODUCTIVE CODYAD EXPONENT MACHINE
+--
+-- The coinductive mantissa is an opaque residual resource.  These first
+-- GForth words transform only its canonical signed exponent and preserve
+-- every residual cell.  Arbitrary corecursive producers need an explicit
+-- finite-state producer ABI before they can be compiled as Forth code.
+-- ----------------------------------------------------------------------
+
+data CodyadForthToken : Set where
+  codyadShiftLeftToken codyadShiftRightToken : CodyadForthToken
+
+decodeBinaryExponent : Nat → Nat → Maybe BinaryExponent
+decodeBinaryExponent zero zero = just exponentZero
+decodeBinaryExponent (suc zero) (suc n) = just (exponentPositive n)
+decodeBinaryExponent (suc (suc zero)) (suc n) = just (exponentNegative n)
+decodeBinaryExponent _ _ = nothing
+
+-- Top-first stack layout: magnitude :: sign :: residual.
+binaryExponentStack : BinaryExponent → List Nat
+binaryExponentStack exponentZero = zero ∷ zero ∷ []
+binaryExponentStack (exponentPositive n) = suc n ∷ suc zero ∷ []
+binaryExponentStack (exponentNegative n) =
+  suc n ∷ suc (suc zero) ∷ []
+
+applyCodyadShift : CodyadForthToken → BinaryExponent → BinaryExponent
+applyCodyadShift codyadShiftLeftToken = shiftCodyadExponentLeft
+applyCodyadShift codyadShiftRightToken = shiftCodyadExponentRight
+
+execCodyadToken : CodyadForthToken → List Nat → Maybe (List Nat)
+execCodyadToken token (magnitude ∷ sign ∷ residual)
+  with decodeBinaryExponent sign magnitude
+... | nothing = nothing
+... | just exponent =
+  just (binaryExponentStack (applyCodyadShift token exponent) ++ᴳ residual)
+execCodyadToken token _ = nothing
+
+execCodyadTokens : List CodyadForthToken → List Nat → Maybe (List Nat)
+execCodyadTokens [] stack = just stack
+execCodyadTokens (token ∷ tokens) stack
+  with execCodyadToken token stack
+... | nothing = nothing
+... | just nextStack = execCodyadTokens tokens nextStack
+
+codyadShiftLeft-forth-sound :
+  (exponent : BinaryExponent) (residual : List Nat) →
+  execCodyadTokens (codyadShiftLeftToken ∷ [])
+    (binaryExponentStack exponent ++ᴳ residual) ≡
+  just (binaryExponentStack (shiftCodyadExponentLeft exponent) ++ᴳ residual)
+codyadShiftLeft-forth-sound exponentZero residual = refl
+codyadShiftLeft-forth-sound (exponentPositive n) residual = refl
+codyadShiftLeft-forth-sound (exponentNegative zero) residual = refl
+codyadShiftLeft-forth-sound (exponentNegative (suc n)) residual = refl
+
+codyadShiftRight-forth-sound :
+  (exponent : BinaryExponent) (residual : List Nat) →
+  execCodyadTokens (codyadShiftRightToken ∷ [])
+    (binaryExponentStack exponent ++ᴳ residual) ≡
+  just (binaryExponentStack (shiftCodyadExponentRight exponent) ++ᴳ residual)
+codyadShiftRight-forth-sound exponentZero residual = refl
+codyadShiftRight-forth-sound (exponentPositive zero) residual = refl
+codyadShiftRight-forth-sound (exponentPositive (suc n)) residual = refl
+codyadShiftRight-forth-sound (exponentNegative n) residual = refl
+
+codyadMalformedExponent-rejected :
+  execCodyadTokens (codyadShiftLeftToken ∷ [])
+    (zero ∷ suc zero ∷ []) ≡ nothing
+codyadMalformedExponent-rejected = refl
+
+codyadFormula : PolType posPolarity
+codyadFormula = atom⁺ 21
+
+-- Each exponent shift consumes and returns one Codyad capability.
+-- The residual mantissa producer is preserved, never copied or discarded.
+codyadShiftLeftMALLP :
+  MALLPProtocolTheory (dualPos codyadFormula ∷ []) (just codyadFormula)
+codyadShiftLeftMALLP = protocol-logical mallp-ax
+
+codyadShiftRightMALLP :
+  MALLPProtocolTheory (dualPos codyadFormula ∷ []) (just codyadFormula)
+codyadShiftRightMALLP = protocol-logical mallp-ax
+
+
+-- ----------------------------------------------------------------------
+-- CONDITIONAL CANONICAL FOUNDATIONS EXTRACTION
+--
+-- Every inhabited optimization record yields a finite canonical MALLP Nat
+-- program for its already-certified candidate.  The associated PEA
+-- RegisterProgram is preserved as code with soundness/completeness evidence;
+-- this module does not claim a universal register-machine-to-Forth compiler.
+-- ----------------------------------------------------------------------
+
+module CanonicalFoundationsExtraction (Atom : Nat → Set) where
+
+  module Optimization = UnifiedFoundationsOptimization Atom
+
+  record CanonicalMALLPProgram (value : Nat) : Set where
+    field
+      canonicalCode : ForthCode [] (natCell ∷ [])
+      canonicalDerivation : MALLPNatTheory [] (just natFormula)
+      canonicalCodeTokens :
+        renderForth canonicalCode ≡ pushLiteral value ∷ []
+      canonicalExecution :
+        execTokens (renderForth canonicalCode) [] ≡ just (value ∷ [])
+  open CanonicalMALLPProgram public
+
+  canonicalMALLPProgram : (value : Nat) → CanonicalMALLPProgram value
+  canonicalMALLPProgram value = record
+    { canonicalCode = compileNat (literal value)
+    ; canonicalDerivation =
+        natResource-proof-derivation (resourceLiteral value)
+    ; canonicalCodeTokens = refl
+    ; canonicalExecution =
+        renderForth-sound (compileNat (literal value)) emptyStack
+    }
+
+  record ExtractedOptimizationProgram
+      {candidateFamily : ParametricallyEnumerable}
+      {H G : Category}
+      {productsH : FiniteProducts H}
+      {productsG : FiniteProducts G}
+      {ℓ : Level} {R : Set}
+      (optimization :
+        Optimization.DynamicProgrammingMALLPOptimization
+          candidateFamily H G productsH productsG ℓ R)
+      : Set₁ where
+    field
+      canonicalEnumeratorCode : ProgramCode
+      canonicalEnumeratorCodeIsPEA :
+        canonicalEnumeratorCode ≡
+          parametricCode
+            (Optimization.positiveEnumerability optimization)
+            candidateFamily
+            (Optimization.candidateParameter optimization)
+      selectedCandidateFeasible :
+        Predicate candidateFamily
+          (Optimization.candidateParameter optimization)
+          (Optimization.candidate optimization)
+      selectedCandidateProgram :
+        CanonicalMALLPProgram (Optimization.candidate optimization)
+      selectedCandidateOptimal :
+        OptimalSelection
+          (Optimization.valueOrder optimization)
+          (backwardInduction
+            (Optimization.finiteHorizon optimization)
+            (Optimization.finiteSelection optimization))
+      normalizedBellmanBaseIsCutFree :
+        hasCut (Optimization.normalizedBellmanBase optimization) ≡ false
+      normalizedBellmanStepIsCutFree :
+        hasCut (Optimization.normalizedBellmanStep optimization) ≡ false
+      finiteDPAgreesWithSBR :
+        Optimization.finiteDynamicProgrammingValue optimization ≡
+          Optimization.barValue optimization
+  open ExtractedOptimizationProgram public
+
+  extractOptimization :
+    {candidateFamily : ParametricallyEnumerable}
+    {H G : Category}
+    {productsH : FiniteProducts H}
+    {productsG : FiniteProducts G}
+    {ℓ : Level} {R : Set} →
+    (optimization :
+      Optimization.DynamicProgrammingMALLPOptimization
+        candidateFamily H G productsG ℓ R) →
+    ExtractedOptimizationProgram optimization
+  extractOptimization optimization = record
+    { canonicalEnumeratorCode =
+        parametricCode
+          (Optimization.positiveEnumerability optimization)
+          _ (Optimization.candidateParameter optimization)
+    ; canonicalEnumeratorCodeIsPEA = refl
+    ; selectedCandidateFeasible =
+        Optimization.optimizationCandidateFeasible optimization
+    ; selectedCandidateProgram =
+        canonicalMALLPProgram (Optimization.candidate optimization)
+    ; selectedCandidateOptimal =
+        Optimization.finiteOptimizationOptimal optimization
+    ; normalizedBellmanBaseIsCutFree =
+        Optimization.normalizedBellmanBase-cutFree optimization
+    ; normalizedBellmanStepIsCutFree =
+        Optimization.normalizedBellmanStep-cutFree optimization
+    ; finiteDPAgreesWithSBR =
+        Optimization.finiteDynamicProgrammingAgreesWithSBR optimization
+    }
+
+  extractAnalyticCandidateAtStage :
+    (family : AnalyticEnumerableFamily) (parameter stage : Nat) →
+    Maybe
+      (Σ Nat
+        (λ candidate →
+          (analyticPredicate family parameter candidate) ×
+          CanonicalMALLPProgram candidate))
+  extractAnalyticCandidateAtStage family parameter stage
+    with universalEval (analyticCode family parameter) stage in evaluation
+  ... | nothing = nothing
+  ... | just candidate =
+    just
+      ( candidate
+      , pair
+          (analytic-sound family parameter stage candidate
+            (trans
+              (sym (analyticCode-correct family parameter stage))
+              evaluation))
+          (canonicalMALLPProgram candidate)
+      )
+
+  emptyParametricallyEnumerable : ParametricallyEnumerable
+  emptyParametricallyEnumerable = record
+    { Predicate = λ _ _ → ⊥
+    ; enumerate = λ _ _ → nothing
+    ; enumerate-sound = λ i stage value ()
+    ; enumerate-complete = λ i value ()
+    }
+
+  noUniformFeasibleCandidate :
+    ((family : ParametricallyEnumerable) →
+      (parameter : Nat) →
+      Σ Nat (λ candidate → Predicate family parameter candidate)) →
+    ⊥
+  noUniformFeasibleCandidate choose
+    with choose emptyParametricallyEnumerable zero
+  ... | candidate , impossible = impossible
+
 
 -- ----------------------------------------------------------------------
 -- Executable witnesses for the assumed symmetric bar-recursion equations.
