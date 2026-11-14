@@ -33,6 +33,7 @@ module MALLPForth where
 open import Agda.Primitive using (Level; lzero; lsuc; _⊔_) public
 open import Agda.Builtin.Nat public
 open import Agda.Builtin.Int public
+open import SovereignRationalSEDPhysics using (Codyadic; codyadic)
 open import Agda.Builtin.Bool public
 open import Agda.Builtin.List public
 open import Agda.Builtin.Maybe public
@@ -508,101 +509,53 @@ foldConatPrefix step initial (suc n) stream with observeStream stream
 ... | just (pair value rest) =
       step value (foldConatPrefix step initial n rest)
 
-data CodyadDigit : Set where
-  codyadNegativeDigit codyadZeroDigit codyadPositiveDigit : CodyadDigit
+-- Codyadic is shared with the safe physical specification:
+--   2 ^ binaryShift * Σ (digit[n] * 2 ^ (-(n + 1))).
+-- Its mantissa is an untruncated coinductive signed-digit stream.  The
+-- compiler touches only the finite signed Int shift and leaves the producer
+-- resource unchanged.
 
-record CodyadMantissa : Set where
-  coinductive
-  field
-    codyadHead : CodyadDigit
-    codyadTail : CodyadMantissa
-open CodyadMantissa public
+shiftCodyadicExponentLeft : Int → Int
+shiftCodyadicExponentLeft (pos n) = pos (suc n)
+shiftCodyadicExponentLeft (negsuc zero) = pos zero
+shiftCodyadicExponentLeft (negsuc (suc n)) = negsuc n
 
-repeatCodyadDigit : CodyadDigit → CodyadMantissa
-codyadHead (repeatCodyadDigit digit) = digit
-codyadTail (repeatCodyadDigit digit) = repeatCodyadDigit digit
+shiftCodyadicExponentRight : Int → Int
+shiftCodyadicExponentRight (pos zero) = negsuc zero
+shiftCodyadicExponentRight (pos (suc n)) = pos n
+shiftCodyadicExponentRight (negsuc n) = negsuc (suc n)
 
-mapCodyadMantissa :
-  (CodyadDigit → CodyadDigit) → CodyadMantissa → CodyadMantissa
-codyadHead (mapCodyadMantissa f mantissa) = f (codyadHead mantissa)
-codyadTail (mapCodyadMantissa f mantissa) =
-  mapCodyadMantissa f (codyadTail mantissa)
+shiftCodyadicExponentRightAfterLeft :
+  (exponent : Int) →
+  shiftCodyadicExponentRight (shiftCodyadicExponentLeft exponent) ≡ exponent
+shiftCodyadicExponentRightAfterLeft (pos n) = refl
+shiftCodyadicExponentRightAfterLeft (negsuc zero) = refl
+shiftCodyadicExponentRightAfterLeft (negsuc (suc n)) = refl
 
--- Each finite observation terminates by recursion on the requested prefix.
--- The stream itself remains untruncated and is never materialized.
-codyadPrefix : Nat → CodyadMantissa → List CodyadDigit
-codyadPrefix zero mantissa = []
-codyadPrefix (suc n) mantissa =
-  codyadHead mantissa ∷ codyadPrefix n (codyadTail mantissa)
+shiftCodyadicExponentLeftAfterRight :
+  (exponent : Int) →
+  shiftCodyadicExponentLeft (shiftCodyadicExponentRight exponent) ≡ exponent
+shiftCodyadicExponentLeftAfterRight (pos zero) = refl
+shiftCodyadicExponentLeftAfterRight (pos (suc n)) = refl
+shiftCodyadicExponentLeftAfterRight (negsuc n) = refl
 
-repeatCodyadPrefix : Nat → CodyadDigit → List CodyadDigit
-repeatCodyadPrefix zero digit = []
-repeatCodyadPrefix (suc n) digit = digit ∷ repeatCodyadPrefix n digit
+shiftCodyadicLeft shiftCodyadicRight : Codyadic → Codyadic
+shiftCodyadicLeft (codyadic exponent mantissa) =
+  codyadic (shiftCodyadicExponentLeft exponent) mantissa
+shiftCodyadicRight (codyadic exponent mantissa) =
+  codyadic (shiftCodyadicExponentRight exponent) mantissa
 
-codyadPrefix-repeat :
-  (n : Nat) (digit : CodyadDigit) →
-  codyadPrefix n (repeatCodyadDigit digit) ≡ repeatCodyadPrefix n digit
-codyadPrefix-repeat zero digit = refl
-codyadPrefix-repeat (suc n) digit =
-  cong (λ prefix → digit ∷ prefix) (codyadPrefix-repeat n digit)
+shiftCodyadicRightAfterLeft :
+  (value : Codyadic) → shiftCodyadicRight (shiftCodyadicLeft value) ≡ value
+shiftCodyadicRightAfterLeft (codyadic exponent mantissa) =
+  cong (λ next → codyadic next mantissa)
+    (shiftCodyadicExponentRightAfterLeft exponent)
 
--- exponentPositive n / exponentNegative n represent magnitudes suc n.
--- Hence exponentZero is the unique zero exponent representation.
-data BinaryExponent : Set where
-  exponentZero : BinaryExponent
-  exponentPositive : Nat → BinaryExponent
-  exponentNegative : Nat → BinaryExponent
-
-shiftCodyadExponentLeft : BinaryExponent → BinaryExponent
-shiftCodyadExponentLeft exponentZero = exponentPositive zero
-shiftCodyadExponentLeft (exponentPositive n) = exponentPositive (suc n)
-shiftCodyadExponentLeft (exponentNegative zero) = exponentZero
-shiftCodyadExponentLeft (exponentNegative (suc n)) = exponentNegative n
-
-shiftCodyadExponentRight : BinaryExponent → BinaryExponent
-shiftCodyadExponentRight exponentZero = exponentNegative zero
-shiftCodyadExponentRight (exponentPositive zero) = exponentZero
-shiftCodyadExponentRight (exponentPositive (suc n)) = exponentPositive n
-shiftCodyadExponentRight (exponentNegative n) = exponentNegative (suc n)
-
-shiftCodyadExponentRightAfterLeft :
-  (exponent : BinaryExponent) →
-  shiftCodyadExponentRight (shiftCodyadExponentLeft exponent) ≡ exponent
-shiftCodyadExponentRightAfterLeft exponentZero = refl
-shiftCodyadExponentRightAfterLeft (exponentPositive n) = refl
-shiftCodyadExponentRightAfterLeft (exponentNegative zero) = refl
-shiftCodyadExponentRightAfterLeft (exponentNegative (suc n)) = refl
-
-shiftCodyadExponentLeftAfterRight :
-  (exponent : BinaryExponent) →
-  shiftCodyadExponentLeft (shiftCodyadExponentRight exponent) ≡ exponent
-shiftCodyadExponentLeftAfterRight exponentZero = refl
-shiftCodyadExponentLeftAfterRight (exponentPositive zero) = refl
-shiftCodyadExponentLeftAfterRight (exponentPositive (suc n)) = refl
-shiftCodyadExponentLeftAfterRight (exponentNegative n) = refl
-
-record Codyad : Set where
-  constructor codyad
-  field
-    codyadMantissa : CodyadMantissa
-    codyadExponent : BinaryExponent
-open Codyad public
-
-shiftCodyadLeft shiftCodyadRight : Codyad → Codyad
-shiftCodyadLeft (codyad mantissa exponent) =
-  codyad mantissa (shiftCodyadExponentLeft exponent)
-shiftCodyadRight (codyad mantissa exponent) =
-  codyad mantissa (shiftCodyadExponentRight exponent)
-
-shiftCodyadRightAfterLeft :
-  (value : Codyad) → shiftCodyadRight (shiftCodyadLeft value) ≡ value
-shiftCodyadRightAfterLeft (codyad mantissa exponent) =
-  cong (codyad mantissa) (shiftCodyadExponentRightAfterLeft exponent)
-
-shiftCodyadLeftAfterRight :
-  (value : Codyad) → shiftCodyadLeft (shiftCodyadRight value) ≡ value
-shiftCodyadLeftAfterRight (codyad mantissa exponent) =
-  cong (codyad mantissa) (shiftCodyadExponentLeftAfterRight exponent)
+shiftCodyadicLeftAfterRight :
+  (value : Codyadic) → shiftCodyadicLeft (shiftCodyadicRight value) ≡ value
+shiftCodyadicLeftAfterRight (codyadic exponent mantissa) =
+  cong (λ next → codyadic next mantissa)
+    (shiftCodyadicExponentLeftAfterRight exponent)
 
 -- ----------------------------------------------------------------------
 -- MODULE 1: SIX FOUNDATIONAL PACKAGES AND LAURENT MALLP
@@ -7840,51 +7793,51 @@ open StrictLinearDataCompiler public
 data CodyadForthToken : Set where
   codyadShiftLeftToken codyadShiftRightToken : CodyadForthToken
 
-decodeBinaryExponent : Nat → Nat → Maybe BinaryExponent
-decodeBinaryExponent zero zero = just exponentZero
-decodeBinaryExponent (suc zero) (suc n) = just (exponentPositive n)
-decodeBinaryExponent (suc (suc zero)) (suc n) = just (exponentNegative n)
-decodeBinaryExponent _ _ = nothing
+decodeCodyadicExponent : Nat → Nat → Maybe Int
+decodeCodyadicExponent zero zero = just (pos zero)
+decodeCodyadicExponent (suc zero) (suc n) = just (pos (suc n))
+decodeCodyadicExponent (suc (suc zero)) (suc n) = just (negsuc n)
+decodeCodyadicExponent _ _ = nothing
 
 -- Top-first stack layout: magnitude :: sign :: residual.
-binaryExponentSign : BinaryExponent → Nat
-binaryExponentSign exponentZero = zero
-binaryExponentSign (exponentPositive n) = suc zero
-binaryExponentSign (exponentNegative n) = suc (suc zero)
+codyadicExponentSign : Int → Nat
+codyadicExponentSign (pos zero) = zero
+codyadicExponentSign (pos (suc n)) = suc zero
+codyadicExponentSign (negsuc n) = suc (suc zero)
 
-binaryExponentMagnitude : BinaryExponent → Nat
-binaryExponentMagnitude exponentZero = zero
-binaryExponentMagnitude (exponentPositive n) = suc n
-binaryExponentMagnitude (exponentNegative n) = suc n
+codyadicExponentMagnitude : Int → Nat
+codyadicExponentMagnitude (pos zero) = zero
+codyadicExponentMagnitude (pos (suc n)) = suc n
+codyadicExponentMagnitude (negsuc n) = suc n
 
-binaryExponentStack : BinaryExponent → List Nat
-binaryExponentStack exponent =
-  binaryExponentMagnitude exponent ∷ binaryExponentSign exponent ∷ []
+codyadicExponentStack : Int → List Nat
+codyadicExponentStack exponent =
+  codyadicExponentMagnitude exponent ∷ codyadicExponentSign exponent ∷ []
 
 -- A GForth cell is a positive signed Nat, so both input and result must fit
 -- the target's platform-dependent maximum. The bound is explicit in the
--- machine semantics, avoiding a false unbounded-Nat / bounded-cell equality.
-binaryExponentFits : Nat → BinaryExponent → Bool
-binaryExponentFits bound exponent
-  with natWithinBound (binaryExponentSign exponent) bound
+-- machine semantics, avoiding a false unbounded-Int / bounded-cell equality.
+codyadicExponentFits : Nat → Int → Bool
+codyadicExponentFits bound exponent
+  with natWithinBound (codyadicExponentSign exponent) bound
 ... | false = false
-... | true = natWithinBound (binaryExponentMagnitude exponent) bound
+... | true = natWithinBound (codyadicExponentMagnitude exponent) bound
 
-applyCodyadShift : CodyadForthToken → BinaryExponent → BinaryExponent
-applyCodyadShift codyadShiftLeftToken = shiftCodyadExponentLeft
-applyCodyadShift codyadShiftRightToken = shiftCodyadExponentRight
+applyCodyadShift : CodyadForthToken → Int → Int
+applyCodyadShift codyadShiftLeftToken = shiftCodyadicExponentLeft
+applyCodyadShift codyadShiftRightToken = shiftCodyadicExponentRight
 
 execCodyadToken :
   Nat → CodyadForthToken → List Nat → Maybe (List Nat)
 execCodyadToken bound token (magnitude ∷ sign ∷ residual)
-  with decodeBinaryExponent sign magnitude
+  with decodeInt sign magnitude
 ... | nothing = nothing
 ... | just exponent
-  with binaryExponentFits bound exponent
-     | binaryExponentFits bound (applyCodyadShift token exponent)
+  with codyadicExponentFits bound exponent
+     | codyadicExponentFits bound (applyCodyadShift token exponent)
 ...   | true | true =
         just
-          (binaryExponentStack (applyCodyadShift token exponent) ++ᴳ residual)
+          (codyadicExponentStack (applyCodyadShift token exponent) ++ᴳ residual)
 ...   | _ | _ = nothing
 execCodyadToken bound token _ = nothing
 
@@ -7897,15 +7850,15 @@ execCodyadTokens bound (token ∷ tokens) stack
 ... | just nextStack = execCodyadTokens bound tokens nextStack
 
 codyadShiftLeft-forth-sound :
-  (bound : Nat) (exponent : BinaryExponent) (residual : List Nat) →
-  binaryExponentFits bound exponent ≡ true →
-  binaryExponentFits bound (shiftCodyadExponentLeft exponent) ≡ true →
+  (bound : Nat) (exponent : Int) (residual : List Nat) →
+  codyadicExponentFits bound exponent ≡ true →
+  codyadicExponentFits bound (shiftCodyadicExponentLeft exponent) ≡ true →
   execCodyadTokens bound (codyadShiftLeftToken ∷ [])
-    (binaryExponentStack exponent ++ᴳ residual) ≡
-  just (binaryExponentStack (shiftCodyadExponentLeft exponent) ++ᴳ residual)
+    (codyadicExponentStack exponent ++ᴳ residual) ≡
+  just (codyadicExponentStack (shiftCodyadicExponentLeft exponent) ++ᴳ residual)
 codyadShiftLeft-forth-sound bound exponent residual inputFits outputFits
-  with binaryExponentFits bound exponent in inputResult
-     | binaryExponentFits bound (shiftCodyadExponentLeft exponent) in outputResult
+  with codyadicExponentFits bound exponent in inputResult
+     | codyadicExponentFits bound (shiftCodyadicExponentLeft exponent) in outputResult
 ... | true | true = refl
 ... | false | _ =
   ⊥-elim (natBoundFalseNotTrue (trans (sym inputResult) inputFits))
@@ -7913,15 +7866,15 @@ codyadShiftLeft-forth-sound bound exponent residual inputFits outputFits
   ⊥-elim (natBoundFalseNotTrue (trans (sym outputResult) outputFits))
 
 codyadShiftRight-forth-sound :
-  (bound : Nat) (exponent : BinaryExponent) (residual : List Nat) →
-  binaryExponentFits bound exponent ≡ true →
-  binaryExponentFits bound (shiftCodyadExponentRight exponent) ≡ true →
+  (bound : Nat) (exponent : Int) (residual : List Nat) →
+  codyadicExponentFits bound exponent ≡ true →
+  codyadicExponentFits bound (shiftCodyadicExponentRight exponent) ≡ true →
   execCodyadTokens bound (codyadShiftRightToken ∷ [])
-    (binaryExponentStack exponent ++ᴳ residual) ≡
-  just (binaryExponentStack (shiftCodyadExponentRight exponent) ++ᴳ residual)
+    (codyadicExponentStack exponent ++ᴳ residual) ≡
+  just (codyadicExponentStack (shiftCodyadicExponentRight exponent) ++ᴳ residual)
 codyadShiftRight-forth-sound bound exponent residual inputFits outputFits
-  with binaryExponentFits bound exponent in inputResult
-     | binaryExponentFits bound (shiftCodyadExponentRight exponent) in outputResult
+  with codyadicExponentFits bound exponent in inputResult
+     | codyadicExponentFits bound (shiftCodyadicExponentRight exponent) in outputResult
 ... | true | true = refl
 ... | false | _ =
   ⊥-elim (natBoundFalseNotTrue (trans (sym inputResult) inputFits))
