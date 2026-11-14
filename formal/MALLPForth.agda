@@ -4,6 +4,7 @@
 --guardedness
 --lossy-unification
 --no-eta-equality
+--prop
 --with-K
 --cubical=no-glue
 --erased-quotients
