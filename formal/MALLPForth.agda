@@ -8050,6 +8050,44 @@ module CanonicalFoundationsExtraction (Atom : Nat → Set) where
         Optimization.finiteDynamicProgrammingAgreesWithSBR optimization
     }
 
+  -- Uniform bounded extraction for the full PEA family interface, not
+  -- merely the analytic submodel.  Every finite stage is evaluated by the
+  -- same PEA-selected register program.  A hit carries a feasibility proof
+  -- and a canonical finite MALLP literal program.
+  extractPEACandidateAtStage :
+    (family : ParametricallyEnumerable) (parameter stage : Nat) →
+    Maybe
+      (Σ Nat
+        (λ candidate →
+          Predicate family parameter candidate × CanonicalMALLPProgram candidate))
+  extractPEACandidateAtStage family parameter stage
+    with universalEval
+      (parametricCode parametricEA family parameter) stage in evaluation
+  ... | nothing = nothing
+  ... | just candidate =
+    just
+      ( candidate
+      , pair
+          (parametricCode-sound
+            parametricEA family parameter stage candidate evaluation)
+          (canonicalMALLPProgram candidate)
+      )
+
+  -- A finite fuel bound gives a structurally terminating search.  The
+  -- search reports a miss when the witness has not appeared yet; it never
+  -- turns nontermination or non-inhabitation into a fabricated result.
+  searchPEACandidateWithin :
+    (fuel : Nat) (family : ParametricallyEnumerable) (parameter : Nat) →
+    Maybe
+      (Σ Nat
+        (λ candidate →
+          Predicate family parameter candidate × CanonicalMALLPProgram candidate))
+  searchPEACandidateWithin zero family parameter = nothing
+  searchPEACandidateWithin (suc fuel) family parameter
+    with searchPEACandidateWithin fuel family parameter
+  ... | just found = just found
+  ... | nothing = extractPEACandidateAtStage family parameter fuel
+
   extractAnalyticCandidateAtStage :
     (family : AnalyticEnumerableFamily) (parameter stage : Nat) →
     Maybe
