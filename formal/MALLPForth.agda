@@ -7289,6 +7289,26 @@ open StrictUnitCompiler public
 -- resource: every operation consumes one token and returns exactly one.
 -- ----------------------------------------------------------------------
 
+-- A Codyad is represented linearly by its signed exponent and its productive
+-- coinductive mantissa stream. The atom interpretation is shared by the
+-- primitive protocol signatures and the relational denotation below.
+CodyadMALLPAtom : Nat → Set
+CodyadMALLPAtom zero = Int
+CodyadMALLPAtom (suc zero) = CodyadicDigitStream
+CodyadMALLPAtom (suc (suc index)) = ⊤
+
+module CodyadMALLPInterpretation =
+  MALLPRelationalDenotation CodyadMALLPAtom
+
+codyadExponentFormula : PolType posPolarity
+codyadExponentFormula = atom⁺ zero
+
+codyadMantissaFormula : PolType posPolarity
+codyadMantissaFormula = atom⁺ (suc zero)
+
+codyadFormula : PolType posPolarity
+codyadFormula = codyadExponentFormula ⊗⁺ codyadMantissaFormula
+
 module StrictStatefulProtocol where
 
   strictForceObservation :
@@ -7393,6 +7413,19 @@ module StrictStatefulProtocol where
       MALLPProtocolTheory
         (dualPos listNatFormula ∷ dualPos natFormula ∷ [])
         (just natFormula)
+
+    -- Exponent shifts are genuine primitive protocols, not identity proofs.
+    -- Their source and machine interpretations are certified separately by
+    -- the exponent equations and bounded Gforth transition theorems below.
+    primitive-codyad-shift-left :
+      MALLPProtocolTheory
+        (dualPos codyadFormula ∷ [])
+        (just codyadFormula)
+
+    primitive-codyad-shift-right :
+      MALLPProtocolTheory
+        (dualPos codyadFormula ∷ [])
+        (just codyadFormula)
 
   -- --------------------------------------------------------------------
   -- A total PureLang thunk fragment with explicit call-by-need update.
@@ -7961,23 +7994,6 @@ codyadMalformedExponent-rejected :
     (zero ∷ suc zero ∷ []) ≡ nothing
 codyadMalformedExponent-rejected bound = refl
 
-CodyadMALLPAtom : Nat → Set
-CodyadMALLPAtom zero = Int
-CodyadMALLPAtom (suc zero) = CodyadicDigitStream
-CodyadMALLPAtom (suc (suc index)) = ⊤
-
-module CodyadMALLPInterpretation =
-  MALLPRelationalDenotation CodyadMALLPAtom
-
-codyadExponentFormula : PolType posPolarity
-codyadExponentFormula = atom⁺ zero
-
-codyadMantissaFormula : PolType posPolarity
-codyadMantissaFormula = atom⁺ (suc zero)
-
-codyadFormula : PolType posPolarity
-codyadFormula = codyadExponentFormula ⊗⁺ codyadMantissaFormula
-
 codyadMALLPValue : Codyadic → Int × CodyadicDigitStream
 codyadMALLPValue (codyadic exponent mantissa) = pair exponent mantissa
 
@@ -7995,11 +8011,11 @@ codyadMALLP-linear-use value = refl
 -- source/machine exponent and mantissa preservation equations above.
 codyadShiftLeftMALLP :
   MALLPProtocolTheory (dualPos codyadFormula ∷ []) (just codyadFormula)
-codyadShiftLeftMALLP = protocol-logical mallp-ax
+codyadShiftLeftMALLP = primitive-codyad-shift-left
 
 codyadShiftRightMALLP :
   MALLPProtocolTheory (dualPos codyadFormula ∷ []) (just codyadFormula)
-codyadShiftRightMALLP = protocol-logical mallp-ax
+codyadShiftRightMALLP = primitive-codyad-shift-right
 
 
 -- ----------------------------------------------------------------------
