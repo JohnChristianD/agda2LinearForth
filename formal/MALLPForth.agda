@@ -64,7 +64,7 @@ postulate
   G : (Set → Set) → Set → Set → Set
   rewF : (A : Set) → F A A ≡ S
   rewG : (A : Set → Set) (X Y : Set) → G A X Y ≡ F (A X) (A Y)
-{-# REWRITE rewF rewG #-
+{-# REWRITE rewF rewG #-}
 
 
 variable A B : Set
