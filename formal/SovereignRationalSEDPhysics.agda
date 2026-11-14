@@ -10,7 +10,7 @@ open import Agda.Builtin.List using (List; []; _∷_)
 open import Agda.Builtin.Maybe using (Maybe; just; nothing)
 open import Agda.Builtin.Sigma using (Σ; _,_)
 open import Agda.Builtin.Equality using (_≡_; refl)
--- Agda 2.8 has no Agda.Builtin.Empty module; define the empty type locally.
+-- No standard library dependency: define the empty type locally.
 data ⊥ : Set where
 
 ------------------------------------------------------------------------
@@ -387,10 +387,6 @@ data _⊎ᶜ_ (A B : Set) : Set where
   codyadicLeft : A → A ⊎ᶜ B
   codyadicRight : B → A ⊎ᶜ B
 
-infix 4 _≈ᶜ_ _#ᶜ_
-infixl 6 _+ᶜ_
-infixl 7 _*ᶜ_
-
 -- Signed-digit expansions are redundant, so structural stream equality
 -- is not the real equality.  A concrete implementation supplies semantic
 -- setoid equality, productive operations, and all ring/field laws.
@@ -402,9 +398,14 @@ record CodyadicFieldInterface : Set₁ where
   field
     _≈ᶜ_ : Codyadic → Codyadic → Set
     _#ᶜ_ : Codyadic → Codyadic → Set
-
-    zeroᶜ oneᶜ : Codyadic
     _+ᶜ_ _*ᶜ_ : Codyadic → Codyadic → Codyadic
+
+  infix 4 _≈ᶜ_ _#ᶜ_
+  infixl 6 _+ᶜ_
+  infixl 7 _*ᶜ_
+
+  field
+    zeroᶜ oneᶜ : Codyadic
     negateᶜ : Codyadic → Codyadic
     reciprocalᶜ : (value : Codyadic) → value #ᶜ zeroᶜ → Codyadic
 
@@ -461,29 +462,6 @@ record CodyadicFieldInterface : Set₁ where
       (x : Codyadic) (apartFromZero : x #ᶜ zeroᶜ) →
       (x *ᶜ reciprocalᶜ x apartFromZero) ≈ᶜ oneᶜ
 open CodyadicFieldInterface public
-
--- Continuation/negative view of one observation.  This is a polarized
--- consumer interface, not a claim that the entire Conat type is a Laurent
--- MALLP formula.  Encoding and decoding the observation are definitionally
--- adequate and require no extensionality axiom.
-ConatObservationNegative : Set₁
-ConatObservationNegative = {R : Set} → (Maybe Conat → R) → R
-
-encodeConatObservationNegative : Conat → ConatObservationNegative
-encodeConatObservationNegative n consume = consume (observeConat n)
-
-decodeConatObservationNegative : ConatObservationNegative → Maybe Conat
-decodeConatObservationNegative observation = observation (λ value → value)
-
-negativeObservation-decode-encode : (n : Conat) →
-  decodeConatObservationNegative (encodeConatObservationNegative n) ≡
-  observeConat n
-negativeObservation-decode-encode n = refl
-
-negativeObservation-run-adequate : (n : Conat) {R : Set} →
-  (consume : Maybe Conat → R) →
-  encodeConatObservationNegative n consume ≡ consume (observeConat n)
-negativeObservation-run-adequate n consume = refl
 
 ------------------------------------------------------------------------
 -- MODULE 1: SIX FOUNDATIONAL PACKAGES AND LAURENT MALLP

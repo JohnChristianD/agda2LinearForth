@@ -105,5 +105,72 @@ s" MALLP: token failure" exception constant MALLP-ERR
 : MALLP-ELSE POSTPONE ELSE ; IMMEDIATE
 : MALLP-THEN POSTPONE THEN ; IMMEDIATE
 
+\ Canonical Codyad exponent ABI:
+\   sign = 0, magnitude = 0  : zero
+\   sign = 1, magnitude > 0  : positive
+\   sign = 2, magnitude > 0  : negative
+\ The source mantissa producer is an opaque execution-token cell below the
+\ exponent. These words touch only top two cells:
+\ ( ... mantissa-xt sign magnitude -- ... mantissa-xt sign' magnitude' )
+
+: MALLP-CODYAD-CHECK-EXPONENT ( sign magnitude -- sign magnitude )
+    2 MALLP-REQUIRE-STACK
+    { sign magnitude -- }
+    sign MALLP-CHECK-NAT
+    magnitude MALLP-CHECK-NAT
+    sign 0= IF
+        magnitude 0<> IF MALLP-ERR THROW THEN
+    ELSE
+        sign 1 = IF
+            magnitude 0= IF MALLP-ERR THROW THEN
+        ELSE
+            sign 2 = IF
+                magnitude 0= IF MALLP-ERR THROW THEN
+            ELSE
+                MALLP-ERR THROW
+            THEN
+        THEN
+    THEN
+    sign magnitude
+;
+
+: MALLP-CODYAD-SHIFT-LEFT ( sign magnitude -- sign' magnitude' )
+    MALLP-CODYAD-CHECK-EXPONENT
+    { sign magnitude -- }
+    sign 0= IF
+        1 1
+    ELSE
+        sign 1 = IF
+            magnitude MALLP-MAX-NAT = IF MALLP-ERR THROW THEN
+            1 magnitude 1+
+        ELSE
+            magnitude 1 = IF
+                0 0
+            ELSE
+                2 magnitude 1-
+            THEN
+        THEN
+    THEN
+;
+
+: MALLP-CODYAD-SHIFT-RIGHT ( sign magnitude -- sign' magnitude' )
+    MALLP-CODYAD-CHECK-EXPONENT
+    { sign magnitude -- }
+    sign 0= IF
+        2 1
+    ELSE
+        sign 1 = IF
+            magnitude 1 = IF
+                0 0
+            ELSE
+                1 magnitude 1-
+            THEN
+        ELSE
+            magnitude MALLP-MAX-NAT = IF MALLP-ERR THROW THEN
+            2 magnitude 1+
+        THEN
+    THEN
+;
+
 [then]
 \ MALLP-STRICT-END

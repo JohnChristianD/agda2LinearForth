@@ -46,6 +46,8 @@ data FormalToken
   | FormalRollWord Natural
   | FormalTrueWord
   | FormalFalseWord
+  | FormalCodyadShiftLeft
+  | FormalCodyadShiftRight
   | FormalIf [FormalToken] [FormalToken]
   deriving (Eq, Show)
 
@@ -55,6 +57,7 @@ data OtherWitness
   | BoolPairFunctionWitness QName QName BoolPairExpr
   | UnitWitness
   | Word64IdentityWitness
+  | CodyadExponentShiftWitness Bool
   deriving (Eq, Show)
 
 data CompiledDefinition = CompiledDefinition
@@ -567,6 +570,7 @@ validateForthNames definitions =
         , "MALLP-PARSE-NAT", "MALLP-NAT-LITERAL", "MALLP-NAT-ADD", "MALLP-NAT-MONUS"
         , "MALLP-NAT-MUL", "MALLP-SWAP", "MALLP-NAT-ROLL"
         , "MALLP-CHECK-BOOL", "MALLP-TRUE", "MALLP-FALSE", "MALLP-IF", "MALLP-ELSE", "MALLP-THEN", "TRUE", "FALSE"
+        , "MALLP-CODYAD-CHECK-EXPONENT", "MALLP-CODYAD-SHIFT-LEFT", "MALLP-CODYAD-SHIFT-RIGHT"
         , "SWAP", "ROLL", "DEPTH", "THROW", "CATCH", "BYE"
         , "IF", "ELSE", "THEN", "BEGIN", "WHILE", "REPEAT"
         , "POSTPONE", "IMMEDIATE", "CONSTANT", "EXCEPTION", "PARSE-NAME", "LITERAL"
@@ -695,6 +699,8 @@ formalTokenForm (FormalRollWord depth) =
   RSList [renderNatExpr (NatLiteral depth), RSAtom "MALLP-NAT-ROLL"]
 formalTokenForm FormalTrueWord = RSAtom "MALLP-TRUE"
 formalTokenForm FormalFalseWord = RSAtom "MALLP-FALSE"
+formalTokenForm FormalCodyadShiftLeft = RSAtom "MALLP-CODYAD-SHIFT-LEFT"
+formalTokenForm FormalCodyadShiftRight = RSAtom "MALLP-CODYAD-SHIFT-RIGHT"
 formalTokenForm (FormalIf whenTrue whenFalse) =
   RSList
     [ RSAtom "MALLP-IF"
@@ -975,6 +981,49 @@ hasNatResult definition = do
     Nothing -> pure False
     Just name -> isBuiltinType name resultType
 
+isCodyadicExponentType :: I.Type -> TCM Bool
+isCodyadicExponentType ty = do
+  reduced <- reduce ty
+  pure $ case I.unEl reduced of
+    I.Def actual [] -> prettyShow actual == "Agda.Builtin.Int.Int"
+    _ -> False
+
+codyadicExponentFunctionArity :: Definition -> TCM (Maybe Int)
+codyadicExponentFunctionArity definition = do
+  TelV telescope resultType <- telView (defType definition)
+  resultIsExponent <- isCodyadicExponentType resultType
+  argumentIsExponent <- traverse
+    (isCodyadicExponentType . snd . I.unDom)
+    (I.telToList telescope)
+  pure $
+    if resultIsExponent
+        && length argumentIsExponent == 1
+        && and argumentIsExponent
+      then Just 1
+      else Nothing
+
+compileCodyadExponentShiftFunction
+  :: QName
+  -> TTerm
+  -> TCM (Bool, FormalToken)
+compileCodyadExponentShiftFunction owner term = do
+  let (actualArity, body) = tLamView term
+  if actualArity /= 1
+    then unsupported
+      ("Codyad shift must own exactly one Int: " ++ prettyShow owner)
+    else decode body
+  where
+    decode expression = case tAppView expression of
+      (TDef actual, [TVar 0])
+        | prettyShow actual == "MALLPForth.shiftCodyadicExponentLeft" ->
+            pure (True, FormalCodyadShiftLeft)
+        | prettyShow actual == "MALLPForth.shiftCodyadicExponentRight" ->
+            pure (False, FormalCodyadShiftRight)
+      (TCoerce inner, []) -> decode inner
+      _ -> unsupported
+        ("Codyad compiler accepts only direct left/right exponent shifts: "
+          ++ prettyShow owner)
+
 hasFloatInSignature :: Definition -> TCM Bool
 hasFloatInSignature definition = do
   floatName <- getBuiltinName builtinFloat
@@ -1142,9 +1191,22 @@ compileDefinition definition
         boolPairConstructor <- boolPairFunctionConstructor definition
         word64Arity <- word64FunctionArity definition
         unitArity <- unitFunctionArity definition
+        exponentArity <- codyadicExponentFunctionArity definition
         hasFloat <- hasFloatInSignature definition
         if hasFloat
           then unsupported "Agda builtin Float is explicitly outside the MALLP compiler contract"
+        else if exponentArity == Just 1 then do
+          body <- toTreeless EagerEvaluation (defName definition)
+          case body of
+            Nothing -> pure Nothing
+            Just term -> do
+              (isLeft, token) <-
+                compileCodyadExponentShiftFunction (defName definition) term
+              pure (Just (CompiledDefinition
+                (defName definition)
+                [token]
+                Nothing Nothing Nothing
+                (Just (CodyadExponentShiftWitness isLeft))))
         else if isNat then do
           body <- toTreeless EagerEvaluation (defName definition)
           case (natArity, body) of
@@ -1257,6 +1319,8 @@ formalTokenTerm (FormalRollWord depth) =
   "textRollWord " <> T.pack (show depth)
 formalTokenTerm FormalTrueWord = "textTrueWord"
 formalTokenTerm FormalFalseWord = "textFalseWord"
+formalTokenTerm FormalCodyadShiftLeft = "textCodyadShiftLeft"
+formalTokenTerm FormalCodyadShiftRight = "textCodyadShiftRight"
 formalTokenTerm (FormalIf whenTrue whenFalse) =
   "textIf (" <> formalTokenList whenTrue <> ") (" <>
     formalTokenList whenFalse <> ")"
@@ -1404,6 +1468,7 @@ compiledDefinitionHasCertificate definition =
       expression == BoolPairFields 0 1
     (Nothing, Just UnitWitness) -> True
     (Nothing, Just Word64IdentityWitness) -> True
+    (Nothing, Just (CodyadExponentShiftWitness _)) -> True
     _ -> False
 
 rendererCertificate :: TopLevelModuleName -> [CompiledDefinition] -> Text
@@ -1411,7 +1476,7 @@ rendererCertificate sourceModule definitions
   | any (not . compiledDefinitionHasCertificate) definitions =
       error "compiler emitted a definition without a matching Agda semantic certificate"
   | otherwise = T.unlines $
-  [ "{-# OPTIONS --rewriting --confluence-check --lossy-unification --guardedness #-}"
+  [ "{-# OPTIONS --rewriting --confluence-check --guardedness --lossy-unification --no-eta-equality --prop --with-K --cubical=no-glue --erased-quotients --erased-funext --erased-propext --auto-inline --exact-split #-}"
   , "module MALLPEmittedRenderer where"
   , ""
   , "import " <> T.pack (prettyShow sourceModule)
@@ -1423,7 +1488,7 @@ rendererCertificate sourceModule definitions
   , "open import Agda.Builtin.Word using (Word64)"
   , "open import MALLPForth using"
   , "  (ForthTextToken; textPushLiteral; textAddWord; textMonusWord; textMultiplyWord;"
-  , "   textSwapWord; textRollWord; textTrueWord; textFalseWord; textIf; renderForthWordText;"
+  , "   textSwapWord; textRollWord; textTrueWord; textFalseWord; textCodyadShiftLeft; textCodyadShiftRight; textIf; renderForthWordText;"
   , "   mapBoolForthTokensAsText; renderBoolCode; compileBoolCaseWithResidual; compileBoolProof;"
   , "   BoolProof; boolTrueProof; boolFalseProof; boolProofDerivation; interpretBoolProof; boolProof-forth-sound-residual;"
   , "   MALLP; dualPos; boolFormula; boolPairFormula; boolPairAssumption; one⁺;"
@@ -1443,7 +1508,11 @@ rendererCertificate sourceModule definitions
   , "   NatResourceExpr; resourceLiteral; resourceArgument; resourceBinary; natResourceProof; natResource-proof-derivation; natResourceProof-adequate; CutClass; classifyNatTheory; natTheoryCutCount; natResourceExprCutCount; natResourceClass; natResource-derivation-cut-count; natResource-derivation-class;"
   , "   NatStackBounded; natCell; execTokens; execBoundedTokens; execBoundedTokens-preserves;"
   , "   BoundedExecutionTrace; execBoundedTokens-complete; execBoundedTokens-complete-unbounded; cong; cong₂; trans; sym;"
-  , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm; _++ᴳ_)"
+  , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm; _++ᴳ_;"
+  , "   Int; shiftCodyadicExponentLeft; shiftCodyadicExponentRight;"
+  , "   CodyadForthToken; codyadShiftLeftToken; codyadShiftRightToken; execCodyadTokens; codyadicExponentStack; codyadicExponentFits;"
+  , "   codyadShiftLeft-forth-sound; codyadShiftRight-forth-sound; natBoundFalseNotTrue;"
+  , "   MALLPProtocolTheory; codyadFormula; codyadShiftLeftMALLP; codyadShiftRightMALLP)"
   , ""
   ] ++ concat
     [ let index = T.pack (show position)
@@ -2060,6 +2129,64 @@ rendererCertificate sourceModule definitions
           [ (T.pack (show position), definition)
           | (position, definition) <- zip [0 :: Int ..] definitions
           , Just Word64IdentityWitness <- [compiledOtherWitness definition]
+          ]
+    ] ++ concat
+    [ let
+        { suffix = index
+        ; compilerTokensName = "codyadCompilerTokens" <> suffix
+        ; textTokensName = "codyadTextTokens" <> suffix
+        ; tokenProofName = "codyadTokenCorrespondence" <> suffix
+        ; machineTokensName = "codyadMachineTokens" <> suffix
+        ; derivationName = "codyadMALLPDerivation" <> suffix
+        ; sourceProofName = "codyadSourceSemantics" <> suffix
+        ; machineProofName = "codyadMachineSound" <> suffix
+        ; sourceName =
+            T.pack (prettyShow sourceModule) <> "." <>
+              T.pack (prettyShow (qnameName (compiledName definition)))
+        ; isLeft = direction
+        ; textToken = if isLeft then "textCodyadShiftLeft" else "textCodyadShiftRight"
+        ; machineToken = if isLeft then "codyadShiftLeftToken" else "codyadShiftRightToken"
+        ; shiftName = if isLeft then "shiftCodyadicExponentLeft" else "shiftCodyadicExponentRight"
+        ; soundName = if isLeft then "codyadShiftLeft-forth-sound" else "codyadShiftRight-forth-sound"
+        ; mallpName = if isLeft then "codyadShiftLeftMALLP" else "codyadShiftRightMALLP"
+        }
+      in
+        [ compilerTokensName <> " : List ForthTextToken"
+        , compilerTokensName <> " = " <> formalTokenList (compiledTokens definition)
+        , ""
+        , textTokensName <> " : List ForthTextToken"
+        , textTokensName <> " = " <> textToken <> " ∷ []"
+        , ""
+        , tokenProofName <> " : " <> compilerTokensName <> " ≡ " <> textTokensName
+        , tokenProofName <> " = refl"
+        , ""
+        , machineTokensName <> " : List CodyadForthToken"
+        , machineTokensName <> " = " <> machineToken <> " ∷ []"
+        , ""
+        , derivationName <> " : MALLPProtocolTheory (dualPos codyadFormula ∷ []) (just codyadFormula)"
+        , derivationName <> " = " <> mallpName
+        , ""
+        , sourceProofName <> " : (exponent : Int) → "
+            <> sourceName <> " exponent ≡ " <> shiftName <> " exponent"
+        , sourceProofName <> " exponent = refl"
+        , ""
+        , machineProofName <> " :"
+        , "  (bound : Nat) (exponent : Int) →"
+        , "  codyadicExponentFits bound exponent ≡ true →"
+        , "  codyadicExponentFits bound (" <> shiftName <> " exponent) ≡ true →"
+        , "  (residual : List Nat) →"
+        , "  execCodyadTokens bound " <> machineTokensName
+        , "    (codyadicExponentStack exponent ++ᴳ residual) ≡"
+        , "  just (codyadicExponentStack (" <> shiftName <> " exponent) ++ᴳ residual)"
+        , machineProofName <> " bound exponent inputFits outputFits residual ="
+        , "  " <> soundName <> " bound exponent residual inputFits outputFits"
+        , ""
+        ]
+      | (index, definition, direction) <-
+          [ (T.pack (show position), definition, direction)
+          | (position, definition) <- zip [0 :: Int ..] definitions
+          , Just (CodyadExponentShiftWitness direction) <-
+              [compiledOtherWitness definition]
           ]
     ]
 emitForthModule :: () -> () -> IsMain -> TopLevelModuleName -> [Maybe CompiledDefinition] -> TCM ()
