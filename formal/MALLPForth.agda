@@ -7847,55 +7847,92 @@ decodeBinaryExponent (suc (suc zero)) (suc n) = just (exponentNegative n)
 decodeBinaryExponent _ _ = nothing
 
 -- Top-first stack layout: magnitude :: sign :: residual.
+binaryExponentSign : BinaryExponent → Nat
+binaryExponentSign exponentZero = zero
+binaryExponentSign (exponentPositive n) = suc zero
+binaryExponentSign (exponentNegative n) = suc (suc zero)
+
+binaryExponentMagnitude : BinaryExponent → Nat
+binaryExponentMagnitude exponentZero = zero
+binaryExponentMagnitude (exponentPositive n) = suc n
+binaryExponentMagnitude (exponentNegative n) = suc n
+
 binaryExponentStack : BinaryExponent → List Nat
-binaryExponentStack exponentZero = zero ∷ zero ∷ []
-binaryExponentStack (exponentPositive n) = suc n ∷ suc zero ∷ []
-binaryExponentStack (exponentNegative n) =
-  suc n ∷ suc (suc zero) ∷ []
+binaryExponentStack exponent =
+  binaryExponentMagnitude exponent ∷ binaryExponentSign exponent ∷ []
+
+-- A GForth cell is a positive signed Nat, so both input and result must fit
+-- the target's platform-dependent maximum. The bound is explicit in the
+-- machine semantics, avoiding a false unbounded-Nat / bounded-cell equality.
+binaryExponentFits : Nat → BinaryExponent → Bool
+binaryExponentFits bound exponent
+  with natWithinBound (binaryExponentSign exponent) bound
+... | false = false
+... | true = natWithinBound (binaryExponentMagnitude exponent) bound
 
 applyCodyadShift : CodyadForthToken → BinaryExponent → BinaryExponent
 applyCodyadShift codyadShiftLeftToken = shiftCodyadExponentLeft
 applyCodyadShift codyadShiftRightToken = shiftCodyadExponentRight
 
-execCodyadToken : CodyadForthToken → List Nat → Maybe (List Nat)
-execCodyadToken token (magnitude ∷ sign ∷ residual)
+execCodyadToken :
+  Nat → CodyadForthToken → List Nat → Maybe (List Nat)
+execCodyadToken bound token (magnitude ∷ sign ∷ residual)
   with decodeBinaryExponent sign magnitude
 ... | nothing = nothing
-... | just exponent =
-  just (binaryExponentStack (applyCodyadShift token exponent) ++ᴳ residual)
-execCodyadToken token _ = nothing
+... | just exponent
+  with binaryExponentFits bound exponent
+     | binaryExponentFits bound (applyCodyadShift token exponent)
+...   | true | true =
+        just
+          (binaryExponentStack (applyCodyadShift token exponent) ++ᴳ residual)
+...   | _ | _ = nothing
+execCodyadToken bound token _ = nothing
 
-execCodyadTokens : List CodyadForthToken → List Nat → Maybe (List Nat)
-execCodyadTokens [] stack = just stack
-execCodyadTokens (token ∷ tokens) stack
-  with execCodyadToken token stack
+execCodyadTokens :
+  Nat → List CodyadForthToken → List Nat → Maybe (List Nat)
+execCodyadTokens bound [] stack = just stack
+execCodyadTokens bound (token ∷ tokens) stack
+  with execCodyadToken bound token stack
 ... | nothing = nothing
-... | just nextStack = execCodyadTokens tokens nextStack
+... | just nextStack = execCodyadTokens bound tokens nextStack
 
 codyadShiftLeft-forth-sound :
-  (exponent : BinaryExponent) (residual : List Nat) →
-  execCodyadTokens (codyadShiftLeftToken ∷ [])
+  (bound : Nat) (exponent : BinaryExponent) (residual : List Nat) →
+  binaryExponentFits bound exponent ≡ true →
+  binaryExponentFits bound (shiftCodyadExponentLeft exponent) ≡ true →
+  execCodyadTokens bound (codyadShiftLeftToken ∷ [])
     (binaryExponentStack exponent ++ᴳ residual) ≡
   just (binaryExponentStack (shiftCodyadExponentLeft exponent) ++ᴳ residual)
-codyadShiftLeft-forth-sound exponentZero residual = refl
-codyadShiftLeft-forth-sound (exponentPositive n) residual = refl
-codyadShiftLeft-forth-sound (exponentNegative zero) residual = refl
-codyadShiftLeft-forth-sound (exponentNegative (suc n)) residual = refl
+codyadShiftLeft-forth-sound bound exponent residual inputFits outputFits
+  with binaryExponentFits bound exponent in inputResult
+     | binaryExponentFits bound (shiftCodyadExponentLeft exponent) in outputResult
+... | true | true = refl
+... | false | _ =
+  ⊥-elim (natBoundFalseNotTrue (trans (sym inputResult) inputFits))
+... | true | false =
+  ⊥-elim (natBoundFalseNotTrue (trans (sym outputResult) outputFits))
 
 codyadShiftRight-forth-sound :
-  (exponent : BinaryExponent) (residual : List Nat) →
-  execCodyadTokens (codyadShiftRightToken ∷ [])
+  (bound : Nat) (exponent : BinaryExponent) (residual : List Nat) →
+  binaryExponentFits bound exponent ≡ true →
+  binaryExponentFits bound (shiftCodyadExponentRight exponent) ≡ true →
+  execCodyadTokens bound (codyadShiftRightToken ∷ [])
     (binaryExponentStack exponent ++ᴳ residual) ≡
   just (binaryExponentStack (shiftCodyadExponentRight exponent) ++ᴳ residual)
-codyadShiftRight-forth-sound exponentZero residual = refl
-codyadShiftRight-forth-sound (exponentPositive zero) residual = refl
-codyadShiftRight-forth-sound (exponentPositive (suc n)) residual = refl
-codyadShiftRight-forth-sound (exponentNegative n) residual = refl
+codyadShiftRight-forth-sound bound exponent residual inputFits outputFits
+  with binaryExponentFits bound exponent in inputResult
+     | binaryExponentFits bound (shiftCodyadExponentRight exponent) in outputResult
+... | true | true = refl
+... | false | _ =
+  ⊥-elim (natBoundFalseNotTrue (trans (sym inputResult) inputFits))
+... | true | false =
+  ⊥-elim (natBoundFalseNotTrue (trans (sym outputResult) outputFits))
 
 codyadMalformedExponent-rejected :
-  execCodyadTokens (codyadShiftLeftToken ∷ [])
+  (bound : Nat) →
+  execCodyadTokens bound (codyadShiftLeftToken ∷ [])
     (zero ∷ suc zero ∷ []) ≡ nothing
-codyadMalformedExponent-rejected = refl
+codyadMalformedExponent-rejected bound = refl
 
 codyadFormula : PolType posPolarity
 codyadFormula = atom⁺ 21
