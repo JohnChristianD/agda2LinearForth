@@ -1,8 +1,8 @@
 {-# OPTIONS
---rewriting
---confluence-check
---guardedness
+--safe
+--sized-types
 --lossy-unification
+--syntactic-equality=1
 --no-eta-equality
 --prop
 --with-K
@@ -54,19 +54,12 @@ open import Agda.Builtin.Word.Properties using (primWord64ToNatInjective) public
 -- is the explicit project-owned pair, while Sigma supplies dependent pairs.
 open import Agda.Builtin.Unit public
 open import Agda.Builtin.Strict public
+open import Agda.Builtin.Size public
 import Agda.Builtin.Reflection as Reflection
 open import Agda.Builtin.Reflection.Properties
   using (primMetaToNatInjective; primQNameToWord64sInjective) public
 -- Agda has no Agda.Builtin.Empty module; define the empty type locally.
 data ⊥ : Set where
-
-postulate
-  S : Set
-  F : Set → Set → Set
-  G : (Set → Set) → Set → Set → Set
-  rewF : (A : Set) → F A A ≡ S
-  rewG : (A : Set → Set) (X Y : Set) → G A X Y ≡ F (A X) (A Y)
-{-# REWRITE rewF rewG #-}
 
 
 variable A B : Set
