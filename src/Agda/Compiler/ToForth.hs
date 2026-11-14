@@ -1510,8 +1510,8 @@ rendererCertificate sourceModule definitions
   , "   BoundedExecutionTrace; execBoundedTokens-complete; execBoundedTokens-complete-unbounded; cong; cong₂; trans; sym;"
   , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm; _++ᴳ_;"
   , "   BinaryExponent; shiftCodyadExponentLeft; shiftCodyadExponentRight;"
-  , "   CodyadForthToken; codyadShiftLeftToken; codyadShiftRightToken; execCodyadTokens; binaryExponentStack;"
-  , "   codyadShiftLeft-forth-sound; codyadShiftRight-forth-sound;"
+  , "   CodyadForthToken; codyadShiftLeftToken; codyadShiftRightToken; execCodyadTokens; binaryExponentStack; binaryExponentFits;"
+  , "   codyadShiftLeft-forth-sound; codyadShiftRight-forth-sound; natBoundFalseNotTrue;"
   , "   MALLPProtocolTheory; codyadFormula; codyadShiftLeftMALLP; codyadShiftRightMALLP)"
   , ""
   ] ++ concat
@@ -2171,11 +2171,15 @@ rendererCertificate sourceModule definitions
         , sourceProofName <> " exponent = refl"
         , ""
         , machineProofName <> " :"
-        , "  (exponent : BinaryExponent) (residual : List Nat) →"
-        , "  execCodyadTokens " <> machineTokensName
+        , "  (bound exponent : Nat) →"
+        , "  binaryExponentFits bound exponent ≡ true →"
+        , "  binaryExponentFits bound (" <> shiftName <> " exponent) ≡ true →"
+        , "  (residual : List Nat) →"
+        , "  execCodyadTokens bound " <> machineTokensName
         , "    (binaryExponentStack exponent ++ᴳ residual) ≡"
         , "  just (binaryExponentStack (" <> shiftName <> " exponent) ++ᴳ residual)"
-        , machineProofName <> " exponent residual = " <> soundName <> " exponent residual"
+        , machineProofName <> " bound exponent inputFits outputFits residual ="
+        , "  " <> soundName <> " bound exponent residual inputFits outputFits"
         , ""
         ]
       | (index, definition, direction) <-
