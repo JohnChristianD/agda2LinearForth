@@ -7830,7 +7830,7 @@ applyCodyadShift codyadShiftRightToken = shiftCodyadicExponentRight
 execCodyadToken :
   Nat → CodyadForthToken → List Nat → Maybe (List Nat)
 execCodyadToken bound token (magnitude ∷ sign ∷ residual)
-  with decodeInt sign magnitude
+  with decodeCodyadicExponent sign magnitude
 ... | nothing = nothing
 ... | just exponent
   with codyadicExponentFits bound exponent
