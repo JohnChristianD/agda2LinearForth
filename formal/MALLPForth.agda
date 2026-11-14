@@ -9,7 +9,10 @@
 --erased-quotients
 --erased-funext
 --erased-propext
+--auto-inline
 --exact-split
+--no-fast-reduce
+--no-projection-like
 #-}
 -- ```Agda
 -- ----------------------------------------------------------------------
