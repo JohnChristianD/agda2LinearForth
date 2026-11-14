@@ -6,22 +6,22 @@
 
 ## Toolchain and compatibility
 
-CI installs the latest stable Agda package from Hackage. The latest observed run resolved Agda 2.8.0.2. `cabal.project` contains `packages: .`; the Cabal file leaves Agda version selection open. This is a moving toolchain selection rather than a fixed compiler pin.
+CI and `cabal.project` are pinned to Agda 2.9.0. The Agda version is part of the Cabal cache key, so compiler upgrades get a fresh cache.
 
 The root pragma is:
 
 ```agda
-{-# OPTIONS --rewriting --confluence-check --guardedness #-}
+{-# OPTIONS --rewriting --confluence-check --guardedness --lossy-unification --no-eta-equality --prop --with-K --cubical=no-glue --erased-quotients --erased-funext --erased-propext --auto-inline --exact-split #-}
 ```
 
 The generated renderer keeps only its renderer-specific unification option:
 
 ```agda
-{-# OPTIONS --rewriting --confluence-check --lossy-unification --guardedness #-}
+{-# OPTIONS --rewriting --confluence-check --guardedness --lossy-unification --no-eta-equality --prop --with-K --cubical=no-glue --erased-quotients --erased-funext --erased-propext --auto-inline --exact-split #-}
 ```
 
-The physics specification uses `--safe --confluence-check --guardedness`; diagnostic reduction/projection overrides have been removed. The MALLP root remains intentionally unsafe because it contains positive postulates and a registered rewrite system. `--exact-split` is enabled by default. `--lossy-unification` remains isolated to generated resource certificates: removing it leaves unification metas unresolved in `MALLPEmittedRenderer.agda` under Agda 2.8.0.2. It is a sound but incomplete elaboration heuristic, not a logical axiom or runtime rule. `--type-in-type` is absent.
-The proof roots no longer carry diagnostic overrides such as `--no-fast-reduce`, `--no-projection-like`, or `--no-postfix-projections`; those disable Agda's ordinary reduction and syntax behavior and belong in minimized bug reproductions, not the normal proof run. Experimental lazy instances, backtracking search, and polarity analysis were also removed because the current sources do not use them. The MALLP root remains intentionally unsafe because it contains positive postulates and registered rewrite rules; the separate physics specification uses the safe profile shown above. `--lossy-unification` remains only in generated renderer certificates: removing it left unification metas unresolved in `MALLPEmittedRenderer.agda` under Agda 2.8.0.2. It is an elaboration heuristic, not an axiom or runtime rule. `--type-in-type` is absent.
+The physics specification uses `--safe --confluence-check --guardedness`; diagnostic reduction/projection overrides have been removed. The MALLP root remains intentionally unsafe because it contains positive postulates and a registered rewrite system. `--exact-split` is enabled by default. `--lossy-unification` remains isolated to generated resource certificates: removing it leaves unification metas unresolved in `MALLPEmittedRenderer.agda` under Agda 2.9.0. It is a sound but incomplete elaboration heuristic, not a logical axiom or runtime rule. `--type-in-type` is absent.
+The proof roots no longer carry diagnostic overrides such as `--no-fast-reduce`, `--no-projection-like`, or `--no-postfix-projections`; those disable Agda's ordinary reduction and syntax behavior and belong in minimized bug reproductions, not the normal proof run. Experimental lazy instances, backtracking search, and polarity analysis were also removed because the current sources do not use them. The MALLP root remains intentionally unsafe because it contains positive postulates and registered rewrite rules; the separate physics specification uses the safe profile shown above. `--lossy-unification` remains only in generated renderer certificates: removing it left unification metas unresolved in `MALLPEmittedRenderer.agda` under Agda 2.9.0. It is an elaboration heuristic, not an axiom or runtime rule. `--type-in-type` is absent.
 
 CI triggers on `push` and `pull_request`; there is no schedule. The public `agda2forth` entrypoint, CLI argument shape, existing compiler invocation, generated renderer filename, and remaining Agda options are compatibility boundaries.
 
@@ -37,7 +37,7 @@ The root module publicly re-exports six mathematical `Foundations` packages and 
 | --- | --- | --- |
 | `ForsterEnumerability` | A concrete register-machine interpreter; analytic enumerable families; a global positive `parametricEA : ParametricEA` postulate; uniform family compilation with the parameter supplied at runtime. Soundness and completeness preserve the enumerated range. | PEA is assumed, not derived for every family. Range equality does not require identical stage-by-stage output. Typed program syntax is not proved equivalent to numeric Gödel coding or Turing computability. |
 | `SymmetricBarRecursion` | A finite-partial-map interface for Spector-style symmetric bar recursion; positive stop/step equations; finite selection products, backward induction, Bellman equations, and conditional optimality proofs. | `symmetricBarRec` and its equations are postulated under `SymmetricBarCondition`. They do not provide a terminating evaluator by themselves. The full Escardó–Oliva equivalence is not formalized here. |
-| `DoubleNegation` | Double-negated DNE and Peirce are derived from the double-negated excluded-middle schema. Ordinary DNS is derived from a negative no-counterexample postulate. | The negative assumptions are `¬¬ExcludedMiddle`, `¬¬FunctionExtensionality`, `¬DNSCounterexample`, and `¬¬DependentChoice`; none supplies a positive decision procedure, pointwise witness, or choice sequence. |
+| `DoubleNegation` | Double-negated DNE and Peirce are derived from the double-negated excluded-middle schema. Ordinary DNS is derived from a negative no-counterexample postulate. | The negative assumptions are `¬¬ExcludedMiddle`, `¬¬FunctionExtensionality`, and `¬DNSCounterexample`; no dependent-choice or countable-choice schema is postulated. |
 | `MacLaneCoherence` | A thin free monoidal category on Nat-labelled generators, with executable tensor normal forms and coherence proofs. | The proof uses K/UIP. It has no direct compiler consumer and is not a general coherence theorem for arbitrary MALLP models. |
 | `CohesiveRetractions` | An abstract `Π ⊣ Disc ⊣ Γ ⊣ coDisc` record, full-faithfulness and finite-product preservation contracts, plus a concrete nonidentity finite-posetal model: three H-objects and two G-objects with distinct modalities. | The finite model is a pair of thin finite categories, not a cohesive topos or ∞-topos. It is not assembled with MALLP into the Hamano–Scott *-autonomous categorical model. |
 | `QuotientReflection` | Idempotent endomaps, fixed-point carriers, normalizer/kernel correspondence, a reflective subcategory and idempotent reflection monad; a raw-to-canonical semantic rewrite. | This is a proof-relevant type-theoretic quotient/reflection construction, not proof that arbitrary user data has a useful canonicalizer. |
@@ -53,9 +53,11 @@ This is a proof obligation on the generalized Bellman algebra, independent of PE
 
 `UnifiedFoundationsOptimization.DynamicProgrammingMALLPOptimization` is the single dependent package for one PEA-enumerated Nat candidate, one quotient-normalized partial-map state, one payoff preorder, one finite-horizon dynamic program, one SBR recurrence, and one MALLP-certified Bellman base/step.
 
-The record links the PEA candidate to the first move of the backward-induction policy computed by `finiteSelection` against `finitePayoff` on the same normalized initial state. The finite DP value is required to equal the SBR value at that state. The same Bellman maps carry proof-relevant MALLP resource certificates and SBR stop/step equations. Quotient invariance, cohesive candidate/state data, Mac Lane resource association, the negative logical boundary, identity rewrite equations, and the existing cut-elimination contract complete the joint constraint.
+The record links the PEA candidate to the first move of the backward-induction policy computed by `finiteSelection` against `finitePayoff` on the same normalized initial state. The finite DP value is required to equal the SBR value at that state. The same Bellman maps carry proof-relevant MALLP resource certificates and SBR stop/step equations. Quotient invariance, cohesive candidate/state data, Mac Lane resource association, identity rewrite equations, and the existing cut-elimination contract complete the joint constraint. The negative logical schemas remain a separate Foundation and are not required to instantiate the optimizer.
 
 This is a dependent bundle of obligations and existing assumptions, not an axiom that manufactures witnesses. Positive PEA, SBR, identity rewriting, and cut elimination remain explicit. The record does not prove that every optimization problem has a solution or terminates.
+
+The extractor is total and uniform **for an already inhabited optimization record**. It retains the PEA-selected register-machine code and emits a canonical MALLP Nat-literal program for the record's already-certified candidate. It does not compile arbitrary register-machine programs into the present Forth fragment. The finite-fuel search returns `Maybe`; `noUniformFeasibleCandidate` and `noUniformCanonicalMALLPProgram` prove that no total extractor can return a feasible candidate and canonical program for every arbitrary enumerable family, because the empty family is included. This is a constructive impossibility result, not a missing postulate to be filled with an unconditional solution claim.
 
 ## Is MALLP needed for Bellman optimization?
 
@@ -154,7 +156,7 @@ Negative assumptions:
 - `¬¬ExcludedMiddle` at each stated universe level.
 - `¬¬FunctionExtensionality` at the stated universe levels.
 - Countable DNS for families `Nat → Set ℓ`, represented by the negative axiom `negativeDNS : ¬ DNSCounterexampleAt`; ordinary DNS is derived constructively from that counterexample refutation.
-- `¬¬DependentChoice` for type-valued serial relations.
+- No dependent-choice or countable-choice postulate occurs in the source.
 
 Constructively derived rather than postulated:
 
