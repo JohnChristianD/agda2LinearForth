@@ -12,8 +12,6 @@
 --erased-propext
 --auto-inline
 --exact-split
---no-fast-reduce
---no-projection-like
 #-}
 -- ```Agda
 -- ----------------------------------------------------------------------
@@ -4272,7 +4270,6 @@ module UnifiedFoundationsOptimization (Atom : Nat → Set) where
       (R : Set)
       : Set (lsuc (lsuc (lsuc ℓ))) where
     field
-      negativeBoundary : NegativeLogicalBoundary ℓ
       identityRewriting : IdentityRewriteFoundation
 
       positiveEnumerability : ParametricEA
@@ -8099,24 +8096,27 @@ module CanonicalFoundationsExtraction (Atom : Nat → Set) where
           candidateFamily H G productsH productsG ℓ R)
       : Set₁ where
     field
+      -- The PEA code is a register-machine program, not yet a Forth
+      -- program. Its soundness and completeness stay in this certificate.
       canonicalEnumerator :
         CanonicalPEAProgram
           (Optimization.positiveEnumerability optimization)
           candidateFamily
           (Optimization.candidateParameter optimization)
-      canonicalEnumeratorCode : ProgramCode
-      canonicalEnumeratorCodeIsPEA :
-        canonicalEnumeratorCode ≡
-          parametricCode
-            (Optimization.positiveEnumerability optimization)
-            candidateFamily
-            (Optimization.candidateParameter optimization)
+      selectedCandidateEnumeration :
+        universalEval (canonicalPEACode canonicalEnumerator)
+          (Optimization.candidateStage optimization) ≡
+        just (Optimization.candidate optimization)
       selectedCandidateFeasible :
         Predicate candidateFamily
           (Optimization.candidateParameter optimization)
           (Optimization.candidate optimization)
+      -- This is the canonical MALLP program for the already-selected Nat
+      -- literal, not a compiler for arbitrary PEA register programs.
       selectedCandidateProgram :
         CanonicalMALLPProgram (Optimization.candidate optimization)
+      selectedCandidateIsOptimalInitialMove :
+        Optimization.candidateIsChosen optimization
       selectedCandidateOptimal :
         OptimalSelection
           (Optimization.valueOrder optimization)
@@ -8142,37 +8142,38 @@ module CanonicalFoundationsExtraction (Atom : Nat → Set) where
       Optimization.DynamicProgrammingMALLPOptimization
         candidateFamily H G productsH productsG ℓ R) →
     ExtractedOptimizationProgram optimization
-  extractOptimization optimization = record
-    { canonicalEnumerator =
+  extractOptimization optimization =
+    let
+      enumerator =
         canonicalPEAProgram
           (Optimization.positiveEnumerability optimization)
           candidateFamily
           (Optimization.candidateParameter optimization)
-    ; canonicalEnumeratorCode =
-        canonicalPEACode
-          (canonicalPEAProgram
-            (Optimization.positiveEnumerability optimization)
-            candidateFamily
-            (Optimization.candidateParameter optimization))
-    ; canonicalEnumeratorCodeIsPEA =
-        canonicalPEACodeIsSelected
-          (canonicalPEAProgram
-            (Optimization.positiveEnumerability optimization)
-            candidateFamily
-            (Optimization.candidateParameter optimization))
-    ; selectedCandidateFeasible =
-        Optimization.optimizationCandidateFeasible optimization
-    ; selectedCandidateProgram =
-        canonicalMALLPProgram (Optimization.candidate optimization)
-    ; selectedCandidateOptimal =
-        Optimization.finiteOptimizationOptimal optimization
-    ; normalizedBellmanBaseIsCutFree =
-        Optimization.normalizedBellmanBase-cutFree optimization
-    ; normalizedBellmanStepIsCutFree =
-        Optimization.normalizedBellmanStep-cutFree optimization
-    ; finiteDPAgreesWithSBR =
-        Optimization.finiteDynamicProgrammingAgreesWithSBR optimization
-    }
+    in
+    record
+      { canonicalEnumerator = enumerator
+      ; selectedCandidateEnumeration =
+          trans
+            (cong
+              (λ code →
+                universalEval code (Optimization.candidateStage optimization))
+              (canonicalPEACodeIsSelected enumerator))
+            (Optimization.candidateEnumeration optimization)
+      ; selectedCandidateFeasible =
+          Optimization.optimizationCandidateFeasible optimization
+      ; selectedCandidateProgram =
+          canonicalMALLPProgram (Optimization.candidate optimization)
+      ; selectedCandidateIsOptimalInitialMove =
+          Optimization.candidateIsChosen optimization
+      ; selectedCandidateOptimal =
+          Optimization.finiteOptimizationOptimal optimization
+      ; normalizedBellmanBaseIsCutFree =
+          Optimization.normalizedBellmanBase-cutFree optimization
+      ; normalizedBellmanStepIsCutFree =
+          Optimization.normalizedBellmanStep-cutFree optimization
+      ; finiteDPAgreesWithSBR =
+          Optimization.finiteDynamicProgrammingAgreesWithSBR optimization
+      }
 
   -- Uniform bounded extraction for the full PEA family interface, not
   -- merely the analytic submodel.  Every finite stage is evaluated by the
@@ -8249,6 +8250,31 @@ module CanonicalFoundationsExtraction (Atom : Nat → Set) where
   noUniformFeasibleCandidate choose
     with choose emptyParametricallyEnumerable zero
   ... | candidate , impossible = impossible
+
+  forgetCanonicalProgram :
+    {family : ParametricallyEnumerable} {parameter : Nat} →
+    Σ Nat
+      (λ candidate →
+        Predicate family parameter candidate ×
+        CanonicalMALLPProgram candidate) →
+    Σ Nat (λ candidate → Predicate family parameter candidate)
+  forgetCanonicalProgram (candidate , pair feasible _) =
+    candidate , feasible
+
+  -- A total feasible-program extractor for every arbitrary enumerable
+  -- family is impossible: the empty family is an explicit counterexample.
+  noUniformCanonicalMALLPProgram :
+    ((family : ParametricallyEnumerable) →
+      (parameter : Nat) →
+      Σ Nat
+        (λ candidate →
+          Predicate family parameter candidate ×
+          CanonicalMALLPProgram candidate)) →
+    ⊥
+  noUniformCanonicalMALLPProgram extract =
+    noUniformFeasibleCandidate
+      (λ family parameter →
+        forgetCanonicalProgram (extract family parameter))
 
 
 -- ----------------------------------------------------------------------
