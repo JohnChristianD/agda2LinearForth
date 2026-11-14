@@ -6,7 +6,8 @@
 --no-eta-equality
 --prop
 --with-K
---cubical=no-glue
+--no-fast-reduce
+--no-projection-like
 --erased-quotients
 --erased-funext
 --erased-propext
