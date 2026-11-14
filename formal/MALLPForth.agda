@@ -42,10 +42,9 @@ open import Agda.Builtin.Sigma public
 open import Agda.Builtin.Equality public
 open import Agda.Builtin.String public
 open import Agda.Builtin.Equality.Rewrite public
-open import Agda.Builtin.Equality.Erased public
-open import Agda.Builtin.Equality.Funext public
-open import Agda.Builtin.Equality.Propext public
-open import Agda.Builtin.Equality.Quotient public
+open import Agda.Builtin.Erased.Funext public
+open import Agda.Builtin.Erased.Propext public
+open import Agda.Builtin.Erased.Quotient public
 open import Agda.Builtin.Word using (Word64; primWord64ToNat; primWord64FromNat) public
 open import Agda.Builtin.Word.Properties using (primWord64ToNatInjective) public
 -- Agda has no Agda.Builtin.Tuple module; the product record _×_ below
