@@ -981,19 +981,19 @@ hasNatResult definition = do
     Nothing -> pure False
     Just name -> isBuiltinType name resultType
 
-isBinaryExponentType :: I.Type -> TCM Bool
-isBinaryExponentType ty = do
+isCodyadicExponentType :: I.Type -> TCM Bool
+isCodyadicExponentType ty = do
   reduced <- reduce ty
   pure $ case I.unEl reduced of
-    I.Def actual [] -> prettyShow actual == "MALLPForth.BinaryExponent"
+    I.Def actual [] -> prettyShow actual == "Agda.Builtin.Int.Int"
     _ -> False
 
-binaryExponentFunctionArity :: Definition -> TCM (Maybe Int)
-binaryExponentFunctionArity definition = do
+codyadicExponentFunctionArity :: Definition -> TCM (Maybe Int)
+codyadicExponentFunctionArity definition = do
   TelV telescope resultType <- telView (defType definition)
-  resultIsExponent <- isBinaryExponentType resultType
+  resultIsExponent <- isCodyadicExponentType resultType
   argumentIsExponent <- traverse
-    (isBinaryExponentType . snd . I.unDom)
+    (isCodyadicExponentType . snd . I.unDom)
     (I.telToList telescope)
   pure $
     if resultIsExponent
@@ -1010,14 +1010,14 @@ compileCodyadExponentShiftFunction owner term = do
   let (actualArity, body) = tLamView term
   if actualArity /= 1
     then unsupported
-      ("Codyad shift must own exactly one BinaryExponent: " ++ prettyShow owner)
+      ("Codyad shift must own exactly one Int: " ++ prettyShow owner)
     else decode body
   where
     decode expression = case tAppView expression of
       (TDef actual, [TVar 0])
-        | prettyShow actual == "MALLPForth.shiftCodyadExponentLeft" ->
+        | prettyShow actual == "MALLPForth.shiftCodyadicExponentLeft" ->
             pure (True, FormalCodyadShiftLeft)
-        | prettyShow actual == "MALLPForth.shiftCodyadExponentRight" ->
+        | prettyShow actual == "MALLPForth.shiftCodyadicExponentRight" ->
             pure (False, FormalCodyadShiftRight)
       (TCoerce inner, []) -> decode inner
       _ -> unsupported
@@ -1191,7 +1191,7 @@ compileDefinition definition
         boolPairConstructor <- boolPairFunctionConstructor definition
         word64Arity <- word64FunctionArity definition
         unitArity <- unitFunctionArity definition
-        exponentArity <- binaryExponentFunctionArity definition
+        exponentArity <- codyadicExponentFunctionArity definition
         hasFloat <- hasFloatInSignature definition
         if hasFloat
           then unsupported "Agda builtin Float is explicitly outside the MALLP compiler contract"
@@ -1509,8 +1509,8 @@ rendererCertificate sourceModule definitions
   , "   NatStackBounded; natCell; execTokens; execBoundedTokens; execBoundedTokens-preserves;"
   , "   BoundedExecutionTrace; execBoundedTokens-complete; execBoundedTokens-complete-unbounded; cong; cong₂; trans; sym;"
   , "   applyNatOp; evalNatExpr; compileNatLinear; renderForth; natAdd-comm; _++ᴳ_;"
-  , "   BinaryExponent; shiftCodyadExponentLeft; shiftCodyadExponentRight;"
-  , "   CodyadForthToken; codyadShiftLeftToken; codyadShiftRightToken; execCodyadTokens; binaryExponentStack; binaryExponentFits;"
+  , "   Int; shiftCodyadicExponentLeft; shiftCodyadicExponentRight;"
+  , "   CodyadForthToken; codyadShiftLeftToken; codyadShiftRightToken; execCodyadTokens; codyadicExponentStack; codyadicExponentFits;"
   , "   codyadShiftLeft-forth-sound; codyadShiftRight-forth-sound; natBoundFalseNotTrue;"
   , "   MALLPProtocolTheory; codyadFormula; codyadShiftLeftMALLP; codyadShiftRightMALLP)"
   , ""
@@ -2146,7 +2146,7 @@ rendererCertificate sourceModule definitions
         ; isLeft = direction
         ; textToken = if isLeft then "textCodyadShiftLeft" else "textCodyadShiftRight"
         ; machineToken = if isLeft then "codyadShiftLeftToken" else "codyadShiftRightToken"
-        ; shiftName = if isLeft then "shiftCodyadExponentLeft" else "shiftCodyadExponentRight"
+        ; shiftName = if isLeft then "shiftCodyadicExponentLeft" else "shiftCodyadicExponentRight"
         ; soundName = if isLeft then "codyadShiftLeft-forth-sound" else "codyadShiftRight-forth-sound"
         ; mallpName = if isLeft then "codyadShiftLeftMALLP" else "codyadShiftRightMALLP"
         }
@@ -2166,18 +2166,18 @@ rendererCertificate sourceModule definitions
         , derivationName <> " : MALLPProtocolTheory (dualPos codyadFormula ∷ []) (just codyadFormula)"
         , derivationName <> " = " <> mallpName
         , ""
-        , sourceProofName <> " : (exponent : BinaryExponent) → "
+        , sourceProofName <> " : (exponent : Int) → "
             <> sourceName <> " exponent ≡ " <> shiftName <> " exponent"
         , sourceProofName <> " exponent = refl"
         , ""
         , machineProofName <> " :"
-        , "  (bound : Nat) (exponent : BinaryExponent) →"
-        , "  binaryExponentFits bound exponent ≡ true →"
-        , "  binaryExponentFits bound (" <> shiftName <> " exponent) ≡ true →"
+        , "  (bound : Nat) (exponent : Int) →"
+        , "  codyadicExponentFits bound exponent ≡ true →"
+        , "  codyadicExponentFits bound (" <> shiftName <> " exponent) ≡ true →"
         , "  (residual : List Nat) →"
         , "  execCodyadTokens bound " <> machineTokensName
-        , "    (binaryExponentStack exponent ++ᴳ residual) ≡"
-        , "  just (binaryExponentStack (" <> shiftName <> " exponent) ++ᴳ residual)"
+        , "    (codyadicExponentStack exponent ++ᴳ residual) ≡"
+        , "  just (codyadicExponentStack (" <> shiftName <> " exponent) ++ᴳ residual)"
         , machineProofName <> " bound exponent inputFits outputFits residual ="
         , "  " <> soundName <> " bound exponent residual inputFits outputFits"
         , ""
