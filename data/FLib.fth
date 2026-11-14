@@ -109,7 +109,9 @@ s" MALLP: token failure" exception constant MALLP-ERR
 \   sign = 0, magnitude = 0  : zero
 \   sign = 1, magnitude > 0  : positive
 \   sign = 2, magnitude > 0  : negative
-\ The source mantissa is a separate residual resource and is untouched.
+\ The source mantissa producer is an opaque execution-token cell below the
+\ exponent. These words touch only top two cells:
+\ ( ... mantissa-xt sign magnitude -- ... mantissa-xt sign' magnitude' )
 
 : MALLP-CODYAD-CHECK-EXPONENT ( sign magnitude -- sign magnitude )
     2 MALLP-REQUIRE-STACK

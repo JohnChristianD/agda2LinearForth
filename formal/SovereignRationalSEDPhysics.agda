@@ -10,7 +10,7 @@ open import Agda.Builtin.List using (List; []; _∷_)
 open import Agda.Builtin.Maybe using (Maybe; just; nothing)
 open import Agda.Builtin.Sigma using (Σ; _,_)
 open import Agda.Builtin.Equality using (_≡_; refl)
--- Agda 2.8 has no Agda.Builtin.Empty module; define the empty type locally.
+-- No standard library dependency: define the empty type locally.
 data ⊥ : Set where
 
 ------------------------------------------------------------------------
@@ -387,10 +387,6 @@ data _⊎ᶜ_ (A B : Set) : Set where
   codyadicLeft : A → A ⊎ᶜ B
   codyadicRight : B → A ⊎ᶜ B
 
-infix 4 _≈ᶜ_ _#ᶜ_
-infixl 6 _+ᶜ_
-infixl 7 _*ᶜ_
-
 -- Signed-digit expansions are redundant, so structural stream equality
 -- is not the real equality.  A concrete implementation supplies semantic
 -- setoid equality, productive operations, and all ring/field laws.
@@ -461,6 +457,10 @@ record CodyadicFieldInterface : Set₁ where
       (x : Codyadic) (apartFromZero : x #ᶜ zeroᶜ) →
       (x *ᶜ reciprocalᶜ x apartFromZero) ≈ᶜ oneᶜ
 open CodyadicFieldInterface public
+
+infix 4 _≈ᶜ_ _#ᶜ_
+infixl 6 _+ᶜ_
+infixl 7 _*ᶜ_
 
 -- Continuation/negative view of one observation.  This is a polarized
 -- consumer interface, not a claim that the entire Conat type is a Laurent

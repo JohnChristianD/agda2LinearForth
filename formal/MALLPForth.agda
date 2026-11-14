@@ -37,7 +37,8 @@ module MALLPForth where
 open import Agda.Primitive using (Level; lzero; lsuc; _⊔_) public
 open import Agda.Builtin.Nat public
 open import Agda.Builtin.Int public
-open import SovereignRationalSEDPhysics using (Codyadic; codyadic)
+open import SovereignRationalSEDPhysics
+  using (Codyadic; codyadic; CodyadicDigitStream; codyadicBinaryShift; codyadicMantissa)
 open import Agda.Builtin.Bool public
 open import Agda.Builtin.List public
 open import Agda.Builtin.Maybe public
@@ -561,6 +562,30 @@ shiftCodyadicLeftAfterRight (codyadic exponent mantissa) =
   cong (λ next → codyadic next mantissa)
     (shiftCodyadicExponentLeftAfterRight exponent)
 
+-- Source-level Codyad laws: exponent changes by one binary place while
+-- the untruncated coinductive mantissa remains definitionally identical.
+shiftCodyadicLeft-exponent :
+  (value : Codyadic) →
+  codyadicBinaryShift (shiftCodyadicLeft value) ≡
+    shiftCodyadicExponentLeft (codyadicBinaryShift value)
+shiftCodyadicLeft-exponent (codyadic exponent mantissa) = refl
+
+shiftCodyadicRight-exponent :
+  (value : Codyadic) →
+  codyadicBinaryShift (shiftCodyadicRight value) ≡
+    shiftCodyadicExponentRight (codyadicBinaryShift value)
+shiftCodyadicRight-exponent (codyadic exponent mantissa) = refl
+
+shiftCodyadicLeft-mantissa :
+  (value : Codyadic) →
+  codyadicMantissa (shiftCodyadicLeft value) ≡ codyadicMantissa value
+shiftCodyadicLeft-mantissa (codyadic exponent mantissa) = refl
+
+shiftCodyadicRight-mantissa :
+  (value : Codyadic) →
+  codyadicMantissa (shiftCodyadicRight value) ≡ codyadicMantissa value
+shiftCodyadicRight-mantissa (codyadic exponent mantissa) = refl
+
 -- ----------------------------------------------------------------------
 -- MODULE 1: SIX FOUNDATIONAL PACKAGES AND LAURENT MALLP
 -- ----------------------------------------------------------------------
@@ -696,8 +721,8 @@ module Foundations where
 
     -- ------------------------------------------------------------------
     -- Functional presentation used by Forster's synthetic axiom.
-    -- Predicates and enumerators are Set-valued because this module is
-    -- compiled with --no-prop; this is an explicit encoding boundary.
+    -- Predicates and enumerators remain Set-valued because their witnesses
+    -- drive executable extraction; Prop is reserved for proof-only evidence.
     -- ------------------------------------------------------------------
 
     record ParametricallyEnumerable : Set₁ where
@@ -1255,7 +1280,7 @@ module Foundations where
         (decideDomain entries (omega (streamOf (mapEntries entries) default)))
 
   -- --------------------------------------------------------------------
-  -- 3. Negative logical and choice schemas.
+  -- 3. Negative logical schemas.
   --
   -- Excluded middle and function extensionality are postulated only under
   -- double negation. DNS is represented directly by its negative
@@ -7853,6 +7878,54 @@ execCodyadTokens bound (token ∷ tokens) stack
 ... | nothing = nothing
 ... | just nextStack = execCodyadTokens bound tokens nextStack
 
+-- Typed machine view. The exponent uses the two-cell signed ABI. The
+-- coinductive mantissa remains an opaque linear resource.
+execCodyadValue :
+  Nat → CodyadForthToken → Codyadic → List Nat →
+  Maybe (Codyadic × List Nat)
+execCodyadValue bound token (codyadic exponent mantissa) residual
+  with codyadicExponentFits bound exponent
+     | codyadicExponentFits bound (applyCodyadShift token exponent)
+... | true | true =
+      just (pair
+        (codyadic (applyCodyadShift token exponent) mantissa)
+        residual)
+... | _ | _ = nothing
+
+codyadShiftLeft-value-forth-sound :
+  (bound : Nat) (value : Codyadic) (residual : List Nat) →
+  codyadicExponentFits bound (codyadicBinaryShift value) ≡ true →
+  codyadicExponentFits bound
+    (shiftCodyadicExponentLeft (codyadicBinaryShift value)) ≡ true →
+  execCodyadValue bound codyadShiftLeftToken value residual ≡
+    just (pair (shiftCodyadicLeft value) residual)
+codyadShiftLeft-value-forth-sound
+  bound (codyadic exponent mantissa) residual inputFits outputFits
+  with codyadicExponentFits bound exponent in inputResult
+     | codyadicExponentFits bound (shiftCodyadicExponentLeft exponent) in outputResult
+... | true | true = refl
+... | false | _ =
+  ⊥-elim (natBoundFalseNotTrue (trans (sym inputResult) inputFits))
+... | true | false =
+  ⊥-elim (natBoundFalseNotTrue (trans (sym outputResult) outputFits))
+
+codyadShiftRight-value-forth-sound :
+  (bound : Nat) (value : Codyadic) (residual : List Nat) →
+  codyadicExponentFits bound (codyadicBinaryShift value) ≡ true →
+  codyadicExponentFits bound
+    (shiftCodyadicExponentRight (codyadicBinaryShift value)) ≡ true →
+  execCodyadValue bound codyadShiftRightToken value residual ≡
+    just (pair (shiftCodyadicRight value) residual)
+codyadShiftRight-value-forth-sound
+  bound (codyadic exponent mantissa) residual inputFits outputFits
+  with codyadicExponentFits bound exponent in inputResult
+     | codyadicExponentFits bound (shiftCodyadicExponentRight exponent) in outputResult
+... | true | true = refl
+... | false | _ =
+  ⊥-elim (natBoundFalseNotTrue (trans (sym inputResult) inputFits))
+... | true | false =
+  ⊥-elim (natBoundFalseNotTrue (trans (sym outputResult) outputFits))
+
 codyadShiftLeft-forth-sound :
   (bound : Nat) (exponent : Int) (residual : List Nat) →
   codyadicExponentFits bound exponent ≡ true →
@@ -7891,11 +7964,38 @@ codyadMalformedExponent-rejected :
     (zero ∷ suc zero ∷ []) ≡ nothing
 codyadMalformedExponent-rejected bound = refl
 
-codyadFormula : PolType posPolarity
-codyadFormula = atom⁺ 21
+CodyadMALLPAtom : Nat → Set
+CodyadMALLPAtom zero = Int
+CodyadMALLPAtom (suc zero) = CodyadicDigitStream
+CodyadMALLPAtom (suc (suc index)) = ⊤
 
--- Each exponent shift consumes and returns one Codyad capability.
--- The residual mantissa producer is preserved, never copied or discarded.
+module CodyadMALLPInterpretation =
+  MALLPRelationalDenotation CodyadMALLPAtom
+
+codyadExponentFormula : PolType posPolarity
+codyadExponentFormula = atom⁺ zero
+
+codyadMantissaFormula : PolType posPolarity
+codyadMantissaFormula = atom⁺ (suc zero)
+
+codyadFormula : PolType posPolarity
+codyadFormula = codyadExponentFormula ⊗⁺ codyadMantissaFormula
+
+codyadMALLPValue : Codyadic → Int × CodyadicDigitStream
+codyadMALLPValue (codyadic exponent mantissa) = pair exponent mantissa
+
+-- Concrete Rel interpretation: signed exponent and coinductive mantissa
+-- are both present in the linear resource, each consumed and returned once.
+codyadMALLP-linear-use :
+  (value : Codyadic) →
+  CodyadMALLPInterpretation.MALLPRelation
+    (mallp-ax {P = codyadFormula})
+    (pair (codyadMALLPValue value) tt)
+    (codyadMALLPValue value)
+codyadMALLP-linear-use value = refl
+
+-- This proof certifies resource shape; value change is certified by the
+-- source/machine exponent and mantissa preservation equations above.
 codyadShiftLeftMALLP :
   MALLPProtocolTheory (dualPos codyadFormula ∷ []) (just codyadFormula)
 codyadShiftLeftMALLP = protocol-logical mallp-ax
@@ -7938,6 +8038,56 @@ module CanonicalFoundationsExtraction (Atom : Nat → Set) where
         renderForth-sound (compileNat (literal value)) emptyStack
     }
 
+  -- PEA selects one typed register-machine enumerator uniformly for each
+  -- enumerable family and parameter. This code is not yet Forth code.
+  record CanonicalPEAProgram
+      (ea : ParametricEA)
+      (family : ParametricallyEnumerable)
+      (parameter : Nat) : Set₁ where
+    field
+      canonicalPEACode : ProgramCode
+      canonicalPEACodeIsSelected :
+        canonicalPEACode ≡ parametricCode ea family parameter
+      canonicalPEACodeSound :
+        (stage value : Nat) →
+        universalEval canonicalPEACode stage ≡ just value →
+        Predicate family parameter value
+      canonicalPEACodeComplete :
+        (value : Nat) →
+        Predicate family parameter value →
+        Σ Nat (λ stage →
+          universalEval canonicalPEACode stage ≡ just value)
+  open CanonicalPEAProgram public
+
+  canonicalPEAProgram :
+    (ea : ParametricEA) (family : ParametricallyEnumerable)
+    (parameter : Nat) →
+    CanonicalPEAProgram ea family parameter
+  canonicalPEAProgram ea family parameter = record
+    { canonicalPEACode = parametricCode ea family parameter
+    ; canonicalPEACodeIsSelected = refl
+    ; canonicalPEACodeSound = parametricCode-sound ea family parameter
+    ; canonicalPEACodeComplete = parametricCode-complete ea family parameter
+    }
+
+  -- Every inhabited enumerable predicate has a finite stage witness.
+  -- Its value has a canonical MALLP literal program. Empty predicates
+  -- correctly return no candidate; see noUniformFeasibleCandidate below.
+  extractPEACandidate-complete :
+    (ea : ParametricEA) (family : ParametricallyEnumerable)
+    (parameter candidate : Nat) →
+    Predicate family parameter candidate →
+    Σ Nat (λ stage →
+      (universalEval
+        (canonicalPEACode (canonicalPEAProgram ea family parameter))
+        stage ≡ just candidate) ×
+      CanonicalMALLPProgram candidate)
+  extractPEACandidate-complete ea family parameter candidate feasible
+    with canonicalPEACodeComplete
+      (canonicalPEAProgram ea family parameter) candidate feasible
+  ... | stage , emitted =
+    stage , pair emitted (canonicalMALLPProgram candidate)
+
   record ExtractedOptimizationProgram
       {candidateFamily : ParametricallyEnumerable}
       {H G : Category}
@@ -7949,6 +8099,11 @@ module CanonicalFoundationsExtraction (Atom : Nat → Set) where
           candidateFamily H G productsH productsG ℓ R)
       : Set₁ where
     field
+      canonicalEnumerator :
+        CanonicalPEAProgram
+          (Optimization.positiveEnumerability optimization)
+          candidateFamily
+          (Optimization.candidateParameter optimization)
       canonicalEnumeratorCode : ProgramCode
       canonicalEnumeratorCodeIsPEA :
         canonicalEnumeratorCode ≡
@@ -7988,11 +8143,23 @@ module CanonicalFoundationsExtraction (Atom : Nat → Set) where
         candidateFamily H G productsH productsG ℓ R) →
     ExtractedOptimizationProgram optimization
   extractOptimization optimization = record
-    { canonicalEnumeratorCode =
-        parametricCode
+    { canonicalEnumerator =
+        canonicalPEAProgram
           (Optimization.positiveEnumerability optimization)
-          candidateFamily (Optimization.candidateParameter optimization)
-    ; canonicalEnumeratorCodeIsPEA = refl
+          candidateFamily
+          (Optimization.candidateParameter optimization)
+    ; canonicalEnumeratorCode =
+        canonicalPEACode
+          (canonicalPEAProgram
+            (Optimization.positiveEnumerability optimization)
+            candidateFamily
+            (Optimization.candidateParameter optimization))
+    ; canonicalEnumeratorCodeIsPEA =
+        canonicalPEACodeIsSelected
+          (canonicalPEAProgram
+            (Optimization.positiveEnumerability optimization)
+            candidateFamily
+            (Optimization.candidateParameter optimization))
     ; selectedCandidateFeasible =
         Optimization.optimizationCandidateFeasible optimization
     ; selectedCandidateProgram =
