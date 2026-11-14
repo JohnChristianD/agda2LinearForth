@@ -7991,13 +7991,13 @@ module CanonicalFoundationsExtraction (Atom : Nat → Set) where
     {ℓ : Level} {R : Set} →
     (optimization :
       Optimization.DynamicProgrammingMALLPOptimization
-        candidateFamily H G productsG ℓ R) →
+        candidateFamily H G productsH productsG ℓ R) →
     ExtractedOptimizationProgram optimization
   extractOptimization optimization = record
     { canonicalEnumeratorCode =
         parametricCode
           (Optimization.positiveEnumerability optimization)
-          _ (Optimization.candidateParameter optimization)
+          candidateFamily (Optimization.candidateParameter optimization)
     ; canonicalEnumeratorCodeIsPEA = refl
     ; selectedCandidateFeasible =
         Optimization.optimizationCandidateFeasible optimization
