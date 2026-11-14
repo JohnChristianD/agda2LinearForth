@@ -2171,7 +2171,7 @@ rendererCertificate sourceModule definitions
         , sourceProofName <> " exponent = refl"
         , ""
         , machineProofName <> " :"
-        , "  (bound exponent : Nat) →"
+        , "  (bound : Nat) (exponent : BinaryExponent) →"
         , "  binaryExponentFits bound exponent ≡ true →"
         , "  binaryExponentFits bound (" <> shiftName <> " exponent) ≡ true →"
         , "  (residual : List Nat) →"
